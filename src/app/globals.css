@@ -1,1 +1,86 @@
 @import "tailwindcss";
+
+/**
+ * Nexra design tokens.
+ *
+ * A single dark, neutral surface system with one restrained accent.
+ * Semantic colours are defined now so data-heavy modules added in later
+ * phases inherit the same palette instead of inventing their own.
+ */
+@theme {
+  /* Surfaces — low-chroma neutrals, stepped for depth without shadows */
+  --color-canvas: #0a0c0e;
+  --color-surface: #101317;
+  --color-surface-raised: #161a1f;
+  --color-surface-hover: #1c222a;
+
+  /* Lines */
+  --color-border: #212932;
+  --color-border-strong: #2f3945;
+
+  /* Text */
+  --color-fg: #e9edf2;
+  --color-fg-muted: #98a3ae;
+  --color-fg-subtle: #6a747f;
+
+  /* Accent */
+  --color-accent: #3d8bfd;
+  --color-accent-hover: #5c9dff;
+  --color-accent-soft: #14243c;
+
+  /* Semantic — reserved for metrics and statuses in later phases */
+  --color-positive: #2ea56b;
+  --color-warning: #d59b30;
+  --color-critical: #d9534f;
+
+  --radius-panel: 10px;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Data readability: numerals align in columns wherever metrics are shown. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
