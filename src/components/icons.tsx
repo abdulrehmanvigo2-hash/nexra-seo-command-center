@@ -27,7 +27,13 @@ export type IconName =
   | "panel"
   | "user"
   | "chevron-down"
-  | "check";
+  | "check"
+  | "trend-up"
+  | "trend-down"
+  | "trend-flat"
+  | "filter"
+  | "plus"
+  | "inbox";
 
 const PATHS: Record<IconName, ReactNode> = {
   "command-center": (
@@ -135,6 +141,27 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   "chevron-down": <path d="m7 10 5 5 5-5" />,
   check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
+  "trend-up": (
+    <>
+      <path d="M7 17 17 7" />
+      <path d="M9 7h8v8" />
+    </>
+  ),
+  "trend-down": (
+    <>
+      <path d="m7 7 10 10" />
+      <path d="M17 9v8H9" />
+    </>
+  ),
+  "trend-flat": <path d="M6 12h12" />,
+  filter: <path d="M4 6h16M7 12h10M10 18h4" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  inbox: (
+    <>
+      <path d="M4 14h4l1.5 2.5h5L16 14h4" />
+      <path d="M4 14 6.5 6h11L20 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+    </>
+  ),
 };
 
 export function Icon({
