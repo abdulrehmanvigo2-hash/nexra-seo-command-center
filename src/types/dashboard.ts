@@ -22,13 +22,24 @@ export type { AgentId, Level, MetricTrend, Priority, SearchIntent, Status };
 // Selection: which project, over which window
 // ---------------------------------------------------------------------------
 
+/**
+ * Ids of the selectable projects.
+ *
+ * The records themselves live in `src/lib/mock/projects/roster.ts`, which both
+ * this module and the Projects module read — there is one project roster in
+ * the product, not one per module.
+ */
 export type ProjectId =
   | "portfolio"
   | "halcyon-fintech"
   | "verdant-home"
+  | "fieldnote-media"
   | "orbit-logistics"
   | "meridian-clinics"
-  | "skyline-outdoors";
+  | "skyline-outdoors"
+  | "northgate-legal"
+  | "atlas-industrial"
+  | "cobalt-ridge";
 
 export type DashboardProject = {
   readonly id: ProjectId;

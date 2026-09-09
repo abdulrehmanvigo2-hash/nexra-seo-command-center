@@ -25,10 +25,20 @@ type Filter = AgentOpsStatus | "all";
 export function AgentOperations({
   agents,
   referenceIso,
+  eyebrow = "AI SEO team",
+  title = "Agent Operations",
+  description = "The twelve specialist agents, their current task, and where the pipeline is waiting on a decision.",
 }: {
   agents: readonly AgentOperation[];
   /** Instant relative timestamps are measured against. */
   referenceIso: string;
+  /**
+   * Framing for the panel. Overridden by the Projects module, which shows the
+   * subset of the roster assigned to one project rather than all twelve.
+   */
+  eyebrow?: string;
+  title?: string;
+  description?: string;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -49,9 +59,9 @@ export function AgentOperations({
   return (
     <Panel>
       <PanelHeader
-        eyebrow="AI SEO team"
-        title="Agent Operations"
-        description="The twelve specialist agents, their current task, and where the pipeline is waiting on a decision."
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={attention > 0 ? "warning" : "neutral"} dot>

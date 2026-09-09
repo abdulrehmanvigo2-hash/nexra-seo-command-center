@@ -49,6 +49,28 @@ export {
   ACTIVITY_CATEGORY_LABELS,
 } from "@/lib/mock/dashboard/signals";
 
+/**
+ * The individual snapshot builders, shared with the Projects module.
+ *
+ * A project workspace shows the same health, trend, keyword, content, and
+ * technical data the Command Center shows when that project is selected, so it
+ * calls these rather than deriving a second set of numbers from the same
+ * fixtures. Everything below is pure and deterministic.
+ */
+export { buildTrendSeries } from "@/lib/mock/dashboard/series";
+export {
+  buildKpiCards,
+  buildScoreCards,
+  SESSION_VALUE_USD,
+} from "@/lib/mock/dashboard/metrics";
+export { buildKeywordSnapshot } from "@/lib/mock/dashboard/keywords";
+export { buildContentSnapshot } from "@/lib/mock/dashboard/content";
+export { buildTechnicalSnapshot } from "@/lib/mock/dashboard/technical";
+export { buildAgentOperations } from "@/lib/mock/dashboard/agents";
+export { buildAiVisibilitySnapshot } from "@/lib/mock/dashboard/ai-visibility";
+export { buildCompetitorSnapshot } from "@/lib/mock/dashboard/competitors";
+export { buildAuthoritySnapshot } from "@/lib/mock/dashboard/authority";
+
 /** Assembles every dataset the Command Center renders, for one selection. */
 export function getDashboardSnapshot(
   projectId: ProjectId,

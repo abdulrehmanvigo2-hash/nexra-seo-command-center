@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { Icon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Dropdown } from "@/components/ui/dropdown";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
@@ -75,6 +76,19 @@ export function DashboardHeader({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {/*
+            The roll-up has no workspace of its own; a single project does, and
+            it is the same record the Projects module lists.
+          */}
+          {!project.portfolio && (
+            <Link
+              href={`/projects/${project.id}`}
+              className={buttonClasses("secondary", "sm")}
+            >
+              View project
+              <Icon name="arrow-right" className="h-4 w-4" />
+            </Link>
+          )}
           <Button
             icon="refresh"
             onClick={onRefresh}

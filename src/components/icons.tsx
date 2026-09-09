@@ -55,7 +55,17 @@ export type IconName =
   | "sort"
   | "arrow-right"
   | "chevron-right"
-  | "external";
+  | "external"
+  // Added for the Projects module.
+  | "map-pin"
+  | "briefcase"
+  | "grid"
+  | "rows"
+  | "edit"
+  | "note"
+  | "trash"
+  | "arrow-left"
+  | "minus";
 
 const PATHS: Record<IconName, ReactNode> = {
   "command-center": (
@@ -298,6 +308,56 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M18 14.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5" />
     </>
   ),
+  "map-pin": (
+    <>
+      <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </>
+  ),
+  briefcase: (
+    <>
+      <rect x="3" y="7.5" width="18" height="12.5" rx="2" />
+      <path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5" />
+      <path d="M3 12.5h18" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </>
+  ),
+  rows: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="5" rx="1.5" />
+      <rect x="3.5" y="14.5" width="17" height="5" rx="1.5" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20Z" />
+      <path d="M13.5 7 17 10.5" />
+    </>
+  ),
+  note: (
+    <>
+      <path d="M5 4.5h14v10L14 20H6a1 1 0 0 1-1-1V4.5Z" />
+      <path d="M19 14.5h-5v5" />
+      <path d="M8.5 9h7M8.5 12.5h4" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4.5 7h15" />
+      <path d="M9.5 7V5.5a1.5 1.5 0 0 1 1.5-1.5h2a1.5 1.5 0 0 1 1.5 1.5V7" />
+      <path d="M6.5 7v12a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5V7" />
+      <path d="M10.5 11v5.5M13.5 11v5.5" />
+    </>
+  ),
+  "arrow-left": <path d="M19.5 12h-15m5.5-5.5L4.5 12 10 17.5" />,
+  minus: <path d="M6 12h12" />,
 };
 
 export function Icon({

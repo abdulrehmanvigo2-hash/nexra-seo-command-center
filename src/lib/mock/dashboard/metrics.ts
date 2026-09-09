@@ -31,7 +31,7 @@ import type {
  */
 
 /** Average value of an organic session, used for the traffic-value estimate. */
-const SESSION_VALUE_USD = 2.24;
+export const SESSION_VALUE_USD = 2.24;
 
 /**
  * Grades a 0-100 score, then downgrades it one step where the trend is

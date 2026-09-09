@@ -1,3 +1,4 @@
+import { PORTFOLIO_PROJECT, PROJECTS } from "@/lib/mock/projects/roster";
 import type { DashboardProject, DateRange, ProjectId, RangeId } from "@/types/dashboard";
 
 /**
@@ -13,8 +14,8 @@ import type { DashboardProject, DateRange, ProjectId, RangeId } from "@/types/da
  *    than `Math.random` or `Math.sin`, which makes it exactly reproducible
  *    across engines. Nothing here reads the wall clock.
  * 2. **One derivation, many projects.** Selecting a project must change the
- *    whole dashboard. Writing six hand-authored copies of every dataset would
- *    be unmaintainable, so each project carries a `seed`, a `scale`, and a
+ *    whole dashboard. Hand-authoring every dataset for every project would be
+ *    unmaintainable, so each project carries a `seed`, a `scale`, and a
  *    `healthOffset`, and the datasets are derived from those.
  */
 
@@ -36,77 +37,15 @@ const DAY_MS = 86_400_000;
 /**
  * The selectable projects, portfolio roll-up first.
  *
- * Names and domains are invented for the demo and refer to no real company.
- * `scale` is relative site size, `healthOffset` shifts every 0-100 score, and
- * `seed` gives each project its own deterministic value stream.
+ * Read straight from the client roster in `@/lib/mock/projects/roster`, which
+ * is the one place a project is defined. Selecting a project on the dashboard
+ * and opening it in the Projects module therefore show the same record, and
+ * the numbers below are derived from the same `seed`, `scale`, and
+ * `healthOffset` in both places.
  */
 export const DASHBOARD_PROJECTS: readonly DashboardProject[] = [
-  {
-    id: "portfolio",
-    name: "All Projects",
-    domain: "5 active projects",
-    industry: "Portfolio roll-up",
-    initials: "AP",
-    portfolio: true,
-    scale: 1,
-    healthOffset: 0,
-    seed: 1201,
-  },
-  {
-    id: "halcyon-fintech",
-    name: "Halcyon Fintech",
-    domain: "halcyon.example",
-    industry: "Financial services",
-    initials: "HF",
-    portfolio: false,
-    scale: 0.34,
-    healthOffset: 4,
-    seed: 2287,
-  },
-  {
-    id: "verdant-home",
-    name: "Verdant Home",
-    domain: "verdanthome.example",
-    industry: "Home and garden retail",
-    initials: "VH",
-    portfolio: false,
-    scale: 0.26,
-    healthOffset: -9,
-    seed: 3391,
-  },
-  {
-    id: "orbit-logistics",
-    name: "Orbit Logistics",
-    domain: "orbitlogistics.example",
-    industry: "Supply chain software",
-    initials: "OL",
-    portfolio: false,
-    scale: 0.19,
-    healthOffset: 2,
-    seed: 4457,
-  },
-  {
-    id: "meridian-clinics",
-    name: "Meridian Clinics",
-    domain: "meridianclinics.example",
-    industry: "Healthcare",
-    initials: "MC",
-    portfolio: false,
-    scale: 0.13,
-    healthOffset: -3,
-    seed: 5563,
-  },
-  {
-    id: "skyline-outdoors",
-    name: "Skyline Outdoors",
-    domain: "skylineoutdoors.example",
-    industry: "Outdoor retail",
-    initials: "SO",
-    portfolio: false,
-    scale: 0.08,
-    healthOffset: -6,
-    seed: 6679,
-  },
+  PORTFOLIO_PROJECT,
+  ...PROJECTS,
 ];
 
 export const DEFAULT_PROJECT_ID: ProjectId = "portfolio";
