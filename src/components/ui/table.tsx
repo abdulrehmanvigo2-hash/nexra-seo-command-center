@@ -27,7 +27,13 @@ export function Table({
   className?: string;
 }) {
   return (
-    <div className="w-full overflow-x-auto">
+    // `relative` is load-bearing. `sr-only` is absolutely positioned, so a
+    // screen-reader-only span inside a wide table would otherwise resolve its
+    // containing block to the viewport, escape this scroll container, and add
+    // its static position — far to the right in a table wider than the
+    // screen — to the document's width. Positioning this element makes it the
+    // containing block, so those spans are clipped along with everything else.
+    <div className="relative w-full overflow-x-auto">
       <table
         className={cn(
           "w-full border-collapse text-left text-[12.5px]",

@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 /**
  * Local inline icon set.
  *
- * Hand-rolled rather than pulling in an icon library: the shell needs ~18
- * glyphs, all on a single 24px stroke grid, which keeps the visual system
- * consistent and adds zero dependencies.
+ * Hand-rolled rather than pulling in an icon library: the product needs a few
+ * dozen glyphs, all on a single 24px stroke grid, which keeps the visual
+ * system consistent and adds zero dependencies.
  */
 export type IconName =
   | "command-center"
@@ -33,7 +33,29 @@ export type IconName =
   | "trend-flat"
   | "filter"
   | "plus"
-  | "inbox";
+  | "inbox"
+  // Added for the Command Center dashboard.
+  | "refresh"
+  | "calendar"
+  | "clock"
+  | "info"
+  | "alert"
+  | "shield"
+  | "target"
+  | "value"
+  | "pages"
+  | "layers"
+  | "sparkles"
+  | "activity"
+  | "globe"
+  | "bolt"
+  | "flag"
+  | "link-off"
+  | "gauge"
+  | "sort"
+  | "arrow-right"
+  | "chevron-right"
+  | "external";
 
 const PATHS: Record<IconName, ReactNode> = {
   "command-center": (
@@ -160,6 +182,120 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M4 14h4l1.5 2.5h5L16 14h4" />
       <path d="M4 14 6.5 6h11L20 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M20 11.5a8 8 0 1 0-.9 5" />
+      <path d="M20 4.5v6h-6" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+      <path d="M3.5 10h17M8 3.5V6.5M16 3.5V6.5" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 1.8" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5.5M12 7.75h.01" />
+    </>
+  ),
+  alert: (
+    <>
+      <path d="M12 4.5 2.9 20a1 1 0 0 0 .87 1.5h16.46A1 1 0 0 0 21.1 20Z" />
+      <path d="M12 10v4.5M12 17.75h.01" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 3 5 6v5.5c0 4.4 2.9 8.1 7 9.5 4.1-1.4 7-5.1 7-9.5V6Z" />
+      <path d="m9.25 12 1.9 1.9 3.6-3.8" />
+    </>
+  ),
+  target: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="0.75" />
+    </>
+  ),
+  value: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M14.5 9.25a2.75 2.75 0 0 0-2.5-1.5c-1.5 0-2.6.85-2.6 2s1 1.75 2.6 2.1 2.75 1 2.75 2.15-1.15 2.25-2.75 2.25a2.9 2.9 0 0 1-2.65-1.5" />
+      <path d="M12 6.25v11.5" />
+    </>
+  ),
+  pages: (
+    <>
+      <path d="M8 3.5h6.5L19 8v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z" />
+      <path d="M14 3.5V8h4.5" />
+    </>
+  ),
+  layers: (
+    <>
+      <path d="m12 3.5 8.5 4.25L12 12 3.5 7.75Z" />
+      <path d="m3.5 12 8.5 4.25L20.5 12" />
+      <path d="m3.5 16.25 8.5 4.25 8.5-4.25" />
+    </>
+  ),
+  sparkles: (
+    <>
+      <path d="m12 3.5 1.7 4.55 4.55 1.7-4.55 1.7L12 16l-1.7-4.55-4.55-1.7 4.55-1.7Z" />
+      <path d="M18.5 15.5 19.25 17.5l2 .75-2 .75-.75 2-.75-2-2-.75 2-.75Z" />
+    </>
+  ),
+  activity: <path d="M3 12.5h3.5L9 5.5l4 13 2.5-6h4" />,
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17" />
+      <path d="M12 3.5c2.2 2.4 3.4 5.4 3.4 8.5s-1.2 6.1-3.4 8.5c-2.2-2.4-3.4-5.4-3.4-8.5S9.8 5.9 12 3.5Z" />
+    </>
+  ),
+  bolt: <path d="M13.5 3 5.5 13.5h5L10 21l8.5-10.5h-5Z" />,
+  flag: (
+    <>
+      <path d="M5.5 21V4.5" />
+      <path d="M5.5 5.25h11l-1.75 3.5 1.75 3.5h-11" />
+    </>
+  ),
+  "link-off": (
+    <>
+      <path d="M10 13.5a4 4 0 0 0 3.9.9" />
+      <path d="M14.5 6.5 16 5.1a4 4 0 0 1 5.65 5.65l-1.4 1.4" />
+      <path d="M9.5 17.5 8 18.9A4 4 0 0 1 2.35 13.25l1.4-1.4" />
+      <path d="m3.5 3.5 17 17" />
+    </>
+  ),
+  gauge: (
+    <>
+      <path d="M4 17.5a9 9 0 1 1 16 0" />
+      <path d="m12 13.5 3.75-3.75" />
+      <circle cx="12" cy="14.75" r="1.25" />
+    </>
+  ),
+  sort: (
+    <>
+      <path d="M8 5v14M8 5 5 8.25M8 5l3 3.25" />
+      <path d="M16 19V5m0 14 3-3.25M16 19l-3-3.25" />
+    </>
+  ),
+  "arrow-right": <path d="M4.5 12h15m-5.5-5.5L19.5 12 14 17.5" />,
+  "chevron-right": <path d="m10 7 5 5-5 5" />,
+  external: (
+    <>
+      <path d="M13.5 4.5H19.5V10.5" />
+      <path d="M19.5 4.5 11 13" />
+      <path d="M18 14.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5" />
     </>
   ),
 };
