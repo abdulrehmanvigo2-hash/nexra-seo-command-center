@@ -65,7 +65,12 @@ export type IconName =
   | "note"
   | "trash"
   | "arrow-left"
-  | "minus";
+  | "minus"
+  // Added for the AI Agents module.
+  | "workflow"
+  | "handoff"
+  | "brief"
+  | "sliders";
 
 const PATHS: Record<IconName, ReactNode> = {
   "command-center": (
@@ -358,6 +363,37 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   "arrow-left": <path d="M19.5 12h-15m5.5-5.5L4.5 12 10 17.5" />,
   minus: <path d="M6 12h12" />,
+
+  // Added for the AI Agents module.
+  workflow: (
+    <>
+      <circle cx="5.5" cy="6" r="2.5" />
+      <circle cx="18.5" cy="12" r="2.5" />
+      <circle cx="5.5" cy="18" r="2.5" />
+      <path d="M8 6h4a2 2 0 0 1 2 2v2M8 18h4a2 2 0 0 0 2-2v-2" />
+    </>
+  ),
+  handoff: (
+    <>
+      <circle cx="5" cy="12" r="2.5" />
+      <circle cx="19" cy="12" r="2.5" />
+      <path d="M8 12h5.5m-2 -2.5L14 12l-2.5 2.5" />
+    </>
+  ),
+  brief: (
+    <>
+      <path d="M6 3.5h8.5L19 8v12.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z" />
+      <path d="M14 3.5V8h4.5" />
+      <path d="M8.5 12.5h7M8.5 16h4.5" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M5 7h9M18.5 7H20M5 17h3M12 17h8" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
+    </>
+  ),
 };
 
 export function Icon({

@@ -12,6 +12,7 @@ import {
   getRange,
   SESSION_VALUE_USD,
 } from "@/lib/mock/dashboard";
+import { healthOf } from "@/lib/health";
 import { pickSubset, randInt, round } from "@/lib/mock/dashboard/core";
 import { buildProjectIssues } from "@/lib/mock/projects/issues";
 import { buildProjectNotes } from "@/lib/mock/projects/notes";
@@ -115,16 +116,25 @@ function buildTeam(
   const team = [...core, ...specialists].sort((a, b) => a.stage - b.stage);
 
   if (status !== "paused") return team;
+  return team.map(holdingPattern);
+}
 
-  return team.map(
-    (agent): AgentOperation => ({
-      ...agent,
-      status: "waiting",
-      progress: 0,
-      attention: false,
-      currentTask: "Holding — the engagement is paused at the client's request.",
-    }),
-  );
+/**
+ * An agent on a paused engagement.
+ *
+ * The rule lives here because the engagement's state is the Projects module's
+ * to know, and it is exported because the Agents module has to apply the same
+ * one: an agent shown as blocked on a project the client has paused would
+ * contradict the project's own team panel.
+ */
+export function holdingPattern(agent: AgentOperation): AgentOperation {
+  return {
+    ...agent,
+    status: "waiting",
+    progress: 0,
+    attention: false,
+    currentTask: "Holding — the engagement is paused at the client's request.",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -207,13 +217,6 @@ function mean(values: readonly number[]): number {
 
 function sum(values: readonly number[]): number {
   return values.reduce((carry, value) => carry + value, 0);
-}
-
-function healthOf(score: number): MetricHealth {
-  if (score >= 75) return "positive";
-  if (score >= 60) return "neutral";
-  if (score >= 45) return "warning";
-  return "negative";
 }
 
 /**

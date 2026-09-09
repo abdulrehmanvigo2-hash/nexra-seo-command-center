@@ -1,7 +1,8 @@
 import { Icon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
-import { Meter, type MeterTone } from "@/components/ui/meter";
+import { Meter } from "@/components/ui/meter";
 import { cn } from "@/lib/cn";
+import { HEALTH_DOT, HEALTH_LABEL, HEALTH_METER } from "@/lib/health";
 import { AGENT_NAMES } from "@/lib/mock/seo";
 import { PROJECT_STATUS_META, PROJECT_TYPE_META } from "@/lib/mock/projects";
 import type { MetricHealth } from "@/types/dashboard";
@@ -18,34 +19,12 @@ import type { ProjectStatus, ProjectType } from "@/types/project";
  * three times.
  */
 
-export const HEALTH_LABEL: Record<MetricHealth, string> = {
-  positive: "Healthy",
-  neutral: "Steady",
-  warning: "Watch",
-  negative: "At risk",
-};
-
-export const HEALTH_DOT: Record<MetricHealth, string> = {
-  positive: "bg-positive",
-  neutral: "bg-accent",
-  warning: "bg-warning",
-  negative: "bg-critical",
-};
-
-export const HEALTH_METER: Record<MetricHealth, MeterTone> = {
-  positive: "positive",
-  neutral: "accent",
-  warning: "warning",
-  negative: "critical",
-};
-
-/** Health band for a bare 0-100 score. */
-export function healthOf(score: number): MetricHealth {
-  if (score >= 75) return "positive";
-  if (score >= 60) return "neutral";
-  if (score >= 45) return "warning";
-  return "negative";
-}
+/**
+ * The health vocabulary is shared with every other module that bands a 0-100
+ * index, so it is defined once in `@/lib/health` and re-exported here for the
+ * Projects components that already read it from this file.
+ */
+export { HEALTH_DOT, HEALTH_LABEL, HEALTH_METER, healthOf } from "@/lib/health";
 
 export function ProjectStatusBadge({
   status,

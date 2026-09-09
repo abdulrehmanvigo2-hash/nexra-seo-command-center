@@ -44,9 +44,21 @@ type Filter = ActivityCategory | "all";
 export function ActivityFeed({
   events,
   referenceIso,
+  eyebrow = "Audit trail",
+  title = "Recent Activity",
+  description = "Every action the platform and its agents have taken, newest first.",
+  footnote = "Full run history arrives with the AI Agents module.",
 }: {
   events: readonly ActivityEvent[];
   referenceIso: string;
+  /**
+   * Framing for the panel. Overridden by the Agents module, which shows the
+   * whole team's history rather than one project's.
+   */
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+  footnote?: string;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -64,11 +76,7 @@ export function ActivityFeed({
 
   return (
     <Panel>
-      <PanelHeader
-        eyebrow="Audit trail"
-        title="Recent Activity"
-        description="Every action the platform and its agents have taken, newest first."
-      />
+      <PanelHeader eyebrow={eyebrow} title={title} description={description} />
 
       <div className="border-b border-border px-4 py-3 sm:px-5">
         <Segmented
@@ -158,7 +166,7 @@ export function ActivityFeed({
         <span>
           {visible.length} of {events.length} events
         </span>
-        <span>Full run history arrives with the AI Agents module.</span>
+        <span>{footnote}</span>
       </PanelFooter>
     </Panel>
   );

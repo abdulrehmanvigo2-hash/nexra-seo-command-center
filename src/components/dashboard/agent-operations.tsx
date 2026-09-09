@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -112,11 +113,17 @@ export function AgentOperations({
 
       <PanelFooter>
         <span>
-          Workflow loop: Project Manager → SEO Director → Intelligence →
-          Keywords → Content → Technical → AI Visibility → Authority →
-          Analytics, and back to the Director.
+          Workflow loop: SEO Director → Project Manager → Intelligence →
+          Keywords → Content → Research → Writing → On-Page → Technical → AI
+          Visibility → Authority → Analytics, and back to the Director.
         </span>
-        <span>{agents.length} agents</span>
+        <Link
+          href="/agents"
+          className="inline-flex items-center gap-1 text-[12px] font-medium whitespace-nowrap text-accent transition-colors hover:text-accent-hover"
+        >
+          {agents.length} agents
+          <Icon name="chevron-right" className="h-3.5 w-3.5" />
+        </Link>
       </PanelFooter>
     </Panel>
   );
@@ -151,8 +158,16 @@ function AgentCard({
             {agent.stage}
           </span>
           <div className="min-w-0">
+            {/* The name is the link into the agent's workspace, so the board
+                reaches the Agents module from both the dashboard and a
+                project's team tab without a second control. */}
             <h4 className="truncate text-[13px] font-semibold tracking-tight text-fg">
-              {agent.name}
+              <Link
+                href={`/agents/${agent.agent}`}
+                className="rounded transition-colors hover:text-accent"
+              >
+                {agent.name}
+              </Link>
             </h4>
             <p className="truncate text-[11.5px] text-fg-subtle">
               {agent.discipline}

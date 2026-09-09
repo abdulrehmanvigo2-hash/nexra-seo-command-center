@@ -66,7 +66,7 @@ export function PagePlaceholder({ href }: { href: NavHref }) {
         </ul>
 
         <p className="mt-6 border-t border-border pt-5 text-[12px] leading-relaxed text-fg-subtle">
-          Current milestone: Phase 3 — Projects. All data shown across the
+          Current milestone: Phase 4 — AI Agents. All data shown across the
           product is mock data.
         </p>
       </div>

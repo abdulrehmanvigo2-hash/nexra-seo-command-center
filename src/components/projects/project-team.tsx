@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -63,8 +64,13 @@ export function ProjectTeamPreview({
 
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <p className="truncate text-[12.5px] font-medium text-fg">
-                  {agent.name}
+                <p className="min-w-0 truncate text-[12.5px] font-medium text-fg">
+                  <Link
+                    href={`/agents/${agent.agent}`}
+                    className="rounded transition-colors hover:text-accent"
+                  >
+                    {agent.name}
+                  </Link>
                 </p>
                 <StatusBadge
                   status={AGENT_STATUS_META[agent.status].status}
@@ -103,7 +109,13 @@ export function ProjectTeamPreview({
       </PanelBody>
 
       <PanelFooter className="mt-auto">
-        <span>{team.length} of 12 agents assigned</span>
+        <Link
+          href="/agents"
+          className="inline-flex items-center gap-1.5 transition-colors hover:text-accent"
+        >
+          <Icon name="agents" className="h-3.5 w-3.5" />
+          {team.length} of 12 agents assigned
+        </Link>
         <Button variant="ghost" onClick={onViewAll}>
           View the team
           <Icon name="arrow-right" className="h-4 w-4" />

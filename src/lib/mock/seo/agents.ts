@@ -1,4 +1,4 @@
-import type { AgentId, AgentTask } from "@/types/seo";
+import type { AgentTask } from "@/types/seo";
 
 /**
  * Live work carried out by the twelve specialist agents.
@@ -7,21 +7,14 @@ import type { AgentId, AgentTask } from "@/types/seo";
  * these are realistic run records, not the output of any runtime.
  */
 
-/** Display names for the twelve agents, keyed by id. */
-export const AGENT_NAMES: Record<AgentId, string> = {
-  "seo-director": "SEO Director",
-  "project-manager": "Project Manager",
-  "market-intelligence": "Market & Competitor Intelligence",
-  "keyword-intent": "Keyword & Search Intent",
-  "content-strategist": "Content Strategist",
-  "research-evidence": "Research & Evidence",
-  writer: "Writer",
-  "on-page-seo": "On-Page SEO",
-  "technical-seo": "Technical SEO",
-  "ai-visibility": "AI Visibility",
-  "authority-backlink": "Authority & Backlink",
-  "analytics-learning": "Analytics & Learning",
-};
+/**
+ * Display names for the twelve agents, keyed by id.
+ *
+ * Re-exported from the agent registry rather than written again here: the
+ * registry is the one place an agent's name is defined, so a name shown on a
+ * project chip is the same string shown on the agent's own workspace.
+ */
+export { AGENT_NAMES } from "@/lib/mock/agents/registry";
 
 /** Current board, one representative task per agent. */
 export const AGENT_ACTIVITY: readonly AgentTask[] = [
