@@ -35,6 +35,7 @@ import {
   getKeywordDetail,
   targetPositionFor,
 } from "@/lib/mock/keywords";
+import { contentForKeyword } from "@/lib/mock/content";
 import { RankChart } from "@/components/keywords/rank-chart";
 import {
   ChangeValue,
@@ -75,6 +76,9 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
   if (!detail) return null;
 
   const { keyword, cluster, history, cannibalization, gap, related } = detail;
+  // The piece serving this query, from the Content Studio's canonical
+  // inventory. Null only where the keyword is not mapped to anything.
+  const contentPiece = contentForKeyword(keyword.id);
   const target = targetPositionFor(keyword.position);
   const uplift = Math.max(0, keyword.trafficPotential - keyword.currentTraffic);
   const band = OPPORTUNITY_BAND_META[keyword.opportunity.band];
@@ -429,6 +433,20 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
                     label={`Content strength ${keyword.contentStrength} of 100`}
                   />
                 </>
+              )}
+
+              {/* The Content Studio holds the piece serving this query,
+                  published or not, so the two modules meet here. */}
+              {contentPiece && (
+                <Link
+                  href={`/content/${contentPiece.id}`}
+                  className={buttonClasses("secondary", "sm", "mt-3 w-full justify-center")}
+                >
+                  <Icon name="content" className="h-4 w-4" />
+                  {contentPiece.url === null
+                    ? "Open the piece in production"
+                    : "Open in Content Studio"}
+                </Link>
               )}
             </div>
 

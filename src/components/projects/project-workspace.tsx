@@ -323,7 +323,12 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           />
         )}
 
-        {tab === "content" && <ContentSnapshot snapshot={detail.content} />}
+        {tab === "content" && (
+          <ContentSnapshot
+            snapshot={detail.content}
+            projectId={detail.project.id}
+          />
+        )}
 
         {tab === "technical" && (
           <TechnicalSnapshot

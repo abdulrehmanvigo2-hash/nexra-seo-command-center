@@ -48,8 +48,23 @@ const STATE_META: Record<
   planned: { label: "Planned", tone: "neutral" },
 };
 
-export function ContentSnapshot({ snapshot }: { snapshot: Snapshot }) {
+export function ContentSnapshot({
+  snapshot,
+  projectId,
+}: {
+  snapshot: Snapshot;
+  /**
+   * Scopes the "Open Content Studio" link to the selected project, so the
+   * studio opens filtered to the same set this panel is describing.
+   */
+  projectId?: string;
+}) {
   const [bucket, setBucket] = useState<ContentBucketId>("top");
+
+  const studioHref =
+    projectId === undefined || projectId === "portfolio"
+      ? "/content"
+      : `/content?project=${projectId}`;
 
   const counts = useMemo(() => {
     const tally = {} as Record<ContentBucketId, number>;
@@ -67,7 +82,7 @@ export function ContentSnapshot({ snapshot }: { snapshot: Snapshot }) {
         title="Content Performance"
         description="Which pages are earning, which are decaying, and what is worth writing next."
         actions={
-          <Link href="/content" className={buttonClasses("secondary", "sm")}>
+          <Link href={studioHref} className={buttonClasses("secondary", "sm")}>
             Open Content Studio
             <Icon name="arrow-right" className="h-4 w-4" />
           </Link>
@@ -92,13 +107,13 @@ export function ContentSnapshot({ snapshot }: { snapshot: Snapshot }) {
             icon="sparkles"
             label="Content opportunities"
             value={snapshot.opportunities}
-            detail="briefed clusters with no page against them"
+            detail="queries with nothing behind them, or coverage too thin to compete"
           />
           <SummaryTile
             icon="content"
             label="Published this window"
             value={snapshot.publishedInWindow}
-            detail="new pages shipped by the Writer"
+            detail="pages that went live inside the selected window"
           />
         </dl>
       </PanelBody>
@@ -145,7 +160,12 @@ export function ContentSnapshot({ snapshot }: { snapshot: Snapshot }) {
             pages.map((page) => (
               <TableRow key={page.id}>
                 <TableCell header className="max-w-[320px]">
-                  <span className="block truncate">{page.title}</span>
+                  <Link
+                    href={`/content/${page.id}`}
+                    className="block truncate transition-colors hover:text-accent"
+                  >
+                    {page.title}
+                  </Link>
                   <span className="mt-0.5 block truncate font-mono text-[11px] font-normal text-fg-subtle">
                     {page.url}
                   </span>
@@ -180,7 +200,10 @@ export function ContentSnapshot({ snapshot }: { snapshot: Snapshot }) {
         <span>
           {pages.length} {pages.length === 1 ? "page" : "pages"} in this view
         </span>
-        <span>Briefs, drafts, and the editor arrive with Content Studio.</span>
+        <span>
+          Every figure here is read from the same content records the Content
+          Studio renders.
+        </span>
       </PanelFooter>
     </Panel>
   );

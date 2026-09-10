@@ -162,7 +162,11 @@ export function CommandCenter() {
         projectId={projectId}
       />
 
-      <ContentSnapshot key={`content-${projectId}`} snapshot={snapshot.content} />
+      <ContentSnapshot
+        key={`content-${projectId}`}
+        snapshot={snapshot.content}
+        projectId={projectId}
+      />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <CompetitorSnapshot snapshot={snapshot.competitors} />

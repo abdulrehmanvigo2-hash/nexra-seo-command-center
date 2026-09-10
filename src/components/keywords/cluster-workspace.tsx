@@ -27,6 +27,7 @@ import {
   RANKING_STATUS_META,
   getClusterDetail,
 } from "@/lib/mock/keywords";
+import { contentForCluster } from "@/lib/mock/content";
 import {
   ChangeValue,
   DifficultyValue,
@@ -58,6 +59,14 @@ export function ClusterWorkspace({ clusterId }: { clusterId: string }) {
 
   const { cluster, keywords, distribution, intentBreakdown, gaps } = detail;
   const meta = CLUSTER_STATUS_META[cluster.status];
+
+  // The Content Studio holds a record for every page in this plan. Keyed by
+  // URL so a live page in the plan links to the piece that is that page.
+  const contentByUrl = new Map(
+    contentForCluster(cluster.id)
+      .filter((record) => record.url !== null)
+      .map((record) => [record.url as string, record.id]),
+  );
 
   const existing = cluster.pages.filter((page) => page.exists);
   const missing = cluster.pages.filter((page) => !page.exists);
@@ -226,9 +235,18 @@ export function ClusterWorkspace({ clusterId }: { clusterId: string }) {
             title="Pillar and supporting pages"
             description="What the cluster needs to be covered: the page that should anchor it, the ones that support it, and the ones that do not exist yet."
             actions={
-              <span className="text-[11.5px] text-fg-subtle">
-                {existing.length} live · {missing.length} to write
-              </span>
+              <>
+                <span className="text-[11.5px] text-fg-subtle">
+                  {existing.length} live · {missing.length} to write
+                </span>
+                <Link
+                  href={`/content?cluster=${cluster.id}`}
+                  className={buttonClasses("secondary", "sm")}
+                >
+                  Open in Content Studio
+                  <Icon name="arrow-right" className="h-4 w-4" />
+                </Link>
+              </>
             }
           />
 
@@ -253,9 +271,18 @@ export function ClusterWorkspace({ clusterId }: { clusterId: string }) {
                       )}
                     />
                     <span className="min-w-0">
-                      <span className="block truncate text-[12.5px] font-medium text-fg">
-                        {page.title}
-                      </span>
+                      {page.url !== null && contentByUrl.has(page.url) ? (
+                        <Link
+                          href={`/content/${contentByUrl.get(page.url)}`}
+                          className="block truncate text-[12.5px] font-medium text-fg transition-colors hover:text-accent"
+                        >
+                          {page.title}
+                        </Link>
+                      ) : (
+                        <span className="block truncate text-[12.5px] font-medium text-fg">
+                          {page.title}
+                        </span>
+                      )}
                       <span className="mt-0.5 block">
                         <TargetUrl url={page.url} />
                       </span>

@@ -31,6 +31,13 @@ type BadgeProps = {
   dot?: boolean;
   /** Softly pulses the dot — for work that is actively running. */
   pulse?: boolean;
+  /**
+   * What the label means, shown on hover and focus.
+   *
+   * A badge is often the abbreviated form of a longer state name, and the
+   * explanation has to live somewhere the reader can reach.
+   */
+  title?: string;
   className?: string;
 };
 
@@ -40,10 +47,12 @@ export function Badge({
   tone = "neutral",
   dot = false,
   pulse = false,
+  title,
   className,
 }: BadgeProps) {
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11.5px] leading-5 font-medium whitespace-nowrap",
         TONE_STYLES[tone],
