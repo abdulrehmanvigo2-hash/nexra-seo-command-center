@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
-import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Meter, StackedMeter, type MeterTone } from "@/components/ui/meter";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/cn";
 import { formatCompact, formatNumber } from "@/lib/format";
+import { INTENT_META, INTENT_ORDER } from "@/lib/mock/keywords";
 import type {
   KeywordSnapshot as Snapshot,
   KeywordSnapshotRow,
@@ -33,20 +34,6 @@ import type {
  * `Table` primitive, which stays presentational — the module owns its data, so
  * it owns the ordering of it too.
  */
-
-const INTENT_TONE: Record<SearchIntent, BadgeTone> = {
-  informational: "neutral",
-  commercial: "accent",
-  transactional: "positive",
-  navigational: "neutral",
-};
-
-const INTENT_LABEL: Record<SearchIntent, string> = {
-  informational: "Informational",
-  commercial: "Commercial",
-  transactional: "Transactional",
-  navigational: "Navigational",
-};
 
 const BUCKET_TONE: Record<string, MeterTone> = {
   "top-3": "positive",
@@ -62,7 +49,18 @@ type IntentFilter = SearchIntent | "all";
 /** Positions improve as they fall, so a positive change is places gained. */
 const changeOf = (row: KeywordSnapshotRow) => row.previousPosition - row.position;
 
-export function KeywordSnapshot({ snapshot }: { snapshot: Snapshot }) {
+export function KeywordSnapshot({
+  snapshot,
+  projectId,
+}: {
+  snapshot: Snapshot;
+  /**
+   * Scopes the "Open Keyword Intelligence" link to one project, so the module
+   * opens already filtered to the keywords this panel is showing. Omitted for
+   * the portfolio roll-up, which opens the whole set.
+   */
+  projectId?: string;
+}) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({
     key: "volume",
     desc: true,
@@ -112,7 +110,14 @@ export function KeywordSnapshot({ snapshot }: { snapshot: Snapshot }) {
         title="Keyword Performance"
         description={`${formatNumber(snapshot.tracked)} tracked terms · average position ${movement.averagePosition}`}
         actions={
-          <Link href="/keywords" className={buttonClasses("secondary", "sm")}>
+          <Link
+            href={
+              projectId === undefined || projectId === "portfolio"
+                ? "/keywords"
+                : `/keywords?project=${projectId}`
+            }
+            className={buttonClasses("secondary", "sm")}
+          >
             Open Keyword Intelligence
             <Icon name="arrow-right" className="h-4 w-4" />
           </Link>
@@ -253,13 +258,13 @@ export function KeywordSnapshot({ snapshot }: { snapshot: Snapshot }) {
           onChange={setIntent}
           options={[
             { value: "all" as const, label: "All intents", count: counts.all },
-            ...(["commercial", "transactional", "informational", "navigational"] as const)
-              .filter((entry) => (counts[entry] ?? 0) > 0)
-              .map((entry) => ({
+            ...INTENT_ORDER.filter((entry) => (counts[entry] ?? 0) > 0).map(
+              (entry) => ({
                 value: entry,
-                label: INTENT_LABEL[entry],
+                label: INTENT_META[entry].label,
                 count: counts[entry],
-              })),
+              }),
+            ),
           ]}
         />
         <p className="text-[11.5px] text-fg-subtle">
@@ -329,8 +334,8 @@ export function KeywordSnapshot({ snapshot }: { snapshot: Snapshot }) {
                     <span className="block truncate">{row.keyword}</span>
                   </TableCell>
                   <TableCell>
-                    <Badge tone={INTENT_TONE[row.intent]}>
-                      {INTENT_LABEL[row.intent]}
+                    <Badge tone={INTENT_META[row.intent].tone}>
+                      {INTENT_META[row.intent].label}
                     </Badge>
                   </TableCell>
                   <TableCell numeric className="font-medium text-fg">

@@ -316,7 +316,12 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           />
         )}
 
-        {tab === "keywords" && <KeywordSnapshot snapshot={detail.keywords} />}
+        {tab === "keywords" && (
+          <KeywordSnapshot
+            snapshot={detail.keywords}
+            projectId={detail.project.id}
+          />
+        )}
 
         {tab === "content" && <ContentSnapshot snapshot={detail.content} />}
 

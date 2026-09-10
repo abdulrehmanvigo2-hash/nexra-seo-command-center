@@ -185,11 +185,23 @@ export type RecentWin = {
 // 6. Keyword intelligence
 // ---------------------------------------------------------------------------
 
+/**
+ * What the searcher is trying to do.
+ *
+ * Six values, not four: `local` and `mixed` were added for the Keyword
+ * Intelligence module (Phase 5), where a query aimed at a map pack and a query
+ * whose SERP is split between two intents both need saying. They are declared
+ * here rather than in a second enum so the product has one intent vocabulary —
+ * the dashboard, a project's keyword tab, and the keyword workspace all read
+ * this union.
+ */
 export type SearchIntent =
   | "informational"
   | "commercial"
   | "transactional"
-  | "navigational";
+  | "navigational"
+  | "local"
+  | "mixed";
 
 export type KeywordRow = {
   readonly id: string;

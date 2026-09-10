@@ -70,7 +70,12 @@ export type IconName =
   | "workflow"
   | "handoff"
   | "brief"
-  | "sliders";
+  | "sliders"
+  // Added for the Keyword Intelligence module.
+  | "list"
+  | "upload"
+  | "split"
+  | "star";
 
 const PATHS: Record<IconName, ReactNode> = {
   "command-center": (
@@ -393,6 +398,28 @@ const PATHS: Record<IconName, ReactNode> = {
       <circle cx="16" cy="7" r="2" />
       <circle cx="10" cy="17" r="2" />
     </>
+  ),
+  list: (
+    <>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
+    </>
+  ),
+  upload: (
+    <>
+      <path d="M12 15.5V4m0 0L8 8m4-4 4 4" />
+      <path d="M4 15v3.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5V15" />
+    </>
+  ),
+  split: (
+    <>
+      <path d="M12 20V9" />
+      <path d="M12 9 7 4M12 9l5-5" />
+      <circle cx="12" cy="20" r="1.6" />
+    </>
+  ),
+  star: (
+    <path d="m12 4 2.45 4.96 5.47.8-3.96 3.86.94 5.45L12 16.5l-4.9 2.57.94-5.45L4.08 9.76l5.47-.8Z" />
   ),
 };
 

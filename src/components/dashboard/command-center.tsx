@@ -156,7 +156,11 @@ export function CommandCenter() {
         <AiVisibilitySnapshot snapshot={snapshot.aiVisibility} />
       </div>
 
-      <KeywordSnapshot key={`keywords-${projectId}`} snapshot={snapshot.keywords} />
+      <KeywordSnapshot
+        key={`keywords-${projectId}`}
+        snapshot={snapshot.keywords}
+        projectId={projectId}
+      />
 
       <ContentSnapshot key={`content-${projectId}`} snapshot={snapshot.content} />
 

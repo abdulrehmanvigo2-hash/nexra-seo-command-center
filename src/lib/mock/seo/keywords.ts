@@ -1,142 +1,32 @@
+import { getKeywordList } from "@/lib/mock/keywords";
 import type { KeywordRow } from "@/types/seo";
 
 /**
  * Sample of the tracked keyword universe, ordered by opportunity score.
  *
- * Demo fixtures. `trend` carries the position movement over the last 28 days
- * and is inverted, because moving from 14 to 9 is a gain of five places.
+ * Derived from the canonical keyword registry rather than authored here. This
+ * dataset predates the Keyword Intelligence module and was originally a
+ * hand-written list; keeping that list would have meant two sets of keyword
+ * records in the product, which is exactly what the registry exists to
+ * prevent. The shape is unchanged, so everything reading `KEYWORDS` still
+ * works — the values now come from the same place every other module reads.
+ *
+ * `trend` carries the position movement over the window and is inverted,
+ * because moving from 14 to 9 is a gain of five places.
  */
-export const KEYWORDS: readonly KeywordRow[] = [
-  {
-    id: "kw-01",
-    keyword: "business banking comparison",
-    intent: "commercial",
-    position: 4,
-    volume: 18100,
-    difficulty: 68,
-    trend: { value: -6, unit: "absolute", invert: true },
-    cluster: "Banking comparison",
-    opportunityScore: 94,
-  },
-  {
-    id: "kw-02",
-    keyword: "freight management software pricing",
-    intent: "transactional",
-    position: 9,
-    volume: 6600,
-    difficulty: 54,
-    trend: { value: -3, unit: "absolute", invert: true },
-    cluster: "Logistics platforms",
-    opportunityScore: 91,
-  },
-  {
-    id: "kw-03",
-    keyword: "best smart thermostat for old homes",
-    intent: "commercial",
-    position: 7,
-    volume: 12100,
-    difficulty: 47,
-    trend: { value: -4, unit: "absolute", invert: true },
-    cluster: "Home climate",
-    opportunityScore: 88,
-  },
-  {
-    id: "kw-04",
-    keyword: "how long does a freight audit take",
-    intent: "informational",
-    position: 12,
-    volume: 3400,
-    difficulty: 31,
-    trend: { value: -8, unit: "absolute", invert: true },
-    cluster: "Logistics platforms",
-    opportunityScore: 84,
-  },
-  {
-    id: "kw-05",
-    keyword: "open a business account online",
-    intent: "transactional",
-    position: 16,
-    volume: 27100,
-    difficulty: 74,
-    trend: { value: -2, unit: "absolute", invert: true },
-    cluster: "Banking comparison",
-    opportunityScore: 82,
-  },
-  {
-    id: "kw-06",
-    keyword: "walk in clinic wait times",
-    intent: "informational",
-    position: 5,
-    volume: 9900,
-    difficulty: 38,
-    trend: { value: 0, unit: "absolute", invert: true },
-    cluster: "Clinic access",
-    opportunityScore: 77,
-  },
-  {
-    id: "kw-07",
-    keyword: "insulated hiking jacket review",
-    intent: "commercial",
-    position: 14,
-    volume: 8100,
-    difficulty: 42,
-    trend: { value: 3, unit: "absolute", invert: true },
-    cluster: "Outdoor apparel",
-    opportunityScore: 73,
-  },
-  {
-    id: "kw-08",
-    keyword: "smart thermostat installation cost",
-    intent: "commercial",
-    position: 21,
-    volume: 14800,
-    difficulty: 51,
-    trend: { value: -5, unit: "absolute", invert: true },
-    cluster: "Home climate",
-    opportunityScore: 70,
-  },
-  {
-    id: "kw-09",
-    keyword: "same day appointment booking",
-    intent: "transactional",
-    position: 28,
-    volume: 5400,
-    difficulty: 44,
-    trend: { value: -11, unit: "absolute", invert: true },
-    cluster: "Clinic access",
-    opportunityScore: 66,
-  },
-  {
-    id: "kw-10",
-    keyword: "what is a merchant category code",
-    intent: "informational",
-    position: 3,
-    volume: 22200,
-    difficulty: 29,
-    trend: { value: -1, unit: "absolute", invert: true },
-    cluster: "Payments education",
-    opportunityScore: 61,
-  },
-  {
-    id: "kw-11",
-    keyword: "orbit logistics login",
-    intent: "navigational",
-    position: 1,
-    volume: 2900,
-    difficulty: 12,
-    trend: { value: 0, unit: "absolute", invert: true },
-    cluster: "Brand",
-    opportunityScore: 34,
-  },
-  {
-    id: "kw-12",
-    keyword: "camping stove fuel types",
-    intent: "informational",
-    position: 34,
-    volume: 4400,
-    difficulty: 26,
-    trend: { value: 6, unit: "absolute", invert: true },
-    cluster: "Outdoor apparel",
-    opportunityScore: 28,
-  },
-];
+export const KEYWORDS: readonly KeywordRow[] = getKeywordList()
+  .filter((record) => record.position !== null)
+  .slice(0, 12)
+  .map((record) => ({
+    id: record.id,
+    keyword: record.keyword,
+    intent: record.intent,
+    position: record.position as number,
+    volume: record.volume,
+    difficulty: record.difficulty,
+    // The registry stores places gained; this shape wants the signed move in
+    // position, where a decrease is the improvement.
+    trend: { value: -record.change, unit: "absolute", invert: true },
+    cluster: record.clusterName,
+    opportunityScore: record.opportunity.score,
+  }));
