@@ -230,6 +230,13 @@ export function GapsView({
                             <dt className="inline">Held by: </dt>
                             <dd className="inline text-fg-muted">
                               {gap.competitor}
+                              {" "}
+                              <Link
+                                href={`/competitors?project=${gap.projectId}&tab=gaps`}
+                                className="text-accent transition-colors hover:text-accent-hover"
+                              >
+                                see the competitive picture
+                              </Link>
                             </dd>
                           </span>
                         )}

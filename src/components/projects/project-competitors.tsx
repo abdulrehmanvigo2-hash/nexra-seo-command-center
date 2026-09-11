@@ -11,7 +11,12 @@ import { Meter } from "@/components/ui/meter";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { TrendIndicator } from "@/components/ui/trend-indicator";
 import { cn } from "@/lib/cn";
-import { formatCompact, formatPercent } from "@/lib/format";
+import { formatCompact, formatNumber, formatPercent } from "@/lib/format";
+import {
+  THREAT_META,
+  getSnapshotCounts,
+  getSnapshotRivals,
+} from "@/lib/mock/competitors";
 import type { ProjectCompetitor } from "@/types/project";
 
 /**
@@ -22,8 +27,11 @@ import type { ProjectCompetitor } from "@/types/project";
  * put a number on screen that no measurement produced. Removing one takes it
  * out of the set for this session only.
  *
- * The full landscape — SERP overlap, share of voice over time — is the
- * Competitor Intelligence module, which is built in its own phase.
+ * The countable figures — contested terms, terms a rival holds and we do
+ * not, the gap findings against each domain — are read from Competitor
+ * Intelligence, so this panel and that module never quote different numbers
+ * for the same rival. The full landscape lives there; this is the summary
+ * and the way into it.
  */
 
 const DOMAIN_PATTERN = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i;
@@ -38,22 +46,26 @@ export function ProjectCompetitors({
   pending,
   onAdd,
   onRemove,
+  projectId,
   projectName,
-  contentGaps,
-  sharedKeywords,
 }: {
   competitors: readonly ProjectCompetitor[];
   /** Domains added in this session, with no measurement behind them yet. */
   pending: readonly PendingCompetitor[];
   onAdd: (domain: string) => void;
   onRemove: (id: string) => void;
+  /** Scopes the derived counts and the link into the module. */
+  projectId: string;
   projectName: string;
-  contentGaps: number;
-  sharedKeywords: number;
 }) {
   const [domain, setDomain] = useState("");
   const [error, setError] = useState<string | null>(null);
   const inputId = useId();
+
+  const counts = getSnapshotCounts(projectId);
+  const byDomain = new Map(
+    getSnapshotRivals(projectId).map((entry) => [entry.domain, entry]),
+  );
 
   const peak = Math.max(
     ...competitors.map((competitor) => competitor.visibility),
@@ -100,13 +112,22 @@ export function ProjectCompetitors({
       />
 
       <PanelBody className="border-b border-border">
-        <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           <Tile label="Tracked competitors" value={String(total)} />
-          <Tile label="Shared keywords" value={formatCompact(sharedKeywords)} />
           <Tile
-            label="Content gaps"
-            value={formatCompact(contentGaps)}
+            label="Contested terms"
+            value={formatCompact(counts.sharedKeywords)}
+            hint="Ranked by this project and at least one rival"
+          />
+          <Tile
+            label="Competitor only"
+            value={formatCompact(counts.competitorOnly)}
             hint="Terms they rank for and this project does not"
+          />
+          <Tile
+            label="Gap findings"
+            value={formatCompact(counts.gaps)}
+            hint="Places a rival covers something this project does not"
           />
         </dl>
       </PanelBody>
@@ -154,7 +175,10 @@ export function ProjectCompetitors({
         />
       ) : (
         <PanelBody className="space-y-2.5">
-          {competitors.map((competitor) => (
+          {competitors.map((competitor) => {
+            const measured = byDomain.get(competitor.domain);
+
+            return (
             <div
               key={competitor.id}
               className="rounded-md border border-border bg-surface-raised px-3.5 py-3"
@@ -162,7 +186,24 @@ export function ProjectCompetitors({
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-fg">
-                    {competitor.name}
+                    {measured?.competitorId ? (
+                      <Link
+                        href={`/competitors/${measured.competitorId}`}
+                        className="transition-colors hover:text-accent"
+                      >
+                        {competitor.name}
+                      </Link>
+                    ) : (
+                      competitor.name
+                    )}
+                    {measured && (
+                      <Badge
+                        tone={THREAT_META[measured.threatLevel].tone}
+                        title={THREAT_META[measured.threatLevel].description}
+                      >
+                        {THREAT_META[measured.threatLevel].label}
+                      </Badge>
+                    )}
                     {competitor.gaining && (
                       <Badge tone="warning">Gaining</Badge>
                     )}
@@ -199,20 +240,23 @@ export function ProjectCompetitors({
 
               <dl className="mt-3 grid grid-cols-3 gap-3 border-t border-border pt-2.5 text-[11.5px]">
                 <Stat
-                  label="Est. traffic"
-                  value={formatCompact(competitor.estimatedTraffic)}
+                  label="Contested"
+                  value={
+                    measured ? formatNumber(measured.sharedKeywords) : "—"
+                  }
                 />
                 <Stat
-                  label="Keyword overlap"
-                  value={formatPercent(competitor.keywordOverlap)}
+                  label="Ahead on"
+                  value={measured ? formatNumber(measured.theirWins) : "—"}
                 />
                 <Stat
-                  label="Content gap"
-                  value={formatCompact(competitor.contentGaps)}
+                  label="Gap findings"
+                  value={measured ? formatNumber(measured.gaps) : "—"}
                 />
               </dl>
             </div>
-          ))}
+            );
+          })}
 
           {pending.map((competitor) => (
             <div
@@ -251,7 +295,10 @@ export function ProjectCompetitors({
 
       <PanelFooter>
         <span>Brands are invented for this demo and refer to no real company.</span>
-        <Link href="/competitors" className={buttonClasses("secondary", "sm")}>
+        <Link
+          href={`/competitors?project=${projectId}`}
+          className={buttonClasses("secondary", "sm")}
+        >
           Open Competitor Intelligence
           <Icon name="arrow-right" className="h-4 w-4" />
         </Link>

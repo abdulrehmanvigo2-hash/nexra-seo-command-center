@@ -7,6 +7,11 @@ import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/pane
 import { TrendIndicator } from "@/components/ui/trend-indicator";
 import { cn } from "@/lib/cn";
 import { formatCompact, formatNumber, formatPercent } from "@/lib/format";
+import {
+  THREAT_META,
+  getSnapshotCounts,
+  getSnapshotRivals,
+} from "@/lib/mock/competitors";
 import type { CompetitorSnapshot as Snapshot } from "@/types/dashboard";
 
 /**
@@ -15,8 +20,27 @@ import type { CompetitorSnapshot as Snapshot } from "@/types/dashboard";
  * The project's own bar is plotted alongside the rivals rather than in a
  * separate summary, because share of voice only means something relative to
  * the set. Brands are invented for the demo.
+ *
+ * The visibility bars come from this module's own fixture layer. Everything
+ * countable — contested terms, terms a rival holds and we do not, the gap
+ * findings raised against each domain — is read from Competitor Intelligence
+ * instead, so a number on this panel is the number that module shows when the
+ * link at the bottom is followed. The panel reads that module rather than the
+ * other way round: the dashboard fixtures feed the keyword layer, which feeds
+ * Competitor Intelligence, and importing back would close the loop.
  */
-export function CompetitorSnapshot({ snapshot }: { snapshot: Snapshot }) {
+export function CompetitorSnapshot({
+  snapshot,
+  projectId,
+}: {
+  snapshot: Snapshot;
+  /** Selected project, so the derived counts describe the same scope. */
+  projectId: string;
+}) {
+  const derived = getSnapshotRivals(projectId);
+  const counts = getSnapshotCounts(projectId);
+  const byDomain = new Map(derived.map((entry) => [entry.domain, entry]));
+
   const entries = [
     {
       id: "self",
@@ -93,23 +117,32 @@ export function CompetitorSnapshot({ snapshot }: { snapshot: Snapshot }) {
       </PanelBody>
 
       <PanelBody className="border-b border-border">
-        <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           <div className="rounded-md border border-border bg-surface-raised px-3 py-2.5">
-            <dt className="text-[11px] text-fg-subtle">Content gaps</dt>
+            <dt className="text-[11px] text-fg-subtle">Contested terms</dt>
             <dd className="tabular mt-1 text-[18px] leading-none font-semibold text-fg">
-              {formatCompact(snapshot.gapOpportunities)}
+              {formatCompact(counts.sharedKeywords)}
+            </dd>
+            <dd className="mt-1.5 text-[11px] text-fg-subtle">
+              ranked by this project and at least one rival
+            </dd>
+          </div>
+          <div className="rounded-md border border-border bg-surface-raised px-3 py-2.5">
+            <dt className="text-[11px] text-fg-subtle">Competitor only</dt>
+            <dd className="tabular mt-1 text-[18px] leading-none font-semibold text-fg">
+              {formatCompact(counts.competitorOnly)}
             </dd>
             <dd className="mt-1.5 text-[11px] text-fg-subtle">
               terms rivals rank for and this project does not
             </dd>
           </div>
           <div className="rounded-md border border-border bg-surface-raised px-3 py-2.5">
-            <dt className="text-[11px] text-fg-subtle">Shared keywords</dt>
+            <dt className="text-[11px] text-fg-subtle">Gap findings</dt>
             <dd className="tabular mt-1 text-[18px] leading-none font-semibold text-fg">
-              {formatCompact(snapshot.sharedKeywords)}
+              {formatCompact(counts.gaps)}
             </dd>
             <dd className="mt-1.5 text-[11px] text-fg-subtle">
-              contested across the whole tracked set
+              places a rival covers something this project does not
             </dd>
           </div>
           <div className="rounded-md border border-border bg-surface-raised px-3 py-2.5">
@@ -126,52 +159,82 @@ export function CompetitorSnapshot({ snapshot }: { snapshot: Snapshot }) {
 
       <div className="flex-1">
         <ul className="divide-y divide-border">
-          {snapshot.rivals.map((rival) => (
-            <li
-              key={rival.id}
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-raised/60 sm:px-5"
-            >
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-[12.5px] font-medium text-fg">
-                  {rival.name}
-                  {rival.gaining && (
-                    <Badge tone="warning">
-                      <Icon name="trend-up" className="h-3 w-3" />
-                      Gaining
-                    </Badge>
-                  )}
-                </p>
-                <p className="truncate font-mono text-[11px] text-fg-subtle">
-                  {rival.domain}
-                </p>
-              </div>
+          {snapshot.rivals.map((rival) => {
+            const measured = byDomain.get(rival.domain);
 
-              <dl className="flex items-center gap-4 text-[11.5px] text-fg-subtle sm:gap-5">
-                <div className="text-right">
-                  <dt>Overlap</dt>
-                  <dd className="tabular text-fg-muted">{rival.keywordOverlap}%</dd>
+            return (
+              <li
+                key={rival.id}
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-raised/60 sm:px-5"
+              >
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-[12.5px] font-medium text-fg">
+                    {measured?.competitorId ? (
+                      <Link
+                        href={`/competitors/${measured.competitorId}`}
+                        className="transition-colors hover:text-accent"
+                      >
+                        {rival.name}
+                      </Link>
+                    ) : (
+                      rival.name
+                    )}
+                    {measured && (
+                      <Badge
+                        tone={THREAT_META[measured.threatLevel].tone}
+                        title={THREAT_META[measured.threatLevel].description}
+                      >
+                        {THREAT_META[measured.threatLevel].label}
+                      </Badge>
+                    )}
+                    {rival.gaining && (
+                      <Badge tone="warning">
+                        <Icon name="trend-up" className="h-3 w-3" />
+                        Gaining
+                      </Badge>
+                    )}
+                  </p>
+                  <p className="truncate font-mono text-[11px] text-fg-subtle">
+                    {rival.domain}
+                  </p>
                 </div>
-                <div className="text-right">
-                  <dt>Est. traffic</dt>
-                  <dd className="tabular text-fg-muted">
-                    {formatCompact(rival.estimatedTraffic)}
-                  </dd>
-                </div>
-                <div className="text-right">
-                  <dt>Gaps</dt>
-                  <dd className="tabular text-fg-muted">
-                    {formatNumber(rival.contentGaps)}
-                  </dd>
-                </div>
-              </dl>
-            </li>
-          ))}
+
+                <dl className="flex items-center gap-4 text-[11.5px] text-fg-subtle sm:gap-5">
+                  <div className="text-right">
+                    <dt>Contested</dt>
+                    <dd className="tabular text-fg-muted">
+                      {measured ? formatNumber(measured.sharedKeywords) : "—"}
+                    </dd>
+                  </div>
+                  <div className="text-right">
+                    <dt>Ahead on</dt>
+                    <dd className="tabular text-fg-muted">
+                      {measured ? formatNumber(measured.theirWins) : "—"}
+                    </dd>
+                  </div>
+                  <div className="text-right">
+                    <dt>Gaps</dt>
+                    <dd className="tabular text-fg-muted">
+                      {measured ? formatNumber(measured.gaps) : "—"}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            );
+          })}
         </ul>
       </div>
 
       <PanelFooter>
-        <span>Full overlap and gap analysis arrives with the Competitor module.</span>
-        <Link href="/competitors" className={buttonClasses("secondary", "sm")}>
+        <span>
+          {counts.topThreat === null
+            ? "No competitive set is tracked for this project."
+            : `${counts.topThreat} poses the largest threat, across ${counts.threats} findings on this project.`}
+        </span>
+        <Link
+          href={`/competitors?project=${projectId}`}
+          className={buttonClasses("secondary", "sm")}
+        >
           Open Competitors
           <Icon name="arrow-right" className="h-4 w-4" />
         </Link>

@@ -134,6 +134,106 @@ function rivalPosition(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Rival rankings
+// ---------------------------------------------------------------------------
+
+/**
+ * One rival's position on one keyword.
+ *
+ * The draw above, published as data.
+ *
+ * The Competitor Intelligence module (Phase 7) needs this fact at row level —
+ * a keyword overlap table, a head-to-head battle, a rival's page footprint all
+ * ask "does this rival rank for this keyword, and where?". Exporting the
+ * answer is what keeps that module's counts identical to the competitor gaps
+ * below by construction, rather than by two implementations happening to
+ * agree. The dependency runs one way: Phase 7 reads this, and nothing here
+ * knows Phase 7 exists.
+ *
+ * Only positions that exist are listed. A rival not ranking for a keyword is
+ * the absence of an entry, not an entry with a null in it.
+ */
+export type RivalRanking = {
+  /** `${projectId}--rival-${index}` — the id competitor gaps are keyed by. */
+  readonly competitorId: string;
+  readonly projectId: string;
+  /** Index in the project's rival set, as `rivalsFor` orders it. */
+  readonly rivalIndex: number;
+  readonly name: string;
+  readonly domain: string;
+  readonly keywordId: string;
+  readonly position: number;
+};
+
+let rankingCache: readonly RivalRanking[] | null = null;
+
+/** Every rival-and-keyword position across the roster. */
+export function getRivalRankings(): readonly RivalRanking[] {
+  rankingCache ??= buildRivalRankings();
+  return rankingCache;
+}
+
+function buildRivalRankings(): readonly RivalRanking[] {
+  const records = getKeywordRecords();
+  const rankings: RivalRanking[] = [];
+
+  for (const project of PROJECTS) {
+    const keywords = records.filter(
+      (record) => record.projectId === project.id,
+    );
+    if (keywords.length === 0) continue;
+
+    rivalsFor(project).forEach((rival, rivalIndex) => {
+      keywords.forEach((record, keywordIndex) => {
+        const position = rivalPosition(
+          record,
+          project.seed,
+          rivalIndex,
+          keywordIndex,
+        );
+        if (position === null) return;
+
+        rankings.push({
+          competitorId: `${project.id}--rival-${rivalIndex}`,
+          projectId: project.id,
+          rivalIndex,
+          name: rival.name,
+          domain: rival.domain,
+          keywordId: record.id,
+          position,
+        });
+      });
+    });
+  }
+
+  return rankings;
+}
+
+/** Positions keyed by competitor, then by keyword. Built once. */
+let rankingIndex: Map<string, Map<string, number>> | null = null;
+
+function positionsFor(competitorId: string): ReadonlyMap<string, number> {
+  if (rankingIndex === null) {
+    rankingIndex = new Map();
+    for (const entry of getRivalRankings()) {
+      const bucket = rankingIndex.get(entry.competitorId);
+      if (bucket) bucket.set(entry.keywordId, entry.position);
+      else rankingIndex.set(entry.competitorId, new Map([[entry.keywordId, entry.position]]));
+    }
+  }
+
+  return rankingIndex.get(competitorId) ?? new Map();
+}
+
+/** Where a rival ranks for one keyword, or null where it does not rank. */
+export function rivalRankFor(
+  competitorId: string,
+  keywordId: string,
+): number | null {
+  return positionsFor(competitorId).get(keywordId) ?? null;
+}
+
 /** Estimated monthly sessions a position earns on a keyword. */
 function trafficAt(volume: number, position: number | null): number {
   return (volume * ctrAt(position)) / 100;
@@ -178,13 +278,12 @@ function buildCompetitorGaps(): readonly KeywordCompetitorGap[] {
       let positionSumOurs = 0;
       const rows: ContentGapRecord[] = [];
 
-      keywords.forEach((record, keywordIndex) => {
-        const theirs = rivalPosition(
-          record,
-          project.seed,
-          rivalIndex,
-          keywordIndex,
-        );
+      // Read from the published rankings rather than drawing again, so this
+      // roll-up and anything else reading them describe the same positions.
+      const positions = positionsFor(`${project.id}--rival-${rivalIndex}`);
+
+      keywords.forEach((record) => {
+        const theirs = positions.get(record.id) ?? null;
         const ours = record.position;
 
         if (theirs !== null) rivalTraffic += trafficAt(record.volume, theirs);

@@ -169,7 +169,10 @@ export function CommandCenter() {
       />
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <CompetitorSnapshot snapshot={snapshot.competitors} />
+        <CompetitorSnapshot
+          snapshot={snapshot.competitors}
+          projectId={projectId}
+        />
         <AuthoritySnapshot snapshot={snapshot.authority} />
       </div>
 

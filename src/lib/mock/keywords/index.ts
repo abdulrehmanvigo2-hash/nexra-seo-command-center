@@ -143,7 +143,10 @@ export {
   contentGapForKeyword,
   getCompetitorGaps,
   getContentGaps,
+  getRivalRankings,
+  rivalRankFor,
 } from "@/lib/mock/keywords/gaps";
+export type { RivalRanking } from "@/lib/mock/keywords/gaps";
 
 export { getRankingHistory } from "@/lib/mock/keywords/history";
 export { getSeededLists } from "@/lib/mock/keywords/lists";

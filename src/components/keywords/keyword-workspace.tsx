@@ -36,6 +36,7 @@ import {
   targetPositionFor,
 } from "@/lib/mock/keywords";
 import { contentForKeyword } from "@/lib/mock/content";
+import { BATTLE_META, overlapForKeyword } from "@/lib/mock/competitors";
 import { RankChart } from "@/components/keywords/rank-chart";
 import {
   ChangeValue,
@@ -79,6 +80,9 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
   // The piece serving this query, from the Content Studio's canonical
   // inventory. Null only where the keyword is not mapped to anything.
   const contentPiece = contentForKeyword(keyword.id);
+  // Every rival ranking for this term, read from Competitor Intelligence so
+  // the positions here and there are the same reading rather than two.
+  const rivals = overlapForKeyword(keyword.id);
   const target = targetPositionFor(keyword.position);
   const uplift = Math.max(0, keyword.trafficPotential - keyword.currentTraffic);
   const band = OPPORTUNITY_BAND_META[keyword.opportunity.band];
@@ -528,6 +532,60 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
                     {gap.suggestedContentType}.
                   </p>
                 )}
+              </div>
+            )}
+
+            {rivals.length > 0 && (
+              <div className="rounded-md border border-border bg-surface-raised px-3.5 py-3">
+                <p className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-fg-subtle">
+                  <span>Every rival ranking for this term</span>
+                  <Link
+                    href={`/competitors?project=${keyword.projectId}&tab=overlap`}
+                    className="inline-flex items-center gap-1 text-accent transition-colors hover:text-accent-hover"
+                  >
+                    Competitor Intelligence
+                    <Icon name="arrow-right" className="h-3 w-3" />
+                  </Link>
+                </p>
+
+                <ul className="mt-2.5 space-y-1.5">
+                  {rivals.map((rival) => (
+                    <li
+                      key={rival.id}
+                      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded border border-border bg-surface px-2.5 py-1.5"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Link
+                          href={`/competitors/${rival.competitorId}`}
+                          className="text-[12px] font-medium text-fg transition-colors hover:text-accent"
+                        >
+                          {rival.competitorName}
+                        </Link>
+                        <span className="truncate font-mono text-[11px] text-fg-subtle">
+                          {rival.competitorDomain}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2.5 text-[11.5px]">
+                        <span
+                          className="tabular text-fg-muted"
+                          title="Their position on this query"
+                        >
+                          position {rival.theirPosition}
+                        </span>
+                        {rival.battle !== null && (
+                          <Badge tone={BATTLE_META[rival.battle].tone}>
+                            {BATTLE_META[rival.battle].short}
+                          </Badge>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <p className="mt-2 text-[11px] leading-snug text-fg-subtle">
+                  Positions and states are the same readings the Competitor
+                  Intelligence module shows for this term.
+                </p>
               </div>
             )}
           </PanelBody>

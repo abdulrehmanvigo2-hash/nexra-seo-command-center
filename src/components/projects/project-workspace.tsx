@@ -343,9 +343,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             pending={addedCompetitors}
             onAdd={addCompetitor}
             onRemove={removeCompetitor}
+            projectId={detail.project.id}
             projectName={settings.name}
-            contentGaps={detail.contentGaps}
-            sharedKeywords={detail.sharedKeywords}
           />
         )}
 

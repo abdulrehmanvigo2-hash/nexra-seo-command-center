@@ -15,6 +15,10 @@ import {
   SEO_OPPORTUNITIES,
   TECHNICAL_ISSUES,
 } from "@/lib/mock/seo";
+import {
+  getCompetitorDatasetCounts,
+  getCompetitorRecords,
+} from "@/lib/mock/competitors";
 
 export const metadata: Metadata = {
   title: "Mock Data",
@@ -99,6 +103,17 @@ const DATASETS: readonly Dataset[] = [
   },
 ];
 
+/**
+ * The derived Competitor Intelligence layer.
+ *
+ * Listed separately from the Phase 1 exports above because nothing here is
+ * authored: every figure is derived from the project roster and the keyword
+ * registry at first read. The counts are the ones the module itself reports,
+ * so a distribution can be checked without opening the workspace.
+ */
+const COMPETITOR_COUNTS = getCompetitorDatasetCounts();
+const COMPETITOR_SAMPLE = getCompetitorRecords()[0];
+
 const TOTAL_RECORDS = DATASETS.reduce(
   (total, dataset) => total + dataset.records,
   0,
@@ -148,6 +163,34 @@ export default function MockDataInspectorPage() {
           </Panel>
         ))}
       </div>
+      <Panel className="mt-6">
+        <PanelHeader
+          eyebrow="Derived"
+          title="Competitor Intelligence"
+          description="Built from the project roster and the keyword registry at first read. Nothing in this layer is authored."
+        />
+        <PanelBody>
+          <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {COMPETITOR_COUNTS.map((entry) => (
+              <div
+                key={entry.label}
+                className="rounded-md border border-border bg-surface-raised px-3 py-2.5"
+              >
+                <dt className="text-[11px] text-fg-subtle">{entry.label}</dt>
+                <dd className="tabular mt-1 text-[18px] leading-none font-semibold text-fg">
+                  {entry.count}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          {COMPETITOR_SAMPLE && (
+            <pre className="mt-4 max-h-96 overflow-auto rounded-md border border-border bg-canvas p-3 font-mono text-[11px] leading-relaxed text-fg-muted">
+              {JSON.stringify(COMPETITOR_SAMPLE, null, 2)}
+            </pre>
+          )}
+        </PanelBody>
+      </Panel>
     </section>
   );
 }
