@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Meter } from "@/components/ui/meter";
 import { MetricTileGrid } from "@/components/ui/metric-tile";
 import { AiVisibilityPanel } from "@/components/content/ai-visibility-panel";
+import { AuthorityStrip } from "@/components/content/authority-strip";
 import { TechnicalStrip } from "@/components/content/technical-strip";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -230,6 +231,8 @@ export function ContentWorkspace({ contentId }: { contentId: string }) {
       )}
 
       <TechnicalStrip contentId={record.id} />
+
+      <AuthorityStrip contentId={record.id} />
 
       <MetricTileGrid metrics={detail.metrics} />
 

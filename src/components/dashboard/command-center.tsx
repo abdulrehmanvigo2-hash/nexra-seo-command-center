@@ -177,7 +177,10 @@ export function CommandCenter() {
           snapshot={snapshot.competitors}
           projectId={projectId}
         />
-        <AuthoritySnapshot snapshot={snapshot.authority} />
+        <AuthoritySnapshot
+          snapshot={snapshot.authority}
+          projectId={projectId}
+        />
       </div>
 
       <ActivityFeed

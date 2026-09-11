@@ -15,6 +15,10 @@ import {
 import { TrendIndicator } from "@/components/ui/trend-indicator";
 import { cn } from "@/lib/cn";
 import { formatCompact, formatNumber, formatPercent } from "@/lib/format";
+import {
+  LINK_SOURCE_SHORT,
+  getAuthoritySnapshotCounts,
+} from "@/lib/mock/backlinks";
 import type { AuthoritySnapshot as Snapshot } from "@/types/dashboard";
 
 /**
@@ -22,34 +26,49 @@ import type { AuthoritySnapshot as Snapshot } from "@/types/dashboard";
  *
  * New against lost is the number that matters here, so the two are shown as a
  * pair rather than as a single net figure that hides the churn.
+ *
+ * The countable figures are read from the Backlinks & Authority module, so this
+ * panel and that workspace never quote different numbers for the same project.
+ * The prospect list below remains this dashboard's own authored set; the full
+ * queue, ranked by value against effort, lives in the module.
  */
-export function AuthoritySnapshot({ snapshot }: { snapshot: Snapshot }) {
-  const net = snapshot.newLinks - snapshot.lostLinks;
+export function AuthoritySnapshot({
+  snapshot,
+  /** Scopes the derived figures and the link into the module. */
+  projectId,
+}: {
+  snapshot: Snapshot;
+  projectId: string;
+}) {
+  const counts = getAuthoritySnapshotCounts(projectId);
+  const net = counts.net;
+  const href =
+    projectId === "portfolio" ? "/backlinks" : `/backlinks?project=${projectId}`;
 
   const stats = [
     {
       id: "referring-domains",
       label: "Referring domains",
-      value: formatCompact(snapshot.referringDomains),
-      trend: snapshot.referringDomainsTrend.value,
+      value: formatCompact(counts.domains),
+      trend: null,
     },
     {
       id: "total-backlinks",
-      label: "Total backlinks",
-      value: formatCompact(snapshot.totalBacklinks),
+      label: "Live backlinks",
+      value: formatCompact(counts.links),
       trend: null,
     },
     {
       id: "new-links",
       label: "New links",
-      value: formatNumber(snapshot.newLinks),
+      value: formatNumber(counts.newLinks),
       trend: null,
       tone: "positive" as const,
     },
     {
       id: "lost-links",
       label: "Lost links",
-      value: formatNumber(snapshot.lostLinks),
+      value: formatNumber(counts.lostLinks),
       trend: null,
       tone: "critical" as const,
     },
@@ -62,8 +81,8 @@ export function AuthoritySnapshot({ snapshot }: { snapshot: Snapshot }) {
         title="Backlinks & Authority"
         description="Profile strength, link churn, and the highest-value opportunities in the pipeline."
         actions={
-          <Badge tone={snapshot.toxicLinks > 0 ? "warning" : "positive"} dot>
-            {formatNumber(snapshot.toxicLinks)} suspicious
+          <Badge tone={counts.disavowCandidates > 0 ? "warning" : "positive"} dot>
+            {formatNumber(counts.flaggedLinks)} flagged
           </Badge>
         }
       />
@@ -76,10 +95,9 @@ export function AuthoritySnapshot({ snapshot }: { snapshot: Snapshot }) {
             </p>
             <p className="mt-2 flex items-baseline gap-2">
               <span className="tabular text-[30px] leading-none font-semibold tracking-tight text-fg">
-                {snapshot.authorityScore}
+                {counts.authority}
               </span>
               <span className="text-[12.5px] text-fg-subtle">/ 100</span>
-              <TrendIndicator value={snapshot.authorityTrend.value} />
             </p>
           </div>
 
@@ -87,12 +105,12 @@ export function AuthoritySnapshot({ snapshot }: { snapshot: Snapshot }) {
             <div className="flex items-center justify-between text-[11.5px]">
               <span className="text-fg-subtle">Followed links</span>
               <span className="tabular text-fg-muted">
-                {formatPercent(snapshot.dofollowShare)}
+                {formatPercent(counts.followedShare, 0)}
               </span>
             </div>
             <Meter
               className="mt-2"
-              value={snapshot.dofollowShare}
+              value={counts.followedShare}
               tone="accent"
               label="Share of backlinks that are followed"
             />
@@ -107,7 +125,7 @@ export function AuthoritySnapshot({ snapshot }: { snapshot: Snapshot }) {
                 {net >= 0 ? "+" : "−"}
                 {formatNumber(Math.abs(net))}
               </span>{" "}
-              referring domains this window
+              links this window
             </p>
           </div>
         </div>
@@ -191,8 +209,13 @@ export function AuthoritySnapshot({ snapshot }: { snapshot: Snapshot }) {
       </div>
 
       <PanelFooter>
-        <span>Outreach and digital PR arrive with the Backlinks module.</span>
-        <Link href="/backlinks" className={buttonClasses("secondary", "sm")}>
+        <span>
+          {counts.topOpportunity
+            ? `${counts.topOpportunity.title} leads ${counts.opportunities} authority jobs.`
+            : `Nothing outstanding across ${counts.domains} referring domains.`}{" "}
+          {LINK_SOURCE_SHORT}
+        </span>
+        <Link href={href} className={buttonClasses("secondary", "sm")}>
           Open Backlinks
           <Icon name="arrow-right" className="h-4 w-4" />
         </Link>
