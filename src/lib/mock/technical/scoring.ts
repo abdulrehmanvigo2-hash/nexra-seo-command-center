@@ -1,6 +1,7 @@
 import { clamp, round } from "@/lib/mock/dashboard/core";
 import type {
   CwvState,
+  EffortLevel,
   TechnicalFactor,
   TechnicalProvenance,
   TechnicalScore,
@@ -563,5 +564,240 @@ export function issuePriority(
 
   return Math.round(
     clamp(SEVERITY_WEIGHT[severity] * 0.72 + reachScore * 0.28, 0, 100),
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Opportunity ranking
+// ---------------------------------------------------------------------------
+
+/**
+ * How much of a job each effort band represents.
+ *
+ * Used as a divisor, not a subtraction: a cheap fix with modest value should
+ * still be able to outrank an expensive one with slightly more value, which is
+ * what a ratio gives and a penalty does not.
+ */
+export const EFFORT_WEIGHT: Readonly<Record<EffortLevel, number>> = {
+  low: 1,
+  medium: 1.35,
+  high: 1.85,
+};
+
+export const EFFORT_ORDER: readonly EffortLevel[] = ["low", "medium", "high"];
+
+/**
+ * What fixing a finding is worth, 0-100.
+ *
+ * Severity says how bad one instance is; reach says how much of the site it
+ * touches. Both matter, and the same compression used for issue priority
+ * applies here so that one outage does not sit below a hundred tidy-ups.
+ */
+export function opportunityImpact(
+  severity: TechnicalSeverity,
+  affectedPages: number,
+  projectPages: number,
+): number {
+  return issuePriority(severity, affectedPages, projectPages);
+}
+
+/**
+ * Where a job belongs in the queue, 0-100.
+ *
+ * Value per unit of effort, rescaled back to 0-100 so the number stays
+ * readable next to every other score in the module.
+ */
+export function opportunityPriority(
+  impact: number,
+  effort: EffortLevel,
+): number {
+  return Math.round(clamp(impact / EFFORT_WEIGHT[effort], 0, 100));
+}
+
+// ---------------------------------------------------------------------------
+// Area scores
+// ---------------------------------------------------------------------------
+
+export type VitalsScoreInput = {
+  readonly measured: number;
+  readonly passing: number;
+  readonly poor: number;
+  readonly unmeasured: number;
+  readonly total: number;
+  readonly medianScore: number;
+};
+
+/** Core Web Vitals across a selection, as a 0-100 reading. */
+export function vitalsHealthScore(input: VitalsScoreInput): TechnicalScore {
+  return assemble(
+    [
+      {
+        id: "pass-rate",
+        label: "Pages passing",
+        value: shareOf(input.passing, Math.max(input.measured, 1)),
+        weight: 0.45,
+        provenance: "derived",
+        detail: `${input.passing} of ${input.measured} measured URLs are inside the good band on all three vitals.`,
+      },
+      {
+        id: "not-poor",
+        label: "No poor vital",
+        value: 100 - shareOf(input.poor, Math.max(input.measured, 1)),
+        weight: 0.3,
+        provenance: "derived",
+        detail: `${input.poor} URLs have at least one vital in the poor band.`,
+      },
+      {
+        id: "median",
+        label: "Typical page",
+        value: input.medianScore,
+        weight: 0.15,
+        provenance: "seeded",
+        detail: "The median page's combined vitals reading.",
+      },
+      {
+        id: "measured",
+        label: "Coverage of the inventory",
+        value: shareOf(input.measured, Math.max(input.total, 1)),
+        weight: 0.1,
+        provenance: "derived",
+        detail: `${input.unmeasured} URLs carry too little traffic to model a field reading.`,
+      },
+    ],
+    (score, severity) =>
+      severity === "healthy"
+        ? `Loading is not the constraint here — ${score} out of 100.`
+        : `${score} out of 100: the assessment is easier to hold than to regain.`,
+  );
+}
+
+export type SchemaScoreInput = {
+  readonly total: number;
+  readonly complete: number;
+  readonly partial: number;
+  readonly invalid: number;
+  readonly missing: number;
+};
+
+/** Structured data across a selection, as a 0-100 reading. */
+export function schemaHealthScore(input: SchemaScoreInput): TechnicalScore {
+  return assemble(
+    [
+      {
+        id: "complete",
+        label: "Complete markup",
+        value: shareOf(input.complete, Math.max(input.total, 1)),
+        weight: 0.5,
+        provenance: "derived",
+        detail: `${input.complete} of ${input.total} URLs carry every type their format calls for.`,
+      },
+      {
+        id: "present",
+        label: "Any markup at all",
+        value: shareOf(
+          input.total - input.missing,
+          Math.max(input.total, 1),
+        ),
+        weight: 0.3,
+        provenance: "derived",
+        detail: `${input.missing} URLs carry no structured data.`,
+      },
+      {
+        id: "valid",
+        label: "Valid markup",
+        value: 100 - shareOf(input.invalid, Math.max(input.total, 1)),
+        weight: 0.2,
+        provenance: "seeded",
+        detail: `${input.invalid} URLs carry markup that fails validation, so none of it counts.`,
+      },
+    ],
+    (score, severity) =>
+      severity === "healthy"
+        ? `Markup is in good shape at ${score} out of 100.`
+        : `${score} out of 100: the richer result formats are only partly reachable.`,
+  );
+}
+
+export type LinkScoreInput = {
+  readonly total: number;
+  readonly orphans: number;
+  readonly weak: number;
+  readonly deep: number;
+  readonly brokenLinks: number;
+  readonly deadEnds: number;
+  readonly meanLinksIn: number;
+};
+
+/** Internal linking across a selection, as a 0-100 reading. */
+export function linkHealthScore(input: LinkScoreInput): TechnicalScore {
+  return assemble(
+    [
+      {
+        id: "linked",
+        label: "Pages linked at all",
+        value: 100 - shareOf(input.orphans, Math.max(input.total, 1)),
+        weight: 0.3,
+        provenance: "derived",
+        detail: `${input.orphans} pages have no internal link pointing at them.`,
+      },
+      {
+        id: "supported",
+        label: "Adequately supported",
+        value: 100 - shareOf(input.weak, Math.max(input.total, 1)),
+        weight: 0.25,
+        provenance: "derived",
+        detail: `${input.weak} pages sit below ${MIN_INTERNAL_LINKS_IN} inbound links.`,
+      },
+      {
+        id: "depth",
+        label: "Within crawl depth",
+        value: 100 - shareOf(input.deep, Math.max(input.total, 1)),
+        weight: 0.15,
+        provenance: "derived",
+        detail: `${input.deep} pages sit more than ${DEPTH_LIMIT} clicks from the home page.`,
+      },
+      {
+        id: "unbroken",
+        label: "Links that resolve",
+        value: 100 - shareOf(input.brokenLinks, Math.max(input.total, 1)),
+        weight: 0.2,
+        provenance: "derived",
+        detail: `${input.brokenLinks} pages link to a URL that does not serve.`,
+      },
+      {
+        id: "flow",
+        label: "Authority flows on",
+        value: 100 - shareOf(input.deadEnds, Math.max(input.total, 1)),
+        weight: 0.1,
+        provenance: "measured",
+        detail: `${input.deadEnds} pages link to nothing else on the site.`,
+      },
+    ],
+    (score, severity) =>
+      severity === "healthy"
+        ? `The site supports its own pages well — ${score} out of 100.`
+        : `${score} out of 100, averaging ${input.meanLinksIn} inbound links a page.`,
+  );
+}
+
+/**
+ * How well the site supports one page, 0-100.
+ *
+ * Inbound links carry it, with depth and what the page links out to adjusting
+ * the reading: a page three clicks deep with eight links in is better placed
+ * than one at the same depth with one.
+ */
+export function supportScore(
+  linksIn: number,
+  depth: number,
+  deadEnd: boolean,
+): number {
+  return Math.round(
+    clamp(
+      linkScore(linksIn) * 0.62 + depthScore(depth) * 0.3 + (deadEnd ? 0 : 8),
+      0,
+      100,
+    ),
   );
 }

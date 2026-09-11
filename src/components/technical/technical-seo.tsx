@@ -14,13 +14,24 @@ import { Pagination } from "@/components/keywords/pagination";
 import {
   TECHNICAL_AS_OF,
   TECHNICAL_RANGE_CAPTION,
+  getLinkSummary,
+  getSchemaSummary,
   getTechnicalClusterOptions,
   getTechnicalIssues,
+  getTechnicalOpportunities,
   getTechnicalOverview,
   getTechnicalPages,
   getTechnicalProjectOptions,
+  getVitalsSummary,
 } from "@/lib/mock/technical";
 import { CrawlView } from "@/components/technical/crawl-view";
+import { LinksView } from "@/components/technical/links-view";
+import {
+  OpportunitiesView,
+  type OpportunityState,
+} from "@/components/technical/opportunities-view";
+import { SchemaView } from "@/components/technical/schema-view";
+import { VitalsView } from "@/components/technical/vitals-view";
 import { IndexationView } from "@/components/technical/indexation-view";
 import { IssuesView } from "@/components/technical/issues-view";
 import { OverviewView } from "@/components/technical/overview-view";
@@ -45,7 +56,7 @@ import {
   type IssueSort,
   type PageSort,
 } from "@/components/technical/sorting";
-import type { IssueStatus } from "@/types/technical";
+import type { IssueStatus, OpportunityCategory } from "@/types/technical";
 
 /**
  * The Technical SEO workspace.
@@ -73,6 +84,10 @@ const TABS = [
   { id: "crawlability", label: "Crawlability", icon: "refresh" },
   { id: "indexation", label: "Indexation", icon: "inbox" },
   { id: "pages", label: "Pages", icon: "pages" },
+  { id: "vitals", label: "Core Web Vitals", icon: "gauge" },
+  { id: "schema", label: "Schema", icon: "layers" },
+  { id: "links", label: "Internal links", icon: "link-off" },
+  { id: "opportunities", label: "Opportunities", icon: "bolt" },
 ] as const satisfies readonly {
   id: string;
   label: string;
@@ -119,6 +134,13 @@ export function TechnicalSeo() {
   const [issueSort, setIssueSort] = useState<{ key: IssueSort; desc: boolean }>(
     { key: "priority", desc: true },
   );
+
+  const [opportunityCategory, setOpportunityCategory] = useState<
+    OpportunityCategory | "all"
+  >("all");
+  const [opportunityStates, setOpportunityStates] = useState<
+    Record<string, OpportunityState>
+  >({});
 
   const [advanced, setAdvanced] = useState(initialProject !== null);
   const [page, setPage] = useState(1);
@@ -180,6 +202,36 @@ export function TechnicalSeo() {
     () => new Map(allPages.map((entry) => [entry.id, entry])),
     [allPages],
   );
+
+  const vitals = useMemo(() => getVitalsSummary(filteredPages), [filteredPages]);
+  const schema = useMemo(() => getSchemaSummary(filteredPages), [filteredPages]);
+  const links = useMemo(() => getLinkSummary(filteredPages), [filteredPages]);
+
+  /**
+   * The queue, narrowed the same way everything else is.
+   *
+   * An opportunity survives while it still has a page behind it, and reports
+   * only the pages that survived — so a job that touched forty URLs across the
+   * portfolio reads as the six it touches on the project in scope.
+   */
+  const opportunities = useMemo(() => {
+    const survived = (ids: readonly string[]) =>
+      ids.filter((id) => pageIds.has(id));
+
+    return getTechnicalOpportunities()
+      .filter((entry) => {
+        if (filters.project !== "all" && entry.projectId !== filters.project) {
+          return false;
+        }
+        return survived(entry.pageIds).length > 0;
+      })
+      .map((entry) => {
+        const kept = survived(entry.pageIds);
+        return kept.length === entry.pageIds.length
+          ? entry
+          : { ...entry, pageIds: kept, affectedPages: kept.length };
+      });
+  }, [pageIds, filters.project]);
 
   /**
    * Counts behind each filter option.
@@ -280,6 +332,10 @@ export function TechnicalSeo() {
   const tabCounts: Partial<Record<TabId, number>> = {
     issues: filteredIssues.length,
     pages: filteredPages.length,
+    vitals: vitals.measured,
+    schema: schema.withSchema,
+    links: links.rows.length,
+    opportunities: opportunities.length,
   };
 
   // Paging is 1-based and the set changes under it; clamping on read avoids an
@@ -299,7 +355,7 @@ export function TechnicalSeo() {
   );
 
   const sortControl =
-    tab === "pages" ? (
+    tab === "pages" || tab === "vitals" || tab === "schema" ? (
       <SortControl
         value={pageSort.key}
         desc={pageSort.desc}
@@ -468,6 +524,56 @@ export function TechnicalSeo() {
             onFilter={changeFilters}
           />
         )}
+
+        {tab === "vitals" && (
+          <VitalsView
+            vitals={vitals}
+            pages={visiblePages}
+            onFilter={changeFilters}
+          />
+        )}
+
+        {tab === "schema" && (
+          <SchemaView
+            schema={schema}
+            pages={visiblePages}
+            onFilter={changeFilters}
+          />
+        )}
+
+        {tab === "links" && (
+          <LinksView links={links} onFilter={changeFilters} />
+        )}
+
+        {tab === "opportunities" && (
+          <OpportunitiesView
+            opportunities={opportunities}
+            pagesById={pagesById}
+            category={opportunityCategory}
+            onCategoryChange={setOpportunityCategory}
+            states={opportunityStates}
+            onStateChange={(id, state) =>
+              setOpportunityStates((current) => ({ ...current, [id]: state }))
+            }
+          />
+        )}
+
+        {(tab === "vitals" || tab === "schema") &&
+          filteredPages.length > pageSize && (
+            <Panel>
+              <Pagination
+                page={currentPage}
+                pageSize={pageSize}
+                total={filteredPages.length}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+                noun="pages"
+              />
+            </Panel>
+          )}
 
         {tab === "pages" && (
           <Panel>

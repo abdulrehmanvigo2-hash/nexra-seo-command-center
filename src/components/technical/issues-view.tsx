@@ -165,7 +165,7 @@ export function IssuesView({
                     {samples.map((page) => (
                       <li key={page.id} className="min-w-0 max-w-full">
                         <Link
-                          href={`/content/${page.contentId}`}
+                          href={`/technical/pages/${page.id}`}
                           title={`${page.title} — ${page.path}`}
                           className="inline-block max-w-full truncate rounded-md border border-border bg-surface px-2 py-1 font-mono text-[11px] text-fg-subtle transition-colors hover:border-accent/40 hover:text-accent"
                         >

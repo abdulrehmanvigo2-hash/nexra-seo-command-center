@@ -123,6 +123,13 @@ const SCHEMA_TYPES: Readonly<Record<ContentFormat, readonly string[]>> = {
   tool: ["SoftwareApplication", "HowTo", "BreadcrumbList"],
 };
 
+/** The schema types a page of this format should be carrying. */
+export function expectedSchemaFor(
+  format: ContentFormat,
+): readonly string[] {
+  return SCHEMA_TYPES[format];
+}
+
 function schemaStateFor(seed: number, format: ContentFormat): SchemaState {
   const draw = rand(seed, 14);
   // Formats that earn rich results are marked up more often in practice, so
@@ -497,6 +504,22 @@ export function getBasePages(): readonly TechnicalPage[] {
   pageCache ??= build();
   return pageCache;
 }
+
+/**
+ * The content record behind a technical page.
+ *
+ * The internal link graph lives on that record, and this module reads it
+ * rather than keeping a copy: there is one link graph in this product.
+ */
+export function contentRecordFor(contentId: string) {
+  recordsById ??= new Map(
+    getContentRecords().map((record) => [record.id, record]),
+  );
+  return recordsById.get(contentId) ?? null;
+}
+
+let recordsById: Map<string, ReturnType<typeof getContentRecords>[number]> | null =
+  null;
 
 export function getPageFacts(pageId: string): PageFacts {
   getBasePages();

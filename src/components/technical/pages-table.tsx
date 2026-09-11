@@ -70,7 +70,7 @@ export function PagesTable({ pages }: { pages: readonly TechnicalPage[] }) {
           <TableRow key={page.id}>
             <TableCell header className="max-w-[22rem] min-w-[12rem]">
               <PageLink
-                contentId={page.contentId}
+                pageId={page.id}
                 title={page.title}
                 path={page.path}
               />

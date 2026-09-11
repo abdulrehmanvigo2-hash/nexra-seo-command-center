@@ -6,6 +6,8 @@ import { cn } from "@/lib/cn";
 import {
   CANONICAL_META,
   CATEGORY_META,
+  EFFORT_META,
+  OPPORTUNITY_CATEGORY_META,
   CRAWL_STATE_META,
   CWV_META,
   INDEXABILITY_META,
@@ -18,6 +20,8 @@ import {
 import type {
   CanonicalState,
   CrawlState,
+  EffortLevel,
+  OpportunityCategory,
   CwvState,
   DistributionRow,
   IndexStatus,
@@ -308,20 +312,27 @@ export function ScoreReading({
   );
 }
 
-/** A URL, linked to the content record behind it. */
+/**
+ * A URL, linked to its technical detail.
+ *
+ * Technical diagnostics live on the detail route; the editorial and business
+ * reading of the same page lives in Content Studio, which the detail route
+ * links to in turn. One page, two workspaces, and each link goes to the one
+ * that answers the question being asked here.
+ */
 export function PageLink({
-  contentId,
+  pageId,
   title,
   path,
 }: {
-  contentId: string;
+  pageId: string;
   title: string;
   path: string;
 }) {
   return (
     <span className="block min-w-0">
       <Link
-        href={`/content/${contentId}`}
+        href={`/technical/pages/${pageId}`}
         className="block truncate font-medium text-fg transition-colors hover:text-accent"
         title={title}
       >
@@ -442,5 +453,86 @@ export function ScoreBreakdownList({ score }: { score: TechnicalScore }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Opportunities
+// ---------------------------------------------------------------------------
+
+export function EffortBadge({ effort }: { effort: EffortLevel }) {
+  const meta = EFFORT_META[effort];
+  return (
+    <Badge tone={meta.tone} title={meta.description}>
+      {meta.label}
+    </Badge>
+  );
+}
+
+export function OpportunityCategoryBadge({
+  category,
+}: {
+  category: OpportunityCategory;
+}) {
+  const meta = OPPORTUNITY_CATEGORY_META[category];
+  return (
+    <Badge tone="neutral" title={meta.description}>
+      <Icon name={meta.icon} className="h-3 w-3" />
+      {meta.label}
+    </Badge>
+  );
+}
+
+/**
+ * One vital's reading against its own thresholds.
+ *
+ * The number alone says nothing — 2.4 seconds is good for LCP and impossible
+ * for CLS — so the band is always shown with it.
+ */
+export function VitalValue({
+  value,
+  unit,
+  good,
+  poor,
+}: {
+  value: number;
+  unit: string;
+  good: number;
+  poor: number;
+}) {
+  const state = value >= poor ? "poor" : value <= good ? "good" : "needs";
+  const display =
+    unit === "ms"
+      ? value >= 1_000
+        ? `${(value / 1_000).toFixed(2)}s`
+        : `${value}ms`
+      : value.toFixed(3);
+
+  return (
+    <span
+      className={cn(
+        "tabular font-medium whitespace-nowrap",
+        state === "good"
+          ? "text-positive"
+          : state === "poor"
+            ? "text-critical"
+            : "text-warning",
+      )}
+      title={`Good at or under ${good}${unit}, poor at or over ${poor}${unit}`}
+    >
+      {display}
+    </span>
+  );
+}
+
+/** A page with no field reading behind it, stated rather than left blank. */
+export function NoVitalData() {
+  return (
+    <span
+      className="text-fg-subtle"
+      title="Too little traffic to model a field reading"
+    >
+      —
+    </span>
   );
 }

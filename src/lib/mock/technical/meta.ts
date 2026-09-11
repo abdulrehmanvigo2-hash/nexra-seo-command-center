@@ -1,5 +1,7 @@
 import type {
   CanonicalState,
+  EffortLevel,
+  OpportunityCategory,
   CategoryMeta,
   CrawlState,
   CwvState,
@@ -436,6 +438,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Restore the page or redirect it to the closest live equivalent.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "medium",
   },
   "server-error": {
     label: "Server error",
@@ -447,6 +450,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Check the origin, then request re-crawl once it is serving again.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "high",
   },
   "redirect-chain": {
     label: "Redirect chain",
@@ -457,6 +461,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Point the first redirect straight at the final URL.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "low",
   },
   "temporary-redirect": {
     label: "Temporary redirect",
@@ -468,6 +473,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Change it to a 301 if the move is permanent.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "low",
   },
 
   // -- Crawl --------------------------------------------------------------
@@ -481,6 +487,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Link it from its cluster hub and from two related pages.",
     owner: "content-strategist",
     provenance: "derived",
+    effort: "medium",
   },
   "deep-page": {
     label: "Buried page",
@@ -491,6 +498,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Add a link from a hub or a navigation block closer to the top.",
     owner: "content-strategist",
     provenance: "derived",
+    effort: "medium",
   },
   "blocked-by-robots": {
     label: "Blocked by robots.txt",
@@ -503,6 +511,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
       "Confirm the block is deliberate. If it is not, remove the rule and request a crawl.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "low",
   },
 
   // -- Indexation ---------------------------------------------------------
@@ -516,6 +525,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
       "Check internal links and duplication, strengthen the page, then request indexing.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "high",
   },
   "indexed-noindex-conflict": {
     label: "Indexed but noindex",
@@ -527,6 +537,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Decide whether the page belongs in the index, then make both agree.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "low",
   },
   "excluded-page": {
     label: "Excluded from the index",
@@ -538,6 +549,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Confirm the exclusion is still what is wanted.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "low",
   },
 
   // -- Canonical ----------------------------------------------------------
@@ -552,6 +564,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Settle which URL is primary and make every signal say the same thing.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "medium",
   },
   "missing-canonical": {
     label: "No canonical tag",
@@ -563,6 +576,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Add a self-referencing canonical.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "low",
   },
 
   // -- Sitemap ------------------------------------------------------------
@@ -575,6 +589,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Add the URL to the sitemap and resubmit.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "low",
   },
   "sitemap-index-mismatch": {
     label: "Submitted, not indexed",
@@ -587,6 +602,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
       "Compare it against the page it may be duplicating, then improve or consolidate.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "high",
   },
   "non-indexable-in-sitemap": {
     label: "Non-indexable in the sitemap",
@@ -599,6 +615,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Remove it from the sitemap, or make the page indexable.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "low",
   },
 
   // -- Metadata -----------------------------------------------------------
@@ -611,6 +628,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Extend the title with the primary term and a qualifier.",
     owner: "on-page-seo",
     provenance: "measured",
+    effort: "low",
   },
   "title-too-long": {
     label: "Title too long",
@@ -621,6 +639,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Tighten it, keeping the primary term at the front.",
     owner: "on-page-seo",
     provenance: "measured",
+    effort: "low",
   },
   "missing-meta-description": {
     label: "No meta description",
@@ -632,6 +651,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Write a description of 70 to 160 characters.",
     owner: "on-page-seo",
     provenance: "measured",
+    effort: "medium",
   },
   "meta-description-length": {
     label: "Description length",
@@ -642,6 +662,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Rewrite to fit the range.",
     owner: "on-page-seo",
     provenance: "measured",
+    effort: "low",
   },
   "duplicate-title": {
     label: "Duplicate title",
@@ -653,6 +674,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Differentiate the titles, or consolidate the pages.",
     owner: "on-page-seo",
     provenance: "measured",
+    effort: "medium",
   },
   "missing-h1": {
     label: "No H1",
@@ -663,6 +685,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Add a single H1 carrying the primary term.",
     owner: "on-page-seo",
     provenance: "seeded",
+    effort: "low",
   },
 
   // -- Links --------------------------------------------------------------
@@ -675,6 +698,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Add links from the cluster hub and related pages.",
     owner: "content-strategist",
     provenance: "measured",
+    effort: "medium",
   },
   "broken-internal-link": {
     label: "Links to a broken page",
@@ -685,6 +709,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Repoint the link at a live URL.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "low",
   },
   "no-outbound-internal-links": {
     label: "No internal links out",
@@ -696,6 +721,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Add contextual links to the cluster's other pages.",
     owner: "content-strategist",
     provenance: "measured",
+    effort: "medium",
   },
 
   // -- Performance --------------------------------------------------------
@@ -708,6 +734,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Prioritise the hero asset and cut render-blocking requests.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "high",
   },
   "poor-inp": {
     label: "Poor INP",
@@ -718,6 +745,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Break up long tasks and defer non-essential scripts.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "high",
   },
   "poor-cls": {
     label: "Poor CLS",
@@ -728,6 +756,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Reserve space for images, embeds, and late-loading blocks.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "medium",
   },
   "slow-page": {
     label: "Outside the good band",
@@ -738,6 +767,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Improve whichever vital is furthest from its threshold.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "medium",
   },
 
   // -- Schema -------------------------------------------------------------
@@ -750,6 +780,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Add the schema types expected for this format.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "medium",
   },
   "invalid-schema": {
     label: "Invalid structured data",
@@ -760,6 +791,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Fix the invalid properties and re-validate.",
     owner: "technical-seo",
     provenance: "seeded",
+    effort: "low",
   },
   "incomplete-schema": {
     label: "Incomplete structured data",
@@ -770,6 +802,7 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
     action: "Complete the remaining types for this format.",
     owner: "technical-seo",
     provenance: "derived",
+    effort: "low",
   },
 };
 
@@ -777,3 +810,136 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
 export const ISSUE_TYPE_ORDER: readonly IssueType[] = Object.keys(
   ISSUE_TYPE_META,
 ) as IssueType[];
+
+
+// ---------------------------------------------------------------------------
+// Opportunities
+// ---------------------------------------------------------------------------
+
+export const EFFORT_META: Readonly<
+  Record<EffortLevel, { label: string; tone: StateMeta["tone"]; description: string }>
+> = {
+  low: {
+    label: "Low effort",
+    tone: "positive",
+    description: "A change one person can make in an afternoon.",
+  },
+  medium: {
+    label: "Medium effort",
+    tone: "accent",
+    description: "A sprint item: needs a decision, a change, and a check.",
+  },
+  high: {
+    label: "High effort",
+    tone: "warning",
+    description:
+      "Real engineering work, or a judgement call that has to be made first.",
+  },
+};
+
+export const OPPORTUNITY_CATEGORY_ORDER: readonly OpportunityCategory[] = [
+  "crawlability",
+  "indexation",
+  "canonical",
+  "sitemap",
+  "performance",
+  "internal-links",
+  "metadata",
+  "schema",
+];
+
+export const OPPORTUNITY_CATEGORY_META: Readonly<
+  Record<OpportunityCategory, CategoryMeta>
+> = {
+  crawlability: {
+    label: "Crawlability",
+    icon: "refresh",
+    description: "Getting a crawler to the page in the first place.",
+  },
+  indexation: {
+    label: "Indexation",
+    icon: "inbox",
+    description: "Getting the right pages kept in the index.",
+  },
+  performance: {
+    label: "Performance",
+    icon: "gauge",
+    description: "How the page loads and responds for a real visitor.",
+  },
+  schema: {
+    label: "Structured data",
+    icon: "layers",
+    description: "Markup that makes the page eligible for richer results.",
+  },
+  "internal-links": {
+    label: "Internal links",
+    icon: "link-off",
+    description: "How the site passes authority to its own pages.",
+  },
+  metadata: {
+    label: "Metadata",
+    icon: "note",
+    description: "What the result itself says.",
+  },
+  canonical: {
+    label: "Canonical",
+    icon: "split",
+    description: "Which URL we are asking to have indexed.",
+  },
+  sitemap: {
+    label: "Sitemap",
+    icon: "list",
+    description: "What we submit against what we publish.",
+  },
+};
+
+/**
+ * Which job a finding belongs to.
+ *
+ * A 404, a robots block and a buried page are three checks but one
+ * conversation, and the queue is grouped the way the work is scheduled rather
+ * than the way the checks are written.
+ */
+export const OPPORTUNITY_CATEGORY_FOR: Readonly<
+  Record<IssueCategory, OpportunityCategory>
+> = {
+  crawl: "crawlability",
+  http: "crawlability",
+  robots: "crawlability",
+  indexation: "indexation",
+  canonical: "canonical",
+  sitemap: "sitemap",
+  metadata: "metadata",
+  links: "internal-links",
+  performance: "performance",
+  schema: "schema",
+};
+
+// ---------------------------------------------------------------------------
+// Structured data
+// ---------------------------------------------------------------------------
+
+/**
+ * What each schema type is for.
+ *
+ * The set is closed to the types the page formats in this product actually
+ * call for. Nothing is assigned to a format that would not carry it: a legal
+ * services page is not a Product, and marking one up as one would be a finding
+ * against a mistake the module invented.
+ */
+export const SCHEMA_TYPE_META: Readonly<Record<string, string>> = {
+  Article: "Body content with an author and a publication date.",
+  FAQPage: "Question-and-answer blocks, eligible for the FAQ result.",
+  BreadcrumbList: "The page's place in the site hierarchy.",
+  WebPage: "The page itself, as a generic entity.",
+  Organization: "The business publishing the page.",
+  ItemList: "An ordered or unordered list of entities on the page.",
+  Product: "A product, with its identifiers.",
+  Offer: "Price and availability for a product.",
+  AggregateRating: "Combined customer ratings for a product.",
+  LocalBusiness: "A business with a physical location and opening hours.",
+  PostalAddress: "The address of a location.",
+  Person: "A named author or subject.",
+  SoftwareApplication: "An application, with its platform and category.",
+  HowTo: "Step-by-step instructions.",
+};

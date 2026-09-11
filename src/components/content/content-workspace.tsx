@@ -8,6 +8,7 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Meter } from "@/components/ui/meter";
 import { MetricTileGrid } from "@/components/ui/metric-tile";
+import { TechnicalStrip } from "@/components/content/technical-strip";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
 import {
@@ -211,6 +212,8 @@ export function ContentWorkspace({ contentId }: { contentId: string }) {
           <OwnerLink agent={record.refresh.owner} className="text-[12px]" />
         </div>
       )}
+
+      <TechnicalStrip contentId={record.id} />
 
       <MetricTileGrid metrics={detail.metrics} />
 

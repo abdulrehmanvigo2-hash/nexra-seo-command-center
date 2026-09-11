@@ -37,6 +37,7 @@ import {
 } from "@/lib/mock/keywords";
 import { contentForKeyword } from "@/lib/mock/content";
 import { BATTLE_META, overlapForKeyword } from "@/lib/mock/competitors";
+import { TechnicalWarning } from "@/components/keywords/technical-warning";
 import { RankChart } from "@/components/keywords/rank-chart";
 import {
   ChangeValue,
@@ -271,6 +272,8 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
           </div>
         </div>
       </Panel>
+
+      {contentPiece && <TechnicalWarning contentId={contentPiece.id} />}
 
       <MetricTileGrid metrics={metrics} />
 

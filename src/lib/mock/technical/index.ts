@@ -1,31 +1,61 @@
 import { round } from "@/lib/mock/dashboard/core";
 import { formatCompact, formatNumber, formatPercent } from "@/lib/format";
 import {
+  CANONICAL_META,
   CATEGORY_META,
   CATEGORY_ORDER,
+  CRAWL_STATE_META,
+  CWV_META,
   INDEXABILITY_META,
+  INDEX_STATUS_META,
   ISSUE_TYPE_META,
+  SCHEMA_META,
+  SCHEMA_TYPE_META,
   SEVERITY_META,
   SEVERITY_ORDER,
 } from "@/lib/mock/technical/meta";
 import {
   getTechnicalIssues,
   getTechnicalPages,
+  issuesForPage,
   issuesForProject,
   pagesForProject,
 } from "@/lib/mock/technical/issues";
 import {
+  CWV_THRESHOLDS,
   DEPTH_LIMIT,
+  META_LENGTH,
+  MIN_INTERNAL_LINKS_IN,
+  TITLE_LENGTH,
   crawlabilityScore,
   indexationScore,
+  linkHealthScore,
+  schemaHealthScore,
+  SEVERITY_RANK,
   severityFor,
   shareOf,
+  supportScore,
   technicalHealthScore,
+  vitalsHealthScore,
+  worstSeverity,
 } from "@/lib/mock/technical/scoring";
+import {
+  contentRecordFor,
+  expectedSchemaFor,
+} from "@/lib/mock/technical/pages";
+import { opportunitiesForPage } from "@/lib/mock/technical/opportunities";
 import type {
   CrawlSummary,
+  DetailFact,
   DistributionRow,
   IndexationSummary,
+  LinkRow,
+  LinkSummary,
+  SchemaSummary,
+  SchemaTypeRow,
+  TechnicalPageDetail,
+  VitalBreakdown,
+  VitalsSummary,
   TechnicalDatasetCounts,
   TechnicalIssue,
   TechnicalMetric,
@@ -52,6 +82,13 @@ export {
 } from "@/lib/mock/technical/pages";
 
 export {
+  categoryLabelFor,
+  getTechnicalOpportunities,
+  opportunitiesForPage,
+  opportunitiesForProject,
+} from "@/lib/mock/technical/opportunities";
+
+export {
   getTechnicalIssue,
   getTechnicalIssues,
   getTechnicalPage,
@@ -61,6 +98,14 @@ export {
   pagesForProject,
   technicalPageForContent,
 } from "@/lib/mock/technical/issues";
+
+export {
+  EFFORT_META,
+  OPPORTUNITY_CATEGORY_FOR,
+  OPPORTUNITY_CATEGORY_META,
+  OPPORTUNITY_CATEGORY_ORDER,
+  SCHEMA_TYPE_META,
+} from "@/lib/mock/technical/meta";
 
 export {
   CANONICAL_META,
@@ -91,6 +136,7 @@ export {
 export {
   CWV_THRESHOLDS,
   DEPTH_LIMIT,
+  EFFORT_ORDER,
   META_LENGTH,
   MIN_INTERNAL_LINKS_IN,
   SEVERITY_RANK,
@@ -98,6 +144,8 @@ export {
   severityFor,
   worstSeverity,
 } from "@/lib/mock/technical/scoring";
+
+export { expectedSchemaFor } from "@/lib/mock/technical/pages";
 
 import { TECHNICAL_RANGE } from "@/lib/mock/technical/pages";
 
@@ -772,3 +820,638 @@ export function getTechnicalDatasetCounts(): TechnicalDatasetCounts {
 
 /** Every check the registry can raise, for the inspector. */
 export const TECHNICAL_CHECK_COUNT = Object.keys(ISSUE_TYPE_META).length;
+
+
+// ---------------------------------------------------------------------------
+// Core Web Vitals
+// ---------------------------------------------------------------------------
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+/**
+ * Core Web Vitals across a selection.
+ *
+ * Pages with too little traffic to model a field reading are counted
+ * separately and excluded from every rate, because a pass rate computed over
+ * pages that were never measured is not a pass rate. There is one device
+ * profile in this dataset, not a mobile and a desktop pair — the model has no
+ * basis for two, and inventing the split would be inventing the difference.
+ */
+export function getVitalsSummary(
+  pages: readonly TechnicalPage[],
+): VitalsSummary {
+  const measured = pages.filter((page) => page.vitals.state !== "unmeasured");
+  const unmeasured = pages.length - measured.length;
+
+  const passing = measured.filter((page) => page.vitals.state === "good").length;
+  const poor = measured.filter((page) => page.vitals.state === "poor").length;
+  const needsWork = measured.length - passing - poor;
+
+  const band = (
+    read: (page: TechnicalPage) => number,
+    good: number,
+    poorFloor: number,
+  ) => ({
+    good: measured.filter((page) => read(page) <= good).length,
+    poor: measured.filter((page) => read(page) >= poorFloor).length,
+  });
+
+  const lcpBand = band(
+    (page) => page.vitals.lcp,
+    CWV_THRESHOLDS.lcp.good,
+    CWV_THRESHOLDS.lcp.poor,
+  );
+  const inpBand = band(
+    (page) => page.vitals.inp,
+    CWV_THRESHOLDS.inp.good,
+    CWV_THRESHOLDS.inp.poor,
+  );
+  const clsBand = band(
+    (page) => page.vitals.cls,
+    CWV_THRESHOLDS.cls.good,
+    CWV_THRESHOLDS.cls.poor,
+  );
+
+  const vitals: readonly VitalBreakdown[] = [
+    {
+      id: "lcp",
+      label: "Largest Contentful Paint",
+      unit: "ms",
+      median: Math.round(median(measured.map((page) => page.vitals.lcp))),
+      good: lcpBand.good,
+      needsWork: measured.length - lcpBand.good - lcpBand.poor,
+      poor: lcpBand.poor,
+      passRate: shareOf(lcpBand.good, Math.max(measured.length, 1)),
+      goodThreshold: CWV_THRESHOLDS.lcp.good,
+      poorThreshold: CWV_THRESHOLDS.lcp.poor,
+      description:
+        "How long the main content takes to appear. The vital visitors feel first.",
+    },
+    {
+      id: "inp",
+      label: "Interaction to Next Paint",
+      unit: "ms",
+      median: Math.round(median(measured.map((page) => page.vitals.inp))),
+      good: inpBand.good,
+      needsWork: measured.length - inpBand.good - inpBand.poor,
+      poor: inpBand.poor,
+      passRate: shareOf(inpBand.good, Math.max(measured.length, 1)),
+      goodThreshold: CWV_THRESHOLDS.inp.good,
+      poorThreshold: CWV_THRESHOLDS.inp.poor,
+      description:
+        "How long the page takes to respond to the first thing a visitor does.",
+    },
+    {
+      id: "cls",
+      label: "Cumulative Layout Shift",
+      unit: "",
+      median: round(median(measured.map((page) => page.vitals.cls)), 3),
+      good: clsBand.good,
+      needsWork: measured.length - clsBand.good - clsBand.poor,
+      poor: clsBand.poor,
+      passRate: shareOf(clsBand.good, Math.max(measured.length, 1)),
+      goodThreshold: CWV_THRESHOLDS.cls.good,
+      poorThreshold: CWV_THRESHOLDS.cls.poor,
+      description: "How much the content moves under the reader as it loads.",
+    },
+  ];
+
+  const stateRows: readonly {
+    id: string;
+    count: number;
+    tone: DistributionRow["tone"];
+  }[] = [
+    { id: "good", count: passing, tone: "positive" },
+    { id: "needs-improvement", count: needsWork, tone: "warning" },
+    { id: "poor", count: poor, tone: "critical" },
+    { id: "unmeasured", count: unmeasured, tone: "neutral" },
+  ];
+
+  return {
+    total: pages.length,
+    measured: measured.length,
+    unmeasured,
+    passing,
+    needsWork,
+    poor,
+    passRate: shareOf(passing, Math.max(measured.length, 1)),
+    score: vitalsHealthScore({
+      measured: measured.length,
+      passing,
+      poor,
+      unmeasured,
+      total: pages.length,
+      medianScore: Math.round(median(measured.map((page) => page.vitals.score))),
+    }),
+    vitals,
+    states: stateRows
+      .filter((row) => row.count > 0)
+      .map((row) => ({
+        id: row.id,
+        label: CWV_META[row.id as keyof typeof CWV_META].label,
+        count: row.count,
+        share: shareOf(row.count, pages.length),
+        tone: row.tone,
+        description: CWV_META[row.id as keyof typeof CWV_META].description,
+      })),
+    worst: [...measured]
+      .sort(
+        (a, b) =>
+          a.vitals.score - b.vitals.score || a.id.localeCompare(b.id),
+      )
+      .slice(0, 8),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Structured data
+// ---------------------------------------------------------------------------
+
+/**
+ * Structured data across a selection.
+ *
+ * Types are counted against what each page's format calls for, so "missing"
+ * means a type the page should have and does not — never a type it was never
+ * going to carry. A clinic page is not counted as missing Product markup.
+ */
+export function getSchemaSummary(
+  pages: readonly TechnicalPage[],
+): SchemaSummary {
+  const complete = pages.filter(
+    (page) => page.schemaState === "complete",
+  ).length;
+  const partial = pages.filter((page) => page.schemaState === "partial").length;
+  const invalid = pages.filter((page) => page.schemaState === "invalid").length;
+  const missing = pages.filter((page) => page.schemaState === "missing").length;
+
+  const expected = new Map<string, number>();
+  const present = new Map<string, number>();
+  const broken = new Map<string, number>();
+
+  for (const page of pages) {
+    for (const type of expectedSchemaFor(page.format)) {
+      expected.set(type, (expected.get(type) ?? 0) + 1);
+    }
+    for (const type of page.schemaTypes) {
+      present.set(type, (present.get(type) ?? 0) + 1);
+      if (page.schemaState === "invalid") {
+        broken.set(type, (broken.get(type) ?? 0) + 1);
+      }
+    }
+  }
+
+  const types: SchemaTypeRow[] = [...expected]
+    .map(([type, want]) => {
+      const have = present.get(type) ?? 0;
+      return {
+        type,
+        present: have,
+        missing: Math.max(want - have, 0),
+        invalid: broken.get(type) ?? 0,
+        coverage: shareOf(have, want),
+        description: SCHEMA_TYPE_META[type] ?? "Structured data on the page.",
+      };
+    })
+    .sort((a, b) => b.present - a.present || a.type.localeCompare(b.type));
+
+  const stateRows: readonly {
+    id: keyof typeof SCHEMA_META;
+    count: number;
+    tone: DistributionRow["tone"];
+  }[] = [
+    { id: "complete", count: complete, tone: "positive" },
+    { id: "partial", count: partial, tone: "warning" },
+    { id: "invalid", count: invalid, tone: "critical" },
+    { id: "missing", count: missing, tone: "neutral" },
+  ];
+
+  return {
+    total: pages.length,
+    withSchema: pages.length - missing,
+    missing,
+    complete,
+    partial,
+    invalid,
+    coverage: shareOf(complete, Math.max(pages.length, 1)),
+    score: schemaHealthScore({
+      total: pages.length,
+      complete,
+      partial,
+      invalid,
+      missing,
+    }),
+    states: stateRows
+      .filter((row) => row.count > 0)
+      .map((row) => ({
+        id: row.id,
+        label: SCHEMA_META[row.id].label,
+        count: row.count,
+        share: shareOf(row.count, pages.length),
+        tone: row.tone,
+        description: SCHEMA_META[row.id].description,
+      })),
+    types,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Internal links
+// ---------------------------------------------------------------------------
+
+/**
+ * The internal link graph, read as findings.
+ *
+ * The graph is the content layer's own `linksTo` — there is no second graph
+ * here. What this adds is the technical consequence of each edge: a link to a
+ * URL that does not serve, one that lands on a redirect, one that lands on a
+ * page excluded from the index. Those are the same link, read against what is
+ * at the other end of it.
+ *
+ * Only pages with something wrong are listed. A well-linked page needs no row.
+ */
+export function getLinkSummary(
+  pages: readonly TechnicalPage[],
+): LinkSummary {
+  const byContentId = new Map(getTechnicalPages().map((p) => [p.contentId, p]));
+
+  let brokenLinks = 0;
+  let redirectLinks = 0;
+  let nonCanonicalLinks = 0;
+
+  const rows: LinkRow[] = [];
+
+  for (const page of pages) {
+    const targets = (contentRecordFor(page.contentId)?.linksTo ?? [])
+      .map((id) => byContentId.get(id))
+      .filter((entry): entry is TechnicalPage => entry !== undefined);
+
+    const brokenOut = targets.filter(
+      (entry) =>
+        entry.crawlState === "broken" || entry.crawlState === "server-error",
+    ).length;
+    const redirectOut = targets.filter(
+      (entry) => entry.crawlState === "redirected",
+    ).length;
+    const nonCanonicalOut = targets.filter(
+      (entry) =>
+        entry.indexability === "canonicalised" ||
+        entry.indexability === "noindex",
+    ).length;
+
+    if (brokenOut > 0) brokenLinks += 1;
+    if (redirectOut > 0) redirectLinks += 1;
+    if (nonCanonicalOut > 0) nonCanonicalLinks += 1;
+
+    const deep = page.crawlDepth > DEPTH_LIMIT;
+    const weak =
+      page.internalLinksIn > 0 && page.internalLinksIn < MIN_INTERNAL_LINKS_IN;
+    const deadEnd = page.internalLinksOut === 0;
+
+    const findings: string[] = [];
+    let severity: TechnicalPage["severity"] = "healthy";
+
+    if (page.orphan) {
+      findings.push("nothing links to it");
+      severity = worstSeverity(severity, "high");
+    } else if (weak) {
+      findings.push(`only ${page.internalLinksIn} inbound links`);
+      severity = worstSeverity(severity, "medium");
+    }
+    if (deep) {
+      findings.push(`${page.crawlDepth} clicks deep`);
+      severity = worstSeverity(severity, "medium");
+    }
+    if (brokenOut > 0) {
+      findings.push(
+        `links to ${brokenOut} URL${brokenOut === 1 ? "" : "s"} that do not serve`,
+      );
+      severity = worstSeverity(severity, "high");
+    }
+    if (redirectOut > 0) {
+      findings.push(`links through ${redirectOut} redirect${redirectOut === 1 ? "" : "s"}`);
+      severity = worstSeverity(severity, "low");
+    }
+    if (nonCanonicalOut > 0) {
+      findings.push(
+        `links to ${nonCanonicalOut} page${nonCanonicalOut === 1 ? "" : "s"} kept out of the index`,
+      );
+      severity = worstSeverity(severity, "low");
+    }
+    if (deadEnd) {
+      findings.push("links to nothing else on the site");
+      severity = worstSeverity(severity, "low");
+    }
+
+    if (findings.length === 0) continue;
+
+    rows.push({
+      pageId: page.id,
+      contentId: page.contentId,
+      title: page.title,
+      path: page.path,
+      projectId: page.projectId,
+      projectName: page.projectName,
+      clusterName: page.clusterName,
+      linksIn: page.internalLinksIn,
+      linksOut: page.internalLinksOut,
+      crawlDepth: page.crawlDepth,
+      orphan: page.orphan,
+      brokenOut,
+      redirectOut,
+      nonCanonicalOut,
+      severity,
+      finding: `${findings[0][0].toUpperCase()}${findings[0].slice(1)}${
+        findings.length > 1 ? `, and ${findings.length - 1} more` : ""
+      }.`,
+      support: supportScore(page.internalLinksIn, page.crawlDepth, deadEnd),
+    });
+  }
+
+  const orphans = pages.filter((page) => page.orphan).length;
+  const weak = pages.filter(
+    (page) =>
+      page.internalLinksIn > 0 && page.internalLinksIn < MIN_INTERNAL_LINKS_IN,
+  ).length;
+  const deadEnds = pages.filter((page) => page.internalLinksOut === 0).length;
+  const meanLinksIn = round(
+    mean(pages.map((page) => page.internalLinksIn)),
+    1,
+  );
+
+  return {
+    total: pages.length,
+    orphans,
+    weak,
+    deep: pages.filter((page) => page.crawlDepth > DEPTH_LIMIT).length,
+    brokenLinks,
+    redirectLinks,
+    nonCanonicalLinks,
+    deadEnds,
+    averageLinksIn: meanLinksIn,
+    score: linkHealthScore({
+      total: pages.length,
+      orphans,
+      weak,
+      deep: pages.filter((page) => page.crawlDepth > DEPTH_LIMIT).length,
+      brokenLinks,
+      deadEnds,
+      meanLinksIn,
+    }),
+    rows: rows.sort(
+      (a, b) =>
+        SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
+        a.support - b.support ||
+        a.pageId.localeCompare(b.pageId),
+    ),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Page detail
+// ---------------------------------------------------------------------------
+
+function fact(
+  id: string,
+  label: string,
+  value: string,
+  provenance: DetailFact["provenance"],
+  detail?: string,
+  tone?: DetailFact["tone"],
+): DetailFact {
+  return { id, label, value, detail, tone, provenance };
+}
+
+/**
+ * Everything known about one URL, technically.
+ *
+ * Assembled from the canonical page record and the registry — neither is
+ * copied, and nothing here is a second reading of either. Editorial and
+ * business analysis stays in Content Studio, which this links to rather than
+ * restating.
+ */
+export function getTechnicalPageDetail(
+  pageId: string,
+): TechnicalPageDetail | null {
+  const all = getTechnicalPages();
+  const page = all.find((entry) => entry.id === pageId);
+  if (!page) return null;
+
+  const byContentId = new Map(all.map((entry) => [entry.contentId, entry]));
+  const record = contentRecordFor(page.contentId);
+
+  const outboundPages = (record?.linksTo ?? [])
+    .map((id) => byContentId.get(id))
+    .filter((entry): entry is TechnicalPage => entry !== undefined);
+
+  const inboundPages = all.filter((entry) => {
+    const links = contentRecordFor(entry.contentId)?.linksTo ?? [];
+    return links.includes(page.contentId);
+  });
+
+  const clusterPages = all.filter(
+    (entry) => entry.clusterId === page.clusterId && entry.id !== page.id,
+  );
+
+  const response: readonly DetailFact[] = [
+    fact(
+      "status",
+      "HTTP status",
+      String(page.httpStatus),
+      "seeded",
+      page.redirectTarget
+        ? `Redirects to ${page.redirectTarget} in ${page.redirectHops} hop${page.redirectHops === 1 ? "" : "s"}.`
+        : CRAWL_STATE_META[page.crawlState].description,
+      page.httpStatus >= 400
+        ? "critical"
+        : page.httpStatus >= 300
+          ? "warning"
+          : "positive",
+    ),
+    fact(
+      "crawl",
+      "Crawl state",
+      CRAWL_STATE_META[page.crawlState].label,
+      "derived",
+      CRAWL_STATE_META[page.crawlState].description,
+      page.crawlState === "crawlable" ? "positive" : "warning",
+    ),
+    fact(
+      "robots",
+      "Robots directive",
+      page.robots,
+      "seeded",
+      page.robots.startsWith("noindex")
+        ? "The page asks to be left out of the index."
+        : "Open to indexing and to following its links.",
+      page.robots.startsWith("noindex") ? "warning" : "positive",
+    ),
+    fact(
+      "depth",
+      "Crawl depth",
+      `${page.crawlDepth} click${page.crawlDepth === 1 ? "" : "s"}`,
+      "derived",
+      `From the home page, against a limit of ${DEPTH_LIMIT}.`,
+      page.crawlDepth > DEPTH_LIMIT ? "warning" : "positive",
+    ),
+  ];
+
+  const indexing: readonly DetailFact[] = [
+    fact(
+      "indexability",
+      "Indexability",
+      INDEXABILITY_META[page.indexability].label,
+      "derived",
+      INDEXABILITY_META[page.indexability].description,
+      page.indexability === "indexable" ? "positive" : "warning",
+    ),
+    fact(
+      "index-status",
+      "Index status",
+      INDEX_STATUS_META[page.indexStatus].label,
+      "seeded",
+      page.indexNote,
+      page.indexStatus === "indexed"
+        ? "positive"
+        : page.indexStatus === "not-indexed"
+          ? "critical"
+          : "neutral",
+    ),
+    fact(
+      "canonical",
+      "Canonical",
+      CANONICAL_META[page.canonicalState].label,
+      "derived",
+      page.canonicalTarget ?? "No canonical tag on the page.",
+      page.canonicalState === "self"
+        ? "positive"
+        : page.canonicalState === "conflict"
+          ? "critical"
+          : "neutral",
+    ),
+    fact(
+      "sitemap",
+      "Sitemap",
+      page.inSitemap ? "Submitted" : "Not submitted",
+      "derived",
+      page.inSitemap
+        ? "The URL is in the sitemap."
+        : "Discovery relies on internal links alone.",
+      page.inSitemap ? "positive" : "warning",
+    ),
+  ];
+
+  const onPage: readonly DetailFact[] = [
+    fact(
+      "title",
+      "Title length",
+      `${page.titleLength} characters`,
+      "measured",
+      `Against ${TITLE_LENGTH.min}-${TITLE_LENGTH.max}.`,
+      page.titleLength < TITLE_LENGTH.min || page.titleLength > TITLE_LENGTH.max
+        ? "warning"
+        : "positive",
+    ),
+    fact(
+      "meta",
+      "Meta description",
+      page.metaLength === null ? "Missing" : `${page.metaLength} characters`,
+      "measured",
+      `Against ${META_LENGTH.min}-${META_LENGTH.max}.`,
+      page.metaLength === null
+        ? "critical"
+        : page.metaLength < META_LENGTH.min || page.metaLength > META_LENGTH.max
+          ? "warning"
+          : "positive",
+    ),
+    fact(
+      "h1",
+      "H1",
+      page.hasH1 ? "Present" : "Missing",
+      "seeded",
+      page.hasH1
+        ? "One top-level heading carrying the page's subject."
+        : "The page's subject is left to be inferred from the body.",
+      page.hasH1 ? "positive" : "warning",
+    ),
+    fact(
+      "schema",
+      "Structured data",
+      SCHEMA_META[page.schemaState].label,
+      "derived",
+      page.schemaTypes.length > 0
+        ? page.schemaTypes.join(", ")
+        : `Expected for this format: ${expectedSchemaFor(page.format).join(", ")}.`,
+      page.schemaState === "complete"
+        ? "positive"
+        : page.schemaState === "invalid"
+          ? "critical"
+          : "warning",
+    ),
+  ];
+
+  const linking: readonly DetailFact[] = [
+    fact(
+      "links-in",
+      "Internal links in",
+      String(page.internalLinksIn),
+      "measured",
+      page.orphan
+        ? "Nothing on the site links to this page."
+        : `Against a floor of ${MIN_INTERNAL_LINKS_IN}.`,
+      page.orphan
+        ? "critical"
+        : page.internalLinksIn < MIN_INTERNAL_LINKS_IN
+          ? "warning"
+          : "positive",
+    ),
+    fact(
+      "links-out",
+      "Internal links out",
+      String(page.internalLinksOut),
+      "measured",
+      page.internalLinksOut === 0
+        ? "Authority stops here instead of flowing on."
+        : "Links from this page to others of ours.",
+      page.internalLinksOut === 0 ? "warning" : "positive",
+    ),
+    fact(
+      "support",
+      "Support score",
+      String(supportScore(page.internalLinksIn, page.crawlDepth, page.internalLinksOut === 0)),
+      "derived",
+      "Inbound links and depth, combined.",
+    ),
+    fact(
+      "cluster",
+      "Cluster",
+      page.clusterName,
+      "measured",
+      `${clusterPages.length} other published page${clusterPages.length === 1 ? "" : "s"} in this cluster.`,
+    ),
+  ];
+
+  return {
+    page,
+    issues: issuesForPage(page.id),
+    opportunities: opportunitiesForPage(page.id),
+    response,
+    indexing,
+    onPage,
+    linking,
+    inboundPages,
+    outboundPages,
+    clusterPages,
+  };
+}
+
+/** Every page id, for prerendering the detail routes. */
+export function getTechnicalPageIds(): readonly string[] {
+  return getTechnicalPages().map((page) => page.id);
+}

@@ -164,6 +164,27 @@ export type IssueType =
   | "invalid-schema"
   | "incomplete-schema";
 
+/** How much work a fix takes. */
+export type EffortLevel = "low" | "medium" | "high";
+
+/**
+ * What kind of job an opportunity is.
+ *
+ * A coarser grouping than `IssueCategory`: a 404, a robots block, and a buried
+ * page are three findings but one conversation about whether the site can be
+ * crawled, and an opportunity queue is read by whoever decides what to
+ * schedule rather than by whoever runs the checks.
+ */
+export type OpportunityCategory =
+  | "crawlability"
+  | "indexation"
+  | "performance"
+  | "schema"
+  | "internal-links"
+  | "metadata"
+  | "canonical"
+  | "sitemap";
+
 /** Frontend-only state for an issue triaged in this session. */
 export type IssueStatus =
   | "open"
@@ -202,6 +223,8 @@ export type IssueTypeMeta = {
   readonly action: string;
   readonly owner: AgentId;
   readonly provenance: TechnicalProvenance;
+  /** How much work the fix is. A property of the rule, not of one page. */
+  readonly effort: EffortLevel;
 };
 
 export type StateMeta = {
@@ -468,4 +491,199 @@ export type TechnicalDatasetCounts = {
   readonly byIssueType: Readonly<Record<string, number>>;
   /** Findings the integrity pass raised. Empty is the passing result. */
   readonly integrity: readonly string[];
+};
+
+// ---------------------------------------------------------------------------
+// Opportunities
+// ---------------------------------------------------------------------------
+
+/**
+ * One finding, expressed as a job somebody could schedule.
+ *
+ * Not a second dataset: every opportunity reads an issue from the registry, so
+ * the pages behind it, its severity and its owner are the ones the registry
+ * already decided. What the opportunity adds is what the registry deliberately
+ * does not carry — how much effort the fix is, what it is worth, and where it
+ * therefore belongs in a queue.
+ */
+export type TechnicalOpportunity = {
+  readonly id: string;
+  /** The registry finding this reads. Always resolvable. */
+  readonly issueId: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly category: OpportunityCategory;
+  readonly issueCategory: IssueCategory;
+  readonly type: IssueType;
+  readonly title: string;
+  /** What is happening, in one line. */
+  readonly explanation: string;
+  readonly impact: string;
+  readonly action: string;
+
+  readonly pageIds: readonly string[];
+  readonly affectedPages: number;
+  /** Share of the project's pages this reaches, 0-100. */
+  readonly affectedShare: number;
+
+  readonly severity: TechnicalSeverity;
+  readonly effort: EffortLevel;
+  /** What fixing it is worth, 0-100. */
+  readonly impactScore: number;
+  /** Where it belongs in the queue, 0-100. */
+  readonly priority: number;
+  readonly owner: AgentId;
+  readonly provenance: TechnicalProvenance;
+};
+
+// ---------------------------------------------------------------------------
+// Core Web Vitals
+// ---------------------------------------------------------------------------
+
+/** One vital, read across a selection of pages. */
+export type VitalBreakdown = {
+  readonly id: "lcp" | "inp" | "cls";
+  readonly label: string;
+  readonly unit: string;
+  /** Median across the pages that have a reading. */
+  readonly median: number;
+  readonly good: number;
+  readonly needsWork: number;
+  readonly poor: number;
+  /** Pages inside the good band, as a share of those measured, 0-100. */
+  readonly passRate: number;
+  readonly goodThreshold: number;
+  readonly poorThreshold: number;
+  readonly description: string;
+};
+
+export type VitalsSummary = {
+  readonly total: number;
+  /** Pages with enough traffic to model a field reading. */
+  readonly measured: number;
+  readonly unmeasured: number;
+  readonly passing: number;
+  readonly needsWork: number;
+  readonly poor: number;
+  /** Passing as a share of measured pages, 0-100. */
+  readonly passRate: number;
+  readonly score: TechnicalScore;
+  readonly vitals: readonly VitalBreakdown[];
+  readonly states: readonly DistributionRow[];
+  /** Worst-scoring measured pages first. */
+  readonly worst: readonly TechnicalPage[];
+};
+
+// ---------------------------------------------------------------------------
+// Structured data
+// ---------------------------------------------------------------------------
+
+/** One schema type, counted across a selection. */
+export type SchemaTypeRow = {
+  readonly type: string;
+  /** Pages carrying it. */
+  readonly present: number;
+  /** Pages whose format calls for it that do not have it. */
+  readonly missing: number;
+  /** Pages carrying it where the markup fails validation. */
+  readonly invalid: number;
+  /** Present as a share of the pages that should have it, 0-100. */
+  readonly coverage: number;
+  readonly description: string;
+};
+
+export type SchemaSummary = {
+  readonly total: number;
+  readonly withSchema: number;
+  readonly missing: number;
+  readonly complete: number;
+  readonly partial: number;
+  readonly invalid: number;
+  /** Complete markup as a share of all pages, 0-100. */
+  readonly coverage: number;
+  readonly score: TechnicalScore;
+  readonly states: readonly DistributionRow[];
+  /** Most common first. */
+  readonly types: readonly SchemaTypeRow[];
+};
+
+// ---------------------------------------------------------------------------
+// Internal links
+// ---------------------------------------------------------------------------
+
+/** One page's linking position, with what is wrong with it. */
+export type LinkRow = {
+  readonly pageId: string;
+  readonly contentId: string;
+  readonly title: string;
+  readonly path: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly clusterName: string;
+  readonly linksIn: number;
+  readonly linksOut: number;
+  readonly crawlDepth: number;
+  readonly orphan: boolean;
+  /** Links out of this page that do not resolve. */
+  readonly brokenOut: number;
+  /** Links out of this page that land on a redirect. */
+  readonly redirectOut: number;
+  /** Links out of this page that land on a URL excluded from the index. */
+  readonly nonCanonicalOut: number;
+  readonly severity: TechnicalSeverity;
+  /** Why this row is listed, in one line. */
+  readonly finding: string;
+  /** 0-100 reading of how well the site supports this page. */
+  readonly support: number;
+};
+
+export type LinkSummary = {
+  readonly total: number;
+  readonly orphans: number;
+  readonly weak: number;
+  readonly deep: number;
+  readonly brokenLinks: number;
+  readonly redirectLinks: number;
+  readonly nonCanonicalLinks: number;
+  readonly deadEnds: number;
+  readonly averageLinksIn: number;
+  readonly score: TechnicalScore;
+  readonly rows: readonly LinkRow[];
+};
+
+// ---------------------------------------------------------------------------
+// Page detail
+// ---------------------------------------------------------------------------
+
+/** One labelled fact on the detail page, with where it came from. */
+export type DetailFact = {
+  readonly id: string;
+  readonly label: string;
+  readonly value: string;
+  readonly detail?: string;
+  readonly tone?: "positive" | "warning" | "critical" | "neutral";
+  readonly provenance: TechnicalProvenance;
+};
+
+/**
+ * Everything known about one URL, technically.
+ *
+ * Assembled from the canonical page record and the registry — neither is
+ * copied. Business and editorial analysis stays in Content Studio, and this
+ * route links there rather than restating it.
+ */
+export type TechnicalPageDetail = {
+  readonly page: TechnicalPage;
+  readonly issues: readonly TechnicalIssue[];
+  readonly opportunities: readonly TechnicalOpportunity[];
+  readonly response: readonly DetailFact[];
+  readonly indexing: readonly DetailFact[];
+  readonly onPage: readonly DetailFact[];
+  readonly linking: readonly DetailFact[];
+  /** Pages of ours that link to this one. */
+  readonly inboundPages: readonly TechnicalPage[];
+  /** Pages of ours this one links to. */
+  readonly outboundPages: readonly TechnicalPage[];
+  /** Sibling pages in the same cluster, for context. */
+  readonly clusterPages: readonly TechnicalPage[];
 };
