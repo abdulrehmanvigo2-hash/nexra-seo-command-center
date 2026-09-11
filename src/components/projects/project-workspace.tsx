@@ -22,6 +22,7 @@ import { ProjectCompetitors, type PendingCompetitor } from "@/components/project
 import { ProjectDetailHeader } from "@/components/projects/project-detail-header";
 import { ProjectIssues } from "@/components/projects/project-issues";
 import { ProjectAiStrip } from "@/components/projects/project-ai-strip";
+import { ProjectAnalyticsStrip } from "@/components/projects/project-analytics-strip";
 import { ProjectAuthorityStrip } from "@/components/projects/project-authority-strip";
 import { ProjectMetrics } from "@/components/projects/project-metrics";
 import { ProjectNotes } from "@/components/projects/project-notes";
@@ -266,6 +267,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             <ProjectAiStrip projectId={detail.project.id} />
 
             <ProjectAuthorityStrip projectId={detail.project.id} />
+
+            <ProjectAnalyticsStrip projectId={detail.project.id} />
 
             <div className="grid gap-4 xl:grid-cols-3">
               <div className="xl:col-span-2">

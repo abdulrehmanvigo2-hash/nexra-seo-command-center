@@ -9,6 +9,7 @@ import { AuthoritySnapshot } from "@/components/dashboard/authority-snapshot";
 import { CompetitorSnapshot } from "@/components/dashboard/competitor-snapshot";
 import { ContentSnapshot } from "@/components/dashboard/content-snapshot";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { AnalyticsSummary } from "@/components/dashboard/analytics-summary";
 import { KeywordSnapshot } from "@/components/dashboard/keyword-snapshot";
 import { KpiGrid, ScoreStrip } from "@/components/dashboard/metric-cards";
 import { PerformanceChart } from "@/components/dashboard/performance-chart";
@@ -124,6 +125,8 @@ export function CommandCenter() {
         onRangeChange={selectRange}
         loading={refreshing}
       />
+
+      <AnalyticsSummary projectId={projectId} rangeId={rangeId} />
 
       {/*
         Panels that hold their own filter, sort, or dismissal state are keyed
