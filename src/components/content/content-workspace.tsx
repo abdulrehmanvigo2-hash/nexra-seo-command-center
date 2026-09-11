@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import { Badge, PriorityBadge } from "@/components/ui/badge";
@@ -8,6 +9,7 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Meter } from "@/components/ui/meter";
 import { MetricTileGrid } from "@/components/ui/metric-tile";
+import { AiVisibilityPanel } from "@/components/content/ai-visibility-panel";
 import { TechnicalStrip } from "@/components/content/technical-strip";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -76,7 +78,10 @@ const TABS = [
   { id: "keywords", label: "Keywords", icon: "keywords" },
   { id: "onpage", label: "On-page", icon: "sliders" },
   { id: "links", label: "Internal links", icon: "handoff" },
-  { id: "aeo", label: "AI readiness", icon: "sparkles" },
+  // Phase 6's own answer-engine roll-up for this page. Kept, and relabelled
+  // so it is not mistaken for the full Phase 9 reading beside it.
+  { id: "aeo", label: "Answer signals", icon: "sparkles" },
+  { id: "ai", label: "AI visibility", icon: "ai-visibility" },
   { id: "brief", label: "Brief", icon: "brief" },
 ] as const satisfies readonly {
   id: string;
@@ -89,7 +94,18 @@ type TabId = (typeof TABS)[number]["id"];
 export function ContentWorkspace({ contentId }: { contentId: string }) {
   const detail = getContentDetail(contentId);
 
-  const [tab, setTab] = useState<TabId>("performance");
+  // Links from AI Visibility arrive as `?tab=ai`, so the tab is seeded from
+  // the query string. It seeds the initial state and nothing more — clicking a
+  // tab afterwards must not fight the URL.
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+
+  const [tab, setTab] = useState<TabId>(() =>
+    requestedTab !== null &&
+    (TABS as readonly { id: string }[]).some((entry) => entry.id === requestedTab)
+      ? (requestedTab as TabId)
+      : "performance",
+  );
   const [states, setStates] = useState<Record<string, RecommendationState>>({});
   const tablistRef = useRef<HTMLDivElement>(null);
 
@@ -922,6 +938,8 @@ export function ContentWorkspace({ contentId }: { contentId: string }) {
             </PanelFooter>
           </Panel>
         )}
+
+        {tab === "ai" && <AiVisibilityPanel contentId={record.id} />}
 
         {tab === "brief" &&
           (brief ? (

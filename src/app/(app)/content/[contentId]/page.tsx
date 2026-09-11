@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { Panel } from "@/components/ui/panel";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ContentWorkspace } from "@/components/content/content-workspace";
 import { FORMAT_META, getContentIds, getContentRecord } from "@/lib/mock/content";
 
@@ -40,5 +43,38 @@ export default async function ContentDetailPage({ params }: PageParams) {
     notFound();
   }
 
-  return <ContentWorkspace contentId={id} />;
+  // The workspace reads its initial tab from the query string, so links from
+  // AI Visibility land on the right section. `useSearchParams` needs a Suspense
+  // boundary during static rendering.
+  return (
+    <Suspense fallback={<ContentDetailFallback />}>
+      <ContentWorkspace contentId={id} />
+    </Suspense>
+  );
+}
+
+function ContentDetailFallback() {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <div className="space-y-2">
+        <Skeleton className="h-6 w-full max-w-80" />
+        <Skeleton className="h-4 w-full max-w-96" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <Panel as="div" key={index} className="p-3.5">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="mt-3 h-6 w-16" />
+          </Panel>
+        ))}
+      </div>
+      <Panel>
+        <div className="space-y-3 p-4 sm:p-5">
+          {Array.from({ length: 5 }, (_, index) => (
+            <Skeleton key={index} className="h-8 w-full" />
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
 }

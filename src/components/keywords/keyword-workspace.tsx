@@ -37,6 +37,7 @@ import {
 } from "@/lib/mock/keywords";
 import { contentForKeyword } from "@/lib/mock/content";
 import { BATTLE_META, overlapForKeyword } from "@/lib/mock/competitors";
+import { AiReadinessNote } from "@/components/keywords/ai-readiness-note";
 import { TechnicalWarning } from "@/components/keywords/technical-warning";
 import { RankChart } from "@/components/keywords/rank-chart";
 import {
@@ -274,6 +275,14 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
       </Panel>
 
       {contentPiece && <TechnicalWarning contentId={contentPiece.id} />}
+
+      {contentPiece && (
+        <AiReadinessNote
+          contentId={contentPiece.id}
+          aiOverviewPresent={keyword.ai.aiOverviewPresent}
+          answerability={keyword.ai.answerability}
+        />
+      )}
 
       <MetricTileGrid metrics={metrics} />
 

@@ -6,14 +6,25 @@ import { Meter } from "@/components/ui/meter";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { TrendIndicator } from "@/components/ui/trend-indicator";
 import { formatCompact, formatNumber, formatPercent } from "@/lib/format";
+import {
+  AI_SOURCE_SHORT,
+  getAiSnapshotCounts,
+} from "@/lib/mock/ai-visibility";
 import type { AiEngineStatus, AiVisibilitySnapshot as Snapshot } from "@/types/dashboard";
 
 /**
- * Visibility inside AI answers and generative engines.
+ * Readiness for AI answers and generative engines.
  *
  * Given as its own panel rather than a row in the organic reporting: answer
  * engines are a separate surface with their own mechanics, and this product is
  * built for that era of search.
+ *
+ * The countable figures are read from the AI Visibility module, so this panel
+ * and that module never quote different numbers for the same project. Every
+ * one of them is a readiness reading over our own content — this product has
+ * no connection to any answer engine, so it cannot and does not report what
+ * those engines actually did. The per-engine list below is a modelled
+ * projection of where readiness would pay off first, labelled as such.
  */
 
 const ENGINE_TONE: Record<AiEngineStatus, BadgeTone> = {
@@ -30,33 +41,48 @@ const ENGINE_LABEL: Record<AiEngineStatus, string> = {
   "at-risk": "At risk",
 };
 
-export function AiVisibilitySnapshot({ snapshot }: { snapshot: Snapshot }) {
-  const eligibleShare = (snapshot.eligiblePages / snapshot.totalPages) * 100;
+export function AiVisibilitySnapshot({
+  snapshot,
+  /** Scopes the derived figures and the link into the module. */
+  projectId,
+}: {
+  snapshot: Snapshot;
+  projectId: string;
+}) {
+  const counts = getAiSnapshotCounts(projectId);
+  const readyShare =
+    counts.pages === 0 ? 0 : (counts.readyPages / counts.pages) * 100;
+  const href =
+    projectId === "portfolio"
+      ? "/ai-visibility"
+      : `/ai-visibility?project=${projectId}`;
 
   const metrics = [
     {
-      id: "citation-presence",
-      label: "Citation presence",
-      value: formatPercent(snapshot.citationPresence),
-      detail: "of tracked prompts cite the brand as a source",
+      id: "ready-pages",
+      label: "AI-ready pages",
+      value: `${formatNumber(counts.readyPages)} / ${formatNumber(counts.pages)}`,
+      detail: "score at or above the ready threshold",
     },
     {
-      id: "brand-mentions",
-      label: "Brand mentions",
-      value: formatCompact(snapshot.brandMentions),
-      detail: "across all tracked answer engines",
+      id: "high-priority",
+      label: "High-priority jobs",
+      value: formatNumber(counts.highPriority),
+      detail: `of ${counts.opportunities} in the AI queue`,
     },
     {
-      id: "answer-coverage",
-      label: "Answer coverage",
-      value: formatPercent(snapshot.answerCoverage),
-      detail: "average presence across the engine set",
+      id: "weakest",
+      label: "Weakest dimension",
+      value: counts.weakest ? String(counts.weakest.score) : "—",
+      detail: counts.weakest
+        ? `${counts.weakest.label.toLowerCase()} is holding the score down`
+        : "nothing in scope to read",
     },
     {
-      id: "entity-strength",
-      label: "Entity strength",
-      value: `${snapshot.entityStrength} / 100`,
-      detail: "how well the brand is modelled as an entity",
+      id: "unsupported",
+      label: "Unsupported claims",
+      value: formatNumber(counts.unsupportedClaims),
+      detail: "modelled assertions with nothing behind them",
     },
   ];
 
@@ -64,12 +90,12 @@ export function AiVisibilitySnapshot({ snapshot }: { snapshot: Snapshot }) {
     <Panel className="flex h-full flex-col">
       <PanelHeader
         eyebrow="Generative search"
-        title="AI Search & GEO Visibility"
-        description="Presence, citations, and answer-readiness across the engines that answer instead of linking."
+        title="AI Search & GEO Readiness"
+        description="How ready our content is to be understood, used, and quoted by the engines that answer instead of linking."
         actions={
           <Badge tone="accent" dot>
             <Icon name="sparkles" className="h-3 w-3" />
-            {formatNumber(snapshot.opportunities)} opportunities
+            {formatNumber(counts.opportunities)} opportunities
           </Badge>
         }
       />
@@ -77,30 +103,32 @@ export function AiVisibilitySnapshot({ snapshot }: { snapshot: Snapshot }) {
       <PanelBody className="border-b border-border">
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div>
+            {/* No trend beside this number: the score is derived from a single
+                snapshot of our own content, and this module has no time series
+                behind it. An arrow here would be an invented history. */}
             <p className="text-[11.5px] font-medium tracking-[0.03em] text-fg-muted uppercase">
               AI visibility score
             </p>
             <p className="mt-2 flex items-baseline gap-2">
               <span className="tabular text-[30px] leading-none font-semibold tracking-tight text-fg">
-                {snapshot.score}
+                {counts.visibility}
               </span>
               <span className="text-[12.5px] text-fg-subtle">/ 100</span>
-              <TrendIndicator value={snapshot.trend.value} />
             </p>
           </div>
 
           <div className="min-w-[180px]">
             <div className="flex items-center justify-between text-[11.5px]">
-              <span className="text-fg-subtle">Content eligible for AI answers</span>
+              <span className="text-fg-subtle">Pages ready to be quoted</span>
               <span className="tabular text-fg-muted">
-                {formatNumber(snapshot.eligiblePages)} / {formatNumber(snapshot.totalPages)}
+                {formatPercent(readyShare, 0)}
               </span>
             </div>
             <Meter
               className="mt-2"
-              value={eligibleShare}
-              tone={eligibleShare >= 50 ? "positive" : eligibleShare >= 30 ? "accent" : "warning"}
-              label="Share of pages eligible for AI answers"
+              value={readyShare}
+              tone={readyShare >= 50 ? "positive" : readyShare >= 30 ? "accent" : "warning"}
+              label="Share of published pages at or above the AI-ready threshold"
             />
           </div>
         </div>
@@ -124,6 +152,10 @@ export function AiVisibilitySnapshot({ snapshot }: { snapshot: Snapshot }) {
       </PanelBody>
 
       <div className="flex-1">
+        <p className="border-b border-border px-4 py-2.5 text-[11px] leading-snug text-fg-subtle sm:px-5">
+          Where readiness would pay off first, projected per engine. These are
+          modelled from our own content, not measured from any engine.
+        </p>
         <ul className="divide-y divide-border">
           {snapshot.engines.map((engine) => (
             <li
@@ -141,10 +173,10 @@ export function AiVisibilitySnapshot({ snapshot }: { snapshot: Snapshot }) {
                 </div>
                 <div className="flex items-center gap-3.5 text-[11.5px] text-fg-subtle">
                   <span className="tabular">
-                    {formatCompact(engine.citations)} citations
+                    {formatCompact(engine.citations)} projected citations
                   </span>
                   <span className="tabular">
-                    {formatCompact(engine.mentions)} mentions
+                    {formatCompact(engine.mentions)} projected mentions
                   </span>
                   <TrendIndicator value={engine.trend.value} />
                 </div>
@@ -171,8 +203,13 @@ export function AiVisibilitySnapshot({ snapshot }: { snapshot: Snapshot }) {
       </div>
 
       <PanelFooter>
-        <span>Per-prompt tracking arrives with the AI Visibility module.</span>
-        <Link href="/ai-visibility" className={buttonClasses("secondary", "sm")}>
+        <span>
+          {counts.topOpportunity
+            ? `${counts.topOpportunity.title} is the first thing to do, across ${counts.opportunities} jobs.`
+            : `Nothing outstanding across these ${counts.pages} pages.`}{" "}
+          {AI_SOURCE_SHORT}
+        </span>
+        <Link href={href} className={buttonClasses("secondary", "sm")}>
           Open AI Visibility
           <Icon name="arrow-right" className="h-4 w-4" />
         </Link>

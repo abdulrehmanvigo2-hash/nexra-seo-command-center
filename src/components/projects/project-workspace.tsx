@@ -21,6 +21,7 @@ import { getProjectDetail } from "@/lib/mock/projects";
 import { ProjectCompetitors, type PendingCompetitor } from "@/components/projects/project-competitors";
 import { ProjectDetailHeader } from "@/components/projects/project-detail-header";
 import { ProjectIssues } from "@/components/projects/project-issues";
+import { ProjectAiStrip } from "@/components/projects/project-ai-strip";
 import { ProjectMetrics } from "@/components/projects/project-metrics";
 import { ProjectNotes } from "@/components/projects/project-notes";
 import { ProjectSettingsPanel } from "@/components/projects/project-settings";
@@ -260,6 +261,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             </section>
 
             <ProjectMetrics metrics={detail.metrics} />
+
+            <ProjectAiStrip projectId={detail.project.id} />
 
             <div className="grid gap-4 xl:grid-cols-3">
               <div className="xl:col-span-2">
