@@ -152,6 +152,7 @@ export function CommandCenter() {
         <TechnicalSnapshot
           snapshot={snapshot.technical}
           referenceIso={snapshot.generatedAt}
+          projectId={projectId}
         />
         <AiVisibilitySnapshot snapshot={snapshot.aiVisibility} />
       </div>

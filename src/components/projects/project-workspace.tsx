@@ -334,6 +334,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <TechnicalSnapshot
             snapshot={detail.technical}
             referenceIso={detail.generatedAt}
+            projectId={detail.project.id}
           />
         )}
 

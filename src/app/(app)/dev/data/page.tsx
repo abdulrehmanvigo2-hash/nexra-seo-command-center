@@ -19,6 +19,10 @@ import {
   getCompetitorDatasetCounts,
   getCompetitorRecords,
 } from "@/lib/mock/competitors";
+import {
+  getTechnicalDatasetCounts,
+  getTechnicalPages,
+} from "@/lib/mock/technical";
 
 export const metadata: Metadata = {
   title: "Mock Data",
@@ -114,6 +118,33 @@ const DATASETS: readonly Dataset[] = [
 const COMPETITOR_COUNTS = getCompetitorDatasetCounts();
 const COMPETITOR_SAMPLE = getCompetitorRecords()[0];
 
+/**
+ * The derived Technical SEO layer.
+ *
+ * Nothing here is authored either: the page inventory is the published content
+ * records read technically, and every finding is a rule run over them. The
+ * integrity list is the check that matters — each entry it can return is a way
+ * this layer could contradict the canonical one it was built from, so an empty
+ * list is the passing result.
+ */
+const TECHNICAL_COUNTS = getTechnicalDatasetCounts();
+const TECHNICAL_SAMPLE = getTechnicalPages()[0];
+
+const TECHNICAL_GROUPS: readonly {
+  readonly label: string;
+  readonly counts: Readonly<Record<string, number>>;
+}[] = [
+  { label: "Page severity", counts: TECHNICAL_COUNTS.bySeverity },
+  { label: "Crawl state", counts: TECHNICAL_COUNTS.byCrawlState },
+  { label: "Index status", counts: TECHNICAL_COUNTS.byIndexStatus },
+  { label: "Indexability", counts: TECHNICAL_COUNTS.byIndexability },
+  { label: "Canonical", counts: TECHNICAL_COUNTS.byCanonical },
+  { label: "Core Web Vitals", counts: TECHNICAL_COUNTS.byCwv },
+  { label: "Structured data", counts: TECHNICAL_COUNTS.bySchema },
+  { label: "Findings by category", counts: TECHNICAL_COUNTS.byCategory },
+  { label: "Findings by check", counts: TECHNICAL_COUNTS.byIssueType },
+];
+
 const TOTAL_RECORDS = DATASETS.reduce(
   (total, dataset) => total + dataset.records,
   0,
@@ -187,6 +218,84 @@ export default function MockDataInspectorPage() {
           {COMPETITOR_SAMPLE && (
             <pre className="mt-4 max-h-96 overflow-auto rounded-md border border-border bg-canvas p-3 font-mono text-[11px] leading-relaxed text-fg-muted">
               {JSON.stringify(COMPETITOR_SAMPLE, null, 2)}
+            </pre>
+          )}
+        </PanelBody>
+      </Panel>
+
+      <Panel className="mt-6">
+        <PanelHeader
+          eyebrow="Derived"
+          title="Technical SEO"
+          description="The published content inventory read technically, plus every finding the registry raises over it. Nothing in this layer is authored."
+          actions={
+            <Badge
+              tone={TECHNICAL_COUNTS.integrity.length === 0 ? "positive" : "critical"}
+            >
+              {TECHNICAL_COUNTS.integrity.length === 0
+                ? "Integrity: clean"
+                : `Integrity: ${TECHNICAL_COUNTS.integrity.length} findings`}
+            </Badge>
+          }
+        />
+        <PanelBody>
+          <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {[
+              { label: "Pages", count: TECHNICAL_COUNTS.pages },
+              { label: "Findings", count: TECHNICAL_COUNTS.issues },
+              { label: "Projects", count: TECHNICAL_COUNTS.projects },
+              { label: "Clusters", count: TECHNICAL_COUNTS.clusters },
+            ].map((entry) => (
+              <div
+                key={entry.label}
+                className="rounded-md border border-border bg-surface-raised px-3 py-2.5"
+              >
+                <dt className="text-[11px] text-fg-subtle">{entry.label}</dt>
+                <dd className="tabular mt-1 text-[18px] leading-none font-semibold text-fg">
+                  {entry.count}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          {TECHNICAL_COUNTS.integrity.length > 0 && (
+            <ul className="mt-4 space-y-1 rounded-md border border-critical/30 bg-critical/10 p-3 text-[11.5px] text-critical">
+              {TECHNICAL_COUNTS.integrity.map((finding) => (
+                <li key={finding}>{finding}</li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {TECHNICAL_GROUPS.map((group) => (
+              <div key={group.label} className="min-w-0">
+                <p className="text-[11px] font-semibold tracking-[0.06em] text-fg-subtle uppercase">
+                  {group.label}
+                </p>
+                <ul className="mt-1.5 space-y-1">
+                  {Object.entries(group.counts)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([key, count]) => (
+                      <li
+                        key={key}
+                        className="flex items-baseline justify-between gap-3 text-[11.5px]"
+                      >
+                        <span className="min-w-0 truncate text-fg-muted">
+                          {key}
+                        </span>
+                        <span className="tabular shrink-0 font-semibold text-fg">
+                          {count}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+
+          {TECHNICAL_SAMPLE && (
+            <pre className="mt-4 max-h-96 overflow-auto rounded-md border border-border bg-canvas p-3 font-mono text-[11px] leading-relaxed text-fg-muted">
+              {JSON.stringify(TECHNICAL_SAMPLE, null, 2)}
             </pre>
           )}
         </PanelBody>

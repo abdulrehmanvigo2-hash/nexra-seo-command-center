@@ -110,13 +110,13 @@ export function Sidebar({
               </span>
             </div>
             <p className="mt-1 text-[11px] leading-snug text-fg-subtle">
-              Phase 7 · Competitor Intelligence
+              Phase 8 · Technical SEO
             </p>
           </div>
         ) : (
           <div
             className="mx-auto h-1.5 w-1.5 rounded-full bg-warning"
-            title="Mock data — Phase 7, Competitor Intelligence"
+            title="Mock data — Phase 8, Technical SEO"
           />
         )}
       </div>

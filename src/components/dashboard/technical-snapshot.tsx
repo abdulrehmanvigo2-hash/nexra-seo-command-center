@@ -5,15 +5,20 @@ import { Meter } from "@/components/ui/meter";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { TrendIndicator } from "@/components/ui/trend-indicator";
 import { cn } from "@/lib/cn";
-import { formatCompact, formatRelative } from "@/lib/format";
+import { formatCompact, formatPercent, formatRelative } from "@/lib/format";
+import { getTechnicalSnapshotCounts } from "@/lib/mock/technical";
 import type { CheckStatus, TechnicalSnapshot as Snapshot } from "@/types/dashboard";
 
 /**
  * Compact site-health view.
  *
- * The full diagnostics live in the Technical SEO module, which is built in its
- * own phase; this panel links there rather than duplicating it. Severity is
- * shown as a dot plus a word, never as colour alone.
+ * The headline score and the countable figures are read from the Technical SEO
+ * module, so this panel and that module never quote different numbers for the
+ * same site. The vitals and the named checks below remain this dashboard's own
+ * qualitative summary; the full diagnostics live in the module, and the footer
+ * links into it scoped to the project on screen.
+ *
+ * Severity is shown as a dot plus a word, never as colour alone.
  */
 
 const STATUS_DOT: Record<CheckStatus, string> = {
@@ -37,16 +42,16 @@ const STATUS_LABEL: Record<CheckStatus, string> = {
 export function TechnicalSnapshot({
   snapshot,
   referenceIso,
+  /** Scopes the derived figures and the link into the module. */
+  projectId,
 }: {
   snapshot: Snapshot;
   referenceIso: string;
+  projectId: string;
 }) {
-  const critical = snapshot.checks.filter(
-    (check) => check.status === "critical",
-  ).length;
-  const warnings = snapshot.checks.filter(
-    (check) => check.status === "warning",
-  ).length;
+  const counts = getTechnicalSnapshotCounts(projectId);
+  const href =
+    projectId === "portfolio" ? "/technical" : `/technical?project=${projectId}`;
 
   return (
     <Panel className="flex h-full flex-col">
@@ -64,7 +69,7 @@ export function TechnicalSnapshot({
             </p>
             <p className="mt-2 flex items-baseline gap-2">
               <span className="tabular text-[30px] leading-none font-semibold tracking-tight text-fg">
-                {snapshot.score}
+                {counts.health}
               </span>
               <span className="text-[12.5px] text-fg-subtle">/ 100</span>
               <TrendIndicator value={snapshot.trend.value} />
@@ -73,21 +78,21 @@ export function TechnicalSnapshot({
 
           <dl className="flex items-center gap-5 text-[12px]">
             <div>
-              <dt className="text-fg-subtle">Critical</dt>
+              <dt className="text-fg-subtle">Critical issues</dt>
               <dd className="tabular mt-0.5 text-[15px] font-semibold text-critical">
-                {critical}
+                {counts.criticalIssues}
               </dd>
             </div>
             <div>
-              <dt className="text-fg-subtle">Warnings</dt>
+              <dt className="text-fg-subtle">Pages affected</dt>
               <dd className="tabular mt-0.5 text-[15px] font-semibold text-warning">
-                {warnings}
+                {counts.affectedPages}
               </dd>
             </div>
             <div>
-              <dt className="text-fg-subtle">Passing</dt>
+              <dt className="text-fg-subtle">Indexed</dt>
               <dd className="tabular mt-0.5 text-[15px] font-semibold text-positive">
-                {snapshot.checks.length - critical - warnings}
+                {counts.indexed}
               </dd>
             </div>
           </dl>
@@ -95,14 +100,21 @@ export function TechnicalSnapshot({
 
         <Meter
           className="mt-3.5"
-          value={snapshot.score}
+          value={counts.health}
           tone={
-            snapshot.score >= 75 ? "positive"
-            : snapshot.score >= 55 ? "warning"
+            counts.health >= 75 ? "positive"
+            : counts.health >= 55 ? "warning"
             : "critical"
           }
-          label={`Technical health: ${snapshot.score} out of 100`}
+          label={`Technical health: ${counts.health} out of 100`}
         />
+
+        <p className="mt-2.5 text-[11.5px] text-fg-subtle">
+          Of the {counts.pages} pages in the published content inventory,{" "}
+          {counts.crawlable} are crawlable and{" "}
+          {formatPercent(counts.coverage, 0)} of the indexable ones are in the
+          index.
+        </p>
       </PanelBody>
 
       <PanelBody className="border-b border-border">
@@ -175,8 +187,12 @@ export function TechnicalSnapshot({
       </div>
 
       <PanelFooter>
-        <span>Full diagnostics arrive with the Technical SEO module.</span>
-        <Link href="/technical" className={buttonClasses("secondary", "sm")}>
+        <span>
+          {counts.topIssue
+            ? `${counts.topIssue.label} is the first thing to fix, across ${counts.openIssues} open findings.`
+            : `Nothing is open against these ${counts.pages} URLs.`}
+        </span>
+        <Link href={href} className={buttonClasses("secondary", "sm")}>
           Open Technical SEO
           <Icon name="arrow-right" className="h-4 w-4" />
         </Link>
