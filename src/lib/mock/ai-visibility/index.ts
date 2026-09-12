@@ -12,6 +12,8 @@ import {
   DIMENSION_ORDER,
   READY_THRESHOLD,
   bandFor,
+  SEVERITY_ORDER,
+  SEVERITY_RANK,
   mean,
   ratio,
   visibilityScore,
@@ -35,6 +37,7 @@ import {
   getEntityRelations,
   relationBandFor,
 } from "@/lib/mock/ai-visibility/relationships";
+import { getAllBriefRequirements } from "@/lib/mock/ai-visibility/brief-requirements";
 import { EXPANSION_PATTERNS, getKeywordRecord } from "@/lib/mock/keywords";
 import { getAiTopics, topicsForProject } from "@/lib/mock/ai-visibility/topics";
 import { AI_RANGE } from "@/lib/mock/ai-visibility/pages";
@@ -77,6 +80,11 @@ export {
   getAiPage,
   getAiPages,
 } from "@/lib/mock/ai-visibility/gaps";
+
+export {
+  briefRequirementsFor,
+  getAllBriefRequirements,
+} from "@/lib/mock/ai-visibility/brief-requirements";
 
 export {
   CO_PRESENCE_FLOOR,
@@ -157,6 +165,10 @@ export {
   RELATION_KIND_ORDER,
   RELATION_NOTE,
   RELATION_NOTE_SHORT,
+  REQUIREMENT_KIND_META,
+  REQUIREMENT_KIND_ORDER,
+  REQUIREMENT_NOTE,
+  REQUIREMENT_STATUS_META,
   READINESS_META,
   READINESS_ORDER,
   SEVERITY_META,
@@ -600,6 +612,8 @@ export function getAiDatasetCounts(): AiDatasetCounts {
   const branches = getFanOutBranches();
   const relations = getEntityRelations();
   const connectivity = getEntityConnectivity();
+  const briefs = getAllBriefRequirements();
+  const requirements = briefs.flatMap((entry) => entry.requirements);
 
   const pageIds = new Set(pages.map((page) => page.id));
   const clusterIds = new Set(topics.map((topic) => topic.clusterId));
@@ -1110,6 +1124,161 @@ export function getAiDatasetCounts(): AiDatasetCounts {
     "No entity relationship rests on direct evidence",
   );
 
+  // -- Brief requirements -------------------------------------------------
+  // Every finding here is a way a requirement could point at nothing, point at
+  // another project's record, or contradict the state it reports.
+  const requirementIds = new Set(requirements.map((entry) => entry.id));
+  if (requirementIds.size !== requirements.length) {
+    integrity.push(
+      `Duplicate brief requirement ids: ${requirements.length - requirementIds.size}`,
+    );
+  }
+
+  const contentIds = new Set(pages.map((page) => page.contentId));
+  const entityIdSet = new Set(entities.map((entity) => entity.id));
+  const relationIdSet = new Set(relations.map((entry) => entry.id));
+  const gapIdSet = new Set(gaps.map((gap) => gap.id));
+
+  for (const brief of briefs) {
+    if (brief.requirements.length === 0) {
+      integrity.push(`${brief.contentId}: requirements record with no rows`);
+    }
+    if (!clusterIds.has(brief.clusterId)) {
+      integrity.push(`${brief.contentId}: requirements on an unknown cluster`);
+    }
+    if (brief.pageId !== null && !pageIds.has(brief.pageId)) {
+      integrity.push(`${brief.contentId}: requirements on an unknown page`);
+    }
+
+    const counted =
+      brief.byKind.evidence +
+      brief.byKind.entity +
+      brief.byKind["fan-out"] +
+      brief.byKind.answer;
+    if (counted !== brief.requirements.length) {
+      integrity.push(`${brief.contentId}: requirement kinds do not sum`);
+    }
+    if (brief.outstanding + brief.partlyMet !== brief.requirements.length) {
+      integrity.push(`${brief.contentId}: requirement statuses do not sum`);
+    }
+
+    // The readiness state is the worst severity among the unresolved rows —
+    // which is all of them, since a met requirement is never listed. Checked
+    // by finding the highest rank present rather than by re-running the
+    // reducer that produced it: a check written the same way as the code
+    // agrees with the code even when the code is wrong, which is exactly how
+    // an inverted comparator survived here once already.
+    const highest = brief.requirements.reduce(
+      (carry, entry) => Math.max(carry, SEVERITY_RANK[entry.severity]),
+      0,
+    );
+    const expected =
+      brief.requirements.length === 0
+        ? null
+        : (SEVERITY_ORDER.find(
+            (severity) => SEVERITY_RANK[severity] === highest,
+          ) ?? null);
+    if (brief.worstUnresolved !== expected) {
+      integrity.push(
+        `${brief.contentId}: readiness disagrees with its unresolved rows`,
+      );
+    }
+
+    // Caps never hide an outage: `trim` rescues every critical that falls
+    // outside its cap, so the guarantee holds by construction rather than by
+    // assertion. What is checkable here is that a brief reporting trimmed rows
+    // still shows its worst severity, which the readiness check above covers.
+
+    for (const requirement of brief.requirements) {
+      if (requirement.contentId !== brief.contentId) {
+        integrity.push(`${requirement.id}: attached to the wrong brief`);
+      }
+      if (requirement.projectId !== brief.projectId) {
+        integrity.push(`${requirement.id}: crosses projects`);
+      }
+      if (requirement.sourceId.length === 0) {
+        integrity.push(`${requirement.id}: no source record`);
+      }
+      if (requirement.provenance !== "derived") {
+        integrity.push(`${requirement.id}: unexpected provenance`);
+      }
+
+      // Each kind must resolve to a record of its own type.
+      if (requirement.kind === "entity") {
+        const resolves =
+          (requirement.entityId !== null &&
+            entityIdSet.has(requirement.entityId)) ||
+          relationIdSet.has(requirement.sourceId);
+        if (!resolves) {
+          integrity.push(`${requirement.id}: entity requirement resolves to nothing`);
+        }
+      }
+      if (requirement.kind === "fan-out") {
+        if (
+          requirement.branchId === null ||
+          !branchIds.has(requirement.branchId)
+        ) {
+          integrity.push(`${requirement.id}: fan-out requirement has no branch`);
+        }
+        if (requirement.branchCoverage === "covered") {
+          integrity.push(`${requirement.id}: requirement on a covered branch`);
+        }
+      }
+      if (requirement.kind === "evidence" && requirement.evidenceKind === null) {
+        integrity.push(`${requirement.id}: evidence requirement names no kind`);
+      }
+      if (
+        requirement.kind === "answer" &&
+        requirement.sourceId.endsWith("-answer") === false &&
+        !gapIdSet.has(requirement.sourceId.replace(/^req-.*-gap-/, ""))
+      ) {
+        // Answer requirements come either from a page's own answer reading or
+        // from a canonical gap; anything else is unsourced.
+        const fromGap = gaps.some((gap) => requirement.id.includes(gap.id));
+        if (!fromGap) {
+          integrity.push(`${requirement.id}: answer requirement is unsourced`);
+        }
+      }
+
+      // No severity/status combination is impossible, and an earlier version
+      // of this pass wrongly said one was: a fan-out branch whose demand is
+      // tracked but unbuilt is `partly-met`, and it can easily be critical.
+      // What is checkable is that the pair is one the vocabulary allows.
+      if (
+        requirement.status !== "outstanding" &&
+        requirement.status !== "partly-met"
+      ) {
+        integrity.push(`${requirement.id}: unknown requirement status`);
+      }
+    }
+  }
+
+  const briefContentIds = new Set(briefs.map((entry) => entry.contentId));
+  for (const contentId of briefContentIds) {
+    if (
+      !contentIds.has(contentId) &&
+      briefs.find((entry) => entry.contentId === contentId)?.pageId !== null
+    ) {
+      integrity.push(`${contentId}: requirements claim a page that is not ours`);
+    }
+  }
+
+  note(
+    requirements.length > 0 &&
+      new Set(requirements.map((entry) => entry.kind)).size < 3,
+    "Brief requirement kinds are too narrow to be useful",
+  );
+  note(
+    requirements.length > 0 &&
+      new Set(requirements.map((entry) => entry.severity)).size < 2,
+    "Brief requirement severities are uniform",
+  );
+  note(
+    briefs.length > 5 &&
+      new Set(briefs.map((entry) => entry.requirements.length)).size < 3,
+    "Every brief carries the same number of requirements",
+  );
+
   return {
     pages: pages.length,
     topics: topics.length,
@@ -1148,6 +1317,14 @@ export function getAiDatasetCounts(): AiDatasetCounts {
     byRelationBand: tally(relations.map((entry) => entry.band)),
     byRelationConfidence: tally(relations.map((entry) => entry.confidence)),
     distinctDegrees: new Set(connectivity.map((entry) => entry.degree)).size,
+    briefsWithRequirements: briefs.length,
+    requirements: requirements.length,
+    byRequirementKind: tally(requirements.map((entry) => entry.kind)),
+    byRequirementStatus: tally(requirements.map((entry) => entry.status)),
+    byRequirementSeverity: tally(requirements.map((entry) => entry.severity)),
+    distinctRequirementCounts: new Set(
+      briefs.map((entry) => entry.requirements.length),
+    ).size,
     distinctVisibilityScores,
     integrity,
   };

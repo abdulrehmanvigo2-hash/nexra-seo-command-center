@@ -42,6 +42,7 @@ import {
   unintendedKeywordsFor,
 } from "@/lib/mock/content";
 import { BriefDocument } from "@/components/content/brief-document";
+import { BriefRequirementsSection } from "@/components/content/brief-requirements";
 import {
   ChangeValue,
   ContentLink,
@@ -947,7 +948,10 @@ export function ContentWorkspace({ contentId }: { contentId: string }) {
 
         {tab === "brief" &&
           (brief ? (
-            <BriefDocument brief={brief} eyebrow="Brief for this piece" />
+            <div className="space-y-4">
+              <BriefDocument brief={brief} eyebrow="Brief for this piece" />
+              <BriefRequirementsSection contentId={record.id} />
+            </div>
           ) : (
             <Panel>
               <EmptyState

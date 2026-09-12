@@ -746,6 +746,107 @@ export type AiGapRecord = {
 };
 
 // ---------------------------------------------------------------------------
+// Brief requirements
+// ---------------------------------------------------------------------------
+
+/** Which part of the answer-engine picture a requirement comes from. */
+export type RequirementKind = "evidence" | "entity" | "fan-out" | "answer";
+
+/**
+ * How far along a requirement already is.
+ *
+ * Two states, not three. A requirement that is fully met is not listed at all
+ * — the section is a list of work, and printing satisfied rows would bury the
+ * outstanding ones. There is therefore no `met` member to be shown by
+ * mistake.
+ */
+export type RequirementStatus = "outstanding" | "partly-met";
+
+/**
+ * One thing a brief has to deliver, derived from a canonical finding.
+ *
+ * Every requirement resolves to a record that already exists somewhere: an
+ * evidence kind the page's format expects, an entity in the semantic model, a
+ * fan-out branch, or an answer-readiness gap. Nothing here is generated to
+ * fill the section out.
+ */
+export type BriefRequirement = {
+  readonly id: string;
+  readonly kind: RequirementKind;
+  readonly status: RequirementStatus;
+  readonly severity: AiSeverity;
+
+  /** What the brief has to do, in the imperative. */
+  readonly title: string;
+  /** Why an answer engine cares. */
+  readonly why: string;
+  /** How to do it in the content. */
+  readonly treatment: string;
+
+  readonly projectId: string;
+  readonly contentId: string;
+
+  /** The module that raised it, for the reader to check against. */
+  readonly sourceModule: string;
+  readonly sourceHref: string | null;
+  /** The canonical or derived record this resolves to. Never empty. */
+  readonly sourceId: string;
+
+  /** Set on an evidence requirement. */
+  readonly evidenceKind: EvidenceKind | null;
+  /** Set on an entity requirement. */
+  readonly entityId: string | null;
+  readonly entityName: string | null;
+  readonly entityType: EntityType | null;
+  /** Set on a fan-out requirement. */
+  readonly branchId: string | null;
+  readonly branchQuestion: string | null;
+  readonly branchIntent: KeywordIntent | null;
+  readonly branchCoverage: BranchCoverage | null;
+  /** The canonical gap vocabulary, where one applies. */
+  readonly gapKind: AiGapKind | null;
+
+  readonly owner: AgentId;
+  readonly provenance: AiProvenance;
+};
+
+/** Everything the requirements section on one brief renders. */
+export type BriefRequirements = {
+  readonly contentId: string;
+  readonly briefId: string;
+  readonly title: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  /** The cluster the brief is written against. */
+  readonly clusterId: string;
+  readonly clusterName: string;
+  /** The AI page for this piece, or null where it is not published yet. */
+  readonly pageId: string | null;
+
+  readonly requirements: readonly BriefRequirement[];
+  readonly byKind: Readonly<Record<RequirementKind, number>>;
+  readonly outstanding: number;
+  readonly partlyMet: number;
+  /**
+   * The worst severity among everything still unresolved.
+   *
+   * Counted over every listed requirement, not only the `outstanding` ones.
+   * A `partly-met` row is unresolved too — something is present and
+   * insufficient — and reading only the outstanding ones hid a critical
+   * behind a headline of "high", which is the sort of summary that makes a
+   * reader stop trusting the section.
+   *
+   * Deliberately the existing severity vocabulary rather than a new readiness
+   * score: the state of a brief is the state of its worst unresolved
+   * requirement, and a fresh 0-100 index over that would be a second opinion
+   * with nothing behind it.
+   */
+  readonly worstUnresolved: AiSeverity | null;
+  /** Requirements trimmed by the per-kind caps. Never includes a critical. */
+  readonly trimmed: number;
+};
+
+// ---------------------------------------------------------------------------
 // Opportunities
 // ---------------------------------------------------------------------------
 
@@ -859,6 +960,13 @@ export type AiDatasetCounts = {
   readonly byRelationConfidence: Readonly<Record<string, number>>;
   /** Distinct entity degrees, as a check against a uniform graph. */
   readonly distinctDegrees: number;
+  readonly briefsWithRequirements: number;
+  readonly requirements: number;
+  readonly byRequirementKind: Readonly<Record<string, number>>;
+  readonly byRequirementStatus: Readonly<Record<string, number>>;
+  readonly byRequirementSeverity: Readonly<Record<string, number>>;
+  /** Distinct requirement counts per brief, as a check against a flat set. */
+  readonly distinctRequirementCounts: number;
   /** Distinct visibility scores, as a check against a flat dataset. */
   readonly distinctVisibilityScores: number;
   /** Findings the integrity pass raised. Empty is the passing result. */

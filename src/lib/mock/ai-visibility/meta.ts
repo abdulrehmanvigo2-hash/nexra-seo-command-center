@@ -18,6 +18,8 @@ import type {
   GainSignal,
   ReadinessBand,
   RelationBand,
+  RequirementKind,
+  RequirementStatus,
   RelationEvidence,
   RelationKind,
   TopicCoverageState,
@@ -438,6 +440,70 @@ export const RELATION_BAND_META: Readonly<Record<RelationBand, AiStateMeta>> = {
     tone: "critical",
     description:
       "Nothing of ours establishes this entity alongside anything else, so it reads as a term rather than a thing in a model.",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Brief requirements
+// ---------------------------------------------------------------------------
+
+/** Stated on the requirements section of a brief. */
+export const REQUIREMENT_NOTE =
+  "Every requirement below resolves to a record that already exists — an evidence kind this page's format is expected to carry, an entity in the semantic model, a fan-out sub-question, or a gap raised against the page. Nothing here is generated to fill the section out, and a brief with nothing outstanding shows no section at all.";
+
+export const REQUIREMENT_KIND_ORDER: readonly RequirementKind[] = [
+  "evidence",
+  "entity",
+  "fan-out",
+  "answer",
+];
+
+export const REQUIREMENT_KIND_META: Readonly<
+  Record<RequirementKind, AiKindMeta & { heading: string }>
+> = {
+  evidence: {
+    label: "Evidence",
+    heading: "What this has to prove",
+    icon: "shield",
+    description:
+      "Support the page has to carry before a claim on it can be lifted and attributed.",
+  },
+  entity: {
+    label: "Entities",
+    heading: "What this has to establish",
+    icon: "layers",
+    description:
+      "Things the topic depends on that this piece has to name, define, or connect.",
+  },
+  "fan-out": {
+    label: "Sub-questions",
+    heading: "What this has to answer",
+    icon: "split",
+    description:
+      "Branches of the topic's fan-out that nothing of ours settles yet.",
+  },
+  answer: {
+    label: "Answer readiness",
+    heading: "What this has to answer directly",
+    icon: "flag",
+    description:
+      "Questions the page already targets without answering them in a liftable form.",
+  },
+};
+
+export const REQUIREMENT_STATUS_META: Readonly<
+  Record<RequirementStatus, AiStateMeta>
+> = {
+  outstanding: {
+    label: "Outstanding",
+    tone: "critical",
+    description: "Nothing of this is present yet.",
+  },
+  "partly-met": {
+    label: "Partly met",
+    tone: "warning",
+    description:
+      "Present and insufficient — the thing exists, the support or clarity does not.",
   },
 };
 

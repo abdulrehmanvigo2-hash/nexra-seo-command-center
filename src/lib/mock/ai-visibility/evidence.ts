@@ -33,8 +33,14 @@ import type { ContentRecord } from "@/types/content";
  * figures appear.
  */
 
-/** Which evidence kinds a page format plausibly carries. */
-const KIND_AFFINITY: Readonly<Record<string, readonly EvidenceKind[]>> = {
+/**
+ * Which evidence kinds a page format plausibly carries.
+ *
+ * Exported because a brief needs the same list: the evidence a writer should
+ * be told to gather is exactly the evidence this page's format is expected to
+ * carry and does not yet. A second list would be a second opinion.
+ */
+export const KIND_AFFINITY: Readonly<Record<string, readonly EvidenceKind[]>> = {
   guide: ["example", "methodology", "data-point", "external-authority", "expert-quote"],
   comparison: ["data-point", "example", "external-authority", "original-insight"],
   landing: ["product-proof", "first-party", "example"],
