@@ -30,6 +30,11 @@ import {
   getFanOut,
   getFanOutBranches,
 } from "@/lib/mock/ai-visibility/fan-out";
+import {
+  getEntityConnectivity,
+  getEntityRelations,
+  relationBandFor,
+} from "@/lib/mock/ai-visibility/relationships";
 import { EXPANSION_PATTERNS, getKeywordRecord } from "@/lib/mock/keywords";
 import { getAiTopics, topicsForProject } from "@/lib/mock/ai-visibility/topics";
 import { AI_RANGE } from "@/lib/mock/ai-visibility/pages";
@@ -72,6 +77,20 @@ export {
   getAiPage,
   getAiPages,
 } from "@/lib/mock/ai-visibility/gaps";
+
+export {
+  CO_PRESENCE_FLOOR,
+  RELATION_BANDS,
+  connectivityForEntity,
+  getEntityConnectivity,
+  getEntityRelations,
+  RELATION_SIGNAL_FLOOR,
+  pageDemonstratesRelation,
+  relationEvidenceOn,
+  relationBandFor,
+  relationsForEntity,
+  relationsForProject,
+} from "@/lib/mock/ai-visibility/relationships";
 
 export {
   fanOutForCluster,
@@ -131,6 +150,13 @@ export {
   OPPORTUNITY_KIND_ORDER,
   OPPORTUNITY_STATE_META,
   PROVENANCE_META,
+  RELATION_BAND_META,
+  RELATION_BAND_ORDER,
+  RELATION_EVIDENCE_META,
+  RELATION_KIND_META,
+  RELATION_KIND_ORDER,
+  RELATION_NOTE,
+  RELATION_NOTE_SHORT,
   READINESS_META,
   READINESS_ORDER,
   SEVERITY_META,
@@ -572,6 +598,8 @@ export function getAiDatasetCounts(): AiDatasetCounts {
   const opportunities = getAiOpportunities();
   const fanOut = getFanOut();
   const branches = getFanOutBranches();
+  const relations = getEntityRelations();
+  const connectivity = getEntityConnectivity();
 
   const pageIds = new Set(pages.map((page) => page.id));
   const clusterIds = new Set(topics.map((topic) => topic.clusterId));
@@ -932,6 +960,156 @@ export function getAiDatasetCounts(): AiDatasetCounts {
     "Fan-out facets are too narrow to be a decomposition",
   );
 
+  // -- Entity relationships ----------------------------------------------
+  // Every finding here is a way the graph could invent a connection, put one
+  // project's entities in another's graph, or claim evidence it does not hold.
+  const relationIds = new Set(relations.map((entry) => entry.id));
+  if (relationIds.size !== relations.length) {
+    integrity.push(
+      `Duplicate entity relation ids: ${relations.length - relationIds.size}`,
+    );
+  }
+
+  const entityById = new Map(entities.map((entity) => [entity.id, entity]));
+  const seenPairs = new Set<string>();
+
+  for (const relation of relations) {
+    const source = entityById.get(relation.sourceId);
+    const target = entityById.get(relation.targetId);
+
+    if (source === undefined || target === undefined) {
+      integrity.push(`${relation.id}: references an entity that does not exist`);
+      continue;
+    }
+    if (relation.sourceId === relation.targetId) {
+      integrity.push(`${relation.id}: self-edge`);
+    }
+    if (source.projectId !== target.projectId) {
+      integrity.push(`${relation.id}: crosses projects`);
+    }
+    if (relation.projectId !== source.projectId) {
+      integrity.push(`${relation.id}: project disagrees with its entities`);
+    }
+
+    // A symmetric pair may be stored once and once only. A directional edge
+    // is allowed to exist in one direction, but never in both.
+    const key =
+      relation.directional
+        ? `${relation.kind}|${relation.sourceId}|${relation.targetId}`
+        : `${relation.kind}|${[relation.sourceId, relation.targetId].sort().join("|")}`;
+    if (seenPairs.has(key)) {
+      integrity.push(`${relation.id}: duplicate of a pair already stored`);
+    }
+    seenPairs.add(key);
+    if (
+      relation.directional &&
+      seenPairs.has(
+        `${relation.kind}|${relation.targetId}|${relation.sourceId}`,
+      )
+    ) {
+      integrity.push(`${relation.id}: stored in both directions`);
+    }
+
+    // Supporting records must be real and belong to the same project.
+    for (const pageId of relation.pageIds) {
+      if (!pageIds.has(pageId)) {
+        integrity.push(`${relation.id}: supporting page is not canonical`);
+        break;
+      }
+      const page = pages.find((entry) => entry.id === pageId);
+      if (page !== undefined && page.projectId !== relation.projectId) {
+        integrity.push(`${relation.id}: supporting page is another project's`);
+        break;
+      }
+    }
+    for (const clusterId of relation.clusterIds) {
+      if (!clusterIds.has(clusterId)) {
+        integrity.push(`${relation.id}: supporting cluster is not canonical`);
+        break;
+      }
+    }
+
+    if (relation.strength < 0 || relation.strength > 100) {
+      integrity.push(`${relation.id}: strength outside 0-100`);
+    }
+    if (relation.band !== relationBandFor(relation.strength)) {
+      integrity.push(`${relation.id}: band disagrees with strength`);
+    }
+
+    // No edge without support, and no direct edge without a page behind it.
+    if (relation.kind !== "same-topic" && relation.pageIds.length === 0) {
+      integrity.push(`${relation.id}: direct edge with no supporting page`);
+    }
+    if (relation.evidence === "direct" && relation.kind === "same-topic") {
+      integrity.push(`${relation.id}: same-topic claimed as direct evidence`);
+    }
+    if (relation.evidence === "inferred" && relation.kind !== "same-topic") {
+      integrity.push(`${relation.id}: ${relation.kind} claimed as inferred`);
+    }
+    if (relation.directional && relation.kind !== "linked") {
+      integrity.push(`${relation.id}: only a link can be directional`);
+    }
+
+    // Confidence has to follow the evidence, not lead it.
+    if (
+      relation.confidence === "unknown" &&
+      source.primaryPageId !== null &&
+      target.primaryPageId !== null
+    ) {
+      integrity.push(`${relation.id}: unknown confidence on two established ends`);
+    }
+    if (
+      relation.confidence === "high" &&
+      (relation.evidence === "inferred" || relation.evidenceCount < 4)
+    ) {
+      integrity.push(`${relation.id}: high confidence without the evidence`);
+    }
+
+    // A weak or unverifiable edge must say what is missing and what to do.
+    if (relation.gap !== null && relation.action === null) {
+      integrity.push(`${relation.id}: gap with no recommended action`);
+    }
+    if (relation.gap === null && relation.action !== null) {
+      integrity.push(`${relation.id}: action with no gap behind it`);
+    }
+    if (relation.evidence === "inferred" && relation.gap === null) {
+      integrity.push(`${relation.id}: inferred association reported as settled`);
+    }
+  }
+
+  for (const entry of connectivity) {
+    if (!entityById.has(entry.entityId)) {
+      integrity.push(`Connectivity for unknown entity: ${entry.entityId}`);
+    }
+    if (entry.directDegree > entry.degree) {
+      integrity.push(`${entry.entityId}: direct degree exceeds total degree`);
+    }
+    if (entry.strongest === null && entry.degree > 0) {
+      integrity.push(`${entry.entityId}: connected with no strongest edge`);
+    }
+  }
+
+  note(
+    relations.length > 0 &&
+      new Set(relations.map((entry) => entry.kind)).size < 3,
+    "Entity relationship kinds are too narrow to be a graph",
+  );
+  note(
+    relations.length > 0 &&
+      new Set(relations.map((entry) => entry.band)).size < 3,
+    "Entity relationship strengths are too uniform to rank",
+  );
+  note(
+    connectivity.length > 5 &&
+      new Set(connectivity.map((entry) => entry.degree)).size < 4,
+    "Every entity has the same degree — the graph carries no structure",
+  );
+  note(
+    relations.length > 0 &&
+      relations.every((entry) => entry.evidence === "inferred"),
+    "No entity relationship rests on direct evidence",
+  );
+
   return {
     pages: pages.length,
     topics: topics.length,
@@ -964,6 +1142,12 @@ export function getAiDatasetCounts(): AiDatasetCounts {
     distinctCoverageShares: new Set(
       fanOut.map((entry) => entry.coverageShare),
     ).size,
+    relations: relations.length,
+    byRelationKind: tally(relations.map((entry) => entry.kind)),
+    byRelationEvidence: tally(relations.map((entry) => entry.evidence)),
+    byRelationBand: tally(relations.map((entry) => entry.band)),
+    byRelationConfidence: tally(relations.map((entry) => entry.confidence)),
+    distinctDegrees: new Set(connectivity.map((entry) => entry.degree)).size,
     distinctVisibilityScores,
     integrity,
   };

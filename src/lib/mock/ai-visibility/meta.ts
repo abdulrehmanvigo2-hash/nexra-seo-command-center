@@ -17,6 +17,9 @@ import type {
   GainBand,
   GainSignal,
   ReadinessBand,
+  RelationBand,
+  RelationEvidence,
+  RelationKind,
   TopicCoverageState,
 } from "@/types/ai-visibility";
 import { READINESS_ORDER, SEVERITY_ORDER } from "@/lib/mock/ai-visibility/scoring";
@@ -342,6 +345,99 @@ export const COVERAGE_META: Readonly<Record<BranchCoverage, AiStateMeta>> = {
     tone: "critical",
     description:
       "Nothing in this cluster's keywords carries the question at all.",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Entity relationships
+// ---------------------------------------------------------------------------
+
+/** Stated wherever a relationship figure appears. */
+export const RELATION_NOTE =
+  "Connections are derived from this product's own content: entities established on the same page, pages that link to each other, or terms filed under the same topic. No knowledge graph is consulted and no real-world relationship is asserted — an edge reports what the content puts together, which is a different and smaller claim.";
+
+export const RELATION_NOTE_SHORT =
+  "Derived from our own pages and link graph. No knowledge graph is consulted.";
+
+export const RELATION_KIND_ORDER: readonly RelationKind[] = [
+  "linked",
+  "co-present",
+  "brand-topic",
+  "same-topic",
+];
+
+export const RELATION_KIND_META: Readonly<Record<RelationKind, AiKindMeta>> = {
+  linked: {
+    label: "Linked pages",
+    icon: "link-off",
+    description:
+      "The page establishing one entity links to the page establishing the other. The strongest evidence this product holds, and the only directional one.",
+  },
+  "co-present": {
+    label: "Co-present",
+    icon: "layers",
+    description:
+      "Both entities are established on the same pages. A fact about the content, not a claim about the world.",
+  },
+  "brand-topic": {
+    label: "Brand and topic",
+    icon: "briefcase",
+    description:
+      "The brand and a topic term appear together. What an engine reads when asked whether this business does this thing.",
+  },
+  "same-topic": {
+    label: "Same topic only",
+    icon: "split",
+    description:
+      "Filed under the same cluster and never covered together. An association, and nothing stronger.",
+  },
+};
+
+export const RELATION_EVIDENCE_META: Readonly<
+  Record<RelationEvidence, AiStateMeta>
+> = {
+  direct: {
+    label: "Direct",
+    tone: "positive",
+    description:
+      "The connection is somewhere a reader could look — the same page, or pages that link.",
+  },
+  inferred: {
+    label: "Inferred",
+    tone: "warning",
+    description:
+      "Only shared filing supports it. Treat as an association to act on, not a finding.",
+  },
+};
+
+export const RELATION_BAND_ORDER: readonly RelationBand[] = [
+  "central",
+  "connected",
+  "peripheral",
+  "isolated",
+];
+
+export const RELATION_BAND_META: Readonly<Record<RelationBand, AiStateMeta>> = {
+  central: {
+    label: "Central",
+    tone: "positive",
+    description: "Connected to several other entities on direct evidence.",
+  },
+  connected: {
+    label: "Connected",
+    tone: "accent",
+    description: "Established alongside at least two others.",
+  },
+  peripheral: {
+    label: "Peripheral",
+    tone: "warning",
+    description: "One direct connection. An engine has little to work with.",
+  },
+  isolated: {
+    label: "Isolated",
+    tone: "critical",
+    description:
+      "Nothing of ours establishes this entity alongside anything else, so it reads as a term rather than a thing in a model.",
   },
 };
 

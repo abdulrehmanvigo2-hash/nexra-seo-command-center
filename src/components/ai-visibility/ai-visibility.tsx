@@ -19,12 +19,15 @@ import {
   getAiOverview,
   getAiPages,
   getAiProjectOptions,
+  getEntityConnectivity,
+  getEntityRelations,
   getFanOut,
   getFanOutBranches,
   getAiTopicOptions,
   getAiTopics,
 } from "@/lib/mock/ai-visibility";
 import { FanOutView } from "@/components/ai-visibility/fan-out-view";
+import { RelationshipsPanel } from "@/components/ai-visibility/relationships-panel";
 import { GapsView } from "@/components/ai-visibility/gaps-view";
 import { OpportunitiesView } from "@/components/ai-visibility/opportunities-view";
 import { OverviewView } from "@/components/ai-visibility/overview-view";
@@ -239,6 +242,25 @@ export function AiVisibility() {
    * pages: an uncovered branch has no page by definition, and running it
    * through the page filter would hide exactly the rows worth seeing.
    */
+  /**
+   * Connections among the entities that survived the filters.
+   *
+   * Scoped to the entity table above rather than to the project, so narrowing
+   * to one type or one topic narrows the graph with it — a panel describing
+   * entities that are no longer on screen would be describing a different set.
+   */
+  const scopedRelations = useMemo(() => {
+    const ids = new Set(filteredEntities.map((entry) => entry.id));
+    return getEntityRelations().filter(
+      (entry) => ids.has(entry.sourceId) && ids.has(entry.targetId),
+    );
+  }, [filteredEntities]);
+
+  const scopedConnectivity = useMemo(() => {
+    const ids = new Set(filteredEntities.map((entry) => entry.id));
+    return getEntityConnectivity().filter((entry) => ids.has(entry.entityId));
+  }, [filteredEntities]);
+
   const allFanOut = useMemo(() => getFanOut(), []);
 
   const filteredBranches = useMemo(
@@ -644,6 +666,7 @@ export function AiVisibility() {
         )}
 
         {tab === "entities" && (
+          <>
           <Panel>
             <EntitiesTable entities={entitiesPage.rows} />
             {filteredEntities.length > pageSize && (
@@ -660,6 +683,11 @@ export function AiVisibility() {
               />
             )}
           </Panel>
+          <RelationshipsPanel
+            relations={scopedRelations}
+            connectivity={scopedConnectivity}
+          />
+          </>
         )}
 
         {(tab === "readiness" || tab === "citations" || tab === "evidence") && (

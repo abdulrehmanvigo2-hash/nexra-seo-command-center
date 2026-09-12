@@ -616,6 +616,95 @@ export type AiEntityRecord = {
 };
 
 // ---------------------------------------------------------------------------
+// Entity relationships
+// ---------------------------------------------------------------------------
+
+/**
+ * What kind of evidence connects two entities.
+ *
+ * Named for the evidence, never for a semantic claim. This product has no
+ * knowledge graph and no way to establish that two things are related in the
+ * world — what it can see is that its own content puts them together, and that
+ * is what each member below describes. "Co-present on four pages" is a fact
+ * about the content; "is a kind of" would be an invention.
+ */
+export type RelationKind =
+  | "co-present"
+  | "brand-topic"
+  | "linked"
+  | "same-topic";
+
+/**
+ * Whether the content model actually shows the connection.
+ *
+ * `direct` means the two entities are established together somewhere a reader
+ * could look — the same page, or pages that link to each other. `inferred`
+ * means only that they belong to the same topic, which is an association and
+ * nothing stronger.
+ */
+export type RelationEvidence = "direct" | "inferred";
+
+/** How well connected an entity is across the graph. */
+export type RelationBand = "central" | "connected" | "peripheral" | "isolated";
+
+/** One derived connection between two entities of the same project. */
+export type EntityRelation = {
+  /** Deterministic: `rel-{kind}-{source}--{target}`. */
+  readonly id: string;
+  readonly kind: RelationKind;
+  readonly evidence: RelationEvidence;
+
+  readonly sourceId: string;
+  readonly sourceName: string;
+  readonly targetId: string;
+  readonly targetName: string;
+  /**
+   * True where the pair is ordered by evidence rather than alphabetically.
+   *
+   * Only `linked` is directional — a link runs one way, and reversing it
+   * would describe a link that does not exist. Every other kind is symmetric
+   * and stored once, source first alphabetically, so no reverse duplicate can
+   * be emitted.
+   */
+  readonly directional: boolean;
+
+  readonly projectId: string;
+  readonly projectName: string;
+
+  /** AI page ids that establish the connection. */
+  readonly pageIds: readonly string[];
+  /** Canonical cluster ids both entities sit under. */
+  readonly clusterIds: readonly string[];
+  /** How many distinct pieces of evidence support it. */
+  readonly evidenceCount: number;
+  /** 0-100. How well established the connection is. */
+  readonly strength: number;
+  readonly band: RelationBand;
+  readonly confidence: Confidence;
+  readonly provenance: AiProvenance;
+  /** What the evidence actually is, in one line. */
+  readonly basis: string;
+  /** What is missing, where the connection is weak. Null where it is not. */
+  readonly gap: string | null;
+  /** What would strengthen it. Null where nothing needs to. */
+  readonly action: string | null;
+};
+
+/** One entity's position in the graph. */
+export type EntityConnectivity = {
+  readonly entityId: string;
+  readonly entityName: string;
+  readonly projectId: string;
+  /** Edges touching this entity. */
+  readonly degree: number;
+  /** Of those, how many rest on direct evidence. */
+  readonly directDegree: number;
+  readonly band: RelationBand;
+  /** The strongest connection, or null where there is none. */
+  readonly strongest: EntityRelation | null;
+};
+
+// ---------------------------------------------------------------------------
 // Gaps
 // ---------------------------------------------------------------------------
 
@@ -763,6 +852,13 @@ export type AiDatasetCounts = {
   readonly byBranchSeverity: Readonly<Record<string, number>>;
   /** Distinct topic coverage percentages, as a check against a flat fan-out. */
   readonly distinctCoverageShares: number;
+  readonly relations: number;
+  readonly byRelationKind: Readonly<Record<string, number>>;
+  readonly byRelationEvidence: Readonly<Record<string, number>>;
+  readonly byRelationBand: Readonly<Record<string, number>>;
+  readonly byRelationConfidence: Readonly<Record<string, number>>;
+  /** Distinct entity degrees, as a check against a uniform graph. */
+  readonly distinctDegrees: number;
   /** Distinct visibility scores, as a check against a flat dataset. */
   readonly distinctVisibilityScores: number;
   /** Findings the integrity pass raised. Empty is the passing result. */

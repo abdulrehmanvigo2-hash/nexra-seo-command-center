@@ -1,4 +1,5 @@
 import { clamp, rand, randInt } from "@/lib/mock/dashboard/core";
+import { pageDemonstratesRelation } from "@/lib/mock/ai-visibility/relationships";
 import { depthScore } from "@/lib/mock/ai-visibility/scoring";
 import { gainBandFor } from "@/lib/mock/ai-visibility/scoring";
 import type {
@@ -75,10 +76,16 @@ export function buildInformationGain(
     signals.push(candidate);
   }
 
-  // Entity relationships and uncommon subtopics are the two signals a page can
-  // carry structurally rather than evidentially, so they are read from the
-  // page's own shape rather than from its evidence.
-  if (record.keywordCount >= 5 && record.linksTo.length >= 2 && !signals.includes("entity-relationships")) {
+  // Entity relationships used to be guessed from keyword count and outbound
+  // link count, which measured how busy a page was rather than whether it
+  // connected anything. It now reads the derived entity graph: the signal
+  // fires where this page is itself the evidence for a direct connection
+  // between two entities, which is what "carries entity relationships" was
+  // always meant to mean.
+  if (
+    pageDemonstratesRelation(`ai-${record.id}`) &&
+    !signals.includes("entity-relationships")
+  ) {
     signals.push("entity-relationships");
   }
   if (record.unintendedKeywordIds.length >= 2 && !signals.includes("uncommon-subtopic")) {
