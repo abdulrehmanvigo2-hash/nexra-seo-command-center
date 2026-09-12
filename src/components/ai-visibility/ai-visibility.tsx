@@ -19,9 +19,12 @@ import {
   getAiOverview,
   getAiPages,
   getAiProjectOptions,
+  getFanOut,
+  getFanOutBranches,
   getAiTopicOptions,
   getAiTopics,
 } from "@/lib/mock/ai-visibility";
+import { FanOutView } from "@/components/ai-visibility/fan-out-view";
 import { GapsView } from "@/components/ai-visibility/gaps-view";
 import { OpportunitiesView } from "@/components/ai-visibility/opportunities-view";
 import { OverviewView } from "@/components/ai-visibility/overview-view";
@@ -39,19 +42,23 @@ import {
   EMPTY_AI_FILTERS,
   matchesAiEntity,
   matchesAiGap,
+  matchesBranch,
   matchesAiPage,
   matchesAiTopic,
   type AiFilters,
 } from "@/components/ai-visibility/filters";
 import {
+  BRANCH_SORT_OPTIONS,
   ENTITY_SORT_OPTIONS,
   PAGE_SORT_OPTIONS,
   TOPIC_SORT_OPTIONS,
   compareAiEntities,
   compareAiPages,
   compareAiTopics,
+  compareBranches,
   type AiEntitySort,
   type AiPageSort,
+  type BranchSort,
   type AiTopicSort,
 } from "@/components/ai-visibility/sorting";
 import type {
@@ -86,6 +93,7 @@ const TABS = [
   { id: "readiness", label: "Answer readiness", icon: "flag" },
   { id: "citations", label: "Citations", icon: "note" },
   { id: "evidence", label: "Evidence", icon: "shield" },
+  { id: "fan-out", label: "Query fan-out", icon: "split" },
   { id: "gaps", label: "Content gaps", icon: "alert" },
   { id: "opportunities", label: "Opportunities", icon: "bolt" },
 ] as const satisfies readonly {
@@ -148,6 +156,11 @@ export function AiVisibility() {
     key: AiEntitySort;
     desc: boolean;
   }>({ key: "strength", desc: false });
+
+  const [branchSort, setBranchSort] = useState<{
+    key: BranchSort;
+    desc: boolean;
+  }>({ key: "priority", desc: true });
 
   const [opportunityKind, setOpportunityKind] = useState<
     AiOpportunityKind | "all"
@@ -217,6 +230,23 @@ export function AiVisibility() {
   const filteredGaps = useMemo(
     () => allGaps.filter((entry) => matchesAiGap(entry, filters, pageIds)),
     [allGaps, filters, pageIds],
+  );
+
+  /**
+   * The fan-out, narrowed and ordered.
+   *
+   * Branches are filtered on their own rather than through the surviving
+   * pages: an uncovered branch has no page by definition, and running it
+   * through the page filter would hide exactly the rows worth seeing.
+   */
+  const allFanOut = useMemo(() => getFanOut(), []);
+
+  const filteredBranches = useMemo(
+    () =>
+      getFanOutBranches()
+        .filter((entry) => matchesBranch(entry, filters))
+        .sort((a, b) => compareBranches(a, b, branchSort)),
+    [filters, branchSort],
   );
 
   /**
@@ -300,7 +330,18 @@ export function AiVisibility() {
 
     const scopeIds = new Set(pagesWithout("entityType").map((p) => p.id));
 
+    // The fan-out counts each release their own filter the same way, so an
+    // option always reports what it would select rather than what is showing.
+    const branchesWithout = (key: keyof AiFilters) =>
+      getFanOutBranches().filter((entry) =>
+        matchesBranch(entry, { ...filters, [key]: "all" } as AiFilters),
+      );
+
     return {
+      coverage: tally(
+        branchesWithout("coverage").map((entry) => entry.coverage),
+      ),
+      facet: tally(branchesWithout("facet").map((entry) => entry.facet)),
       band: tally(pagesWithout("band").map((entry) => entry.visibility.band)),
       citation: tally(
         pagesWithout("citation").map((entry) => entry.citation.state),
@@ -411,6 +452,7 @@ export function AiVisibility() {
     readiness: filteredPages.length,
     citations: filteredPages.length,
     evidence: filteredPages.length,
+    "fan-out": filteredBranches.length,
     gaps: filteredGaps.length,
     opportunities: filteredOpportunities.length,
   };
@@ -432,7 +474,15 @@ export function AiVisibility() {
   const gapsPage = paged(filteredGaps);
 
   const sortControl =
-    tab === "topics" ? (
+    tab === "fan-out" ? (
+      <SortControl
+        value={branchSort.key}
+        desc={branchSort.desc}
+        onChange={(key, desc) => setBranchSort({ key, desc })}
+        options={BRANCH_SORT_OPTIONS}
+        label="Sort sub-questions"
+      />
+    ) : tab === "topics" ? (
       <SortControl
         value={topicSort.key}
         desc={topicSort.desc}
@@ -653,6 +703,10 @@ export function AiVisibility() {
               </Panel>
             )}
           </div>
+        )}
+
+        {tab === "fan-out" && (
+          <FanOutView topics={allFanOut} branches={filteredBranches} />
         )}
 
         {tab === "opportunities" && (

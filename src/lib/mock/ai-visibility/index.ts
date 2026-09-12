@@ -26,6 +26,11 @@ import {
   getAiOpportunities,
 } from "@/lib/mock/ai-visibility/opportunities";
 import { getAiEntities } from "@/lib/mock/ai-visibility/entities";
+import {
+  getFanOut,
+  getFanOutBranches,
+} from "@/lib/mock/ai-visibility/fan-out";
+import { EXPANSION_PATTERNS, getKeywordRecord } from "@/lib/mock/keywords";
 import { getAiTopics, topicsForProject } from "@/lib/mock/ai-visibility/topics";
 import { AI_RANGE } from "@/lib/mock/ai-visibility/pages";
 import type {
@@ -69,6 +74,13 @@ export {
 } from "@/lib/mock/ai-visibility/gaps";
 
 export {
+  fanOutForCluster,
+  fanOutForProject,
+  getFanOut,
+  getFanOutBranches,
+} from "@/lib/mock/ai-visibility/fan-out";
+
+export {
   getAiTopic,
   getAiTopics,
   topicForCluster,
@@ -103,7 +115,13 @@ export {
   EVIDENCE_BAND_META,
   EVIDENCE_BAND_ORDER,
   EVIDENCE_KIND_META,
+  COVERAGE_META,
+  COVERAGE_ORDER,
   EVIDENCE_KIND_ORDER,
+  FACET_META,
+  FACET_ORDER,
+  FAN_OUT_NOTE,
+  FAN_OUT_NOTE_SHORT,
   GAIN_BAND_META,
   GAIN_BAND_ORDER,
   GAIN_SIGNAL_META,
@@ -552,8 +570,11 @@ export function getAiDatasetCounts(): AiDatasetCounts {
   const entities = getAiEntities();
   const gaps = getAiGaps();
   const opportunities = getAiOpportunities();
+  const fanOut = getFanOut();
+  const branches = getFanOutBranches();
 
   const pageIds = new Set(pages.map((page) => page.id));
+  const clusterIds = new Set(topics.map((topic) => topic.clusterId));
   const gapIds = new Set(gaps.map((gap) => gap.id));
   const entityIds = new Set(entities.map((entity) => entity.id));
   const projectIds = new Set(pages.map((page) => page.projectId));
@@ -802,6 +823,115 @@ export function getAiDatasetCounts(): AiDatasetCounts {
     "No gaps raised against any page",
   );
 
+  // -- Query fan-out ------------------------------------------------------
+  // Every finding here is a way the fan-out could contradict the canonical
+  // layers it is derived from, invent a record, or leak one project's work
+  // into another's topic.
+  const branchIds = new Set(branches.map((entry) => entry.id));
+  if (branchIds.size !== branches.length) {
+    integrity.push(`Duplicate fan-out branch ids: ${branches.length - branchIds.size}`);
+  }
+
+  const patternIds = new Set(EXPANSION_PATTERNS.map((entry) => entry.id));
+
+  for (const topic of fanOut) {
+    if (!clusterIds.has(topic.clusterId)) {
+      integrity.push(`Fan-out for unknown cluster: ${topic.clusterId}`);
+    }
+    if (
+      topic.covered + topic.keywordOnly + topic.uncovered !==
+      topic.branches.length
+    ) {
+      integrity.push(`${topic.clusterId}: branch states do not sum`);
+    }
+    if (
+      topic.branches.length > 0 &&
+      topic.coverageShare !==
+        Math.round((topic.covered / topic.branches.length) * 100)
+    ) {
+      integrity.push(`${topic.clusterId}: coverage share disagrees with branches`);
+    }
+    if (topic.topGap !== null && topic.topGap.coverage === "covered") {
+      integrity.push(`${topic.clusterId}: top gap is a covered branch`);
+    }
+    if (topic.topGap === null && topic.uncovered + topic.keywordOnly > 0) {
+      integrity.push(`${topic.clusterId}: missing branches with no top gap`);
+    }
+  }
+
+  for (const branch of branches) {
+    if (!patternIds.has(branch.patternId)) {
+      integrity.push(`${branch.id}: unknown expansion pattern`);
+    }
+    if (!clusterIds.has(branch.clusterId)) {
+      integrity.push(`${branch.id}: unknown cluster`);
+    }
+
+    // A branch belongs to exactly one project, and so must everything it
+    // points at — a keyword or page from another client would put one
+    // account's work in another's fan-out.
+    if (branch.keywordId !== null) {
+      const keyword = getKeywordRecord(branch.keywordId);
+      if (keyword === undefined) {
+        integrity.push(`${branch.id}: keyword is not canonical`);
+      } else if (keyword.projectId !== branch.projectId) {
+        integrity.push(`${branch.id}: keyword belongs to another project`);
+      } else if (keyword.clusterId !== branch.clusterId) {
+        integrity.push(`${branch.id}: keyword belongs to another cluster`);
+      }
+    }
+    if (branch.pageId !== null) {
+      const page = pages.find((entry) => entry.id === branch.pageId);
+      if (page === undefined) {
+        integrity.push(`${branch.id}: page is not canonical`);
+      } else if (page.projectId !== branch.projectId) {
+        integrity.push(`${branch.id}: page belongs to another project`);
+      }
+    }
+
+    // Coverage has to agree with what the branch actually resolved to.
+    if (branch.coverage === "covered" && branch.pageId === null) {
+      integrity.push(`${branch.id}: answered with no page behind it`);
+    }
+    if (branch.coverage === "keyword-only" && branch.keywordId === null) {
+      integrity.push(`${branch.id}: tracked with no keyword behind it`);
+    }
+    if (branch.coverage === "uncovered" && branch.keywordId !== null) {
+      integrity.push(`${branch.id}: uncovered with a keyword behind it`);
+    }
+    if (branch.coverage !== "covered" && branch.gapReason === null) {
+      integrity.push(`${branch.id}: missing without a reason`);
+    }
+    if (branch.coverage !== "covered" && branch.gapKind === null) {
+      integrity.push(`${branch.id}: missing without a gap kind`);
+    }
+    if (branch.coverage === "covered" && branch.gapReason !== null) {
+      integrity.push(`${branch.id}: answered but carrying a gap reason`);
+    }
+    if (branch.coverage === "covered" && branch.strength === 0) {
+      integrity.push(`${branch.id}: answered with no readiness behind it`);
+    }
+    if (branch.coverage === "covered" && branch.priority !== 0) {
+      integrity.push(`${branch.id}: answered but still prioritised`);
+    }
+  }
+
+  note(
+    branches.length > 0 &&
+      new Set(branches.map((entry) => entry.coverage)).size < 2,
+    "Fan-out coverage is uniform across every branch",
+  );
+  note(
+    fanOut.length > 5 &&
+      new Set(fanOut.map((entry) => entry.coverageShare)).size < 4,
+    "Topic fan-out coverage is too uniform to compare",
+  );
+  note(
+    branches.length > 0 &&
+      new Set(branches.map((entry) => entry.facet)).size < 4,
+    "Fan-out facets are too narrow to be a decomposition",
+  );
+
   return {
     pages: pages.length,
     topics: topics.length,
@@ -822,6 +952,18 @@ export function getAiDatasetCounts(): AiDatasetCounts {
     byGapKind: tally(gaps.map((gap) => gap.kind)),
     byOpportunityKind: tally(opportunities.map((entry) => entry.kind)),
     byConfidence: tally(pages.map((page) => page.gain.confidence)),
+    fanOutTopics: fanOut.length,
+    fanOutBranches: branches.length,
+    byFacet: tally(branches.map((entry) => entry.facet)),
+    byBranchCoverage: tally(branches.map((entry) => entry.coverage)),
+    byBranchSeverity: tally(
+      branches
+        .filter((entry) => entry.coverage !== "covered")
+        .map((entry) => entry.severity),
+    ),
+    distinctCoverageShares: new Set(
+      fanOut.map((entry) => entry.coverageShare),
+    ).size,
     distinctVisibilityScores,
     integrity,
   };

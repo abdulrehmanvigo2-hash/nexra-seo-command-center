@@ -6,12 +6,14 @@ import type {
   AiProvenance,
   AiSeverity,
   AiStateMeta,
+  BranchCoverage,
   CitationState,
   Confidence,
   EntityStrengthBand,
   EntityType,
   EvidenceBand,
   EvidenceKind,
+  FanOutFacet,
   GainBand,
   GainSignal,
   ReadinessBand,
@@ -242,6 +244,106 @@ export const ENTITY_TYPE_ORDER: readonly EntityType[] = [
   "competitor",
   "terminology",
 ];
+
+// ---------------------------------------------------------------------------
+// Query fan-out
+// ---------------------------------------------------------------------------
+
+/** Stated wherever a fan-out figure appears. */
+export const FAN_OUT_NOTE =
+  "Branches are the expansion shapes Keyword Intelligence uses for discovery, applied to each canonical cluster — not questions invented here, and not questions observed being asked of any answer engine. A branch counts as answered when a keyword already in the registry carries its vocabulary and a page of ours targets that keyword.";
+
+export const FAN_OUT_NOTE_SHORT =
+  "Derived from canonical clusters and keywords. No answer engine is queried.";
+
+export const FACET_ORDER: readonly FanOutFacet[] = [
+  "definition",
+  "process",
+  "comparison",
+  "cost",
+  "suitability",
+  "commercial",
+  "utility",
+  "local",
+];
+
+export const FACET_META: Readonly<Record<FanOutFacet, AiKindMeta>> = {
+  definition: {
+    label: "Definition",
+    icon: "note",
+    description:
+      "What the thing is. An engine settles this before anything else, and lifts it verbatim when it is stated plainly.",
+  },
+  process: {
+    label: "How it works",
+    icon: "workflow",
+    description:
+      "The mechanism. The shape most likely to be answered in full without a click.",
+  },
+  comparison: {
+    label: "Comparison",
+    icon: "split",
+    description:
+      "Which one, and against what. Answered from tables far more often than from prose.",
+  },
+  cost: {
+    label: "Cost",
+    icon: "value",
+    description:
+      "What it costs and what moves the price. Cited when a specific figure is on the page.",
+  },
+  suitability: {
+    label: "Suitability",
+    icon: "target",
+    description:
+      "Whether it applies to the person asking. The objection an answer has to handle.",
+  },
+  commercial: {
+    label: "Commercial",
+    icon: "briefcase",
+    description:
+      "Who provides it. Belongs on a commercial page rather than a guide.",
+  },
+  utility: {
+    label: "Utility",
+    icon: "grid",
+    description:
+      "Something to use rather than read — a template, a calculator, a worked example.",
+  },
+  local: {
+    label: "Local",
+    icon: "map-pin",
+    description:
+      "Where. Only asked of topics that have local demand behind them.",
+  },
+};
+
+export const COVERAGE_ORDER: readonly BranchCoverage[] = [
+  "uncovered",
+  "keyword-only",
+  "covered",
+];
+
+export const COVERAGE_META: Readonly<Record<BranchCoverage, AiStateMeta>> = {
+  covered: {
+    label: "Answered",
+    tone: "positive",
+    description:
+      "A tracked keyword carries this question and a page of ours targets it.",
+  },
+  "keyword-only": {
+    label: "Tracked, unbuilt",
+    tone: "warning",
+    description:
+      "The demand is in the keyword registry and nothing has been built against it. The shortest route to closing a branch.",
+  },
+  uncovered: {
+    label: "Not covered",
+    tone: "critical",
+    description:
+      "Nothing in this cluster's keywords carries the question at all.",
+  },
+};
 
 export const ENTITY_TYPE_META: Readonly<Record<EntityType, AiKindMeta>> = {
   organization: {

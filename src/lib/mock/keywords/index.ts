@@ -59,6 +59,9 @@ import type {
  * that happen to look alike.
  */
 
+export { EXPANSION_PATTERNS } from "@/lib/mock/keywords/discovery";
+export type { ExpansionPattern } from "@/lib/mock/keywords/discovery";
+
 export {
   KEYWORD_REGISTRY,
   registrySize,

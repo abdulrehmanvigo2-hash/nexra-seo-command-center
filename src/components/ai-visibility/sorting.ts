@@ -3,6 +3,7 @@ import type {
   AiEntityRecord,
   AiPageRecord,
   AiTopicRecord,
+  FanOutBranch,
 } from "@/types/ai-visibility";
 
 /**
@@ -198,3 +199,60 @@ export function compareAiEntities(
 }
 
 export { SEVERITY_RANK };
+
+// ---------------------------------------------------------------------------
+// Fan-out branches
+// ---------------------------------------------------------------------------
+
+export type BranchSort =
+  | "priority"
+  | "coverage"
+  | "strength"
+  | "volume"
+  | "topic"
+  | "question";
+
+export const BRANCH_SORT_OPTIONS: readonly {
+  readonly value: BranchSort;
+  readonly label: string;
+  readonly desc: boolean;
+}[] = [
+  { value: "priority", label: "What to build next", desc: true },
+  { value: "coverage", label: "Coverage", desc: false },
+  { value: "strength", label: "Answer strength", desc: true },
+  { value: "volume", label: "Demand behind it", desc: true },
+  { value: "topic", label: "Topic", desc: false },
+  { value: "question", label: "Sub-question", desc: false },
+];
+
+/** Worst coverage first when ascending — the working order. */
+const COVERAGE_RANK = { uncovered: 0, "keyword-only": 1, covered: 2 } as const;
+
+export function compareBranches(
+  a: FanOutBranch,
+  b: FanOutBranch,
+  sort: { key: BranchSort; desc: boolean },
+): number {
+  const direction = sort.desc ? -1 : 1;
+
+  if (sort.key === "topic" || sort.key === "question") {
+    const left = sort.key === "topic" ? a.clusterName : a.question;
+    const right = sort.key === "topic" ? b.clusterName : b.question;
+    return left.localeCompare(right) * direction || a.id.localeCompare(b.id);
+  }
+
+  const read: Record<
+    Exclude<BranchSort, "topic" | "question">,
+    (branch: FanOutBranch) => number
+  > = {
+    priority: (branch) => branch.priority,
+    coverage: (branch) => COVERAGE_RANK[branch.coverage],
+    strength: (branch) => branch.strength,
+    volume: (branch) => branch.volume,
+  };
+
+  return (
+    (read[sort.key](a) - read[sort.key](b)) * direction ||
+    a.id.localeCompare(b.id)
+  );
+}

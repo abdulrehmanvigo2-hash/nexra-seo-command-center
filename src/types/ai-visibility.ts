@@ -469,6 +469,106 @@ export type AiTopicRecord = {
 };
 
 // ---------------------------------------------------------------------------
+// Query fan-out
+// ---------------------------------------------------------------------------
+
+/**
+ * What a fanned-out branch is asking for.
+ *
+ * A generative engine does not answer the query it is given; it decomposes it
+ * into the questions a good answer would have to settle, answers those, and
+ * assembles the result. These are those questions, grouped by what they want.
+ *
+ * The facets are the expansion shapes Keyword Intelligence already uses for
+ * discovery, read for a different purpose. There is no second list.
+ */
+export type FanOutFacet =
+  | "definition"
+  | "process"
+  | "comparison"
+  | "cost"
+  | "suitability"
+  | "utility"
+  | "commercial"
+  | "local";
+
+/**
+ * Whether anything of ours answers a branch.
+ *
+ * `keyword-only` is the state worth having separately: the demand is tracked
+ * and nothing has been built for it, which is a different job from a branch
+ * nobody has even identified.
+ */
+export type BranchCoverage = "covered" | "keyword-only" | "uncovered";
+
+/** One sub-question a topic fans out into. */
+export type FanOutBranch = {
+  readonly id: string;
+  /** The expansion shape this came from. Always a canonical pattern id. */
+  readonly patternId: string;
+  readonly facet: FanOutFacet;
+  /** The sub-question, in the topic's own words. */
+  readonly question: string;
+  readonly intent: KeywordIntent;
+  /** Why an answer engine would need this settled. */
+  readonly rationale: string;
+
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly clusterId: string;
+  readonly clusterName: string;
+
+  readonly coverage: BranchCoverage;
+  /** The canonical keyword answering this branch, or null. */
+  readonly keywordId: string | null;
+  readonly keyword: string | null;
+  /** Monthly searches behind the matching keyword, or 0. */
+  readonly volume: number;
+  /** The AI page behind that keyword, or null. */
+  readonly pageId: string | null;
+  readonly pageTitle: string | null;
+  readonly pageHref: string | null;
+  /**
+   * How well the branch is actually served, 0-100.
+   *
+   * Read from the answering page's own answer-readiness score. Zero where
+   * nothing answers it — an absence, not a low score.
+   */
+  readonly strength: number;
+
+  /** Why the branch is not covered, or null where it is. */
+  readonly gapReason: string | null;
+  /** The canonical gap vocabulary, for an uncovered branch. */
+  readonly gapKind: AiGapKind | null;
+  /** 0-100 ranking of what to build next. */
+  readonly priority: number;
+  readonly severity: AiSeverity;
+  readonly action: string;
+  readonly owner: AgentId;
+  readonly provenance: AiProvenance;
+};
+
+/** One topic, fanned out. */
+export type TopicFanOut = {
+  /** The canonical cluster. Always resolvable. */
+  readonly clusterId: string;
+  readonly clusterName: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  /** The query a reader would type, which the branches decompose. */
+  readonly sourceQuery: string;
+  readonly primaryIntent: KeywordIntent;
+  readonly branches: readonly FanOutBranch[];
+  readonly covered: number;
+  readonly keywordOnly: number;
+  readonly uncovered: number;
+  /** Share of branches with a page behind them, 0-100. */
+  readonly coverageShare: number;
+  /** The branch worth building next, or null where none is missing. */
+  readonly topGap: FanOutBranch | null;
+};
+
+// ---------------------------------------------------------------------------
 // Entities
 // ---------------------------------------------------------------------------
 
@@ -656,6 +756,13 @@ export type AiDatasetCounts = {
   readonly byGapKind: Readonly<Record<string, number>>;
   readonly byOpportunityKind: Readonly<Record<string, number>>;
   readonly byConfidence: Readonly<Record<string, number>>;
+  readonly fanOutTopics: number;
+  readonly fanOutBranches: number;
+  readonly byFacet: Readonly<Record<string, number>>;
+  readonly byBranchCoverage: Readonly<Record<string, number>>;
+  readonly byBranchSeverity: Readonly<Record<string, number>>;
+  /** Distinct topic coverage percentages, as a check against a flat fan-out. */
+  readonly distinctCoverageShares: number;
   /** Distinct visibility scores, as a check against a flat dataset. */
   readonly distinctVisibilityScores: number;
   /** Findings the integrity pass raised. Empty is the passing result. */

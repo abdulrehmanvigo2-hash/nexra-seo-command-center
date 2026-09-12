@@ -2,6 +2,9 @@ import { SEVERITY_RANK } from "@/lib/mock/ai-visibility";
 import type {
   AiEntityRecord,
   AiGapKind,
+  BranchCoverage,
+  FanOutBranch,
+  FanOutFacet,
   AiGapRecord,
   AiOpportunityKind,
   AiPageRecord,
@@ -43,6 +46,9 @@ export type AiFilters = {
   readonly opportunityKind: AiOpportunityKind | "all";
   readonly severity: AiSeverity | "all";
   readonly confidence: Confidence | "all";
+  /** Fan-out only: which sub-questions to show. */
+  readonly coverage: BranchCoverage | "all";
+  readonly facet: FanOutFacet | "all";
 };
 
 export const EMPTY_AI_FILTERS: AiFilters = {
@@ -57,6 +63,8 @@ export const EMPTY_AI_FILTERS: AiFilters = {
   opportunityKind: "all",
   severity: "all",
   confidence: "all",
+  coverage: "all",
+  facet: "all",
 };
 
 const COUNTED: readonly (keyof AiFilters)[] = [
@@ -70,6 +78,8 @@ const COUNTED: readonly (keyof AiFilters)[] = [
   "opportunityKind",
   "severity",
   "confidence",
+  "coverage",
+  "facet",
 ];
 
 export function activeAiFilterCount(filters: AiFilters): number {
@@ -209,3 +219,46 @@ export function matchesAiGap(
 }
 
 export { SEVERITY_RANK };
+
+// ---------------------------------------------------------------------------
+// Query fan-out
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a fan-out branch survives the filters.
+ *
+ * Shares the project, topic, severity and search state with everything else,
+ * so narrowing to one account narrows the fan-out with it. Coverage and facet
+ * are its own, because no other record shape has them.
+ */
+export function matchesBranch(
+  branch: FanOutBranch,
+  filters: AiFilters,
+): boolean {
+  if (filters.project !== "all" && branch.projectId !== filters.project) {
+    return false;
+  }
+  if (filters.topic !== "all" && branch.clusterId !== filters.topic) {
+    return false;
+  }
+  if (filters.coverage !== "all" && branch.coverage !== filters.coverage) {
+    return false;
+  }
+  if (filters.facet !== "all" && branch.facet !== filters.facet) return false;
+
+  // Severity is only meaningful on a branch that is missing: an answered one
+  // carries `low` because there is nothing to rank, not because it is a small
+  // problem. Filtering by severity therefore implies the missing set.
+  if (filters.severity !== "all") {
+    if (branch.coverage === "covered") return false;
+    if (branch.severity !== filters.severity) return false;
+  }
+  if (filters.gapKind !== "all" && branch.gapKind !== filters.gapKind) {
+    return false;
+  }
+
+  return matches(
+    `${branch.question} ${branch.clusterName} ${branch.projectName} ${branch.keyword ?? ""} ${branch.pageTitle ?? ""} ${branch.facet} ${branch.intent}`,
+    filters.query,
+  );
+}

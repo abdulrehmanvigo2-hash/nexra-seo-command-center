@@ -42,80 +42,105 @@ export function hashString(value: string): number {
   return Math.abs(hash | 0);
 }
 
-/** How a seed topic is expanded, and what each shape usually wants. */
-const PATTERNS: readonly {
+/**
+ * How a seed topic is expanded, and what each shape usually wants.
+ *
+ * Exported because a second module needs the same expansion: AI Visibility
+ * fans a topic out into the sub-questions an answer engine would decompose it
+ * into, and those are these shapes. One list, read twice — a second copy would
+ * be two vocabularies drifting apart.
+ *
+ * `id` exists so the reader can key its own metadata off a pattern without
+ * matching on the produced string.
+ */
+export type ExpansionPattern = {
+  readonly id: string;
   readonly build: (topic: string) => string;
   readonly intent: KeywordIntent;
   readonly cluster: string;
   readonly rationale: string;
-}[] = [
+};
+
+export const EXPANSION_PATTERNS: readonly ExpansionPattern[] = [
   {
+    id: "best",
     build: (topic) => `best ${topic}`,
     intent: "commercial",
     cluster: "Comparison",
     rationale: "Head comparison term — the highest-volume shape for this topic.",
   },
   {
+    id: "cost",
     build: (topic) => `${topic} cost`,
     intent: "commercial",
     cluster: "Pricing",
     rationale: "Price research, usually one step before an enquiry.",
   },
   {
+    id: "how-it-works",
     build: (topic) => `how does ${topic} work`,
     intent: "informational",
     cluster: "Explainers",
     rationale: "Question shape — strong candidate for a snippet or an answer block.",
   },
   {
+    id: "near-me",
     build: (topic) => `${topic} near me`,
     intent: "local",
     cluster: "Local",
     rationale: "Map-pack query; needs a location page rather than a guide.",
   },
   {
+    id: "vs-alternatives",
     build: (topic) => `${topic} vs alternatives`,
     intent: "commercial",
     cluster: "Comparison",
     rationale: "Comparison intent that suits a table-led page.",
   },
   {
+    id: "for-beginners",
     build: (topic) => `${topic} for beginners`,
     intent: "informational",
     cluster: "Explainers",
     rationale: "Top-of-funnel demand that feeds the rest of the cluster.",
   },
   {
+    id: "pricing-year",
     build: (topic) => `${topic} pricing 2026`,
     intent: "transactional",
     cluster: "Pricing",
     rationale: "Dated commercial query — refresh annually to hold it.",
   },
   {
+    id: "checklist",
     build: (topic) => `${topic} checklist`,
     intent: "informational",
     cluster: "Tools",
     rationale: "Utility shape; converts well as a downloadable or interactive.",
   },
   {
+    id: "worth-it",
     build: (topic) => `is ${topic} worth it`,
     intent: "commercial",
     cluster: "Explainers",
     rationale: "Objection-handling query close to the decision.",
   },
   {
+    id: "services",
     build: (topic) => `${topic} services`,
     intent: "transactional",
     cluster: "Services",
     rationale: "Service-page intent — should land on a commercial page.",
   },
   {
+    id: "guide",
     build: (topic) => `${topic} guide`,
     intent: "informational",
     cluster: "Explainers",
     rationale: "Pillar-page shape for the whole topic.",
   },
   {
+    id: "cheap",
     build: (topic) => `cheap ${topic}`,
     intent: "commercial",
     cluster: "Pricing",
@@ -149,14 +174,14 @@ export function runDiscovery(
 
   const scale = project ? 0.6 + project.scale * 1.6 : 1;
 
-  const matching = PATTERNS.filter(
+  const matching = EXPANSION_PATTERNS.filter(
     (pattern) =>
       input.intentFocus === "all" || pattern.intent === input.intentFocus,
   );
 
   // A focus that matches no pattern would return nothing at all; falling back
   // to the full set keeps the flow honest about what it can produce.
-  const pool = matching.length > 0 ? matching : PATTERNS;
+  const pool = matching.length > 0 ? matching : EXPANSION_PATTERNS;
 
   const keywords: DiscoveredKeyword[] = pool.map((pattern, index) => {
     const keyword = pattern.build(topic);

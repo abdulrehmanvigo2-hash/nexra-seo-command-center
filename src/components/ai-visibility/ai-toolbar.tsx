@@ -9,6 +9,10 @@ import { Toolbar, ToolbarGroup, ToolbarSpacer } from "@/components/ui/toolbar";
 import { cn } from "@/lib/cn";
 import {
   CITATION_META,
+  COVERAGE_META,
+  COVERAGE_ORDER,
+  FACET_META,
+  FACET_ORDER,
   CITATION_ORDER,
   CONFIDENCE_META,
   ENTITY_TYPE_META,
@@ -47,6 +51,8 @@ export type AiFilterCounts = {
   readonly opportunityKind: Readonly<Record<string, number>>;
   readonly severity: Readonly<Record<string, number>>;
   readonly confidence: Readonly<Record<string, number>>;
+  readonly coverage: Readonly<Record<string, number>>;
+  readonly facet: Readonly<Record<string, number>>;
   readonly total: number;
 };
 
@@ -223,6 +229,34 @@ export function AiToolbar({
                   label: entry.label,
                 })),
               ]}
+            />
+
+            <FilterSelect
+              label="Fan-out coverage"
+              value={filters.coverage}
+              onChange={(coverage) =>
+                onFilterChange({ coverage: coverage as AiFilters["coverage"] })
+              }
+              options={optionsFrom(
+                COVERAGE_ORDER,
+                COVERAGE_META,
+                counts.coverage,
+                "Any coverage",
+              )}
+            />
+
+            <FilterSelect
+              label="Sub-question asks for"
+              value={filters.facet}
+              onChange={(facet) =>
+                onFilterChange({ facet: facet as AiFilters["facet"] })
+              }
+              options={optionsFrom(
+                FACET_ORDER,
+                FACET_META,
+                counts.facet,
+                "Any kind",
+              )}
             />
 
             <FilterSelect
