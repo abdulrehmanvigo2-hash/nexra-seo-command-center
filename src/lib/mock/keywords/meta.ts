@@ -3,7 +3,7 @@ import type { BadgeTone } from "@/components/ui/badge";
 import type { MeterTone } from "@/components/ui/meter";
 import type { MetricHealth } from "@/types/dashboard";
 import type {
-  AiCoverageStatus,
+  AiCoverageProjection,
   AiKeywordFilter,
   CannibalizationRisk,
   CannibalizationState,
@@ -501,33 +501,49 @@ export const SERP_TYPE_META: Record<
 // AI / answer engines
 // ---------------------------------------------------------------------------
 
+/**
+ * Stated wherever an answer-engine figure appears in this module.
+ *
+ * Every reading in the AI layer is a projection off canonical keyword data.
+ * The note says so in the one place a reader would otherwise assume a feed.
+ */
+export const KEYWORDS_AI_SOURCE_NOTE =
+  "Projected, not observed. No answer engine is queried anywhere in this product — these readings are modelled from each keyword's own position, intent, content strength and modelled result page. Nothing here reports that ChatGPT, Gemini, Perplexity, Claude, Google AI Overviews or Bing Copilot cited the brand.";
+
+export const KEYWORDS_AI_SOURCE_SHORT =
+  "Projected from keyword data — no answer engine is queried.";
+
 export const AI_COVERAGE_META: Record<
-  AiCoverageStatus,
+  AiCoverageProjection,
   {
     readonly label: string;
     readonly tone: BadgeTone;
     readonly description: string;
   }
 > = {
-  cited: {
-    label: "Cited",
+  "likely-source": {
+    label: "Likely source",
     tone: "positive",
-    description: "The brand is used as a source in generated answers.",
+    description:
+      "Ranked highly enough that a generated answer would plausibly draw from this page. A projection from position — not an observed citation.",
   },
-  mentioned: {
-    label: "Mentioned",
+  "likely-mention": {
+    label: "Likely mention",
     tone: "accent",
-    description: "The brand is named, but not linked as a source.",
+    description:
+      "Ranked well enough to be named in passing, but not the page an answer would be built from. Projected, not observed.",
   },
-  absent: {
-    label: "Absent",
+  unlikely: {
+    label: "Unlikely",
     tone: "warning",
-    description: "Answers are generated and the brand appears in none of them.",
+    description:
+      "An answer is projected for this query and nothing of ours ranks well enough to be drawn from it.",
   },
-  "not-eligible": {
-    label: "Not eligible",
+  "not-projected": {
+    label: "No answer projected",
     tone: "neutral",
-    description: "No generated answer appears for this query yet.",
+    description:
+      "This query's result page carries no generated-answer feature in this dataset.",
   },
 };
 
@@ -541,11 +557,12 @@ export const AI_FILTER_META: Record<
   },
   "high-opportunity": {
     label: "High AI opportunity",
-    description: "Strong answer relevance with real citation upside.",
+    description: "Strong answer relevance with real projected upside.",
   },
   "citation-gap": {
     label: "Citation gap",
-    description: "Answers are generated and the brand is not cited.",
+    description:
+      "An answer is projected for the query and nothing of ours is positioned to be drawn from it.",
   },
   "question-based": {
     label: "Question-based",
@@ -553,7 +570,8 @@ export const AI_FILTER_META: Record<
   },
   "entity-weakness": {
     label: "Entity weakness",
-    description: "Topic authority sits below what citation demands.",
+    description:
+      "Topic authority sits below what being drawn from an answer would demand.",
   },
   "answer-ready": {
     label: "Answer engine ready",

@@ -82,7 +82,7 @@ function matchesFlag(record: ContentRecord, flag: ContentFlag): boolean {
     case "unmapped":
       return record.primaryKeywordId === null;
     case "ai-gap":
-      return record.aeo.aiKeywords > 0 && record.aeo.citedKeywords === 0;
+      return record.aeo.aiKeywords > 0 && record.aeo.likelySourceKeywords === 0;
     case "refresh-due":
       return record.refresh !== null;
   }

@@ -15,6 +15,7 @@ import { formatCompact } from "@/lib/format";
 import {
   AI_COVERAGE_META,
   AI_FILTER_META,
+  KEYWORDS_AI_SOURCE_NOTE,
   AI_FILTER_ORDER,
   aiOpportunityOf,
   entityGapOf,
@@ -34,14 +35,15 @@ import type { AiKeywordFilter, KeywordMetric, KeywordRecord } from "@/types/keyw
  *
  * Search that ends in an answer rather than a click is a different problem
  * from ranking, so it gets its own reading of the same keywords: how well a
- * query suits being answered, whether an engine is already answering it
- * without us, and whether the site is authoritative enough on the topic for a
- * citation to be realistic.
+ * query suits being answered, whether an answer is projected to run on it
+ * without us, and whether the site is authoritative enough on the topic for
+ * being drawn from to be realistic.
  *
  * This is the keyword slice of the AI Visibility / AEO / GEO agent's remit
- * (CLAUDE.md §13, agent 10) — the full module is a later phase. Every signal
- * here is a mock reading of the fixture dataset; nothing queries an answer
- * engine.
+ * (CLAUDE.md §13, agent 10). Every signal here is projected from the keyword's
+ * own canonical figures — position, intent, content strength and the query's
+ * modelled result page. Nothing queries an answer engine, and nothing on this
+ * screen reports that one cited the brand.
  */
 
 const PREVIEW = 10;
@@ -141,10 +143,7 @@ export function AiSearchView({
             total={visible.length}
             noun="keywords"
           />
-          <span>
-            Mock answer-engine signals. No model or answer engine is queried in
-            this milestone.
-          </span>
+          <span>{KEYWORDS_AI_SOURCE_NOTE}</span>
         </PanelFooter>
       </Panel>
     </div>
@@ -177,10 +176,13 @@ function AiKeywordRow({ record }: { record: KeywordRecord }) {
                 Question
               </Badge>
             )}
-            {ai.aiOverviewPresent && (
-              <Badge tone="accent">
+            {ai.answerProjected && (
+              <Badge
+                tone="accent"
+                title="This query's modelled result page carries a generated-answer feature. Projected from the fixture dataset, not observed on a live result page."
+              >
                 <Icon name="sparkles" className="h-3 w-3" />
-                AI overview
+                Answer projected
               </Badge>
             )}
           </div>

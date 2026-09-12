@@ -903,7 +903,7 @@ export function ContentWorkspace({ contentId }: { contentId: string }) {
                 <Signal
                   label="Citation likelihood"
                   value={record.aeo.citationLikelihood}
-                  detail="How likely a generated answer is to quote it."
+                  detail="Modelled likelihood a generated answer would quote it. Projected from the keyword layer, not observed."
                 />
                 <Signal
                   label="Entity coverage"
@@ -922,13 +922,14 @@ export function ContentWorkspace({ contentId }: { contentId: string }) {
                 />
                 <div className="rounded-md border border-border bg-surface-raised px-3 py-2.5">
                   <p className="text-[11px] text-fg-subtle">
-                    Generated answers
+                    Answers projected
                   </p>
                   <p className="tabular mt-1.5 text-[18px] leading-none font-semibold text-fg">
-                    {record.aeo.citedKeywords} / {record.aeo.aiKeywords}
+                    {record.aeo.likelySourceKeywords} / {record.aeo.aiKeywords}
                   </p>
                   <p className="mt-1.5 text-[11px] leading-snug text-fg-subtle">
-                    Keywords where an answer runs, and how many cite the brand.
+                    Keywords where an answer is projected, and how many this
+                    page is positioned to be drawn from.
                   </p>
                 </div>
               </dl>

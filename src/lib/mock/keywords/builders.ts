@@ -29,7 +29,7 @@ import {
 import type { Project } from "@/types/project";
 import type {
   AgentId,
-  AiCoverageStatus,
+  AiCoverageProjection,
   AiKeywordSignal,
   KeywordPriorityScore,
   KeywordRecord,
@@ -363,7 +363,7 @@ function buildAiSignal(
   features: readonly SerpFeaturePresence[],
   contentStrength: number,
 ): AiKeywordSignal {
-  const aiOverviewPresent = features.some(
+  const answerProjected = features.some(
     (entry) => entry.feature === "ai-overview",
   );
 
@@ -410,17 +410,21 @@ function buildAiSignal(
   );
 
   const position = seed.position;
-  const coverage: AiCoverageStatus = !aiOverviewPresent
-    ? "not-eligible"
+  // A projection off our own ranking position, nothing more: a page in the
+  // top three is the kind of result an answer engine tends to draw from, and
+  // one outside the top ten is not. No answer engine is consulted, so the
+  // vocabulary says "likely", never "cited".
+  const coverage: AiCoverageProjection = !answerProjected
+    ? "not-projected"
     : position !== null && position <= 3
-      ? "cited"
+      ? "likely-source"
       : position !== null && position <= 10
-        ? "mentioned"
-        : "absent";
+        ? "likely-mention"
+        : "unlikely";
 
   const citationGap = entityStrengthNeeded - entityStrengthHeld;
   const citationOpportunity =
-    coverage === "cited"
+    coverage === "likely-source"
       ? "low"
       : answerRelevance >= 70 && citationGap < 30
         ? "high"
@@ -445,7 +449,7 @@ function buildAiSignal(
       ),
     ),
     coverage,
-    aiOverviewPresent,
+    answerProjected,
   };
 }
 
@@ -466,7 +470,7 @@ function ownerFor(
 ): AgentId {
   if (cannibalized) return "on-page-seo";
   if (seed.url === null) return "content-strategist";
-  if (ai.aiOverviewPresent && ai.coverage === "absent") return "ai-visibility";
+  if (ai.answerProjected && ai.coverage === "unlikely") return "ai-visibility";
   if (seed.position !== null && seed.position > 50) return "technical-seo";
   if (seed.position !== null && seed.position >= 4 && seed.position <= 20) {
     return "on-page-seo";
@@ -523,7 +527,7 @@ function competitorFactor(
 
 function aiFactor(ai: AiKeywordSignal): number {
   const discount =
-    ai.coverage === "cited" ? 0.4 : ai.coverage === "mentioned" ? 0.7 : 1;
+    ai.coverage === "likely-source" ? 0.4 : ai.coverage === "likely-mention" ? 0.7 : 1;
   return Math.round(clamp(ai.answerRelevance * discount, 0, 100));
 }
 
@@ -606,11 +610,11 @@ function buildScore(
       label: "AI search opportunity",
       value: aiFactor(input.ai),
       detail:
-        input.ai.coverage === "cited"
-          ? "Already cited in generated answers — the upside is defensive."
-          : input.ai.aiOverviewPresent
-            ? "An AI overview runs on this query and does not cite us."
-            : "No generated answer on this query yet.",
+        input.ai.coverage === "likely-source"
+          ? "Already positioned to be drawn from — the upside is defensive."
+          : input.ai.answerProjected
+            ? "An answer is projected for this query and nothing of ours is positioned for it."
+            : "No generated answer projected on this query.",
     },
     {
       key: "content",

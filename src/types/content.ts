@@ -171,7 +171,12 @@ export type OnPageRecommendation = {
 export type ContentAeoSignal = {
   /** Whether the page answers its questions in a quotable way, 0-100. */
   readonly answerReadiness: number;
-  /** How likely a generated answer is to cite it, 0-100. */
+  /**
+   * Modelled likelihood a generated answer would use it as a source, 0-100.
+   *
+   * A projection from the keyword layer's own signals. No answer engine is
+   * queried and no citation is observed anywhere in this product.
+   */
   readonly citationLikelihood: number;
   /** Entity coverage held against what the topic needs, 0-100. */
   readonly entityCoverage: number;
@@ -179,10 +184,10 @@ export type ContentAeoSignal = {
   readonly questionCoverage: number;
   /** Structured-data completeness for the format, 0-100. */
   readonly structuredData: number;
-  /** Keywords on this page where a generated answer runs. */
+  /** Keywords on this page where a generated answer is projected to run. */
   readonly aiKeywords: number;
-  /** Of those, how many cite the brand today. */
-  readonly citedKeywords: number;
+  /** Of those, how many project this page as a likely source. */
+  readonly likelySourceKeywords: number;
   /** Overall band. */
   readonly health: MetricHealth;
   readonly summary: string;

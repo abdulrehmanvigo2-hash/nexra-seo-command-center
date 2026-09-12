@@ -415,7 +415,7 @@ export const THREAT_KIND_META: Record<ThreatKind, KindMeta> = {
     tone: "warning",
     icon: "sparkles",
     description:
-      "A generated answer runs on the term, they are eligible for it, and we are not cited.",
+      "An answer is projected on the term, they are positioned to be drawn from it, and we are not.",
   },
 };
 

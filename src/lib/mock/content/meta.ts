@@ -205,6 +205,16 @@ export const ATTENTION_HEALTH: readonly ContentHealth[] = [
 // Format
 // ---------------------------------------------------------------------------
 
+/**
+ * Stated wherever an answer-engine figure appears in Content Studio.
+ *
+ * Every AEO reading on a page is rolled up from the keyword layer's own
+ * projections. No answer engine is queried anywhere in this product, so the
+ * note says so in the place a reader would otherwise assume a feed.
+ */
+export const CONTENT_AEO_SOURCE_NOTE =
+  "Projected, not observed. These readings roll up the keyword layer's own projections for the terms each page serves — no answer engine is queried, and nothing here reports that ChatGPT, Gemini, Perplexity, Claude, Google AI Overviews or Bing Copilot cited the brand. The full picture is the AI Visibility module.";
+
 export const FORMAT_META: Record<
   ContentFormat,
   {

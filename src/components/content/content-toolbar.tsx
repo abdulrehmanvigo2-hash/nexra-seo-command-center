@@ -86,7 +86,8 @@ const FLAGS: readonly {
   {
     value: "ai-gap",
     label: "Answer-engine gap",
-    description: "A generated answer runs on its keywords and cites somebody else.",
+    description:
+      "An answer is projected on its keywords and this page is not positioned for any of them.",
   },
 ];
 

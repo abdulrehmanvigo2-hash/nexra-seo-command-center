@@ -8,15 +8,16 @@ import type { KeywordRecord } from "@/types/keyword";
  * How ready a page is to be quoted by an answer engine.
  *
  * Every reading here is a roll-up of the answer-engine signals the keyword
- * layer already holds for the keywords the page targets. That module decides
+ * layer already holds for the keywords the page targets. That module projects
  * whether a generated answer runs on a query, how relevant an answer would be,
- * what entity strength the topic demands, and whether the brand is cited
- * today; this one asks the page-level version of the same question — is this
- * piece the thing that gets quoted?
+ * what entity strength the topic demands, and whether anything of ours is
+ * positioned to be drawn from it; this one asks the page-level version of the
+ * same question — is this piece the thing that would get quoted?
  *
- * There is no second AEO dataset, and nothing here checks a live generative
- * engine. The Phase 9 AI Visibility module owns the full picture; what is here
- * is the content slice of it and nothing more (CLAUDE.md §14).
+ * Projection throughout. No answer engine is queried, nothing here observes a
+ * citation, and there is no second AEO dataset — the Phase 9 AI Visibility
+ * module owns the full picture and this is the content slice of it
+ * (CLAUDE.md §4, §14).
  */
 
 /** Structured-data completeness a format is expected to reach. */
@@ -57,10 +58,10 @@ export function buildAeoSignal(
   const { format, published, contentStrength, wordCount, seed } = context;
 
   const aiKeywords = keywords.filter(
-    (record) => record.ai.aiOverviewPresent,
+    (record) => record.ai.answerProjected,
   ).length;
-  const citedKeywords = keywords.filter(
-    (record) => record.ai.coverage === "cited",
+  const likelySourceKeywords = keywords.filter(
+    (record) => record.ai.coverage === "likely-source",
   ).length;
 
   const questionKeywords = keywords.filter(
@@ -128,12 +129,12 @@ export function buildAeoSignal(
       );
 
   const summary = !published
-    ? "Nothing is live, so no generated answer can cite this yet."
+    ? "Nothing is live, so there is nothing a generated answer could draw from yet."
     : aiKeywords === 0
-      ? "No generated answer runs on this page's keywords today."
-      : citedKeywords > 0
-        ? `Cited on ${citedKeywords} of ${aiKeywords} keyword${aiKeywords === 1 ? "" : "s"} where a generated answer runs.`
-        : `A generated answer runs on ${aiKeywords} of this page's keywords and cites somebody else.`;
+      ? "No generated answer is projected on this page's keywords."
+      : likelySourceKeywords > 0
+        ? `Positioned to be drawn from on ${likelySourceKeywords} of ${aiKeywords} keyword${aiKeywords === 1 ? "" : "s"} where an answer is projected.`
+        : `An answer is projected on ${aiKeywords} of this page's keywords and this page is not positioned for any of them.`;
 
   return {
     answerReadiness,
@@ -142,7 +143,7 @@ export function buildAeoSignal(
     questionCoverage,
     structuredData,
     aiKeywords,
-    citedKeywords,
+    likelySourceKeywords,
     health: healthOf(citationLikelihood),
     summary,
   };

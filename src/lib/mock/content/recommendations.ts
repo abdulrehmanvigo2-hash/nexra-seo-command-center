@@ -16,7 +16,8 @@ import type {
  * title actually is, whether a keyword is mapped to the page at all, how much
  * has been written against the format's target, where the page sits in the
  * internal link graph, how long since it was touched, and whether a generated
- * answer runs on its keywords without citing it. Only the four a fixture
+ * answer is projected on its keywords without the page being positioned for
+ * it. Only the four a fixture
  * cannot observe from the data — the meta description, the H1, the heading
  * outline, and image alt text — are decided by a seeded draw, and they are
  * decided the same way on every render.
@@ -167,11 +168,11 @@ function build(record: ContentRecord): readonly Finding[] {
     });
   }
 
-  if (record.aeo.aiKeywords > 0 && record.aeo.citedKeywords === 0) {
+  if (record.aeo.aiKeywords > 0 && record.aeo.likelySourceKeywords === 0) {
     findings.push({
       check: "answer-block",
       severity: "high",
-      finding: `A generated answer runs on ${record.aeo.aiKeywords} of this page's keywords and cites somebody else.`,
+      finding: `An answer is projected on ${record.aeo.aiKeywords} of this page's keywords and this page is not positioned for any of them.`,
       action:
         "Add a 40-60 word self-contained answer under a matching heading, with a sourced figure in it.",
       scoreImpact: 8,

@@ -12,7 +12,11 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { Segmented } from "@/components/ui/segmented";
 import { formatCompact, formatPercent } from "@/lib/format";
 import { healthOf } from "@/lib/health";
-import { averageOf, scoreTone } from "@/lib/mock/content";
+import {
+  CONTENT_AEO_SOURCE_NOTE,
+  averageOf,
+  scoreTone,
+} from "@/lib/mock/content";
 import { ListExpander } from "@/components/agents/list-expander";
 import {
   ContentLink,
@@ -27,13 +31,13 @@ import type { ContentRecord } from "@/types/content";
  *
  * Every figure here is a page-level roll-up of the answer-engine signals the
  * Keyword Intelligence module already holds for the keywords each page serves.
- * That module answers "does a generated answer run on this query, and does it
- * cite us"; this one answers the version an editor can act on — "is this page
- * the thing that would get quoted".
+ * That module projects whether an answer runs on a query and whether anything
+ * of ours is positioned to be drawn from it; this one answers the version an
+ * editor can act on — "is this page the thing that would get quoted".
  *
- * The full picture is Phase 9's module. What is here is the content slice of
- * it, and the footer says so rather than implying the product measures more
- * than it does.
+ * Projection throughout, never observation. The full picture is Phase 9's
+ * module, and the footer says so rather than implying this product measures
+ * more than it does.
  */
 
 type AeoFilter =
@@ -54,12 +58,13 @@ const FILTERS: readonly {
     value: "citation-gap",
     label: "Citation gap",
     description:
-      "A generated answer runs on this page's keywords and cites somebody else.",
+      "An answer is projected on this page's keywords and this page is not positioned for any of them.",
   },
   {
     value: "cited",
-    label: "Already cited",
-    description: "Cited on at least one keyword where a generated answer runs.",
+    label: "Positioned to be drawn from",
+    description:
+      "Ranked well enough to be a likely source on at least one keyword where an answer is projected.",
   },
   {
     value: "answer-ready",
@@ -83,9 +88,9 @@ function matches(record: ContentRecord, filter: AeoFilter): boolean {
     case "all":
       return true;
     case "citation-gap":
-      return record.aeo.aiKeywords > 0 && record.aeo.citedKeywords === 0;
+      return record.aeo.aiKeywords > 0 && record.aeo.likelySourceKeywords === 0;
     case "cited":
-      return record.aeo.citedKeywords > 0;
+      return record.aeo.likelySourceKeywords > 0;
     case "answer-ready":
       return record.aeo.answerReadiness >= 70;
     case "entity-gap":
@@ -133,7 +138,7 @@ export function AeoView({ records }: { records: readonly ContentRecord[] }) {
     0,
   );
   const cited = live.reduce(
-    (carry, record) => carry + record.aeo.citedKeywords,
+    (carry, record) => carry + record.aeo.likelySourceKeywords,
     0,
   );
 
@@ -152,7 +157,7 @@ export function AeoView({ records }: { records: readonly ContentRecord[] }) {
       label: "Citation likelihood",
       value: String(averageOf(live.map((r) => r.aeo.citationLikelihood))),
       unit: "/ 100",
-      detail: "How likely a generated answer is to quote these pages",
+      detail: "Modelled likelihood a generated answer would quote these pages",
       icon: "ai-visibility",
       health: healthOf(averageOf(live.map((r) => r.aeo.citationLikelihood))),
     },
@@ -176,20 +181,20 @@ export function AeoView({ records }: { records: readonly ContentRecord[] }) {
     },
     {
       id: "ai-keywords",
-      label: "Keywords with AI answers",
+      label: "Answers projected",
       value: formatCompact(aiKeywords),
-      detail: "Queries across these pages where a generated answer runs",
+      detail: "Queries across these pages where a generated answer is projected",
       icon: "keywords",
     },
     {
       id: "cited",
-      label: "Citations held",
+      label: "Positioned to be drawn from",
       value: formatCompact(cited),
       unit:
         aiKeywords > 0
           ? formatPercent(Math.round((cited / aiKeywords) * 100), 0)
           : undefined,
-      detail: "Of those queries, how many cite the brand today",
+      detail: "Of those queries, how many this page set is positioned for",
       icon: "check",
       health: cited > 0 ? "positive" : "warning",
     },
@@ -206,7 +211,7 @@ export function AeoView({ records }: { records: readonly ContentRecord[] }) {
       id: "gap-pages",
       label: "Pages with a citation gap",
       value: String(counts["citation-gap"] ?? 0),
-      detail: "An answer runs on their keywords and cites somebody else",
+      detail: "An answer is projected on their keywords and nothing of ours is positioned for it",
       icon: "alert",
       health: (counts["citation-gap"] ?? 0) === 0 ? "positive" : "warning",
     },
@@ -278,10 +283,13 @@ export function AeoView({ records }: { records: readonly ContentRecord[] }) {
 
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <FormatBadge format={record.format} />
-                      {record.aeo.citedKeywords > 0 ? (
-                        <Badge tone="positive">
+                      {record.aeo.likelySourceKeywords > 0 ? (
+                        <Badge
+                          tone="positive"
+                          title="Ranked well enough on these keywords that an answer would plausibly draw from this page. Projected, not observed."
+                        >
                           <Icon name="check" className="h-3 w-3" />
-                          Cited on {record.aeo.citedKeywords}
+                          Positioned on {record.aeo.likelySourceKeywords}
                         </Badge>
                       ) : record.aeo.aiKeywords > 0 ? (
                         <Badge tone="warning">
@@ -289,7 +297,7 @@ export function AeoView({ records }: { records: readonly ContentRecord[] }) {
                           {record.aeo.aiKeywords} answered without us
                         </Badge>
                       ) : (
-                        <Badge tone="neutral">No generated answers</Badge>
+                        <Badge tone="neutral">No answers projected</Badge>
                       )}
                     </div>
                   </div>
@@ -330,10 +338,9 @@ export function AeoView({ records }: { records: readonly ContentRecord[] }) {
             total={visible.length}
             noun="pages"
           />
-          <span className="inline-flex items-center gap-1.5">
-            <Icon name="info" className="h-3.5 w-3.5" />
-            Modelled from the keyword set. The full picture is the AI Visibility
-            module.
+          <span className="inline-flex items-start gap-1.5">
+            <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {CONTENT_AEO_SOURCE_NOTE}
           </span>
         </PanelFooter>
       </Panel>

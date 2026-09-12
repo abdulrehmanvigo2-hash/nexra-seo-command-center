@@ -124,7 +124,7 @@ function kindFor(
     const heldFeature = keyword.serpFeatures.some(
       (feature) => feature.ownership === "competitor",
     );
-    const aiGap = keyword.ai.aiOverviewPresent && keyword.ai.coverage !== "cited";
+    const aiGap = keyword.ai.answerProjected && keyword.ai.coverage !== "likely-source";
     if (heldFeature || aiGap) return "serp-feature";
   }
 

@@ -39,7 +39,7 @@ export const SEO_OPPORTUNITIES: readonly SeoOpportunity[] = [
   },
   {
     id: "opp-04",
-    title: "Add structured answers to 40 pages already cited by AI engines",
+    title: "Add structured answers to 40 pages positioned for generated answers",
     type: "ai-visibility",
     impact: "high",
     effort: "medium",

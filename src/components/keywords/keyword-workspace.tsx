@@ -21,6 +21,7 @@ import {
 import { DATE_RANGES } from "@/lib/mock/dashboard";
 import {
   AI_COVERAGE_META,
+  KEYWORDS_AI_SOURCE_NOTE,
   CANNIBALIZATION_RISK_META,
   CONTENT_GAP_META,
   DIFFICULTY_BAND_META,
@@ -279,7 +280,7 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
       {contentPiece && (
         <AiReadinessNote
           contentId={contentPiece.id}
-          aiOverviewPresent={keyword.ai.aiOverviewPresent}
+          answerProjected={keyword.ai.answerProjected}
           answerability={keyword.ai.answerability}
         />
       )}
@@ -687,7 +688,7 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
           <PanelHeader
             eyebrow="AI search"
             title="Answer engine relevance"
-            description="How this query behaves where the answer replaces the click."
+            description="How this query behaves where the answer replaces the click. Every reading below is projected from this keyword's own figures."
             actions={
               <Badge tone={AI_COVERAGE_META[keyword.ai.coverage].tone} dot>
                 {AI_COVERAGE_META[keyword.ai.coverage].label}
@@ -719,7 +720,7 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
               <AiReading
                 label="Brand mention potential"
                 value={keyword.ai.brandMentionPotential}
-                hint="Likelihood the brand is named in an answer"
+                hint="Modelled likelihood the brand is named in an answer"
               />
             </dl>
 
@@ -750,8 +751,8 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
               />
               <p className="mt-2 text-[11.5px] leading-snug text-fg-subtle">
                 {entityGapOf(keyword) > 0
-                  ? `${entityGapOf(keyword)} points short of the topical authority a citation demands here.`
-                  : "Authoritative enough on this topic for a citation to be realistic."}
+                  ? `${entityGapOf(keyword)} points short of the topical authority being drawn from an answer would demand here.`
+                  : "Authoritative enough on this topic for being drawn from an answer to be realistic."}
               </p>
             </div>
 
@@ -773,9 +774,7 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
           </PanelBody>
 
           <PanelFooter>
-            <span>
-              Mock answer-engine signals. No model or answer engine is queried.
-            </span>
+            <span>{KEYWORDS_AI_SOURCE_NOTE}</span>
             <Link
               href="/agents/ai-visibility"
               className="inline-flex items-center gap-1.5 transition-colors hover:text-accent"

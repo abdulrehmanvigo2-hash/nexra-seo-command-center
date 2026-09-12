@@ -109,19 +109,29 @@ export type SerpType =
 // AI / answer-engine layer
 // ---------------------------------------------------------------------------
 
-/** Where the brand stands in generative answers for a keyword. */
-export type AiCoverageStatus =
-  | "cited"
-  | "mentioned"
-  | "absent"
-  | "not-eligible";
+/**
+ * Where the brand is *projected* to stand in a generated answer.
+ *
+ * A projection, not an observation. Nothing in this product queries ChatGPT,
+ * Gemini, Perplexity, Claude, Google AI Overviews or Bing Copilot, so no
+ * member here may be read as a citation that was seen. The projection is
+ * arithmetic on our own ranking position and the query's modelled result page,
+ * and the vocabulary is named so the stronger claim cannot be made by accident
+ * — the same rule the AI Visibility module is built on (CLAUDE.md §4).
+ */
+export type AiCoverageProjection =
+  | "likely-source"
+  | "likely-mention"
+  | "unlikely"
+  | "not-projected";
 
 /**
  * The answer-engine reading of one keyword.
  *
- * Mock signals, scored the same way the AI Visibility / AEO / GEO agent
- * (CLAUDE.md §13, agent 10) would report them, so the two modules describe the
- * same idea when that one is built.
+ * Every figure below is modelled from canonical keyword data — position,
+ * intent, content strength and the query's own modelled result page. None of
+ * it is measured against a live answer engine, and none of it reports that the
+ * brand was cited: see `AiCoverageProjection`.
  */
 export type AiKeywordSignal = {
   /** How well the query suits a generated answer, 0-100. */
@@ -136,11 +146,15 @@ export type AiKeywordSignal = {
   readonly questionFormat: boolean;
   /** How cleanly the query can be answered in a short passage, 0-100. */
   readonly answerability: number;
-  /** Likelihood the brand is named in an answer, 0-100. */
+  /** Modelled likelihood the brand is named in an answer, 0-100. */
   readonly brandMentionPotential: number;
-  readonly coverage: AiCoverageStatus;
-  /** True where an AI overview is already occupying the result page. */
-  readonly aiOverviewPresent: boolean;
+  readonly coverage: AiCoverageProjection;
+  /**
+   * True where this query's modelled result page carries a generated-answer
+   * feature. A property of the fixture's SERP feature set, not an observation
+   * of any live result page.
+   */
+  readonly answerProjected: boolean;
 };
 
 /** The narrower cuts the AI layer can be filtered to. */

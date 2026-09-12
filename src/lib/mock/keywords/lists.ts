@@ -106,7 +106,7 @@ const SEEDS: readonly ListSeed[] = [
       records
         .filter(
           (record) =>
-            record.ai.aiOverviewPresent && record.ai.coverage !== "cited",
+            record.ai.answerProjected && record.ai.coverage !== "likely-source",
         )
         .sort((a, b) => b.ai.answerRelevance - a.ai.answerRelevance),
   },

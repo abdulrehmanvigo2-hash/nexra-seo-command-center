@@ -118,7 +118,7 @@ const POOL: readonly Omit<PriorityAction, "id" | "state">[] = [
     priority: "medium",
     title: "Optimise cited pages for AI answer visibility",
     area: "ai-visibility",
-    affected: "40 pages already cited",
+    affected: "40 pages positioned to be drawn from",
     impact: "+14 pts AI visibility",
     impactLevel: "high",
     effort: "medium",

@@ -15,8 +15,9 @@ import { formatCompact, formatPercent } from "@/lib/format";
  * site is not authoritative enough to be cited for yet.
  *
  * It is the keyword slice of the AI Visibility / AEO / GEO agent's remit
- * (CLAUDE.md §13, agent 10). The full module is a later phase; nothing here
- * calls a model or an answer engine.
+ * (CLAUDE.md §13, agent 10). Nothing here calls a model or an answer engine,
+ * and nothing here reports an observed citation: every reading is projected
+ * from the keyword's own canonical figures, and the UI states that.
  */
 
 /** The gap between the authority a topic demands and the authority we hold. */
@@ -29,8 +30,8 @@ export function entityGapOf(record: KeywordRecord): number {
  *
  * Relevance and answerability say whether a generated answer is likely and
  * whether we could supply it; coverage says whether we already do. A keyword
- * that is cited scores low here, because the work is defensive rather than an
- * opening.
+ * already positioned to be drawn from scores low here, because the work is
+ * defensive rather than an opening.
  */
 export function aiOpportunityOf(record: KeywordRecord): number {
   const { ai } = record;
@@ -38,11 +39,11 @@ export function aiOpportunityOf(record: KeywordRecord): number {
   const base = ai.answerRelevance * 0.45 + ai.answerability * 0.35;
   const authority = Math.max(0, 100 - Math.max(0, entityGapOf(record))) * 0.2;
   const coverageFactor =
-    ai.coverage === "cited"
+    ai.coverage === "likely-source"
       ? 0.35
-      : ai.coverage === "mentioned"
+      : ai.coverage === "likely-mention"
         ? 0.75
-        : ai.coverage === "absent"
+        : ai.coverage === "unlikely"
           ? 1
           : 0.6;
 
@@ -64,7 +65,7 @@ export function matchesAiFilter(
     case "high-opportunity":
       return aiOpportunityOf(record) >= 62;
     case "citation-gap":
-      return ai.aiOverviewPresent && ai.coverage !== "cited";
+      return ai.answerProjected && ai.coverage !== "likely-source";
     case "question-based":
       return ai.questionFormat;
     case "entity-weakness":
@@ -83,16 +84,18 @@ function mean(values: readonly number[]): number {
 export function getAiSummary(
   records: readonly KeywordRecord[],
 ): readonly KeywordMetric[] {
-  const eligible = records.filter((record) => record.ai.aiOverviewPresent);
-  const cited = eligible.filter((record) => record.ai.coverage === "cited");
+  const eligible = records.filter((record) => record.ai.answerProjected);
+  const likelySource = eligible.filter(
+    (record) => record.ai.coverage === "likely-source",
+  );
   const questions = records.filter((record) => record.ai.questionFormat);
   const weak = records.filter((record) => entityGapOf(record) > 12);
   const ready = records.filter((record) =>
     matchesAiFilter(record, "answer-ready"),
   );
 
-  const citationRate =
-    eligible.length === 0 ? 0 : (cited.length / eligible.length) * 100;
+  const projectedRate =
+    eligible.length === 0 ? 0 : (likelySource.length / eligible.length) * 100;
 
   const opportunityVolume = records
     .filter((record) => matchesAiFilter(record, "citation-gap"))
@@ -101,22 +104,22 @@ export function getAiSummary(
   return [
     {
       id: "ai-eligible",
-      label: "AI search eligible",
+      label: "Answer projected",
       value: formatCompact(eligible.length),
       unit: `of ${records.length}`,
-      detail: "Keywords where a generated answer already runs.",
+      detail: "Keywords whose modelled result page carries a generated answer.",
       icon: "sparkles",
     },
     {
       id: "ai-citation-rate",
-      label: "Citation rate",
-      value: formatPercent(round(citationRate, 1)),
-      detail: `${cited.length} of ${eligible.length} eligible keywords cite the brand.`,
+      label: "Projected source rate",
+      value: formatPercent(round(projectedRate, 1)),
+      detail: `${likelySource.length} of ${eligible.length} are positioned well enough to be drawn from. Projected, not observed.`,
       icon: "shield",
       health:
-        citationRate >= 35
+        projectedRate >= 35
           ? "positive"
-          : citationRate >= 18
+          : projectedRate >= 18
             ? "warning"
             : "negative",
     },
@@ -156,7 +159,8 @@ export function getAiSummary(
       label: "Citation gap volume",
       value: formatCompact(opportunityVolume),
       unit: "searches / mo",
-      detail: "Demand answered by engines that do not cite the brand.",
+      detail:
+        "Demand behind queries where an answer is projected and nothing of ours is positioned for it.",
       icon: "target",
     },
     {
@@ -166,7 +170,7 @@ export function getAiSummary(
         Math.round(mean(records.map((r) => r.ai.brandMentionPotential))),
       ),
       unit: "/ 100",
-      detail: "Likelihood the brand is named in a generated answer.",
+      detail: "Modelled likelihood the brand is named in a generated answer.",
       icon: "ai-visibility",
     },
   ];

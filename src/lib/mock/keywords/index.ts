@@ -78,6 +78,8 @@ export {
   CONTENT_GAP_ORDER,
   DIFFICULTY_BAND_META,
   DIFFICULTY_BAND_ORDER,
+  KEYWORDS_AI_SOURCE_NOTE,
+  KEYWORDS_AI_SOURCE_SHORT,
   INTENT_META,
   INTENT_ORDER,
   INTENT_VALUE,
@@ -272,7 +274,7 @@ export function getKeywordMetrics(
       record.intent === "local",
   );
 
-  const aiEligible = records.filter((record) => record.ai.aiOverviewPresent);
+  const aiEligible = records.filter((record) => record.ai.answerProjected);
 
   return [
     {
@@ -334,9 +336,9 @@ export function getKeywordMetrics(
     },
     {
       id: "ai-eligible",
-      label: "AI search eligible",
+      label: "Answer projected",
       value: formatNumber(aiEligible.length),
-      detail: `${aiEligible.filter((record) => record.ai.coverage === "cited").length} of them cite the brand today`,
+      detail: `${aiEligible.filter((record) => record.ai.coverage === "likely-source").length} positioned to be drawn from — projected, not observed`,
       icon: "sparkles",
       health: "neutral",
     },
@@ -462,11 +464,11 @@ function recommendedActionFor(
     };
   }
 
-  if (record.ai.aiOverviewPresent && record.ai.coverage !== "cited") {
+  if (record.ai.answerProjected && record.ai.coverage !== "likely-source") {
     return {
       title: "Make the page citable",
       detail:
-        "A generated answer runs on this query and cites somebody else. Add a sourced, self-contained passage that answers it directly.",
+        "An answer is projected for this query and nothing of ours is positioned for it. Add a sourced, self-contained passage that answers it directly.",
       owner: "ai-visibility",
       urgency,
     };

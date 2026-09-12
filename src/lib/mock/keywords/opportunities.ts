@@ -134,8 +134,8 @@ function qualify(
         : null;
 
     case "ai-search":
-      return record.ai.aiOverviewPresent &&
-        record.ai.coverage !== "cited" &&
+      return record.ai.answerProjected &&
+        record.ai.coverage !== "likely-source" &&
         record.ai.answerRelevance >= 60
         ? `An AI overview answers this query and cites someone else — answer relevance ${record.ai.answerRelevance} of 100.`
         : null;
@@ -255,8 +255,8 @@ function recommendationFor(record: KeywordRecord): string {
   if (record.difficulty >= 60) {
     return "Add internal links from the strongest related pages, then revisit.";
   }
-  if (record.ai.aiOverviewPresent && record.ai.coverage !== "cited") {
-    return "Add a citable passage with sourced figures — the answer block is taking the clicks.";
+  if (record.ai.answerProjected && record.ai.coverage !== "likely-source") {
+    return "Add a citable passage with sourced figures — a projected answer block is taking the clicks.";
   }
   return "Refresh the title and intro to match the query more exactly.";
 }

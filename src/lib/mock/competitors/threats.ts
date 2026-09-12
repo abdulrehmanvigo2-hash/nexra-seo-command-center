@@ -106,8 +106,8 @@ function kindFor(
   if (row.ourUrl === null) return "unmapped-keyword";
 
   if (
-    keyword.ai.aiOverviewPresent &&
-    keyword.ai.coverage !== "cited" &&
+    keyword.ai.answerProjected &&
+    keyword.ai.coverage !== "likely-source" &&
     row.theirPosition <= 10
   ) {
     return "answer-engine";
@@ -155,7 +155,7 @@ function rationaleFor(
     case "unmapped-keyword":
       return `No live page of ours is built for this term. ${row.competitorName} ranks ${row.theirPosition} against ${keyword.volume.toLocaleString("en-US")} searches a month.`;
     case "answer-engine":
-      return `A generated answer runs on this query and cites somebody else. ${row.competitorName} is eligible at position ${row.theirPosition}; ${ours}.`;
+      return `An answer is projected on this query and nothing of ours is positioned for it. ${row.competitorName} is placed for it at position ${row.theirPosition}; ${ours}.`;
     case "multi-keyword-page":
       return `A single page of ${row.competitorName}'s is out-ranking us across several of this cluster's terms.`;
     case "weak-cluster":

@@ -508,7 +508,7 @@ function buildDraft(input: {
 
   const aeoGap =
     keywords.some(
-      (record) => record.ai.aiOverviewPresent && record.ai.coverage !== "cited",
+      (record) => record.ai.answerProjected && record.ai.coverage !== "likely-source",
     ) && published;
 
   const base: Draft["base"] = {
