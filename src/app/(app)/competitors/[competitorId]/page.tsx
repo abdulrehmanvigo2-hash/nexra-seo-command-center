@@ -10,12 +10,11 @@ import {
 type PageParams = { params: Promise<{ competitorId: string }> };
 
 /**
- * Every tracked competitor is prerendered, and only those: the set is derived
- * from a fixed project roster and keyword registry, so an id that is not in it
- * is a broken link rather than a rival we have not measured yet.
+ * Every tracked competitor is prerendered: the set is derived from a fixed
+ * project roster and keyword registry, so an id that is not in it is a broken
+ * link rather than a rival we have not measured yet. An unknown id renders on
+ * demand and falls through to `notFound()`, as in Projects.
  */
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return getCompetitorIds().map((competitorId) => ({ competitorId }));
 }

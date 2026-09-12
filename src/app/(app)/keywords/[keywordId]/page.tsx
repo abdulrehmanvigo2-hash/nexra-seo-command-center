@@ -6,12 +6,11 @@ import { getKeywordIds, getKeywordRecord } from "@/lib/mock/keywords";
 type PageParams = { params: Promise<{ keywordId: string }> };
 
 /**
- * Every analysed keyword is prerendered, and only those: the registry is a
- * fixed set, so an id that is not in it is a broken link rather than a keyword
- * that has not been researched yet.
+ * Every analysed keyword is prerendered: the registry is a fixed set, so an id
+ * that is not in it is a broken link rather than a keyword that has not been
+ * researched yet. An unknown id renders on demand and falls through to
+ * `notFound()`, as in Projects.
  */
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return getKeywordIds().map((keywordId) => ({ keywordId }));
 }

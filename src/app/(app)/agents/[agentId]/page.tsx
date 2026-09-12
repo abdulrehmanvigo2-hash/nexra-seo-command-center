@@ -6,12 +6,11 @@ import { getAgentIds, getAgentRecord } from "@/lib/mock/agents";
 type PageParams = { params: Promise<{ agentId: string }> };
 
 /**
- * All twelve agents are prerendered, and only those: the registry is a fixed
- * set, so an id that is not in it is a broken link rather than an agent that
- * has not been built yet.
+ * All twelve agents are prerendered: the registry is a fixed set, so an id
+ * that is not in it is a broken link rather than an agent that has not been
+ * built yet. An unknown id renders on demand and falls through to
+ * `notFound()`, as in Projects.
  */
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return getAgentIds().map((agentId) => ({ agentId }));
 }

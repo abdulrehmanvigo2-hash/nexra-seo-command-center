@@ -6,13 +6,11 @@ import { getTechnicalPage, getTechnicalPageIds } from "@/lib/mock/technical";
 type PageParams = { params: Promise<{ pageId: string }> };
 
 /**
- * Every published URL is prerendered, and only those: the inventory is derived
- * from the content layer at build time, so an id outside it is a broken link
- * rather than a page we have not diagnosed yet. Same convention as Projects,
- * Keywords, Content, and Competitors.
+ * Every published URL is prerendered: the inventory is derived from the content
+ * layer at build time, so an id outside it is a broken link rather than a page
+ * we have not diagnosed yet. An unknown id renders on demand and falls through
+ * to `notFound()`, as in Projects.
  */
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return getTechnicalPageIds().map((pageId) => ({ pageId }));
 }

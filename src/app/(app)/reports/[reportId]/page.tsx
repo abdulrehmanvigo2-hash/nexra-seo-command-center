@@ -6,14 +6,12 @@ import { getReport, getReportIds } from "@/lib/mock/reports";
 type PageParams = { params: Promise<{ reportId: string }> };
 
 /**
- * Every report in the library is prerendered, and only those: a report exists
- * for a project, a template and a period the engagement was actually running
- * in, so an id outside that set is a broken link rather than a report nobody
- * has written yet. Same convention as Projects, Keywords, Content, Competitors
- * and Technical SEO.
+ * Every report in the library is prerendered: a report exists for a project, a
+ * template and a period the engagement was actually running in, so an id
+ * outside that set is a broken link rather than a report nobody has written
+ * yet. An unknown id renders on demand and falls through to `notFound()`, as
+ * in Projects.
  */
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return getReportIds().map((reportId) => ({ reportId }));
 }

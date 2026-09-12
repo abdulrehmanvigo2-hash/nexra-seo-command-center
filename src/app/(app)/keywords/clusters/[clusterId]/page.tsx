@@ -5,9 +5,10 @@ import { getClusterIds, getClusterRecord } from "@/lib/mock/keywords";
 
 type PageParams = { params: Promise<{ clusterId: string }> };
 
-/** The cluster set is fixed, so an unknown id is a broken link. */
-export const dynamicParams = false;
-
+/**
+ * The cluster set is fixed, so an unknown id is a broken link. It renders on
+ * demand and falls through to `notFound()`, as in Projects.
+ */
 export function generateStaticParams() {
   return getClusterIds().map((clusterId) => ({ clusterId }));
 }

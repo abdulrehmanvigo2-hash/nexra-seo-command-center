@@ -9,12 +9,11 @@ import { FORMAT_META, getContentIds, getContentRecord } from "@/lib/mock/content
 type PageParams = { params: Promise<{ contentId: string }> };
 
 /**
- * Every piece in the inventory is prerendered, and only those: the inventory
- * is derived from a fixed keyword registry, so an id that is not in it is a
- * broken link rather than a page that has not been written yet.
+ * Every piece in the inventory is prerendered: the inventory is derived from a
+ * fixed keyword registry, so an id that is not in it is a broken link rather
+ * than a page that has not been written yet. An unknown id renders on demand
+ * and falls through to `notFound()`, as in Projects.
  */
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return getContentIds().map((contentId) => ({ contentId }));
 }
