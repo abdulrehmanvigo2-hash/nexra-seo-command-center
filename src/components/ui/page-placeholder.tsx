@@ -1,4 +1,5 @@
 import { Icon } from "@/components/icons";
+import { BUILD_STATUS } from "@/config/build-status";
 import { getNavItem, type NavHref } from "@/config/navigation";
 
 /**
@@ -66,8 +67,7 @@ export function PagePlaceholder({ href }: { href: NavHref }) {
         </ul>
 
         <p className="mt-6 border-t border-border pt-5 text-[12px] leading-relaxed text-fg-subtle">
-          Current milestone: Phase 8 — Technical SEO. All data shown
-          across the product is mock data.
+          {BUILD_STATUS.note}
         </p>
       </div>
     </section>

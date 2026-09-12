@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
+import { useDialogFocus } from "@/components/ui/use-dialog-focus";
 import { cn } from "@/lib/cn";
 
 /**
@@ -14,27 +21,29 @@ import { cn } from "@/lib/cn";
 export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
 
   // The drawer closes on navigation via each link's onNavigate handler,
   // so no effect is needed to watch the pathname.
 
-  // Escape closes the drawer; body scroll is locked while it is open.
-  useEffect(() => {
-    if (!navOpen) return;
+  const closeNav = useCallback(() => setNavOpen(false), []);
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setNavOpen(false);
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [navOpen]);
+  /**
+   * The drawer is a modal surface: it declares `aria-modal`, covers the page
+   * with a backdrop, and locks scrolling, so it owes the keyboard exactly what
+   * the centred dialog owes it. Both take that from the same hook rather than
+   * each keeping a focus trap of its own.
+   *
+   * Focus lands on the first destination rather than on the close button:
+   * navigating is what the drawer is for, and the close button stays one
+   * Shift+Tab away.
+   */
+  useDialogFocus({
+    active: navOpen,
+    panelRef: drawerRef,
+    onClose: closeNav,
+    initialFocusSelector: "nav a",
+  });
 
   return (
     <div
@@ -65,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       >
         <div
-          onClick={() => setNavOpen(false)}
+          onClick={closeNav}
           aria-hidden="true"
           className={cn(
             "absolute inset-0 bg-black/60 transition-opacity duration-200",
@@ -73,6 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         />
         <div
+          ref={drawerRef}
           role="dialog"
           aria-modal="true"
           aria-label="Navigation"
@@ -82,7 +92,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             navOpen ? "translate-x-0" : "-translate-x-full",
           )}
         >
-          <Sidebar variant="mobile" onClose={() => setNavOpen(false)} />
+          <Sidebar variant="mobile" onClose={closeNav} />
         </div>
       </div>
 

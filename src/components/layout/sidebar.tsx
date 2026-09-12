@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, Logo } from "@/components/icons";
+import { BUILD_STATUS } from "@/config/build-status";
 import {
   NAV_GROUPS,
   getGroupItems,
@@ -96,7 +97,7 @@ export function Sidebar({
         })}
       </nav>
 
-      {/* Build status — honest about the current milestone */}
+      {/* Build status — honest about what the data is */}
       <div className="shrink-0 border-t border-border p-3">
         {showLabels ? (
           <div className="rounded-md border border-border bg-surface-raised px-3 py-2.5">
@@ -106,17 +107,17 @@ export function Sidebar({
                 aria-hidden="true"
               />
               <span className="text-[11.5px] font-medium text-fg-muted">
-                Mock data
+                {BUILD_STATUS.label}
               </span>
             </div>
             <p className="mt-1 text-[11px] leading-snug text-fg-subtle">
-              Phase 8 · Technical SEO
+              {BUILD_STATUS.detail}
             </p>
           </div>
         ) : (
           <div
             className="mx-auto h-1.5 w-1.5 rounded-full bg-warning"
-            title="Mock data — Phase 8, Technical SEO"
+            title={BUILD_STATUS.title}
           />
         )}
       </div>

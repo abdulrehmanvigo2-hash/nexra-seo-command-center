@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { Icon } from "@/components/icons";
+import { useDialogFocus } from "@/components/ui/use-dialog-focus";
 import { cn } from "@/lib/cn";
 
 /**
@@ -35,59 +36,7 @@ export function Modal({
   const titleId = useId();
   const descriptionId = useId();
 
-  useEffect(() => {
-    const panel = panelRef.current;
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-
-    const focusable = () =>
-      Array.from(
-        panel?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((node) => node.offsetParent !== null);
-
-    const initial = focusable()[0];
-    if (initial) {
-      initial.focus();
-    } else {
-      panel?.focus();
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab") return;
-
-      const nodes = focusable();
-      if (nodes.length === 0) return;
-
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      const active = document.activeElement;
-
-      if (event.shiftKey && (active === first || active === panel)) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", handleKeyDown, true);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown, true);
-      previouslyFocused?.focus();
-    };
-  }, [onClose]);
+  useDialogFocus({ active: true, panelRef, onClose });
 
   return (
     <div className="fixed inset-0 z-60 flex items-end justify-center sm:items-center sm:p-6">

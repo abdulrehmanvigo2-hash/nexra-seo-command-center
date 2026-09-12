@@ -172,7 +172,7 @@ export function PrimitivesPreview() {
         description="Shared building blocks for every dashboard module. This page is a component preview, not a product screen, and is not linked from the sidebar."
         actions={
           <>
-            <Badge tone="accent">Phase 1</Badge>
+            <Badge tone="accent">Primitives</Badge>
             <Button
               variant="primary"
               onClick={() => setLoading((value) => !value)}
@@ -320,7 +320,7 @@ export function PrimitivesPreview() {
         </div>
 
         <PanelFooter>
-          <span>Mock data · Phase 1 preview</span>
+          <span>Mock data · component preview</span>
           <span className="tabular">Updated 4 minutes ago</span>
         </PanelFooter>
       </Panel>
