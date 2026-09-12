@@ -10,6 +10,7 @@ import { CompetitorSnapshot } from "@/components/dashboard/competitor-snapshot";
 import { ContentSnapshot } from "@/components/dashboard/content-snapshot";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { AnalyticsSummary } from "@/components/dashboard/analytics-summary";
+import { ReportingSummary } from "@/components/dashboard/reporting-summary";
 import { KeywordSnapshot } from "@/components/dashboard/keyword-snapshot";
 import { KpiGrid, ScoreStrip } from "@/components/dashboard/metric-cards";
 import { PerformanceChart } from "@/components/dashboard/performance-chart";
@@ -127,6 +128,8 @@ export function CommandCenter() {
       />
 
       <AnalyticsSummary projectId={projectId} rangeId={rangeId} />
+
+      <ReportingSummary projectId={projectId} />
 
       {/*
         Panels that hold their own filter, sort, or dismissal state are keyed

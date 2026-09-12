@@ -23,6 +23,7 @@ import {
   getTechnicalDatasetCounts,
   getTechnicalPages,
 } from "@/lib/mock/technical";
+import { getReportsDatasetCounts } from "@/lib/mock/reports";
 
 export const metadata: Metadata = {
   title: "Mock Data",
@@ -143,6 +144,27 @@ const TECHNICAL_GROUPS: readonly {
   { label: "Structured data", counts: TECHNICAL_COUNTS.bySchema },
   { label: "Findings by category", counts: TECHNICAL_COUNTS.byCategory },
   { label: "Findings by check", counts: TECHNICAL_COUNTS.byIssueType },
+];
+
+/**
+ * The composed Reports layer.
+ *
+ * Nothing here is authored either, and nothing here is calculated: every
+ * figure in a report is quoted from the module that publishes it. The
+ * integrity list is what matters — each entry it can return is a way this
+ * layer could contradict the modules it quotes, put one client's figures in
+ * another's report, or claim a period it cannot cover. An empty list passes.
+ */
+const REPORT_COUNTS = getReportsDatasetCounts();
+
+const REPORT_GROUPS: readonly {
+  readonly label: string;
+  readonly counts: Readonly<Record<string, number>>;
+}[] = [
+  { label: "Report status", counts: REPORT_COUNTS.byStatus },
+  { label: "Completeness band", counts: REPORT_COUNTS.byBand },
+  { label: "Section state", counts: REPORT_COUNTS.byState },
+  { label: "Schedule state", counts: REPORT_COUNTS.byDelivery },
 ];
 
 const TOTAL_RECORDS = DATASETS.reduce(
@@ -298,6 +320,80 @@ export default function MockDataInspectorPage() {
               {JSON.stringify(TECHNICAL_SAMPLE, null, 2)}
             </pre>
           )}
+        </PanelBody>
+      </Panel>
+
+      <Panel className="mt-6">
+        <PanelHeader
+          eyebrow="Composed"
+          title="Reports"
+          description="Client-ready reports assembled from the figures the other modules publish. Nothing in this layer holds a number of its own."
+          actions={
+            <Badge
+              tone={REPORT_COUNTS.integrity.length === 0 ? "positive" : "critical"}
+            >
+              {REPORT_COUNTS.integrity.length === 0
+                ? "Integrity: clean"
+                : `Integrity: ${REPORT_COUNTS.integrity.length} findings`}
+            </Badge>
+          }
+        />
+        <PanelBody>
+          <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
+            {[
+              { label: "Templates", count: REPORT_COUNTS.templates },
+              { label: "Reports", count: REPORT_COUNTS.reports },
+              { label: "Sections", count: REPORT_COUNTS.sections },
+              { label: "Schedules", count: REPORT_COUNTS.schedules },
+              { label: "Contacts", count: REPORT_COUNTS.recipients },
+              { label: "Projects", count: REPORT_COUNTS.projects },
+            ].map((entry) => (
+              <div
+                key={entry.label}
+                className="rounded-md border border-border bg-surface-raised px-3 py-2.5"
+              >
+                <dt className="text-[11px] text-fg-subtle">{entry.label}</dt>
+                <dd className="tabular mt-1 text-[18px] leading-none font-semibold text-fg">
+                  {entry.count}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          {REPORT_COUNTS.integrity.length > 0 && (
+            <ul className="mt-4 space-y-1 rounded-md border border-critical/30 bg-critical/10 p-3 text-[11.5px] text-critical">
+              {REPORT_COUNTS.integrity.map((finding) => (
+                <li key={finding}>{finding}</li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {REPORT_GROUPS.map((group) => (
+              <div key={group.label} className="min-w-0">
+                <p className="text-[11px] font-semibold tracking-[0.06em] text-fg-subtle uppercase">
+                  {group.label}
+                </p>
+                <ul className="mt-1.5 space-y-1">
+                  {Object.entries(group.counts)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([key, count]) => (
+                      <li
+                        key={key}
+                        className="flex items-baseline justify-between gap-3 text-[11.5px]"
+                      >
+                        <span className="min-w-0 truncate text-fg-muted">
+                          {key}
+                        </span>
+                        <span className="tabular shrink-0 font-semibold text-fg">
+                          {count}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </PanelBody>
       </Panel>
     </section>
