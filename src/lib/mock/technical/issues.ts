@@ -1,3 +1,4 @@
+import { retrievalPartlyBlockedFor } from "@/lib/mock/technical/agents";
 import { ISSUE_TYPE_META } from "@/lib/mock/technical/meta";
 import { getBasePages, getPageFacts } from "@/lib/mock/technical/pages";
 import {
@@ -65,6 +66,15 @@ const CHECKS: readonly Check[] = [
   {
     type: "blocked-by-robots",
     failed: (page) => page.crawlState === "blocked",
+  },
+  {
+    // Generative crawlers are a separate question from Googlebot: a page can
+    // be perfectly crawlable and still be shut out of every answer engine.
+    // Only raised where the page is otherwise fetchable, so a broken URL is
+    // reported once as broken rather than twice.
+    type: "ai-agent-blocked",
+    failed: (page) =>
+      page.crawlState === "crawlable" && retrievalPartlyBlockedFor(page),
   },
   {
     type: "orphan-page",

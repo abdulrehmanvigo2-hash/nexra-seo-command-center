@@ -1,4 +1,6 @@
 import type {
+  AgentDirective,
+  AgentPurpose,
   CanonicalState,
   EffortLevel,
   OpportunityCategory,
@@ -161,6 +163,68 @@ export const CATEGORY_META: Readonly<Record<IssueCategory, CategoryMeta>> = {
     label: "Robots",
     icon: "shield",
     description: "Directives that permit or forbid crawling and indexing.",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// AI agent access
+// ---------------------------------------------------------------------------
+
+/** Stated wherever an agent-access figure appears. */
+export const AGENT_ACCESS_NOTE =
+  "What robots.txt says, not what any crawler did. This models the directives a site publishes for generative agents; no crawl, no log file, and no visit from any of these agents is observed anywhere in this product.";
+
+export const AGENT_DIRECTIVE_ORDER: readonly AgentDirective[] = [
+  "disallowed",
+  "partial",
+  "unspecified",
+  "allowed",
+];
+
+export const AGENT_DIRECTIVE_META: Readonly<
+  Record<AgentDirective, StateMeta>
+> = {
+  allowed: {
+    label: "Allowed",
+    tone: "positive",
+    description: "robots.txt explicitly permits this agent.",
+  },
+  unspecified: {
+    label: "No rule",
+    tone: "neutral",
+    description:
+      "No directive either way. The agent may crawl by default, and nobody has taken a position.",
+  },
+  partial: {
+    label: "Partly blocked",
+    tone: "warning",
+    description: "Disallowed from some paths and free to crawl the rest.",
+  },
+  disallowed: {
+    label: "Blocked",
+    tone: "critical",
+    description: "Disallowed site-wide.",
+  },
+};
+
+export const AGENT_PURPOSE_META: Readonly<Record<AgentPurpose, StateMeta>> = {
+  "answer-retrieval": {
+    label: "Answer retrieval",
+    tone: "accent",
+    description:
+      "Fetches pages at answer time. Blocking this one removes the site from that engine's answers.",
+  },
+  both: {
+    label: "Training and grounding",
+    tone: "accent",
+    description:
+      "One directive governing both model training and answer grounding.",
+  },
+  training: {
+    label: "Training",
+    tone: "neutral",
+    description:
+      "Collects pages for model training. Blocking it is a licensing decision and costs nothing in answer visibility.",
   },
 };
 
@@ -509,6 +573,21 @@ export const ISSUE_TYPE_META: Readonly<Record<IssueType, IssueTypeMeta>> = {
       "The page cannot be read at all, and any directive on it is never seen.",
     action:
       "Confirm the block is deliberate. If it is not, remove the rule and request a crawl.",
+    owner: "technical-seo",
+    provenance: "seeded",
+    effort: "low",
+  },
+
+  "ai-agent-blocked": {
+    label: "Answer engine shut out",
+    category: "robots",
+    severity: "high",
+    description:
+      "robots.txt disallows at least one answer-retrieval agent from this URL.",
+    impact:
+      "The page cannot appear in that engine's generated answers. Nothing about how it is written changes that while the rule stands.",
+    action:
+      "Confirm the block is deliberate. Blocking a training crawler is a licensing decision that costs nothing in answer visibility; blocking a retrieval agent removes the page from that engine's answers.",
     owner: "technical-seo",
     provenance: "seeded",
     effort: "low",

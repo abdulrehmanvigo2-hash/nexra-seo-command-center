@@ -6,6 +6,7 @@ import type {
   EvidenceProfile,
   InformationGain,
 } from "@/types/ai-visibility";
+import { retrievalBlockedFor } from "@/lib/mock/technical";
 import type { ContentRecord } from "@/types/content";
 import type { TechnicalPage } from "@/types/technical";
 
@@ -24,6 +25,11 @@ import type { TechnicalPage } from "@/types/technical";
  * fetched or indexed is `blocked` regardless of how well it is written, which
  * is the truthful reading: an engine that cannot reach the page will not be
  * quoting anything from it.
+ *
+ * The same gate closes on a URL that robots.txt shuts every answer-retrieval
+ * agent out of. That is a different fact from being uncrawlable — Googlebot
+ * may be perfectly welcome — but it has the same consequence here, and
+ * Technical SEO owns the reading rather than this file recomputing it.
  */
 
 type Input = {
@@ -37,6 +43,8 @@ type Input = {
 export function buildCitationReadiness(input: Input): CitationReadiness {
   const { record, technical, answer, evidence, gain } = input;
 
+  const agentBlocked = technical !== null && retrievalBlockedFor(technical);
+
   const blocked =
     technical === null ||
     technical.crawlState === "broken" ||
@@ -44,7 +52,8 @@ export function buildCitationReadiness(input: Input): CitationReadiness {
     technical.crawlState === "blocked" ||
     technical.indexability === "error" ||
     technical.indexability === "blocked" ||
-    technical.indexability === "noindex";
+    technical.indexability === "noindex" ||
+    agentBlocked;
 
   // Claims specific enough to stand on their own when lifted out of context.
   const quotableFacts = evidence.items.filter(
@@ -172,10 +181,15 @@ export function buildCitationReadiness(input: Input): CitationReadiness {
 
   const state = citationStateFor(score.score, evidence.supportedClaims, blocked);
 
+  // Two very different blocks, and the reason has to say which. A page shut
+  // out by robots.txt agent rules is otherwise perfectly sound — telling an
+  // editor it "cannot be fetched" would send them to fix a URL that works.
   const reason = blocked
     ? technical === null
       ? "Not published, so there is no URL to extract from."
-      : "The URL cannot be fetched or indexed, so nothing on it is reachable."
+      : agentBlocked
+        ? "The URL is sound, but robots.txt disallows every answer-retrieval agent from it, so no engine can fetch what is on it."
+        : "The URL cannot be fetched or indexed, so nothing on it is reachable."
     : evidence.supportedClaims === 0
       ? "Nothing on the page carries the support an extractable claim would need."
       : score.score >= 72

@@ -144,6 +144,7 @@ const TECHNICAL_GROUPS: readonly {
   { label: "Structured data", counts: TECHNICAL_COUNTS.bySchema },
   { label: "Findings by category", counts: TECHNICAL_COUNTS.byCategory },
   { label: "Findings by check", counts: TECHNICAL_COUNTS.byIssueType },
+  { label: "Generative crawler access", counts: TECHNICAL_COUNTS.byAgentDirective },
 ];
 
 /**
@@ -267,6 +268,7 @@ export default function MockDataInspectorPage() {
               { label: "Findings", count: TECHNICAL_COUNTS.issues },
               { label: "Projects", count: TECHNICAL_COUNTS.projects },
               { label: "Clusters", count: TECHNICAL_COUNTS.clusters },
+              { label: "Agent rules", count: TECHNICAL_COUNTS.agentDirectives },
             ].map((entry) => (
               <div
                 key={entry.label}

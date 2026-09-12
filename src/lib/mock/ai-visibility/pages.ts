@@ -4,7 +4,7 @@ import {
   getContentRecords,
   keywordsForContent,
 } from "@/lib/mock/content";
-import { technicalPageForContent } from "@/lib/mock/technical";
+import { agentReachFor, technicalPageForContent } from "@/lib/mock/technical";
 import { buildAnswerReadiness } from "@/lib/mock/ai-visibility/answer-readiness";
 import { buildCitationReadiness } from "@/lib/mock/ai-visibility/citations";
 import { buildEvidence } from "@/lib/mock/ai-visibility/evidence";
@@ -73,7 +73,13 @@ function build(): readonly AiPageRecord[] {
         mean([record.aeo.questionCoverage, record.score.score]),
       );
 
+      // Technical access is two questions, and both are Technical SEO's to
+      // answer: is the URL sound, and may a generative crawler fetch it. A
+      // page can be flawless on the first and shut out on the second, so the
+      // dimension reads both rather than the page score alone.
       const technicalScore = technical?.score.score ?? 0;
+      const agentReach = technical === null ? 0 : agentReachFor(technical);
+      const technicalAccess = Math.round(technicalScore * 0.65 + agentReach * 0.35);
       const technicalBlocked = citation.blocked;
 
       const visibility = visibilityScore(
@@ -83,7 +89,7 @@ function build(): readonly AiPageRecord[] {
           "citation-readiness": citation.score.score,
           "entity-coverage": entityCoverage,
           "topic-coverage": topicCoverage,
-          "technical-access": technicalScore,
+          "technical-access": technicalAccess,
         },
         { technicalBlocked, gainConfidence: gain.confidence },
       );
@@ -108,8 +114,15 @@ function build(): readonly AiPageRecord[] {
       if (gain.band === "distinctive" && gain.confidence !== "unknown") {
         strengths.push("Appears to carry material the consensus answer does not.");
       }
-      if (technicalScore >= 85) {
-        strengths.push("Technically clean — reachable, indexable, and canonical.");
+      if (technicalAccess >= 85) {
+        strengths.push(
+          "Technically clean — reachable, indexable, canonical, and open to generative crawlers.",
+        );
+      }
+      if (technicalScore >= 70 && agentReach < 50) {
+        weaknesses.push(
+          "The URL is sound, but robots.txt keeps generative crawlers off it.",
+        );
       }
       if (entityCoverage >= 70) {
         strengths.push("The things this page is about are clearly established.");

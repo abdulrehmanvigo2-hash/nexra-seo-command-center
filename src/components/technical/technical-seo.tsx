@@ -19,11 +19,13 @@ import {
   getTechnicalClusterOptions,
   getTechnicalIssues,
   getTechnicalOpportunities,
+  getAgentAccess,
   getTechnicalOverview,
   getTechnicalPages,
   getTechnicalProjectOptions,
   getVitalsSummary,
 } from "@/lib/mock/technical";
+import { AgentAccessPanel } from "@/components/technical/agent-access-panel";
 import { CrawlView } from "@/components/technical/crawl-view";
 import { LinksView } from "@/components/technical/links-view";
 import {
@@ -196,6 +198,20 @@ export function TechnicalSeo() {
   const overview = useMemo(
     () => getTechnicalOverview(filteredPages, filteredIssues),
     [filteredPages, filteredIssues],
+  );
+
+  // robots.txt is a project fact, so the reading follows the project selection
+  // rather than the page filters — narrowing to "missing H1" should not change
+  // what the site tells GPTBot.
+  const agentAccess = useMemo(
+    // This module's project filter uses "all"; the access reading, like every
+    // other cross-project reading in the product, calls that "portfolio".
+    () =>
+      getAgentAccess(
+        filters.project === "all" ? "portfolio" : filters.project,
+        filteredPages,
+      ),
+    [filters.project, filteredPages],
   );
 
   const pagesById = useMemo(
@@ -515,7 +531,10 @@ export function TechnicalSeo() {
         )}
 
         {tab === "crawlability" && (
-          <CrawlView crawl={overview.crawl} onFilter={changeFilters} />
+          <>
+            <CrawlView crawl={overview.crawl} onFilter={changeFilters} />
+            <AgentAccessPanel access={agentAccess} />
+          </>
         )}
 
         {tab === "indexation" && (

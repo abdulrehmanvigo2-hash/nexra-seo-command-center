@@ -102,6 +102,95 @@ export type RobotsDirective =
   | "noindex,follow"
   | "noindex,nofollow";
 
+// ---------------------------------------------------------------------------
+// AI agent access
+// ---------------------------------------------------------------------------
+
+/**
+ * The crawlers that matter for generative search.
+ *
+ * A deliberately small set, each one justified: it either fetches pages to
+ * train a model, or fetches them at answer time to ground a response. Search
+ * crawlers proper are not here — general crawlability already covers them.
+ */
+export type AiAgentId =
+  | "GPTBot"
+  | "OAI-SearchBot"
+  | "ClaudeBot"
+  | "PerplexityBot"
+  | "CCBot"
+  | "Google-Extended"
+  | "Applebot-Extended";
+
+/**
+ * What an agent fetches for, which decides how much its being blocked costs.
+ *
+ * The distinction is the point of this whole model. Blocking a training
+ * crawler is a licensing decision with no effect on whether a page can be
+ * quoted in an answer; blocking an answer-retrieval agent means the page
+ * cannot appear in that engine's answers at all. Tools that score both the
+ * same way tell an account team the wrong thing.
+ */
+export type AgentPurpose = "training" | "answer-retrieval" | "both";
+
+/**
+ * What robots.txt says about an agent.
+ *
+ * `unspecified` is its own state rather than a synonym for allowed. No rule
+ * usually means the agent may crawl, but it also means nobody decided — and
+ * for a site with an opinion about AI training that is a finding in itself.
+ */
+export type AgentDirective =
+  | "allowed"
+  | "unspecified"
+  | "partial"
+  | "disallowed";
+
+/** One agent in the registry. Reference data, not a per-project record. */
+export type AiAgentRecord = {
+  readonly id: AiAgentId;
+  readonly label: string;
+  readonly vendor: string;
+  readonly purpose: AgentPurpose;
+  /** Why this agent is worth a row. */
+  readonly note: string;
+};
+
+/** What one project's robots.txt says about one agent. */
+export type ProjectAgentDirective = {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly agent: AiAgentId;
+  readonly directive: AgentDirective;
+  /**
+   * Path prefixes the agent is disallowed from, for a `partial` directive.
+   * Empty for every other state.
+   */
+  readonly disallowedPaths: readonly string[];
+  /** Pages in the inventory this directive shuts out. */
+  readonly blockedPages: number;
+  /** Plain statement of what the rule does. */
+  readonly note: string;
+};
+
+/** How reachable one project is to generative crawlers overall. */
+export type AgentAccessSummary = {
+  readonly projectId: string;
+  /** 0-100, weighted by what each agent is for. */
+  readonly score: number;
+  readonly severity: TechnicalSeverity;
+  readonly directives: readonly ProjectAgentDirective[];
+  /** Agents that fetch at answer time and are shut out entirely. */
+  readonly retrievalBlocked: readonly AiAgentId[];
+  /** Agents that fetch for training and are shut out entirely. */
+  readonly trainingBlocked: readonly AiAgentId[];
+  /** Agents with no rule either way. */
+  readonly unspecified: readonly AiAgentId[];
+  /** Pages no answer-retrieval agent can reach. */
+  readonly unreachablePages: number;
+  readonly summary: string;
+};
+
 /** Core Web Vitals verdict for the page. */
 export type CwvState = "good" | "needs-improvement" | "poor" | "unmeasured";
 
@@ -127,6 +216,7 @@ export type IssueType =
   | "orphan-page"
   | "deep-page"
   | "blocked-by-robots"
+  | "ai-agent-blocked"
   // http
   | "broken-page"
   | "server-error"
@@ -489,6 +579,8 @@ export type TechnicalDatasetCounts = {
   readonly byCwv: Readonly<Record<string, number>>;
   readonly bySchema: Readonly<Record<string, number>>;
   readonly byIssueType: Readonly<Record<string, number>>;
+  readonly agentDirectives: number;
+  readonly byAgentDirective: Readonly<Record<string, number>>;
   /** Findings the integrity pass raised. Empty is the passing result. */
   readonly integrity: readonly string[];
 };

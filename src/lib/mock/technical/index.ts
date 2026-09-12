@@ -15,6 +15,13 @@ import {
   SEVERITY_ORDER,
 } from "@/lib/mock/technical/meta";
 import {
+  AI_AGENT_REGISTRY,
+  getAgentAccess,
+  getAgentDirectives,
+  retrievalBlockedFor,
+  retrievalPartlyBlockedFor,
+} from "@/lib/mock/technical/agents";
+import {
   getTechnicalIssues,
   getTechnicalPages,
   issuesForPage,
@@ -89,6 +96,22 @@ export {
 } from "@/lib/mock/technical/opportunities";
 
 export {
+  AI_AGENT_REGISTRY,
+  DIRECTIVE_VALUE,
+  PURPOSE_WEIGHT,
+  RETRIEVAL_AGENTS,
+  agentReachFor,
+  directivesForProject,
+  retrievalBlockersFor,
+  retrievalPartlyBlockedFor,
+  getAgent,
+  getAgentAccess,
+  getAgentDirectives,
+  pathBlocked,
+  retrievalBlockedFor,
+} from "@/lib/mock/technical/agents";
+
+export {
   getTechnicalIssue,
   getTechnicalIssues,
   getTechnicalPage,
@@ -125,6 +148,10 @@ export {
   ISSUE_STATUS_ORDER,
   ISSUE_TYPE_META,
   ISSUE_TYPE_ORDER,
+  AGENT_ACCESS_NOTE,
+  AGENT_DIRECTIVE_META,
+  AGENT_DIRECTIVE_ORDER,
+  AGENT_PURPOSE_META,
   MODELLED_SOURCE_NOTE,
   PROVENANCE_META,
   SCHEMA_META,
@@ -658,6 +685,10 @@ export function getTechnicalOverview(
 export type TechnicalSnapshotCounts = {
   readonly pages: number;
   readonly health: number;
+  /** How reachable the site is to generative crawlers, 0-100. */
+  readonly agentAccess: number;
+  /** Pages no answer-retrieval agent is allowed to fetch. */
+  readonly agentBlockedPages: number;
   readonly severity: TechnicalPage["severity"];
   readonly criticalIssues: number;
   readonly openIssues: number;
@@ -700,9 +731,13 @@ export function getTechnicalSnapshotCounts(
     pages: pages.length,
   });
 
+  const access = getAgentAccess(projectId, pages);
+
   return {
     pages: pages.length,
     health: health.score,
+    agentAccess: access.score,
+    agentBlockedPages: access.unreachablePages,
     severity: health.severity,
     criticalIssues,
     openIssues: issues.length,
@@ -731,6 +766,7 @@ export function getTechnicalSnapshotCounts(
 export function getTechnicalDatasetCounts(): TechnicalDatasetCounts {
   const pages = getTechnicalPages();
   const issues = getTechnicalIssues();
+  const directives = getAgentDirectives();
 
   const pageIds = new Set(pages.map((page) => page.id));
   const issueIds = new Set(issues.map((issue) => issue.id));
@@ -749,6 +785,70 @@ export function getTechnicalDatasetCounts(): TechnicalDatasetCounts {
   const urls = new Set(pages.map((page) => `${page.projectId}::${page.url}`));
   if (urls.size !== pages.length) {
     integrity.push(`Duplicate URLs within a project: ${pages.length - urls.size}`);
+  }
+
+  // -- Generative crawler access ------------------------------------------
+  // Each finding below is a way the directive model could contradict itself
+  // or the findings raised from it.
+  const projectIds = new Set<string>(pages.map((page) => page.projectId));
+
+  for (const entry of directives) {
+    if (!projectIds.has(entry.projectId)) {
+      integrity.push(`Agent directive for unknown project: ${entry.projectId}`);
+    }
+    if (entry.directive === "partial" && entry.disallowedPaths.length === 0) {
+      integrity.push(`${entry.projectId}/${entry.agent}: partial with no paths`);
+    }
+    if (entry.directive !== "partial" && entry.disallowedPaths.length > 0) {
+      integrity.push(
+        `${entry.projectId}/${entry.agent}: paths on a non-partial directive`,
+      );
+    }
+    if (entry.directive === "allowed" && entry.blockedPages > 0) {
+      integrity.push(`${entry.projectId}/${entry.agent}: allowed but blocking`);
+    }
+  }
+
+  // Every agent in the registry must have a directive on every project, or a
+  // project would silently read as open to an agent nobody decided about.
+  const expected = AI_AGENT_REGISTRY.length * projectIds.size;
+  if (directives.length !== expected) {
+    integrity.push(
+      `Agent directives: ${directives.length} for ${projectIds.size} projects, expected ${expected}`,
+    );
+  }
+
+  // The finding and the directive are two readings of one fact, so a page
+  // shut out of every retrieval agent must carry the finding, and a page that
+  // is not must not.
+  const flagged = new Set(
+    issues
+      .filter((issue) => issue.type === "ai-agent-blocked")
+      .flatMap((issue) => issue.pageIds),
+  );
+  const shouldFlag = pages.filter(
+    (page) => page.crawlState === "crawlable" && retrievalPartlyBlockedFor(page),
+  );
+  const missing = shouldFlag.filter((page) => !flagged.has(page.id)).length;
+  if (missing > 0) {
+    integrity.push(`Pages an answer engine cannot fetch without a finding: ${missing}`);
+  }
+  const spurious = [...flagged].filter((id) => {
+    const page = pages.find((entry) => entry.id === id);
+    return page !== undefined && !retrievalPartlyBlockedFor(page);
+  }).length;
+  if (spurious > 0) {
+    integrity.push(`Agent-blocked findings on reachable pages: ${spurious}`);
+  }
+
+  // The gate is a stronger claim than the finding, so it must be a subset of
+  // it: a page no engine can reach is necessarily one some engine cannot.
+  const gated = pages.filter(retrievalBlockedFor);
+  const inconsistent = gated.filter(
+    (page) => !retrievalPartlyBlockedFor(page),
+  ).length;
+  if (inconsistent > 0) {
+    integrity.push(`Pages gated without being flagged: ${inconsistent}`);
   }
 
   const deadPageRefs = issues.reduce(
@@ -814,6 +914,8 @@ export function getTechnicalDatasetCounts(): TechnicalDatasetCounts {
     byCwv: tally(pages.map((page) => page.vitals.state)),
     bySchema: tally(pages.map((page) => page.schemaState)),
     byIssueType: tally(issues.map((issue) => issue.type)),
+    agentDirectives: directives.length,
+    byAgentDirective: tally(directives.map((entry) => entry.directive)),
     integrity,
   };
 }
