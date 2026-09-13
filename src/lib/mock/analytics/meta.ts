@@ -28,10 +28,10 @@ import { SIGNIFICANCE_ORDER } from "@/lib/mock/analytics/scoring";
 
 /** Stated wherever an analytics figure appears. */
 export const ANALYTICS_SOURCE_NOTE =
-  "Modelled performance data from the development dataset. No analytics property, Search Console, tag manager, or conversion feed is connected — the trend series is the same fixture the Command Center reads.";
+  "Modelled performance data from the development dataset. No analytics property, tag manager, or conversion feed is connected — the trend series is the same fixture the Command Center reads. Search Console figures, where a property is connected, appear only in their own labelled panels.";
 
 export const ANALYTICS_SOURCE_SHORT =
-  "Modelled performance data — no analytics property is connected.";
+  "Modelled performance data — Search Console figures appear only in their own panels.";
 
 /** Stated wherever attribution appears. */
 export const ATTRIBUTION_NOTE =

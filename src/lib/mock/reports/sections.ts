@@ -894,7 +894,7 @@ function methodology(context: SectionContext): ReportSection {
     figures: [],
     highlights: [
       "Performance, rankings, content, technical, AI readiness, authority and competitive figures each come from one module, named under each section.",
-      "No analytics property, Search Console account, crawler, or vendor API is connected. The underlying records are a development dataset.",
+      "No figure in this report reads an analytics property, Search Console, a crawler, or a vendor API. The underlying records are a development dataset.",
       "Conversions are modelled inside the trend series. There is no conversion feed behind them.",
       "AI visibility measures answer-readiness on our own pages. No answer engine is queried, and no citation is observed.",
       "Work is associated with movement in the same window, never presented as its cause: there is no holdout behind these numbers.",

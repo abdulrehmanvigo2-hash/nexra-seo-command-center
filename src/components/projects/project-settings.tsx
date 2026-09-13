@@ -251,12 +251,12 @@ export function ProjectSettingsPanel({
         <PanelHeader
           eyebrow="Not yet available"
           title="Data sources and access"
-          description="Connecting analytics, Search Console, or a CMS needs a backend and explicit approval, so it is not part of this milestone."
+          description="Search Console is mapped to projects on the server by an administrator, not from this screen. Connecting analytics or a CMS needs explicit approval, so it is not part of this milestone."
         />
         <PanelBody>
           <ul className="grid gap-2.5 sm:grid-cols-3">
             {[
-              "Analytics and Search Console connections",
+              "Analytics and CMS connections",
               "Team access and per-project permissions",
               "Archiving and deleting a project",
             ].map((entry) => (

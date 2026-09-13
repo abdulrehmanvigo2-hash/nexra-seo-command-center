@@ -27,6 +27,7 @@ import {
 import { getKeywordList } from "@/lib/mock/keywords";
 import { AnomaliesView, LearningsView } from "@/components/analytics/insight-views";
 import { OverviewView } from "@/components/analytics/overview-view";
+import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import {
   AttributionTable,
   PagesTable,
@@ -406,6 +407,17 @@ export function AnalyticsWorkspace() {
         tabIndex={0}
         className="space-y-4 focus-visible:outline-none"
       >
+        {/* Observed Search Console figures sit beside the modelled overview,
+            never inside it: its clicks are not the sessions the tiles above
+            count, and the two must not be read as one series. */}
+        {tab === "overview" && (
+          <SearchConsolePanel
+            projectId={projectId === "portfolio" ? null : projectId}
+            rangeId={rangeId}
+            view="summary"
+          />
+        )}
+
         {tab === "overview" && (
           <OverviewView
             overview={overview}
@@ -498,6 +510,14 @@ export function AnalyticsWorkspace() {
               />
             )}
           </Panel>
+        )}
+
+        {tab === "pages" && (
+          <SearchConsolePanel
+            projectId={projectId === "portfolio" ? null : projectId}
+            rangeId={rangeId}
+            view="pages"
+          />
         )}
 
         {tab === "attribution" && (

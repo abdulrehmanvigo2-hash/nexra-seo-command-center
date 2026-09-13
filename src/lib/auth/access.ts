@@ -17,6 +17,9 @@ export const LOGIN_PATH = "/login";
 /** Route handlers under here authorize each request themselves. */
 const SELF_AUTHORIZING_PREFIX = "/auth/";
 
+/** Data endpoints: a signed-out caller gets 401, not a sign-in page. */
+const API_PREFIX = "/api/";
+
 export type Operator = {
   readonly id: string;
   readonly email: string;
@@ -76,7 +79,8 @@ export type AccessDecision =
  *
  * Page requests from someone who is not an operator go to the sign-in page,
  * carrying where they were headed. Anything else from them — a Server Action
- * POST, above all — is refused outright; a redirect is not a meaningful answer
+ * POST, above all, or any request to a data endpoint under /api/ — is refused
+ * outright; a redirect is not a meaningful answer
  * to a mutation. The sign-in page and the self-authorizing auth handlers are
  * reachable by anyone, and a signed-in operator who opens the sign-in page is
  * sent on.
@@ -103,7 +107,7 @@ export function decideAccess(request: {
 
   if (signedIn) return { kind: "allow", private: true };
 
-  if (read) {
+  if (read && !pathname.startsWith(API_PREFIX)) {
     return { kind: "redirect", to: `${LOGIN_PATH}?next=${encodeURIComponent(safeNextPath(pathname + search))}` };
   }
 

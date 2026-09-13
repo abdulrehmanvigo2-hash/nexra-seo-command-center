@@ -62,6 +62,7 @@ import {
   compareKeywords,
   type KeywordSort,
 } from "@/components/keywords/sorting";
+import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import type { RangeId } from "@/types/dashboard";
 import type {
   AgentId,
@@ -656,6 +657,17 @@ export function KeywordsWorkspace() {
               noun="keywords"
             />
           </Panel>
+        )}
+
+        {/* Observed queries from Search Console, kept apart from the modelled
+            keyword universe above: a tracked keyword and a query Google
+            reports are different records, and neither stands in for the other. */}
+        {tab === "keywords" && (
+          <SearchConsolePanel
+            projectId={filters.project === "all" ? null : filters.project}
+            rangeId="30d"
+            view="queries"
+          />
         )}
 
         {tab === "clusters" && (
