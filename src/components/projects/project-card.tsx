@@ -61,8 +61,8 @@ export function ProjectCard({
         <ProjectStatusBadge status={project.status} />
       </div>
 
-      {project.draft ? (
-        <DraftBody />
+      {!project.measured ? (
+        <UnmeasuredBody draft={project.draft} />
       ) : (
         <>
           <div className="border-t border-border px-4 py-3.5">
@@ -185,15 +185,16 @@ function Stat({
  * A project created in this session has no data behind it yet, and the card
  * says so rather than showing a health score that nothing produced.
  */
-function DraftBody() {
+/** In place of figures, for a project nothing has measured yet. */
+function UnmeasuredBody({ draft }: { draft: boolean }) {
   return (
     <div className="border-t border-border px-4 py-5">
       <div className="flex items-start gap-3 rounded-md border border-dashed border-border-strong bg-surface-raised px-3.5 py-3">
         <Icon name="clock" className="mt-0.5 h-4 w-4 shrink-0 text-fg-subtle" />
         <p className="text-[12px] leading-relaxed text-fg-muted">
-          Added in this session. Metrics appear once the first crawl and
-          keyword import have run — nothing is stored, so this project is gone
-          on reload.
+          {draft
+            ? "Added in this session. Metrics appear once the first crawl and keyword import have run — nothing is stored, so this project is gone on reload."
+            : "Saved to the workspace and awaiting its first crawl. Metrics appear once the first crawl and keyword import have run."}
         </p>
       </div>
     </div>

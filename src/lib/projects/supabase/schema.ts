@@ -94,9 +94,6 @@ export const PROJECT_READ_COLUMNS =
 
 export type ProjectReadRow = Omit<ProjectRow, "competitor_domains" | "intake_notes">;
 
-/** Mirrors the `projects_id_format` constraint. */
-export const PROJECT_ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-
 /** Raised when a row does not have the shape the migration defines. */
 export class ProjectRowError extends Error {
   constructor(message: string) {

@@ -19,6 +19,8 @@ import type { ProjectRepository } from "@/lib/projects/contract";
  * unavailable rather than pretending to keep what it was given.
  */
 export const mockProjectRepository: ProjectRepository = {
+  storesProjects: false,
+
   async listProjectIds() {
     return getProjectIds();
   },

@@ -33,8 +33,12 @@ export function getPortfolioMetrics(
   const attention = items.filter(
     (item) => item.status === "needs-attention" || item.criticalIssues > 0,
   );
-  const averageHealth = Math.round(mean(items.map((item) => item.health)));
-  const averageAi = Math.round(mean(items.map((item) => item.aiVisibility)));
+  // An unmeasured project has no health or AI reading. Averaging its
+  // placeholder zero in would drag the portfolio down with a number nobody
+  // measured, so the means cover measured projects only.
+  const measured = items.filter((item) => item.measured);
+  const averageHealth = Math.round(mean(measured.map((item) => item.health)));
+  const averageAi = Math.round(mean(measured.map((item) => item.aiVisibility)));
   const openIssues = sum(items.map((item) => item.openIssues));
   const criticalIssues = sum(items.map((item) => item.criticalIssues));
 

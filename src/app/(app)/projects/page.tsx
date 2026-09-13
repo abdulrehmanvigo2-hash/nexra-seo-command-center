@@ -11,5 +11,11 @@ export const metadata: Metadata = {
 export default async function ProjectsPage() {
   const { projects, asOf } = await projectRepository.listProjects();
 
-  return <ProjectsWorkspace roster={projects} asOf={asOf} />;
+  return (
+    <ProjectsWorkspace
+      roster={projects}
+      asOf={asOf}
+      storesProjects={projectRepository.storesProjects}
+    />
+  );
 }

@@ -131,7 +131,7 @@ export function ProjectsTable({
             </TableCell>
 
             <TableCell numeric>
-              {project.draft ? (
+              {!project.measured ? (
                 <span className="text-fg-subtle">—</span>
               ) : (
                 <span className="inline-flex items-center justify-end gap-2">
@@ -156,7 +156,7 @@ export function ProjectsTable({
             </TableCell>
 
             <TableCell numeric>
-              {project.draft ? (
+              {!project.measured ? (
                 <span className="text-fg-subtle">—</span>
               ) : (
                 <span className="inline-flex items-center justify-end gap-2">
@@ -171,19 +171,19 @@ export function ProjectsTable({
             </TableCell>
 
             <TableCell numeric>
-              {project.draft ? "—" : formatCompact(project.rankingKeywords)}
+              {!project.measured ? "—" : formatCompact(project.rankingKeywords)}
             </TableCell>
 
             <TableCell numeric>
-              {project.draft ? "—" : project.visibility.toFixed(1)}
+              {!project.measured ? "—" : project.visibility.toFixed(1)}
             </TableCell>
 
             <TableCell numeric>
-              {project.draft ? "—" : project.aiVisibility}
+              {!project.measured ? "—" : project.aiVisibility}
             </TableCell>
 
             <TableCell numeric>
-              {project.draft ? (
+              {!project.measured ? (
                 <span className="text-fg-subtle">—</span>
               ) : (
                 <Badge

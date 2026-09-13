@@ -29,10 +29,27 @@ import type {
  * competes and what it is for. Each step validates before it advances, so a
  * mistake is caught next to the field that caused it.
  *
- * The project is created in frontend state only — there is no backend in this
- * milestone (CLAUDE.md §4), and the dialog says so rather than implying the
- * record is saved anywhere.
+ * The dialog validates in the browser, then hands the submission to its owner
+ * and waits. Where the project store persists, that is a server write: the
+ * form shows it is working, ignores a second submit, stays open on failure
+ * with the reason next to the field that caused it, and closes only once the
+ * project is saved. Where it does not, the project is kept for the session and
+ * the copy says so rather than implying it is saved anywhere.
  */
+
+/** What the owner reports back after a submission. */
+export type CreateProjectOutcome =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      /** Field messages, e.g. from server-side validation. */
+      readonly errors?: Readonly<Partial<Record<keyof NewProjectInput, string>>>;
+      /** A message about the submission as a whole. */
+      readonly message?: string;
+    };
+
+const UNEXPECTED_FAILURE =
+  "The project could not be saved, so nothing was created. Try again in a moment.";
 
 
 type Draft = {
@@ -107,14 +124,24 @@ function validateStepTwo(draft: Draft): Errors {
 export function CreateProjectDialog({
   onClose,
   onCreate,
+  persists,
 }: {
   onClose: () => void;
-  onCreate: (input: NewProjectInput) => void;
+  onCreate: (
+    input: NewProjectInput,
+  ) => CreateProjectOutcome | Promise<CreateProjectOutcome>;
+  /** Whether a created project is saved, or kept for this session only. */
+  persists: boolean;
 }) {
   const [step, setStep] = useState<1 | 2>(1);
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [errors, setErrors] = useState<Errors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const pendingFocus = useRef<string | null>(null);
+  // Guards against a second submit before the first has answered; a ref, so
+  // the check does not wait for a render.
+  const inFlight = useRef(false);
 
   const fieldId = useId();
   const formId = `${fieldId}-form`;
@@ -186,9 +213,12 @@ export function CreateProjectDialog({
     focusFirstError(found);
   };
 
-  const submit = () => {
+  const submit = async () => {
+    if (inFlight.current) return;
+
     const found = { ...validateStepOne(draft), ...validateStepTwo(draft) };
     setErrors(found);
+    setFormError(null);
 
     if (Object.keys(found).length > 0) {
       // Anything wrong at this point belongs to the first step.
@@ -197,29 +227,71 @@ export function CreateProjectDialog({
       return;
     }
 
-    onCreate({
-      name: draft.name.trim(),
-      url: draft.url.trim(),
-      client: draft.client.trim(),
-      industry: draft.industry,
-      market: draft.market,
-      language: draft.language,
-      type: draft.type,
-      goal: draft.goal,
-      targetLocation: draft.targetLocation.trim() || draft.market,
-      competitors: draft.competitors
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0),
-      notes: draft.notes.trim(),
-    });
+    inFlight.current = true;
+    setSubmitting(true);
+
+    let outcome: CreateProjectOutcome;
+    try {
+      outcome = await onCreate({
+        name: draft.name.trim(),
+        url: draft.url.trim(),
+        client: draft.client.trim(),
+        industry: draft.industry,
+        market: draft.market,
+        language: draft.language,
+        type: draft.type,
+        goal: draft.goal,
+        targetLocation: draft.targetLocation.trim() || draft.market,
+        competitors: draft.competitors
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0),
+        notes: draft.notes.trim(),
+      });
+    } catch {
+      outcome = { ok: false, message: UNEXPECTED_FAILURE };
+    }
+
+    // On success the owner closes the dialog; there is nothing left to update.
+    if (outcome.ok) return;
+
+    inFlight.current = false;
+    setSubmitting(false);
+
+    // Messages for fields this form shows go next to them; anything else is
+    // reported for the submission as a whole.
+    const returned = outcome.errors ?? {};
+    const fieldErrors: Errors = {
+      name: returned.name,
+      url: returned.url,
+      client: returned.client,
+      competitors: returned.competitors,
+    };
+    const shown = new Set<string>(FOCUS_ORDER);
+    const other = Object.entries(returned)
+      .filter(([key, value]) => !shown.has(key) && Boolean(value))
+      .map(([, value]) => value);
+
+    setErrors(fieldErrors);
+    const summary = [outcome.message, ...other].filter(Boolean).join(" ");
+    setFormError(summary || null);
+
+    if (fieldErrors.name || fieldErrors.url || fieldErrors.client) setStep(1);
+    focusFirstError(fieldErrors);
   };
 
   return (
     <Modal
       size="lg"
       title="Create project"
-      description="Set up a new client project. Nothing is sent anywhere — the project is added to this session only."
-      onClose={onClose}
+      description={
+        persists
+          ? "Set up a new client project. It is saved to this workspace and listed as awaiting its first crawl until reporting data exists."
+          : "Set up a new client project. Nothing is sent anywhere — the project is added to this session only."
+      }
+      onClose={() => {
+        // A write in progress is not interrupted by Escape or the backdrop.
+        if (!inFlight.current) onClose();
+      }}
       footer={
         <>
           <p className="mr-auto hidden text-[11.5px] text-fg-subtle sm:block">
@@ -227,7 +299,9 @@ export function CreateProjectDialog({
           </p>
           {step === 1 ? (
             <>
-              <Button onClick={onClose}>Cancel</Button>
+              <Button onClick={onClose} disabled={submitting}>
+                Cancel
+              </Button>
               <Button type="submit" form={formId} variant="primary">
                 Continue
                 <Icon name="arrow-right" className="h-4 w-4" />
@@ -235,11 +309,26 @@ export function CreateProjectDialog({
             </>
           ) : (
             <>
-              <Button icon="arrow-left" onClick={() => setStep(1)}>
+              <Button
+                icon="arrow-left"
+                onClick={() => setStep(1)}
+                disabled={submitting}
+              >
                 Back
               </Button>
-              <Button type="submit" form={formId} variant="primary" icon="plus">
-                Create project
+              {/*
+                Marked busy rather than disabled while saving: disabling the
+                focused button would drop keyboard focus out of the dialog.
+                The in-flight guard is what refuses a second submit.
+              */}
+              <Button
+                type="submit"
+                form={formId}
+                variant="primary"
+                icon={submitting ? "refresh" : "plus"}
+                aria-disabled={submitting || undefined}
+              >
+                {submitting ? "Creating…" : "Create project"}
               </Button>
             </>
           )}
@@ -258,12 +347,22 @@ export function CreateProjectDialog({
       <form
         id={formId}
         noValidate
+        aria-busy={submitting || undefined}
         onSubmit={(event) => {
           event.preventDefault();
           if (step === 1) goToStepTwo();
-          else submit();
+          else void submit();
         }}
       >
+        {formError && (
+          <p
+            role="alert"
+            className="mb-4 flex items-start gap-2 rounded-md border border-critical/30 bg-critical/10 px-3 py-2.5 text-[12px] leading-relaxed text-critical"
+          >
+            <Icon name="alert" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{formError}</span>
+          </p>
+        )}
         <ol className="mb-5 flex items-center gap-2">
           <StepChip index={1} label="Project details" current={step} />
           <span aria-hidden="true" className="h-px flex-1 bg-border" />

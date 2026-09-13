@@ -104,15 +104,12 @@ export type Project = DashboardProject & {
  *
  * `scale`, `healthOffset`, and `seed` parameterise simulated reporting data,
  * and `portfolio` marks the dashboard roll-up; none of them is a fact about a
- * client. The id widens to `string` because a stored project is not limited to
- * the fixture roster's ids.
+ * client.
  */
 export type ProjectRecord = Omit<
   Project,
-  "id" | "portfolio" | "scale" | "healthOffset" | "seed"
-> & {
-  readonly id: string;
-};
+  "portfolio" | "scale" | "healthOffset" | "seed"
+>;
 
 // ---------------------------------------------------------------------------
 // Roster rows
@@ -125,7 +122,7 @@ export type ProjectRecord = Omit<
  * projects created in this session, which have no fixture record behind them.
  */
 export type ProjectListItem = {
-  /** A `ProjectId` for fixture projects; a generated id for session drafts. */
+  /** The project's id; a generated id for a session draft. */
   readonly id: string;
   readonly name: string;
   readonly domain: string;
@@ -138,8 +135,14 @@ export type ProjectListItem = {
   readonly goal: ProjectGoal;
   /** Route of the project workspace, or null where there is not one yet. */
   readonly href: string | null;
-  /** True for a project created in this session (frontend state only). */
+  /** True for a project created in this session and not stored anywhere. */
   readonly draft: boolean;
+  /**
+   * False where nothing has measured the project yet — a session draft, or a
+   * stored project with no reporting data. Every figure below is then zero and
+   * has to be shown as absent, never as a reading.
+   */
+  readonly measured: boolean;
   /** SEO health index, 0-100. */
   readonly health: number;
   readonly healthState: MetricHealth;

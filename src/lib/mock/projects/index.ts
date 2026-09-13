@@ -171,6 +171,7 @@ export function buildProjectListItem(project: Project): ProjectListItem {
     goal: project.goal,
     href: `/projects/${project.id}`,
     draft: false,
+    measured: true,
     health: overall.score,
     healthState: overall.health,
     technicalHealth: technical.score,

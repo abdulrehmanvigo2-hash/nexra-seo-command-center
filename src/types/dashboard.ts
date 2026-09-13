@@ -23,23 +23,20 @@ export type { AgentId, Level, MetricTrend, Priority, SearchIntent, Status };
 // ---------------------------------------------------------------------------
 
 /**
- * Ids of the selectable projects.
+ * A project's id: the readable slug it is stored under and routed by, such as
+ * `halcyon-fintech`.
  *
- * The records themselves live in `src/lib/mock/projects/roster.ts`, which both
- * this module and the Projects module read — there is one project roster in
- * the product, not one per module.
+ * A string, not a list of known ids. The ids used to be enumerated here, which
+ * made any project the fixture roster did not name impossible to type; a
+ * stored project has whatever id it was created with. The shape an id may
+ * take is checked at runtime (`isStorableProjectId` in
+ * `@/lib/projects/intake-rules`, and the table's own constraint), and whether
+ * one exists is a question for the project repository, not the compiler.
+ *
+ * `"portfolio"` is the Command Center's roll-up across every project: a valid
+ * selection there, never a stored project, and reserved for that reason.
  */
-export type ProjectId =
-  | "portfolio"
-  | "halcyon-fintech"
-  | "verdant-home"
-  | "fieldnote-media"
-  | "orbit-logistics"
-  | "meridian-clinics"
-  | "skyline-outdoors"
-  | "northgate-legal"
-  | "atlas-industrial"
-  | "cobalt-ridge";
+export type ProjectId = string;
 
 export type DashboardProject = {
   readonly id: ProjectId;

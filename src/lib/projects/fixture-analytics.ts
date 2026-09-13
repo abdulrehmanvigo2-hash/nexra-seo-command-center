@@ -67,9 +67,10 @@ export function fixtureDetail(project: Project, rangeId: RangeId): ProjectDetail
 /**
  * A roster row for a stored project that has no reporting data yet.
  *
- * Every figure is zero and there is no workspace link: the project exists, but
- * nothing has measured it, and the roster's card already reads "Awaiting
- * crawl" for exactly this case. It is not a session draft — it was stored.
+ * `measured: false` tells the roster to show every figure as absent — the
+ * zeros are placeholders for the type, never readings. The row links to the
+ * project's workspace, which says what is known and that nothing has measured
+ * it. It is not a session draft: it was stored.
  */
 export function unmeasuredListItem(record: ProjectRecord): ProjectListItem {
   return {
@@ -83,8 +84,9 @@ export function unmeasuredListItem(record: ProjectRecord): ProjectListItem {
     status: record.status,
     market: record.market,
     goal: record.goal,
-    href: null,
+    href: `/projects/${record.id}`,
     draft: false,
+    measured: false,
     health: 0,
     healthState: "neutral",
     technicalHealth: 0,

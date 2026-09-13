@@ -7,10 +7,14 @@ import {
   unmeasuredListItem,
   withFixtureAnalytics,
 } from "@/lib/projects/fixture-analytics";
-import { parseNewProjectInput, projectSlug } from "@/lib/projects/intake-rules";
+import {
+  RESERVED_PROJECT_IDS,
+  isStorableProjectId,
+  parseNewProjectInput,
+  projectSlug,
+} from "@/lib/projects/intake-rules";
 import type { ProjectTableGateway } from "@/lib/projects/supabase/gateway";
 import {
-  PROJECT_ID_PATTERN,
   newProjectInsert,
   projectRowToRecord,
 } from "@/lib/projects/supabase/schema";
@@ -21,13 +25,9 @@ import type { ProjectRecord } from "@/types/project";
  *
  * Records come from the table; reporting figures still come from the fixture
  * generator, joined by id in `fixture-analytics.ts`. A project with a stored
- * record but no figures appears in the roster as unmeasured and has no
- * workspace yet — the same answer the roster gives a project nobody has
- * crawled.
+ * record but no figures appears in the roster as unmeasured, and its workspace
+ * says so rather than showing numbers nobody measured.
  */
-
-/** Ids a new project may not take: the dashboard roll-up owns this one. */
-const RESERVED_IDS: ReadonlySet<string> = new Set(["portfolio"]);
 
 /** How many `-2`, `-3`, … suffixes to try before giving up on a name. */
 const MAX_ID_ATTEMPTS = 20;
@@ -54,23 +54,24 @@ export function createSupabaseProjectRepository(
   const readAll = async () =>
     inRosterOrder((await gateway.selectAll()).map(projectRowToRecord));
 
-  const readProject = async (id: string) => {
-    // An id the table's own constraint would reject cannot be stored, so there
-    // is nothing to ask the database about.
-    if (!PROJECT_ID_PATTERN.test(id)) return null;
+  const readRecord = async (id: string) => {
+    // An id the table would reject — malformed, too long, or the roll-up's
+    // reserved "portfolio" — cannot be stored, so there is nothing to ask the
+    // database about.
+    if (!isStorableProjectId(id)) return null;
     const row = await gateway.selectById(id);
-    return row ? withFixtureAnalytics(projectRowToRecord(row)) : null;
+    return row ? projectRowToRecord(row) : null;
   };
 
   return {
+    storesProjects: true,
+
     async listProjectIds() {
-      return (await readAll())
-        .filter((record) => withFixtureAnalytics(record) !== null)
-        .map((record) => record.id);
+      return (await readAll()).map((record) => record.id);
     },
 
     async getProjectById(id) {
-      return readProject(id);
+      return readRecord(id);
     },
 
     async listProjects() {
@@ -82,7 +83,8 @@ export function createSupabaseProjectRepository(
     },
 
     async getProjectDetail(id, rangeId) {
-      const project = await readProject(id);
+      const record = await readRecord(id);
+      const project = record ? withFixtureAnalytics(record) : null;
       return project ? fixtureDetail(project, rangeId) : null;
     },
 
@@ -98,7 +100,7 @@ export function createSupabaseProjectRepository(
 
       for (let attempt = 1; attempt <= MAX_ID_ATTEMPTS; attempt += 1) {
         const id = attempt === 1 ? base : `${base}-${attempt}`;
-        if (RESERVED_IDS.has(id)) continue;
+        if (RESERVED_PROJECT_IDS.has(id)) continue;
 
         const outcome = await gateway.insert(newProjectInsert(parsed.value, id, today));
         if (outcome.status === "inserted") {

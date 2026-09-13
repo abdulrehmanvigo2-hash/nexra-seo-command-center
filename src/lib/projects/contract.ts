@@ -2,7 +2,6 @@ import type { NewProjectErrors } from "@/lib/projects/intake-rules";
 import type { RangeId } from "@/types/dashboard";
 import type {
   NewProjectInput,
-  Project,
   ProjectDetail,
   ProjectListItem,
   ProjectRecord,
@@ -45,18 +44,29 @@ export type ProjectRoster = {
 };
 
 export type ProjectRepository = {
-  /** Every project with a workspace, by id. */
+  /**
+   * Whether `createProject` keeps what it is given. The fixture store does not;
+   * the Projects screen then holds new projects for the session only, and says
+   * so.
+   */
+  readonly storesProjects: boolean;
+
+  /** Every project, measured or not, by id. */
   listProjectIds(): Promise<readonly string[]>;
 
-  /** One project's record, or null when the id matches no project. */
-  getProjectById(id: string): Promise<Project | null>;
+  /**
+   * One project's record, or null when the id matches no project. Identity
+   * only: whether the project has reporting data is `getProjectDetail`'s
+   * question, so a project nothing has measured still has a record.
+   */
+  getProjectById(id: string): Promise<ProjectRecord | null>;
 
   /** The roster, one row per project. */
   listProjects(): Promise<ProjectRoster>;
 
   /**
    * Everything one project workspace renders over one reporting window, or
-   * null when the id matches no project.
+   * null when there is no project or nothing has measured it.
    */
   getProjectDetail(id: string, rangeId: RangeId): Promise<ProjectDetail | null>;
 

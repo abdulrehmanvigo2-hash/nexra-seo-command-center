@@ -73,9 +73,9 @@ export function matchesFilters(
   }
 
   if (filters.health !== "all") {
-    // A project created in this session has no health reading yet, so it
-    // cannot satisfy a health filter without inventing one.
-    if (project.draft || project.healthState !== filters.health) return false;
+    // An unmeasured project has no health reading yet, so it cannot satisfy a
+    // health filter without inventing one.
+    if (!project.measured || project.healthState !== filters.health) return false;
   }
 
   if (filters.attentionOnly && !needsAttention(project)) return false;

@@ -22,6 +22,29 @@ export const DOMAIN_PATTERN = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/
 /** Competitors a project can be created with. */
 export const MAX_COMPETITORS = 5;
 
+/** Mirrors the table's `projects_id_format` constraint. */
+export const PROJECT_ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** The Command Center's roll-up owns this id; no stored project may take it. */
+export const PORTFOLIO_PROJECT_ID = "portfolio";
+
+export const RESERVED_PROJECT_IDS: ReadonlySet<string> = new Set([
+  PORTFOLIO_PROJECT_ID,
+]);
+
+/**
+ * Whether an id could belong to a stored project: a route-safe slug of 2–64
+ * characters that is not reserved. It says nothing about whether one exists.
+ */
+export function isStorableProjectId(id: string): boolean {
+  return (
+    id.length >= 2 &&
+    id.length <= 64 &&
+    PROJECT_ID_PATTERN.test(id) &&
+    !RESERVED_PROJECT_IDS.has(id)
+  );
+}
+
 const LIMITS = {
   name: { min: 2, max: 120 },
   client: { min: 1, max: 120 },

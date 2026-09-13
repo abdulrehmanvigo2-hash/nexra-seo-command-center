@@ -9,7 +9,11 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { AGENT_NAMES } from "@/lib/mock/seo";
 import { getPortfolioMetrics } from "@/lib/projects/portfolio";
 import { buildDraftListItem } from "@/lib/projects/session-drafts";
-import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
+import { createProjectAction } from "@/app/(app)/projects/actions";
+import {
+  CreateProjectDialog,
+  type CreateProjectOutcome,
+} from "@/components/projects/create-project-dialog";
 import {
   EMPTY_FILTERS,
   hasActiveFilters,
@@ -47,27 +51,41 @@ import type {
  * screen, only how it is read.
  *
  * A client component because the selection is interactive. The roster arrives
- * as a prop, read by the route through the project repository; projects
- * created here are added to it in this component's state only.
+ * as a prop, read by the route through the project repository.
+ *
+ * Creating a project goes one of two ways, decided by the store, not by this
+ * component. A store that persists gets the submission through a Server
+ * Action; the dialog closes only once the write has succeeded, and the saved
+ * row shows immediately while the revalidated roster catches up — never twice.
+ * A store that does not persist (the fixture roster) keeps the new project in
+ * this component's state for the session, as before, and the copy says so.
  */
 export function ProjectsWorkspace({
   roster,
   asOf,
+  storesProjects,
 }: {
   /** Canonical roster rows from the project repository. */
   roster: readonly ProjectListItem[];
   /** The instant the roster's figures describe. */
   asOf: string;
+  /** Whether the project store keeps new projects. */
+  storesProjects: boolean;
 }) {
 
   const [drafts, setDrafts] = useState<readonly ProjectListItem[]>([]);
+  // Rows the store has confirmed, shown until the revalidated roster has them.
+  const [saved, setSaved] = useState<readonly ProjectListItem[]>([]);
   const [filters, setFilters] = useState<ProjectFilters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<{ key: ProjectSort; desc: boolean }>({
     key: "updated",
     desc: true,
   });
   const [createOpen, setCreateOpen] = useState(false);
-  const [created, setCreated] = useState<string | null>(null);
+  const [created, setCreated] = useState<{
+    name: string;
+    stored: boolean;
+  } | null>(null);
 
   const view = useProjectView();
 
@@ -82,7 +100,14 @@ export function ProjectsWorkspace({
     [],
   );
 
-  const projects = useMemo(() => [...drafts, ...roster], [drafts, roster]);
+  const projects = useMemo(() => {
+    const listed = new Set(roster.map((project) => project.id));
+    return [
+      ...drafts,
+      ...saved.filter((project) => !listed.has(project.id)),
+      ...roster,
+    ];
+  }, [drafts, saved, roster]);
 
   const statusCounts = useMemo(() => {
     const tally = { all: projects.length } as Record<
@@ -132,16 +157,49 @@ export function ProjectsWorkspace({
 
   const changeView = (next: ProjectView) => setProjectView(next);
 
-  const createProject = (input: NewProjectInput) => {
-    const draft = buildDraftListItem(input, asOf);
-
-    setDrafts((current) => [draft, ...current]);
+  const announce = (name: string, stored: boolean) => {
     setCreateOpen(false);
-    setCreated(draft.name);
+    setCreated({ name, stored });
     setFilters(EMPTY_FILTERS);
 
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCreated(null), 8_000);
+  };
+
+  const createProject = async (
+    input: NewProjectInput,
+  ): Promise<CreateProjectOutcome> => {
+    if (!storesProjects) {
+      const draft = buildDraftListItem(input, asOf);
+      setDrafts((current) => [draft, ...current]);
+      announce(draft.name, false);
+      return { ok: true };
+    }
+
+    const result = await createProjectAction(input);
+
+    if (result.ok) {
+      setSaved((current) => [result.project, ...current]);
+      announce(result.project.name, true);
+      return { ok: true };
+    }
+
+    switch (result.reason) {
+      case "invalid":
+        return { ok: false, errors: result.errors };
+      case "duplicate-domain":
+        return {
+          ok: false,
+          errors: { url: "Another project in this workspace already uses this website." },
+        };
+      case "unavailable":
+      case "failed":
+        return {
+          ok: false,
+          message:
+            "The project could not be saved, so nothing was created. Try again in a moment.",
+        };
+    }
   };
 
   return (
@@ -179,9 +237,10 @@ export function ProjectsWorkspace({
             <div className="flex flex-wrap items-start gap-3 rounded-panel border border-positive/30 bg-positive/10 px-4 py-3">
               <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-positive" />
               <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-fg-muted">
-                <span className="font-medium text-fg">{created}</span> was created
-                and added to the roster. It is held in this session only — there
-                is no backend yet, so it will not survive a reload.
+                <span className="font-medium text-fg">{created.name}</span>{" "}
+                {created.stored
+                  ? "was created and saved to the workspace. Nothing has measured it yet, so it is listed as awaiting its first crawl."
+                  : "was created and added to the roster. It is held in this session only — there is no backend yet, so it will not survive a reload."}
               </p>
               <Button
                 variant="ghost"
@@ -279,6 +338,7 @@ export function ProjectsWorkspace({
         <CreateProjectDialog
           onClose={() => setCreateOpen(false)}
           onCreate={createProject}
+          persists={storesProjects}
         />
       )}
     </>

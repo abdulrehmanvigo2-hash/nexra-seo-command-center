@@ -38,6 +38,7 @@ export function buildDraftListItem(
     goal: input.goal,
     href: null,
     draft: true,
+    measured: false,
     health: 0,
     healthState: "neutral",
     technicalHealth: 0,
