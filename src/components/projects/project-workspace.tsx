@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -16,7 +15,6 @@ import { TechnicalSnapshot } from "@/components/dashboard/technical-snapshot";
 import { SectionHeader } from "@/components/ui/section-header";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { CURRENT_USER } from "@/lib/mock/workspace";
-import { getProjectDetail } from "@/lib/mock/projects";
 import { ProjectCompetitors, type PendingCompetitor } from "@/components/projects/project-competitors";
 import { ProjectDetailHeader } from "@/components/projects/project-detail-header";
 import { ProjectIssues } from "@/components/projects/project-issues";
@@ -32,6 +30,7 @@ import { ProjectTeamPreview } from "@/components/projects/project-team";
 import { DEFAULT_RANGE_ID } from "@/lib/mock/dashboard";
 import type { RangeId } from "@/types/dashboard";
 import type {
+  ProjectDetail,
   ProjectIssueStatus,
   ProjectNote,
   ProjectSettings,
@@ -73,14 +72,16 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-export function ProjectWorkspace({ projectId }: { projectId: string }) {
+export function ProjectWorkspace({
+  details,
+}: {
+  /** The project over every reporting window, read by the route. */
+  details: readonly ProjectDetail[];
+}) {
   const [tab, setTab] = useState<TabId>("overview");
   const [rangeId, setRangeId] = useState<RangeId>(DEFAULT_RANGE_ID);
 
-  const detail = useMemo(
-    () => getProjectDetail(projectId, rangeId),
-    [projectId, rangeId],
-  );
+  const detail = details.find((entry) => entry.range.id === rangeId) ?? null;
 
   const [settings, setSettings] = useState<ProjectSettings | null>(() =>
     detail ? settingsOf(detail.project) : null,

@@ -7,12 +7,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelBody, PanelFooter } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
 import { AGENT_NAMES } from "@/lib/mock/seo";
-import {
-  PROJECTS_AS_OF,
-  buildDraftListItem,
-  getPortfolioMetrics,
-  getProjectList,
-} from "@/lib/mock/projects";
+import { getPortfolioMetrics } from "@/lib/projects/portfolio";
+import { buildDraftListItem } from "@/lib/projects/session-drafts";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import {
   EMPTY_FILTERS,
@@ -50,12 +46,19 @@ import type {
  * same filtered rows, so switching between them never changes what is on
  * screen, only how it is read.
  *
- * A client component because the selection is interactive. The roster itself
- * is built by a pure, deterministic function, so the server render and the
- * first client render produce identical markup.
+ * A client component because the selection is interactive. The roster arrives
+ * as a prop, read by the route through the project repository; projects
+ * created here are added to it in this component's state only.
  */
-export function ProjectsWorkspace() {
-  const roster = getProjectList();
+export function ProjectsWorkspace({
+  roster,
+  asOf,
+}: {
+  /** Canonical roster rows from the project repository. */
+  roster: readonly ProjectListItem[];
+  /** The instant the roster's figures describe. */
+  asOf: string;
+}) {
 
   const [drafts, setDrafts] = useState<readonly ProjectListItem[]>([]);
   const [filters, setFilters] = useState<ProjectFilters>(EMPTY_FILTERS);
@@ -130,7 +133,7 @@ export function ProjectsWorkspace() {
   const changeView = (next: ProjectView) => setProjectView(next);
 
   const createProject = (input: NewProjectInput) => {
-    const draft = buildDraftListItem(input, PROJECTS_AS_OF);
+    const draft = buildDraftListItem(input, asOf);
 
     setDrafts((current) => [draft, ...current]);
     setCreateOpen(false);
@@ -244,7 +247,7 @@ export function ProjectsWorkspace() {
                   <li key={project.id} className="min-w-0">
                     <ProjectCard
                       project={project}
-                      referenceIso={PROJECTS_AS_OF}
+                      referenceIso={asOf}
                     />
                   </li>
                 ))}
@@ -255,7 +258,7 @@ export function ProjectsWorkspace() {
               projects={visible}
               sort={sort}
               onSort={changeSort}
-              referenceIso={PROJECTS_AS_OF}
+              referenceIso={asOf}
             />
           )}
 

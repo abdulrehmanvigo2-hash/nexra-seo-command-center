@@ -12,7 +12,6 @@ import {
   getRange,
   SESSION_VALUE_USD,
 } from "@/lib/mock/dashboard";
-import { healthOf } from "@/lib/health";
 import { pickSubset, randInt, round } from "@/lib/mock/dashboard/core";
 import { buildProjectIssues } from "@/lib/mock/projects/issues";
 import { buildProjectNotes } from "@/lib/mock/projects/notes";
@@ -26,7 +25,6 @@ import {
 import type { AgentOperation, DateRange, MetricHealth, RangeId } from "@/types/dashboard";
 import type {
   AssignedAgent,
-  NewProjectInput,
   Project,
   ProjectDetail,
   ProjectListItem,
@@ -37,10 +35,14 @@ import type {
 /**
  * Single entry point for the Projects module's mock data.
  *
- * Import from `@/lib/mock/projects` and the shapes from `@/types/project`; the
- * files behind this one are implementation detail. Everything returned is a
- * fixture — there is no API, database, or fetching layer in this milestone
- * (CLAUDE.md §4).
+ * Screens take project records from the project repository
+ * (`@/lib/projects/repository`), not from here; its mock implementation is the
+ * only screen-facing reader of the getters below. What screens still import
+ * from this file is display vocabulary — status and type labels, option lists
+ * — which is not project data. The other modules' fixture generators read the
+ * roster and getters directly, because they are mock data built from it.
+ * Everything returned is a fixture — there is no API, database, or fetching
+ * layer in this milestone (CLAUDE.md §4).
  *
  * A project's health, trend, keywords, content, and technical data come from
  * the Command Center's own builders rather than from a second derivation.
@@ -207,106 +209,6 @@ export function getProjectIds(): readonly string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Portfolio metrics
-// ---------------------------------------------------------------------------
-
-function mean(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((carry, value) => carry + value, 0) / values.length;
-}
-
-function sum(values: readonly number[]): number {
-  return values.reduce((carry, value) => carry + value, 0);
-}
-
-/**
- * The eight portfolio numbers above the roster.
- *
- * Derived from the rows on screen, not from a separate fixture — filtering the
- * roster is a display concern, so these always describe the full portfolio and
- * say so.
- */
-export function getPortfolioMetrics(
-  items: readonly ProjectListItem[],
-): readonly ProjectMetric[] {
-  const active = items.filter((item) => item.status === "active");
-  const attention = items.filter(
-    (item) => item.status === "needs-attention" || item.criticalIssues > 0,
-  );
-  const averageHealth = Math.round(mean(items.map((item) => item.health)));
-  const averageAi = Math.round(mean(items.map((item) => item.aiVisibility)));
-  const openIssues = sum(items.map((item) => item.openIssues));
-  const criticalIssues = sum(items.map((item) => item.criticalIssues));
-
-  return [
-    {
-      id: "total-projects",
-      label: "Total projects",
-      value: formatNumber(items.length),
-      detail: `${items.filter((item) => item.draft).length} added this session`,
-      icon: "projects",
-    },
-    {
-      id: "active-projects",
-      label: "Active projects",
-      value: formatNumber(active.length),
-      detail: `${items.length - active.length} in another state`,
-      icon: "bolt",
-      health: "positive",
-    },
-    {
-      id: "needs-attention",
-      label: "Needs attention",
-      value: formatNumber(attention.length),
-      detail: `${criticalIssues} critical issues across the portfolio`,
-      icon: "alert",
-      health: attention.length > 0 ? "warning" : "positive",
-    },
-    {
-      id: "average-health",
-      label: "Average SEO health",
-      value: String(averageHealth),
-      unit: "/ 100",
-      detail: "Mean of every project's health index",
-      icon: "shield",
-      health: healthOf(averageHealth),
-    },
-    {
-      id: "total-traffic",
-      label: "Total organic traffic",
-      value: formatCompact(sum(items.map((item) => item.organicTraffic))),
-      unit: "sessions",
-      detail: "Last 30 days, all projects",
-      icon: "analytics",
-    },
-    {
-      id: "total-keywords",
-      label: "Total ranking keywords",
-      value: formatCompact(sum(items.map((item) => item.rankingKeywords))),
-      detail: "Tracked across every project",
-      icon: "keywords",
-    },
-    {
-      id: "open-issues",
-      label: "Total open issues",
-      value: formatNumber(openIssues),
-      detail: `${criticalIssues} critical, ${openIssues - criticalIssues} other`,
-      icon: "flag",
-      health: criticalIssues > 0 ? "warning" : "neutral",
-    },
-    {
-      id: "average-ai",
-      label: "Average AI visibility",
-      value: String(averageAi),
-      unit: "/ 100",
-      detail: "Presence across tracked answer engines",
-      icon: "sparkles",
-      health: healthOf(averageAi),
-    },
-  ];
-}
-
-// ---------------------------------------------------------------------------
 // Project workspace
 // ---------------------------------------------------------------------------
 
@@ -429,70 +331,5 @@ export function getProjectDetail(
     contentGaps: competitors.gapOpportunities,
     sharedKeywords: competitors.sharedKeywords,
     notes: buildProjectNotes(project),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Projects created in this session
-// ---------------------------------------------------------------------------
-
-/** Two-letter monogram from a project name. */
-function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "NP";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
-/** Strips the scheme and any trailing slash, leaving the bare host and path. */
-export function normaliseDomain(url: string): string {
-  return url
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/+$/, "");
-}
-
-/**
- * A roster row for a project created in this session.
- *
- * Every metric is zero, and that is the honest answer: the project has just
- * been created, no crawl has run, and inventing a health score for it would be
- * a lie the rest of the page would then repeat. It carries no `href` for the
- * same reason — there is no workspace to open until there is data in it.
- */
-export function buildDraftListItem(
-  input: NewProjectInput,
-  createdAt: string,
-): ProjectListItem {
-  const domain = normaliseDomain(input.url);
-
-  return {
-    id: `draft-${domain || input.name.toLowerCase().replace(/\s+/g, "-")}`,
-    name: input.name.trim(),
-    domain,
-    client: input.client.trim(),
-    industry: input.industry,
-    initials: initialsOf(input.name),
-    type: input.type,
-    status: "onboarding",
-    market: input.market,
-    goal: input.goal,
-    href: null,
-    draft: true,
-    health: 0,
-    healthState: "neutral",
-    technicalHealth: 0,
-    visibility: 0,
-    aiVisibility: 0,
-    organicTraffic: 0,
-    trafficTrend: { value: 0 },
-    rankingKeywords: 0,
-    conversions: 0,
-    openIssues: 0,
-    criticalIssues: 0,
-    activeTasks: 0,
-    agents: ["project-manager", "seo-director"],
-    spark: [],
-    updatedAt: createdAt,
   };
 }

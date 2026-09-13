@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProjectWorkspace } from "@/components/projects/project-workspace";
-import { getProjectIds, getProjectRecord } from "@/lib/mock/projects";
+import { DATE_RANGES } from "@/lib/mock/dashboard";
+import { projectRepository } from "@/lib/projects/repository";
+import type { ProjectDetail } from "@/types/project";
 
 type PageParams = { params: Promise<{ projectId: string }> };
 
@@ -18,15 +20,16 @@ type PageParams = { params: Promise<{ projectId: string }> };
  * keeps the 404 status and puts the recovery screen inside the application
  * shell. Every detail route in the product follows this convention.
  */
-export function generateStaticParams() {
-  return getProjectIds().map((projectId) => ({ projectId }));
+export async function generateStaticParams() {
+  const ids = await projectRepository.listProjectIds();
+  return ids.map((projectId) => ({ projectId }));
 }
 
 export async function generateMetadata({
   params,
 }: PageParams): Promise<Metadata> {
   const { projectId } = await params;
-  const project = getProjectRecord(projectId);
+  const project = await projectRepository.getProjectById(projectId);
 
   if (!project) {
     return { title: "Project not found" };
@@ -38,12 +41,26 @@ export async function generateMetadata({
   };
 }
 
+/**
+ * The workspace switches between reporting windows instantly, so every window
+ * is read here, on the server, and handed over together. Fetching a window on
+ * demand would put a loading state into a switch that has never had one.
+ */
 export default async function ProjectPage({ params }: PageParams) {
   const { projectId } = await params;
 
-  if (!getProjectRecord(projectId)) {
+  const details = await Promise.all(
+    DATE_RANGES.map((range) =>
+      projectRepository.getProjectDetail(projectId, range.id),
+    ),
+  );
+  const found = details.filter(
+    (detail): detail is ProjectDetail => detail !== null,
+  );
+
+  if (found.length !== DATE_RANGES.length) {
     notFound();
   }
 
-  return <ProjectWorkspace projectId={projectId} />;
+  return <ProjectWorkspace details={found} />;
 }

@@ -1,0 +1,36 @@
+import "server-only";
+
+import {
+  PROJECTS_AS_OF,
+  getProjectDetail,
+  getProjectIds,
+  getProjectList,
+  getProjectRecord,
+} from "@/lib/mock/projects";
+import type { ProjectRepository } from "@/lib/projects/contract";
+
+/**
+ * The project repository, answered from the fixture roster.
+ *
+ * A thin adapter: every record comes from `@/lib/mock/projects`, which stays
+ * the only project dataset in the product, so this returns exactly what the
+ * screens rendered before the boundary existed. It adds no delay and no
+ * storage of its own.
+ */
+export const mockProjectRepository: ProjectRepository = {
+  async listProjectIds() {
+    return getProjectIds();
+  },
+
+  async getProjectById(id) {
+    return getProjectRecord(id) ?? null;
+  },
+
+  async listProjects() {
+    return { projects: getProjectList(), asOf: PROJECTS_AS_OF };
+  },
+
+  async getProjectDetail(id, rangeId) {
+    return getProjectDetail(id, rangeId);
+  },
+};
