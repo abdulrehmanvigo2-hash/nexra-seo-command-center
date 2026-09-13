@@ -22,7 +22,7 @@ import {
   TrafficValue,
   VolumeValue,
 } from "@/components/competitors/competitor-chrome";
-import { SortableHeader } from "@/components/competitors/sortable-header";
+import { SortableHeader } from "@/components/ui/sortable-header";
 import {
   OVERLAP_SORT_OPTIONS,
   type OverlapSort,

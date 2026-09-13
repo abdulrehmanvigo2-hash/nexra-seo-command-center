@@ -12,6 +12,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { SortableHeader } from "@/components/ui/sortable-header";
 import { TrendIndicator } from "@/components/ui/trend-indicator";
 import { cn } from "@/lib/cn";
 import { formatCompact, formatRelative } from "@/lib/format";
@@ -25,7 +26,10 @@ import {
 } from "@/components/projects/project-chrome";
 import { PROJECT_TYPE_META } from "@/lib/mock/projects";
 import type { ProjectListItem } from "@/types/project";
-import type { ProjectSort } from "@/components/projects/sorting";
+import {
+  SORT_OPTIONS,
+  type ProjectSort,
+} from "@/components/projects/sorting";
 
 /**
  * The roster as a dense table.
@@ -49,11 +53,18 @@ export function ProjectsTable({
     <Table caption="Projects with health, traffic, keywords, and open issues">
       <TableHead>
         <TableRow>
-          <SortableHeader label="Project" sortKey="name" sort={sort} onSort={onSort} />
+          <SortableHeader
+            label="Project"
+            sortKey="name"
+            options={SORT_OPTIONS}
+            sort={sort}
+            onSort={onSort}
+          />
           <TableHeaderCell>Status</TableHeaderCell>
           <SortableHeader
             label="SEO health"
             sortKey="health"
+            options={SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -61,6 +72,7 @@ export function ProjectsTable({
           <SortableHeader
             label="Traffic"
             sortKey="traffic"
+            options={SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -69,6 +81,7 @@ export function ProjectsTable({
           <SortableHeader
             label="Visibility"
             sortKey="visibility"
+            options={SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -77,6 +90,7 @@ export function ProjectsTable({
           <SortableHeader
             label="Issues"
             sortKey="issues"
+            options={SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -85,6 +99,7 @@ export function ProjectsTable({
           <SortableHeader
             label="Updated"
             sortKey="updated"
+            options={SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -221,42 +236,5 @@ export function ProjectsTable({
         ))}
       </TableBody>
     </Table>
-  );
-}
-
-function SortableHeader({
-  label,
-  sortKey,
-  align = "left",
-  sort,
-  onSort,
-}: {
-  label: string;
-  sortKey: ProjectSort;
-  align?: "left" | "right";
-  sort: { key: ProjectSort; desc: boolean };
-  onSort: (key: ProjectSort) => void;
-}) {
-  const active = sort.key === sortKey;
-
-  return (
-    <TableHeaderCell align={align} className="p-0">
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        aria-label={`Sort by ${label}`}
-        className={cn(
-          "flex w-full items-center gap-1.5 px-4 py-2.5 transition-colors hover:text-fg-muted",
-          align === "right" && "justify-end",
-          active && "text-fg-muted",
-        )}
-      >
-        {label}
-        <Icon
-          name={active ? (sort.desc ? "trend-down" : "trend-up") : "sort"}
-          className={cn("h-3 w-3 shrink-0", !active && "opacity-45")}
-        />
-      </button>
-    </TableHeaderCell>
   );
 }

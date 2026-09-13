@@ -11,6 +11,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { SortableHeader } from "@/components/ui/sortable-header";
 import { cn } from "@/lib/cn";
 import { formatCompact, formatCurrencyCompact } from "@/lib/format";
 import {
@@ -95,19 +96,19 @@ export function ContentTable({
             </label>
           </TableHeaderCell>
 
-          <SortableHeader label="Title" sortKey="title" sort={sort} onSort={onSort} />
+          <SortableHeader label="Title" sortKey="title" options={CONTENT_SORT_OPTIONS} sort={sort} onSort={onSort} />
           <TableHeaderCell>Stage</TableHeaderCell>
           <TableHeaderCell>Condition</TableHeaderCell>
           <TableHeaderCell>Format</TableHeaderCell>
-          <SortableHeader label="Score" sortKey="score" align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Score" sortKey="score" options={CONTENT_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
           <TableHeaderCell>Intent fit</TableHeaderCell>
-          <SortableHeader label="Volume" sortKey="volume" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Best pos." sortKey="position" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Traffic" sortKey="traffic" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Value" sortKey="value" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Words" sortKey="words" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Links" sortKey="links" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Age" sortKey="updated" align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Volume" sortKey="volume" options={CONTENT_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Best pos." sortKey="position" options={CONTENT_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Traffic" sortKey="traffic" options={CONTENT_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Value" sortKey="value" options={CONTENT_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Words" sortKey="words" options={CONTENT_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Links" sortKey="links" options={CONTENT_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Age" sortKey="updated" options={CONTENT_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
         </TableRow>
       </TableHead>
 
@@ -257,48 +258,3 @@ export function ContentTable({
 }
 
 export const CONTENT_TABLE_COLUMNS = COLUMNS;
-
-function SortableHeader({
-  label,
-  sortKey,
-  align = "left",
-  sort,
-  onSort,
-}: {
-  label: string;
-  sortKey: ContentSort;
-  align?: "left" | "right";
-  sort: { key: ContentSort; desc: boolean };
-  onSort: (key: ContentSort) => void;
-}) {
-  const active = sort.key === sortKey;
-  const full =
-    CONTENT_SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
-    label;
-
-  return (
-    <TableHeaderCell align={align} className="p-0">
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        aria-label={
-          active
-            ? `Sorted by ${full}, ${sort.desc ? "descending" : "ascending"}. Reverse the order.`
-            : `Sort by ${full}`
-        }
-        title={full}
-        className={cn(
-          "flex w-full items-center gap-1.5 px-4 py-2.5 transition-colors hover:text-fg-muted",
-          align === "right" && "justify-end",
-          active && "text-fg-muted",
-        )}
-      >
-        {label}
-        <Icon
-          name={active ? (sort.desc ? "trend-down" : "trend-up") : "sort"}
-          className={cn("h-3 w-3 shrink-0", !active && "opacity-45")}
-        />
-      </button>
-    </TableHeaderCell>
-  );
-}

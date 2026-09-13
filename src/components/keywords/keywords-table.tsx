@@ -11,6 +11,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { SortableHeader } from "@/components/ui/sortable-header";
 import { cn } from "@/lib/cn";
 import { formatCompact } from "@/lib/format";
 import { CANNIBALIZATION_RISK_META, SERP_TYPE_META } from "@/lib/mock/keywords";
@@ -96,21 +97,22 @@ export function KeywordsTable({
             </label>
           </TableHeaderCell>
 
-          <SortableHeader label="Keyword" sortKey="keyword" sort={sort} onSort={onSort} />
+          <SortableHeader label="Keyword" sortKey="keyword" options={KEYWORD_SORT_OPTIONS} sort={sort} onSort={onSort} />
           <TableHeaderCell>Intent</TableHeaderCell>
-          <SortableHeader label="Pos." sortKey="position" align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Pos." sortKey="position" options={KEYWORD_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
           <TableHeaderCell align="right">Prev.</TableHeaderCell>
-          <SortableHeader label="Change" sortKey="change" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Volume" sortKey="volume" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Diff." sortKey="difficulty" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="CPC" sortKey="commercial" align="right" sort={sort} onSort={onSort} />
-          <SortableHeader label="Potential" sortKey="traffic" align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Change" sortKey="change" options={KEYWORD_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Volume" sortKey="volume" options={KEYWORD_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Diff." sortKey="difficulty" options={KEYWORD_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="CPC" sortKey="commercial" options={KEYWORD_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
+          <SortableHeader label="Potential" sortKey="traffic" options={KEYWORD_SORT_OPTIONS} align="right" sort={sort} onSort={onSort} />
           <TableHeaderCell>SERP</TableHeaderCell>
           <TableHeaderCell>Target page</TableHeaderCell>
           <TableHeaderCell>Cluster</TableHeaderCell>
           <SortableHeader
             label="Opportunity"
             sortKey="opportunity"
+            options={KEYWORD_SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -252,48 +254,3 @@ export function KeywordsTable({
 }
 
 export const KEYWORD_TABLE_COLUMNS = COLUMNS;
-
-function SortableHeader({
-  label,
-  sortKey,
-  align = "left",
-  sort,
-  onSort,
-}: {
-  label: string;
-  sortKey: KeywordSort;
-  align?: "left" | "right";
-  sort: { key: KeywordSort; desc: boolean };
-  onSort: (key: KeywordSort) => void;
-}) {
-  const active = sort.key === sortKey;
-  const full =
-    KEYWORD_SORT_OPTIONS.find((option) => option.value === sortKey)?.label ??
-    label;
-
-  return (
-    <TableHeaderCell align={align} className="p-0">
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        aria-label={
-          active
-            ? `Sorted by ${full}, ${sort.desc ? "descending" : "ascending"}. Reverse the order.`
-            : `Sort by ${full}`
-        }
-        title={full}
-        className={cn(
-          "flex w-full items-center gap-1.5 px-4 py-2.5 transition-colors hover:text-fg-muted",
-          align === "right" && "justify-end",
-          active && "text-fg-muted",
-        )}
-      >
-        {label}
-        <Icon
-          name={active ? (sort.desc ? "trend-down" : "trend-up") : "sort"}
-          className={cn("h-3 w-3 shrink-0", !active && "opacity-45")}
-        />
-      </button>
-    </TableHeaderCell>
-  );
-}

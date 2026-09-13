@@ -27,7 +27,7 @@ import {
   TrafficValue,
   VolumeValue,
 } from "@/components/competitors/competitor-chrome";
-import { SortableHeader } from "@/components/competitors/sortable-header";
+import { SortableHeader } from "@/components/ui/sortable-header";
 import { Pagination } from "@/components/keywords/pagination";
 import {
   PAGE_SORT_OPTIONS,

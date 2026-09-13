@@ -21,7 +21,7 @@ import {
   ThreatBadge,
   TrafficValue,
 } from "@/components/competitors/competitor-chrome";
-import { SortableHeader } from "@/components/competitors/sortable-header";
+import { SortableHeader } from "@/components/ui/sortable-header";
 import {
   COMPETITOR_SORT_OPTIONS,
   type CompetitorSort,

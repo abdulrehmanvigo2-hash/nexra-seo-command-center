@@ -95,15 +95,24 @@ export function TableRow({
 export function TableHeaderCell({
   children,
   align = "left",
+  /**
+   * Sort state of this column, for a table whose rows are sorted by it.
+   * Set it on every sortable column — including the inactive ones, as
+   * `"none"` — so the header says which columns can be sorted at all, not
+   * only which one currently is.
+   */
+  ariaSort,
   className,
 }: {
   children: ReactNode;
   align?: Align;
+  ariaSort?: "ascending" | "descending" | "none";
   className?: string;
 }) {
   return (
     <th
       scope="col"
+      aria-sort={ariaSort}
       className={cn(
         "px-4 py-2.5 text-[11px] font-semibold tracking-[0.06em] whitespace-nowrap text-fg-subtle uppercase",
         ALIGN_STYLES[align],

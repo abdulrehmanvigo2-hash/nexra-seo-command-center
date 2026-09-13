@@ -18,6 +18,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { SortableHeader } from "@/components/ui/sortable-header";
 import { cn } from "@/lib/cn";
 import { formatCompact, formatNumber } from "@/lib/format";
 import { INTENT_META, INTENT_ORDER } from "@/lib/mock/keywords";
@@ -422,42 +423,5 @@ function MovementTile({
         {formatNumber(value)}
       </dd>
     </div>
-  );
-}
-
-function SortableHeader({
-  label,
-  sortKey,
-  align = "left",
-  sort,
-  onSort,
-}: {
-  label: string;
-  sortKey: SortKey;
-  align?: "left" | "right";
-  sort: { key: SortKey; desc: boolean };
-  onSort: (key: SortKey) => void;
-}) {
-  const active = sort.key === sortKey;
-
-  return (
-    <TableHeaderCell align={align} className="p-0">
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        aria-label={`Sort by ${label}`}
-        className={cn(
-          "flex w-full items-center gap-1.5 px-4 py-2.5 transition-colors hover:text-fg-muted",
-          align === "right" && "justify-end",
-          active && "text-fg-muted",
-        )}
-      >
-        {label}
-        <Icon
-          name={active ? (sort.desc ? "trend-down" : "trend-up") : "sort"}
-          className={cn("h-3 w-3 shrink-0", !active && "opacity-45")}
-        />
-      </button>
-    </TableHeaderCell>
   );
 }

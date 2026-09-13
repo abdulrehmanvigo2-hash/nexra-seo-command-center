@@ -12,6 +12,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { SortableHeader } from "@/components/ui/sortable-header";
 import { cn } from "@/lib/cn";
 import { formatRelative } from "@/lib/format";
 import { HEALTH_DOT, HEALTH_LABEL, HEALTH_METER } from "@/lib/health";
@@ -20,7 +21,10 @@ import {
   AgentMonogram,
   AgentStatusBadge,
 } from "@/components/agents/agent-chrome";
-import type { AgentSort } from "@/components/agents/sorting";
+import {
+  AGENT_SORT_OPTIONS,
+  type AgentSort,
+} from "@/components/agents/sorting";
 import type { AgentListItem } from "@/types/agent";
 
 /**
@@ -45,13 +49,20 @@ export function AgentsTable({
     <Table caption="Agents with status, current focus, workload, quality, and alerts">
       <TableHead>
         <TableRow>
-          <SortableHeader label="Agent" sortKey="name" sort={sort} onSort={onSort} />
+          <SortableHeader
+            label="Agent"
+            sortKey="name"
+            options={AGENT_SORT_OPTIONS}
+            sort={sort}
+            onSort={onSort}
+          />
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Current focus</TableHeaderCell>
           <TableHeaderCell align="right">Projects</TableHeaderCell>
           <SortableHeader
             label="Tasks"
             sortKey="tasks"
+            options={AGENT_SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -59,6 +70,7 @@ export function AgentsTable({
           <SortableHeader
             label="Workload"
             sortKey="workload"
+            options={AGENT_SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -66,6 +78,7 @@ export function AgentsTable({
           <SortableHeader
             label="Quality"
             sortKey="quality"
+            options={AGENT_SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -73,6 +86,7 @@ export function AgentsTable({
           <SortableHeader
             label="Last activity"
             sortKey="activity"
+            options={AGENT_SORT_OPTIONS}
             align="right"
             sort={sort}
             onSort={onSort}
@@ -189,42 +203,5 @@ export function AgentsTable({
         ))}
       </TableBody>
     </Table>
-  );
-}
-
-function SortableHeader({
-  label,
-  sortKey,
-  align = "left",
-  sort,
-  onSort,
-}: {
-  label: string;
-  sortKey: AgentSort;
-  align?: "left" | "right";
-  sort: { key: AgentSort; desc: boolean };
-  onSort: (key: AgentSort) => void;
-}) {
-  const active = sort.key === sortKey;
-
-  return (
-    <TableHeaderCell align={align} className="p-0">
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        aria-label={`Sort by ${label}`}
-        className={cn(
-          "flex w-full items-center gap-1.5 px-4 py-2.5 transition-colors hover:text-fg-muted",
-          align === "right" && "justify-end",
-          active && "text-fg-muted",
-        )}
-      >
-        {label}
-        <Icon
-          name={active ? (sort.desc ? "trend-down" : "trend-up") : "sort"}
-          className={cn("h-3 w-3 shrink-0", !active && "opacity-45")}
-        />
-      </button>
-    </TableHeaderCell>
   );
 }

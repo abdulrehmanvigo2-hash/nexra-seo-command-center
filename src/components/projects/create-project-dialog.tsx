@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
@@ -68,6 +68,14 @@ const EMPTY: Draft = {
 
 type Errors = Partial<Record<"name" | "url" | "client" | "competitors", string>>;
 
+/** Field order on screen, so "the first problem" means the topmost one. */
+const FOCUS_ORDER: readonly (keyof Errors)[] = [
+  "name",
+  "url",
+  "client",
+  "competitors",
+];
+
 function validateStepOne(draft: Draft): Errors {
   const errors: Errors = {};
 
@@ -109,9 +117,35 @@ export function CreateProjectDialog({
   const [step, setStep] = useState<1 | 2>(1);
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [errors, setErrors] = useState<Errors>({});
+  const pendingFocus = useRef<string | null>(null);
 
   const fieldId = useId();
+  const formId = `${fieldId}-form`;
   const id = (name: string) => `${fieldId}-${name}`;
+
+  /**
+   * Move to the field that failed, once the render that shows the message has
+   * happened. It cannot be done inline in the handler: a failure on step two
+   * can send the user back to step one, and those inputs are not in the
+   * document until React has re-rendered.
+   *
+   * The pending target is a ref rather than state — it is a one-shot
+   * instruction to the DOM, not something the component renders, and clearing
+   * it must not cost another render.
+   */
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (!target) return;
+
+    pendingFocus.current = null;
+    document.getElementById(target)?.focus();
+  }, [errors, step]);
+
+  const focusFirstError = (found: Errors) => {
+    const first = FOCUS_ORDER.find((key) => found[key]);
+    if (!first) return;
+    pendingFocus.current = id(first === "competitors" ? "competitor-0" : first);
+  };
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -146,7 +180,13 @@ export function CreateProjectDialog({
   const goToStepTwo = () => {
     const found = validateStepOne(draft);
     setErrors(found);
-    if (Object.keys(found).length === 0) setStep(2);
+
+    if (Object.keys(found).length === 0) {
+      setStep(2);
+      return;
+    }
+
+    focusFirstError(found);
   };
 
   const submit = () => {
@@ -156,6 +196,7 @@ export function CreateProjectDialog({
     if (Object.keys(found).length > 0) {
       // Anything wrong at this point belongs to the first step.
       if (found.name || found.url || found.client) setStep(1);
+      focusFirstError(found);
       return;
     }
 
@@ -190,7 +231,7 @@ export function CreateProjectDialog({
           {step === 1 ? (
             <>
               <Button onClick={onClose}>Cancel</Button>
-              <Button variant="primary" onClick={goToStepTwo}>
+              <Button type="submit" form={formId} variant="primary">
                 Continue
                 <Icon name="arrow-right" className="h-4 w-4" />
               </Button>
@@ -200,7 +241,7 @@ export function CreateProjectDialog({
               <Button icon="arrow-left" onClick={() => setStep(1)}>
                 Back
               </Button>
-              <Button variant="primary" icon="plus" onClick={submit}>
+              <Button type="submit" form={formId} variant="primary" icon="plus">
                 Create project
               </Button>
             </>
@@ -208,203 +249,222 @@ export function CreateProjectDialog({
         </>
       }
     >
-      <ol className="mb-5 flex items-center gap-2">
-        <StepChip index={1} label="Project details" current={step} />
-        <span aria-hidden="true" className="h-px flex-1 bg-border" />
-        <StepChip index={2} label="Targeting and goals" current={step} />
-      </ol>
+      {/*
+        A real form, so Enter does the obvious thing from any field: finish
+        step one, or create the project. `noValidate` keeps the browser's own
+        bubbles out of the way — this form reports failures through `Field`,
+        next to the control that caused them.
 
-      {step === 1 ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Project name"
-            htmlFor={id("name")}
-            required
-            error={errors.name}
-            className="sm:col-span-2"
-          >
-            <TextInput
-              id={id("name")}
-              value={draft.name}
-              invalid={Boolean(errors.name)}
-              onChange={(event) => update("name", event.target.value)}
-              placeholder="Halcyon Fintech"
-              autoComplete="off"
-            />
-          </Field>
+        The action buttons live in the modal's footer, which is a sibling of
+        this element rather than a descendant, so they join the form by id.
+      */}
+      <form
+        id={formId}
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (step === 1) goToStepTwo();
+          else submit();
+        }}
+      >
+        <ol className="mb-5 flex items-center gap-2">
+          <StepChip index={1} label="Project details" current={step} />
+          <span aria-hidden="true" className="h-px flex-1 bg-border" />
+          <StepChip index={2} label="Targeting and goals" current={step} />
+        </ol>
 
-          <Field
-            label="Website URL"
-            htmlFor={id("url")}
-            required
-            error={errors.url}
-            hint="The domain the crawler starts from."
-          >
-            <TextInput
-              id={id("url")}
-              value={draft.url}
-              invalid={Boolean(errors.url)}
-              onChange={(event) => update("url", event.target.value)}
-              placeholder="halcyon.example"
-              autoComplete="off"
-              inputMode="url"
-            />
-          </Field>
+        {step === 1 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Project name"
+              htmlFor={id("name")}
+              required
+              error={errors.name}
+              className="sm:col-span-2"
+            >
+              <TextInput
+                id={id("name")}
+                value={draft.name}
+                invalid={Boolean(errors.name)}
+                onChange={(event) => update("name", event.target.value)}
+                placeholder="Halcyon Fintech"
+                autoComplete="off"
+              />
+            </Field>
 
-          <Field
-            label="Client name"
-            htmlFor={id("client")}
-            required
-            error={errors.client}
-          >
-            <TextInput
-              id={id("client")}
-              value={draft.client}
-              invalid={Boolean(errors.client)}
-              onChange={(event) => update("client", event.target.value)}
-              placeholder="Halcyon Financial Group"
-              autoComplete="off"
-            />
-          </Field>
+            <Field
+              label="Website URL"
+              htmlFor={id("url")}
+              required
+              error={errors.url}
+              hint="The domain the crawler starts from."
+            >
+              <TextInput
+                id={id("url")}
+                value={draft.url}
+                invalid={Boolean(errors.url)}
+                onChange={(event) => update("url", event.target.value)}
+                placeholder="halcyon.example"
+                autoComplete="off"
+                inputMode="url"
+              />
+            </Field>
 
-          <Field label="Industry" htmlFor={id("industry")}>
-            <Select
-              id={id("industry")}
-              value={draft.industry}
-              onChange={(event) => update("industry", event.target.value)}
-              options={INDUSTRY_OPTIONS.map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-          </Field>
+            <Field
+              label="Client name"
+              htmlFor={id("client")}
+              required
+              error={errors.client}
+            >
+              <TextInput
+                id={id("client")}
+                value={draft.client}
+                invalid={Boolean(errors.client)}
+                onChange={(event) => update("client", event.target.value)}
+                placeholder="Halcyon Financial Group"
+                autoComplete="off"
+              />
+            </Field>
 
-          <Field
-            label="Project type"
-            htmlFor={id("type")}
-            hint="Sets which agents are assigned first."
-          >
-            <Select
-              id={id("type")}
-              value={draft.type}
-              onChange={(event) =>
-                update("type", event.target.value as ProjectType)
-              }
-              options={PROJECT_TYPE_ORDER.map((type) => ({
-                value: type,
-                label: PROJECT_TYPE_META[type].label,
-              }))}
-            />
-          </Field>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Country / market" htmlFor={id("market")}>
-            <Select
-              id={id("market")}
-              value={draft.market}
-              onChange={(event) => update("market", event.target.value)}
-              options={MARKET_OPTIONS.map((value) => ({ value, label: value }))}
-            />
-          </Field>
+            <Field label="Industry" htmlFor={id("industry")}>
+              <Select
+                id={id("industry")}
+                value={draft.industry}
+                onChange={(event) => update("industry", event.target.value)}
+                options={INDUSTRY_OPTIONS.map((value) => ({
+                  value,
+                  label: value,
+                }))}
+              />
+            </Field>
 
-          <Field label="Primary language" htmlFor={id("language")}>
-            <Select
-              id={id("language")}
-              value={draft.language}
-              onChange={(event) => update("language", event.target.value)}
-              options={LANGUAGE_OPTIONS.map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-          </Field>
+            <Field
+              label="Project type"
+              htmlFor={id("type")}
+              hint="Sets which agents are assigned first."
+            >
+              <Select
+                id={id("type")}
+                value={draft.type}
+                onChange={(event) =>
+                  update("type", event.target.value as ProjectType)
+                }
+                options={PROJECT_TYPE_ORDER.map((type) => ({
+                  value: type,
+                  label: PROJECT_TYPE_META[type].label,
+                }))}
+              />
+            </Field>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Country / market" htmlFor={id("market")}>
+              <Select
+                id={id("market")}
+                value={draft.market}
+                onChange={(event) => update("market", event.target.value)}
+                options={MARKET_OPTIONS.map((value) => ({ value, label: value }))}
+              />
+            </Field>
 
-          <Field
-            label="Target location"
-            htmlFor={id("location")}
-            hint="Where rankings are measured. Defaults to the market."
-          >
-            <TextInput
-              id={id("location")}
-              value={draft.targetLocation}
-              onChange={(event) => update("targetLocation", event.target.value)}
-              placeholder="London, United Kingdom"
-              autoComplete="off"
-            />
-          </Field>
+            <Field label="Primary language" htmlFor={id("language")}>
+              <Select
+                id={id("language")}
+                value={draft.language}
+                onChange={(event) => update("language", event.target.value)}
+                options={LANGUAGE_OPTIONS.map((value) => ({
+                  value,
+                  label: value,
+                }))}
+              />
+            </Field>
 
-          <Field label="Main SEO goal" htmlFor={id("goal")}>
-            <Select
-              id={id("goal")}
-              value={draft.goal}
-              onChange={(event) =>
-                update("goal", event.target.value as ProjectGoal)
-              }
-              options={PROJECT_GOAL_ORDER.map((goal) => ({
-                value: goal,
-                label: PROJECT_GOAL_META[goal].label,
-              }))}
-            />
-          </Field>
+            <Field
+              label="Target location"
+              htmlFor={id("location")}
+              hint="Where rankings are measured. Defaults to the market."
+            >
+              <TextInput
+                id={id("location")}
+                value={draft.targetLocation}
+                onChange={(event) => update("targetLocation", event.target.value)}
+                placeholder="London, United Kingdom"
+                autoComplete="off"
+              />
+            </Field>
 
-          <Field
-            label="Competitors"
-            htmlFor={id("competitor-0")}
-            error={errors.competitors}
-            hint={`Up to ${MAX_COMPETITORS} domains to track against. Optional.`}
-            className="sm:col-span-2"
-          >
-            <div className="space-y-2">
-              {draft.competitors.map((competitor, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <TextInput
-                    id={id(`competitor-${index}`)}
-                    value={competitor}
-                    invalid={Boolean(errors.competitors)}
-                    onChange={(event) => setCompetitor(index, event.target.value)}
-                    placeholder="northpeak.example"
-                    autoComplete="off"
-                    aria-label={`Competitor ${index + 1}`}
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => removeCompetitor(index)}
-                    disabled={draft.competitors.length === 1}
-                    aria-label={`Remove competitor ${index + 1}`}
-                  >
-                    <Icon name="minus" className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+            <Field label="Main SEO goal" htmlFor={id("goal")}>
+              <Select
+                id={id("goal")}
+                value={draft.goal}
+                onChange={(event) =>
+                  update("goal", event.target.value as ProjectGoal)
+                }
+                options={PROJECT_GOAL_ORDER.map((goal) => ({
+                  value: goal,
+                  label: PROJECT_GOAL_META[goal].label,
+                }))}
+              />
+            </Field>
 
-              <Button
-                icon="plus"
-                onClick={addCompetitor}
-                disabled={draft.competitors.length >= MAX_COMPETITORS}
-              >
-                Add competitor
-              </Button>
-            </div>
-          </Field>
+            <Field
+              label="Competitors"
+              htmlFor={id("competitor-0")}
+              error={errors.competitors}
+              hint={`Up to ${MAX_COMPETITORS} domains to track against. Optional.`}
+              className="sm:col-span-2"
+            >
+              <div className="space-y-2">
+                {draft.competitors.map((competitor, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <TextInput
+                      id={id(`competitor-${index}`)}
+                      value={competitor}
+                      invalid={Boolean(errors.competitors)}
+                      onChange={(event) => setCompetitor(index, event.target.value)}
+                      placeholder="northpeak.example"
+                      autoComplete="off"
+                      aria-label={`Competitor ${index + 1}`}
+                    />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => removeCompetitor(index)}
+                      disabled={draft.competitors.length === 1}
+                      aria-label={`Remove competitor ${index + 1}`}
+                    >
+                      <Icon name="minus" className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
 
-          <Field
-            label="Notes"
-            htmlFor={id("notes")}
-            hint="Anything the team should know before the first sprint."
-            className="sm:col-span-2"
-          >
-            <TextArea
-              id={id("notes")}
-              rows={3}
-              value={draft.notes}
-              onChange={(event) => update("notes", event.target.value)}
-              placeholder="Migration planned for November. Avoid comparative claims in published copy."
-            />
-          </Field>
-        </div>
-      )}
+                <Button
+                  icon="plus"
+                  onClick={addCompetitor}
+                  disabled={draft.competitors.length >= MAX_COMPETITORS}
+                >
+                  Add competitor
+                </Button>
+              </div>
+            </Field>
+
+            <Field
+              label="Notes"
+              htmlFor={id("notes")}
+              hint="Anything the team should know before the first sprint."
+              className="sm:col-span-2"
+            >
+              <TextArea
+                id={id("notes")}
+                rows={3}
+                value={draft.notes}
+                onChange={(event) => update("notes", event.target.value)}
+                placeholder="Migration planned for November. Avoid comparative claims in published copy."
+              />
+            </Field>
+          </div>
+        )}
+      </form>
     </Modal>
   );
 }
