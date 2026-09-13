@@ -47,3 +47,31 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 The table has row level security enabled and no policies, so only the server,
 using the secret key, can read or write it.
+
+## Signing in
+
+Every page, in either data mode, requires an operator to be signed in with
+Supabase Auth (email and password). Set, in the server environment:
+
+```
+SUPABASE_PUBLISHABLE_KEY=...   # sb_publishable_… — never the secret key
+NEXRA_OPERATOR_EMAILS=...      # comma-separated
+```
+
+Accounts are not created by the application. Create each operator in the
+Supabase dashboard (Authentication → Users → Add user, with the email
+confirmed) and add the address to `NEXRA_OPERATOR_EMAILS`. Turn off "Allow new
+users to sign up" under Authentication → Sign In / Providers: an account that
+is not on the operator list gets nothing, but a private tool has no reason to
+accept sign-ups.
+
+Access is one level — operator or nobody. There are no roles and no
+per-project ownership; every operator can see and create every project.
+
+Before a public deployment: the sign-in and project-creation rate limits are
+held in one server process's memory, so several instances multiply them — move
+them to a shared store. Pages are prerendered and served to operators with
+`Cache-Control: private, no-store`; a CDN in front must honour that and must
+not cache responses that the proxy has not seen. A signed-out session's
+unexpired access token still opens pages (the proxy verifies the token locally)
+until it expires, although the Auth server refuses it for every write.

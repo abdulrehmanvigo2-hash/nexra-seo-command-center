@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
 import { Dropdown } from "@/components/ui/dropdown";
 import { resolveActiveItem } from "@/config/navigation";
-import { CURRENT_USER, DEFAULT_WORKSPACE_ID, WORKSPACES } from "@/lib/mock/workspace";
+import { DEFAULT_WORKSPACE_ID, WORKSPACES } from "@/lib/mock/workspace";
 import { cn } from "@/lib/cn";
 
 export function Header({ onOpenNav }: { onOpenNav: () => void }) {
@@ -15,6 +15,7 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
   const [workspaceId, setWorkspaceId] = useState(DEFAULT_WORKSPACE_ID);
   const workspace =
     WORKSPACES.find((entry) => entry.id === workspaceId) ?? WORKSPACES[0];
+  const email = useSignedInEmail();
 
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-canvas/85 px-4 backdrop-blur-md sm:px-6">
@@ -126,8 +127,8 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
         triggerClassName="h-9 gap-2 pr-2 pl-1.5"
         trigger={
           <>
-            <span className="flex h-7 w-7 items-center justify-center rounded-full border border-border-strong bg-surface-raised text-[10.5px] font-semibold text-fg-muted">
-              {CURRENT_USER.initials}
+            <span className="flex h-7 w-7 items-center justify-center rounded-full border border-border-strong bg-surface-raised text-[10.5px] font-semibold text-fg-muted uppercase">
+              {email ? email.charAt(0) : <Icon name="user" className="h-4 w-4" />}
             </span>
             <Icon name="chevron-down" className="hidden h-4 w-4 sm:block" />
           </>
@@ -136,14 +137,12 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
         {(close) => (
           <div>
             <div className="border-b border-border px-3 py-2.5">
+              <div className="text-[11px] text-fg-subtle">Signed in as</div>
               <div className="truncate text-[12.5px] font-medium text-fg">
-                {CURRENT_USER.name}
-              </div>
-              <div className="truncate text-[11.5px] text-fg-subtle">
-                {CURRENT_USER.email}
+                {email ?? "…"}
               </div>
               <div className="mt-1.5 inline-flex rounded border border-border-strong px-1.5 py-0.5 text-[10.5px] text-fg-muted">
-                {CURRENT_USER.role}
+                Operator
               </div>
             </div>
             <div className="py-1">
@@ -156,12 +155,55 @@ export function Header({ onOpenNav }: { onOpenNav: () => void }) {
                 <Icon name="settings" className="h-4 w-4" />
                 Settings
               </Link>
+              {/* A plain form post: signing out works before, and without, JavaScript. */}
+              <form method="post" action="/auth/sign-out">
+                <button
+                  type="submit"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+                >
+                  <Icon name="arrow-right" className="h-4 w-4" />
+                  Sign out
+                </button>
+              </form>
             </div>
           </div>
         )}
       </Dropdown>
     </header>
   );
+}
+
+/**
+ * The signed-in operator's email, fetched after hydration.
+ *
+ * Every operator is served the same statically rendered page, so the email
+ * cannot be in its HTML; rendering it on the first client pass would not match
+ * the server's markup. Null until the answer arrives, and if the session has
+ * ended — the next navigation goes to the sign-in page.
+ */
+function useSignedInEmail(): string | null {
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/auth/session", { cache: "no-store", signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: unknown) => {
+        if (
+          typeof body === "object" &&
+          body !== null &&
+          "email" in body &&
+          typeof body.email === "string"
+        ) {
+          setEmail(body.email);
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  return email;
 }
 
 /**

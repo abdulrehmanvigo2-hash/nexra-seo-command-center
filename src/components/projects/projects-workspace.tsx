@@ -176,7 +176,16 @@ export function ProjectsWorkspace({
       return { ok: true };
     }
 
-    const result = await createProjectAction(input);
+    let result: Awaited<ReturnType<typeof createProjectAction>>;
+    try {
+      result = await createProjectAction(input);
+    } catch (error) {
+      // The proxy answers 401 instead of running the action once a session
+      // has ended, which surfaces here as a failed call.
+      const session = await fetch("/auth/session", { cache: "no-store" }).catch(() => null);
+      if (session?.status === 401) result = { ok: false, reason: "unauthorized" };
+      else throw error;
+    }
 
     if (result.ok) {
       setSaved((current) => [result.project, ...current]);
@@ -191,6 +200,17 @@ export function ProjectsWorkspace({
         return {
           ok: false,
           errors: { url: "Another project in this workspace already uses this website." },
+        };
+      case "unauthorized":
+        return {
+          ok: false,
+          message:
+            "Your session has ended, so nothing was created. Reload the page to sign in again.",
+        };
+      case "rate-limited":
+        return {
+          ok: false,
+          message: `Too many projects created in a short time. Try again in ${result.retryAfterSeconds} ${result.retryAfterSeconds === 1 ? "second" : "seconds"}.`,
         };
       case "unavailable":
       case "failed":
