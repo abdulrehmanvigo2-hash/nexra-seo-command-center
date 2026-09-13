@@ -199,7 +199,7 @@ export function OverviewView({
 function ReportRow({ report }: { report: ReportRecord }) {
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-5">
-      <Link href={report.href} className="group min-w-0 flex-1">
+      <Link href={report.href} className="group min-w-0 grow basis-48">
         <span className="block truncate text-[12.5px] font-medium text-fg transition-colors group-hover:text-accent">
           {report.templateName}
         </span>

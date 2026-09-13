@@ -617,7 +617,7 @@ export function ContentWorkspace({ contentId }: { contentId: string }) {
                         )}
                       >
                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-                          <div className="min-w-0 flex-1">
+                          <div className="min-w-0 grow basis-48">
                             <p className="flex flex-wrap items-center gap-2">
                               <span className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-fg">
                                 <Icon
@@ -653,7 +653,7 @@ export function ContentWorkspace({ contentId }: { contentId: string }) {
                             </p>
                           </div>
 
-                          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {state === "open" ? (
                               <>
                                 <Button

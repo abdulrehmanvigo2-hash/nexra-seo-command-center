@@ -146,7 +146,7 @@ export function WorkloadReading({
 
   return (
     <div className={cn("min-w-0", className)}>
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2">
         <span className="text-[11px] text-fg-subtle">Workload</span>
         <span className="inline-flex items-center gap-1.5 text-[11px] text-fg-subtle">
           <span className="tabular font-medium text-fg-muted">

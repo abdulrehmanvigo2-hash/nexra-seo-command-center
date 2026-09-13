@@ -128,7 +128,7 @@ export function WorkflowBoard({
         />
       ) : (
         <PanelBody>
-          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <div className="relative -mx-1 overflow-x-auto px-1 pb-1">
             <div className="flex min-w-max gap-3">
               {filtered.map((column) => (
                 <BoardColumn

@@ -152,7 +152,7 @@ export function LinksView({
                     )}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 grow basis-48">
                         <p className="flex flex-wrap items-center gap-2">
                           <Badge tone={meta.tone} title={meta.description}>
                             <Icon name={meta.icon} className="h-3 w-3" />
@@ -199,7 +199,7 @@ export function LinksView({
                         </p>
                       </div>
 
-                      <div className="flex shrink-0 flex-col items-end gap-2">
+                      <div className="flex flex-col items-end gap-2">
                         <div className="w-24">
                           <p className="text-right text-[10.5px] text-fg-subtle">
                             Impact {entry.strength}

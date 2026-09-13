@@ -243,7 +243,7 @@ export function GapsView({
                       </dl>
                     </div>
 
-                    <div className="flex shrink-0 flex-col items-end gap-2">
+                    <div className="flex flex-col items-end gap-2">
                       <div className="w-24">
                         <p className="text-right text-[10.5px] text-fg-subtle">
                           Opportunity {gap.opportunityScore}

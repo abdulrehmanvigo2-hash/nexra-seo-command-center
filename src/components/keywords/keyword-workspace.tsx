@@ -247,7 +247,7 @@ export function KeywordWorkspace({ keywordId }: { keywordId: string }) {
             <Icon name="bolt" className="h-4.5 w-4.5" />
           </span>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 grow basis-48">
             <p className="flex flex-wrap items-center gap-2">
               <span className="text-[10.5px] font-semibold tracking-[0.09em] text-fg-subtle uppercase">
                 Recommended action

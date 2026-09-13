@@ -459,7 +459,7 @@ export function AnalyticsWorkspace() {
                 }))}
               />
               <ToolbarSpacer />
-              <p className="text-[11.5px] whitespace-nowrap text-fg-subtle">
+              <p className="text-[11.5px] text-fg-subtle md:whitespace-nowrap">
                 Cut by dimensions this product owns — there is no channel or
                 device split, because nothing here measures one.
               </p>

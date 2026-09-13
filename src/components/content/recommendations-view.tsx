@@ -264,7 +264,7 @@ export function RecommendationsView({
                       </p>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {state === "open" ? (
                         <>
                           <Button

@@ -191,11 +191,11 @@ function OutputRow({
 
         <Button
           variant="ghost"
-          // The artifact itself belongs to the module that produces it, and
-          // those modules arrive in their own phases. Pointing at the module is
-          // honest; opening a document that does not exist would not be.
+          // Outputs are mock records: no document is stored behind them, so
+          // there is nothing to open. Saying so is honest; opening an empty
+          // page would not be.
           disabled
-          title={`Opening the artifact arrives with ${destination.label}`}
+          title={`Mock output — no ${destination.label} document is stored for it, so there is nothing to open.`}
         >
           View
           <Icon name="external" className="h-4 w-4" />

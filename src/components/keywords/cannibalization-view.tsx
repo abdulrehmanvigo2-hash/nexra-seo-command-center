@@ -212,7 +212,7 @@ function CannibalizationCard({
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {resolved ? (
             <Button variant="ghost" onClick={() => onResolve(record.id, "open")}>
               Undo
@@ -248,7 +248,7 @@ function CannibalizationCard({
             key={entry.url}
             className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded border border-border bg-surface px-3 py-2"
           >
-            <span className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="flex min-w-0 grow basis-48 items-center gap-2">
               <Badge tone={entry.role === "primary" ? "accent" : "neutral"}>
                 {entry.role === "primary" ? "Primary" : "Competing"}
               </Badge>

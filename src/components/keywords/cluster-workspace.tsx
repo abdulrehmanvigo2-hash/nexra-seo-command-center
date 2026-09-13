@@ -482,7 +482,7 @@ export function ClusterWorkspace({ clusterId }: { clusterId: string }) {
                     key={gap.id}
                     className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-surface-raised px-3 py-2"
                   >
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="flex min-w-0 grow basis-48 items-center gap-2">
                       <KeywordLink
                         id={gap.keywordId}
                         keyword={gap.keyword}

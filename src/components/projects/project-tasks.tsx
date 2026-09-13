@@ -31,9 +31,9 @@ import type { ProjectTask, ProjectTaskStatus } from "@/types/project";
 /**
  * The delivery board for this project.
  *
- * A snapshot, not the task manager — that module is sequenced later. Moving a
- * task between states is frontend state over the fixture; nothing is assigned,
- * scheduled, or executed (CLAUDE.md §4).
+ * A snapshot of delivery, not a task manager. Moving a task between states is
+ * frontend state over the fixture; nothing is assigned, scheduled, or executed
+ * (CLAUDE.md §4).
  */
 
 type Filter = ProjectTaskStatus | "all";
@@ -249,7 +249,7 @@ export function ProjectTasks({
             <Icon name="arrow-right" className="h-4 w-4" />
           </Button>
         ) : (
-          <span>The full task module arrives in a later phase.</span>
+          <span>Status changes last for this session only.</span>
         )}
       </PanelFooter>
     </Panel>
