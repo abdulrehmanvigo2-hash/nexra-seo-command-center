@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -11,6 +12,7 @@ import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useDialogFocus } from "@/components/ui/use-dialog-focus";
 import { cn } from "@/lib/cn";
+import { usePreference } from "@/lib/preferences";
 
 /**
  * Application shell: fixed sidebar, sticky header, scrolling content column.
@@ -27,6 +29,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   // so no effect is needed to watch the pathname.
 
   const closeNav = useCallback(() => setNavOpen(false), []);
+
+  /**
+   * Mirror the motion preference onto the document element, where the rule in
+   * globals.css can see it. An attribute rather than rendered markup, so there
+   * is nothing for hydration to disagree about.
+   */
+  const reduceMotion = usePreference("reduceMotion");
+  useEffect(() => {
+    const root = document.documentElement;
+    if (reduceMotion) root.setAttribute("data-reduce-motion", "true");
+    else root.removeAttribute("data-reduce-motion");
+  }, [reduceMotion]);
 
   /**
    * The drawer is a modal surface: it declares `aria-modal`, covers the page

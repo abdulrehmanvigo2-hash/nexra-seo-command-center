@@ -17,11 +17,8 @@ import { PerformanceChart } from "@/components/dashboard/performance-chart";
 import { PriorityActions } from "@/components/dashboard/priority-actions";
 import { TechnicalSnapshot } from "@/components/dashboard/technical-snapshot";
 import { SectionHeader } from "@/components/ui/section-header";
-import {
-  DEFAULT_PROJECT_ID,
-  DEFAULT_RANGE_ID,
-  getDashboardSnapshot,
-} from "@/lib/mock/dashboard";
+import { getDashboardSnapshot } from "@/lib/mock/dashboard";
+import { usePreference } from "@/lib/preferences";
 import type { ProjectId, RangeId } from "@/types/dashboard";
 
 /**
@@ -37,8 +34,23 @@ import type { ProjectId, RangeId } from "@/types/dashboard";
  * render produce identical markup.
  */
 export function CommandCenter() {
-  const [projectId, setProjectId] = useState<ProjectId>(DEFAULT_PROJECT_ID);
-  const [rangeId, setRangeId] = useState<RangeId>(DEFAULT_RANGE_ID);
+  /**
+   * The opening project and window come from Settings; an explicit choice
+   * here overrides them for the rest of the session.
+   *
+   * Held as "chosen, or nothing yet" rather than seeded into `useState`: a
+   * `useState` initialiser runs once, during hydration, while the preference
+   * store is still reporting its server defaults — the stored value would
+   * arrive a moment later and be ignored. Reading the preference in render
+   * lets it apply as soon as it is available.
+   */
+  const preferredProject = usePreference("commandCenterProject");
+  const preferredRange = usePreference("commandCenterRange");
+  const [chosenProject, setChosenProject] = useState<ProjectId | null>(null);
+  const [chosenRange, setChosenRange] = useState<RangeId | null>(null);
+
+  const projectId = chosenProject ?? preferredProject;
+  const rangeId = chosenRange ?? preferredRange;
 
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedNow, setRefreshedNow] = useState(false);
@@ -66,12 +78,12 @@ export function CommandCenter() {
   );
 
   const selectProject = (id: ProjectId) => {
-    setProjectId(id);
+    setChosenProject(id);
     setRefreshedNow(false);
   };
 
   const selectRange = (id: RangeId) => {
-    setRangeId(id);
+    setChosenRange(id);
     setRefreshedNow(false);
   };
 

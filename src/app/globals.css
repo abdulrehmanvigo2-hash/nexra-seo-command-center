@@ -99,3 +99,16 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/*
+ * The same suppression, asked for in Settings rather than by the operating
+ * system. Two rules rather than one selector list: a browser that does not
+ * understand the media query would otherwise drop the attribute rule with it.
+ */
+[data-reduce-motion="true"],
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+}
