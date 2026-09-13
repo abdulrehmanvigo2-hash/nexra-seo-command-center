@@ -3,9 +3,9 @@ import type { IconName } from "@/components/icons";
 /**
  * Single source of truth for the application's navigation.
  *
- * The sidebar, the header page title, and every placeholder page all read
- * from this file, so a destination is defined exactly once. Order matches
- * the navigation order defined in CLAUDE.md §13.
+ * The sidebar and the header's page title and subtitle all read from this
+ * file, so a destination is defined exactly once. Order matches the
+ * navigation order defined in CLAUDE.md §13.
  */
 
 export type NavGroup = "Overview" | "Optimization" | "Measurement" | "System";
@@ -23,12 +23,10 @@ export type NavItem = {
   readonly href: string;
   readonly icon: IconName;
   readonly group: NavGroup;
-  /** One-line summary, shown on the placeholder page and header subtitle. */
+  /** One-line summary of what the module covers, shown as the header subtitle. */
   readonly description: string;
   /** Build-sequence phase from CLAUDE.md §14; null where not yet sequenced. */
   readonly phase: number | null;
-  /** What this module will contain once built. */
-  readonly focus: readonly string[];
 };
 
 export const NAV_ITEMS = [
@@ -40,11 +38,6 @@ export const NAV_ITEMS = [
     description:
       "Cross-project overview of SEO health, active priorities, and live agent activity.",
     phase: 2,
-    focus: [
-      "Portfolio health across every active project",
-      "Priority queue surfaced by the SEO Director",
-      "Live agent activity feed",
-    ],
   },
   {
     label: "Projects",
@@ -54,11 +47,6 @@ export const NAV_ITEMS = [
     description:
       "Per-client workspaces covering scope, delivery state, and project configuration.",
     phase: 3,
-    focus: [
-      "Project roster with health and delivery status",
-      "Scope, targets, and assigned agents per project",
-      "Project intake and onboarding flow",
-    ],
   },
   {
     label: "AI Agents",
@@ -68,11 +56,6 @@ export const NAV_ITEMS = [
     description:
       "The twelve specialist agents: roster, status, run history, and outputs.",
     phase: 4,
-    focus: [
-      "Agent roster with current status and workload",
-      "Run history and produced artifacts",
-      "Orchestration pipeline and hand-offs",
-    ],
   },
   {
     label: "Keyword Intelligence",
@@ -82,11 +65,6 @@ export const NAV_ITEMS = [
     description:
       "Keyword discovery, clustering, and search-intent classification.",
     phase: 5,
-    focus: [
-      "Keyword universe with volume, difficulty, and intent",
-      "Topic clusters and coverage gaps",
-      "Prioritisation against project targets",
-    ],
   },
   {
     label: "Content Studio",
@@ -96,11 +74,6 @@ export const NAV_ITEMS = [
     description:
       "Briefs, drafts, and the full content production pipeline end to end.",
     phase: 6,
-    focus: [
-      "Content pipeline from brief to published",
-      "Briefs with research evidence attached",
-      "Draft editor with on-page scoring",
-    ],
   },
   {
     label: "Technical SEO",
@@ -110,11 +83,6 @@ export const NAV_ITEMS = [
     description:
       "Crawlability, indexation, Core Web Vitals, schema, and overall site health.",
     phase: 8,
-    focus: [
-      "Site health score with issue severity breakdown",
-      "Crawl and indexation diagnostics",
-      "Core Web Vitals and structured-data coverage",
-    ],
   },
   {
     label: "Competitor Intelligence",
@@ -124,11 +92,6 @@ export const NAV_ITEMS = [
     description:
       "Competitive landscape, SERP overlap, positioning, and share of voice.",
     phase: 7,
-    focus: [
-      "Competitor set with visibility trends",
-      "SERP overlap and keyword gap analysis",
-      "Share-of-voice movement over time",
-    ],
   },
   {
     label: "AI Visibility",
@@ -138,11 +101,6 @@ export const NAV_ITEMS = [
     description:
       "Presence and answer-readiness across AI answers and generative engines.",
     phase: 9,
-    focus: [
-      "Citation and mention tracking across AI engines",
-      "Answer-readiness scoring per page",
-      "AEO and GEO recommendations",
-    ],
   },
   {
     label: "Backlinks & Authority",
@@ -152,11 +110,6 @@ export const NAV_ITEMS = [
     description:
       "Link profile, prospect pipeline, digital PR, and authority signals.",
     phase: 10,
-    focus: [
-      "Link profile with authority and toxicity signals",
-      "Prospect pipeline and outreach status",
-      "Authority growth against competitors",
-    ],
   },
   {
     label: "Analytics",
@@ -166,11 +119,6 @@ export const NAV_ITEMS = [
     description:
       "Performance, trends, and attribution across every active project.",
     phase: 11,
-    focus: [
-      "Traffic, ranking, and conversion trends",
-      "Attribution from agent action to outcome",
-      "Learnings routed back to the SEO Director",
-    ],
   },
   {
     label: "Reports",
@@ -180,11 +128,6 @@ export const NAV_ITEMS = [
     description:
       "Client-ready reporting, scheduled deliveries, and exports.",
     phase: 12,
-    focus: [
-      "Report builder with reusable templates",
-      "Scheduled client deliveries",
-      "Branded exports",
-    ],
   },
   {
     label: "Settings",
@@ -192,13 +135,8 @@ export const NAV_ITEMS = [
     icon: "settings",
     group: "System",
     description:
-      "Workspace, project defaults, team access, and platform configuration.",
+      "Command Center defaults, roster views, interface options, and data held in this browser.",
     phase: null,
-    focus: [
-      "Workspace and team management",
-      "Project defaults and agent configuration",
-      "Platform preferences",
-    ],
   },
 ] as const satisfies readonly NavItem[];
 

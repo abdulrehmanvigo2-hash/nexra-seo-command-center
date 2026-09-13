@@ -727,7 +727,10 @@ export const CANNIBALIZATION_STATE_META: Record<
   open: { label: "Unresolved", tone: "warning" },
   "primary-assigned": { label: "Primary URL set", tone: "accent" },
   "task-created": { label: "Consolidation queued", tone: "accent" },
-  reviewed: { label: "Reviewed", tone: "positive" },
+  // Terminal: the opposite of "Unresolved". The key stays `reviewed`; only
+  // the wording changed, so it no longer reads like the intermediate
+  // "Reviewed" step on the Opportunities tab beside it.
+  reviewed: { label: "Resolved", tone: "positive" },
 };
 
 // ---------------------------------------------------------------------------

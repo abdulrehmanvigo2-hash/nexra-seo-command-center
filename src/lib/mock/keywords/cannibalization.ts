@@ -25,7 +25,7 @@ import type {
  * argument, not a measurement, and the module presents it as one.
  *
  * The controls this feeds — assigning a primary URL, queueing a consolidation,
- * marking a case reviewed — change frontend state only. Nothing here edits a
+ * marking a case resolved — change frontend state only. Nothing here edits a
  * site, issues a redirect, or creates a task (CLAUDE.md §4).
  */
 

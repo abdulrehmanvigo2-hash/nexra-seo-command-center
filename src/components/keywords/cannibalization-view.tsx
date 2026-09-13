@@ -235,7 +235,7 @@ function CannibalizationCard({
                 icon="check"
                 onClick={() => onResolve(record.id, "reviewed")}
               >
-                Mark reviewed
+                Mark resolved
               </Button>
             </>
           )}
