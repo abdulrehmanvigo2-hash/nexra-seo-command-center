@@ -98,6 +98,22 @@ export type Project = DashboardProject & {
   readonly summary: string;
 };
 
+/**
+ * What a store keeps about a project: `Project` without the four fields that
+ * exist only for the mock analytics generator.
+ *
+ * `scale`, `healthOffset`, and `seed` parameterise simulated reporting data,
+ * and `portfolio` marks the dashboard roll-up; none of them is a fact about a
+ * client. The id widens to `string` because a stored project is not limited to
+ * the fixture roster's ids.
+ */
+export type ProjectRecord = Omit<
+  Project,
+  "id" | "portfolio" | "scale" | "healthOffset" | "seed"
+> & {
+  readonly id: string;
+};
+
 // ---------------------------------------------------------------------------
 // Roster rows
 // ---------------------------------------------------------------------------
@@ -291,7 +307,10 @@ export type ProjectDetail = {
 // Create-project intake
 // ---------------------------------------------------------------------------
 
-/** What the create-project flow collects. Frontend state only. */
+/**
+ * What the create-project flow collects. The dialog keeps it in session state;
+ * a persistent store validates and saves it through `createProject`.
+ */
 export type NewProjectInput = {
   readonly name: string;
   readonly url: string;

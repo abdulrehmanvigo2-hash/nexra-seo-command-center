@@ -1,8 +1,11 @@
+import type { NewProjectErrors } from "@/lib/projects/intake-rules";
 import type { RangeId } from "@/types/dashboard";
 import type {
+  NewProjectInput,
   Project,
   ProjectDetail,
   ProjectListItem,
+  ProjectRecord,
 } from "@/types/project";
 
 /**
@@ -17,12 +20,22 @@ import type {
  * immediately. Any real store answers over I/O, and a synchronous contract
  * would have to change shape — and every caller with it — the day one exists.
  *
- * Read-only, and only what a screen currently asks for. Projects created in
- * the intake flow are not written here: they live in the Projects screen's own
- * state for the session (see `@/lib/projects/session-drafts`), and giving this
- * contract a write method before there is anywhere to write to would imply
- * persistence that does not exist.
+ * Reads are what the screens use today. The one write, `createProject`, is what
+ * a persistent store needs next; no screen calls it yet. Projects created in the
+ * intake flow still live in the Projects screen's own state for the session
+ * (see `@/lib/projects/session-drafts`) until the dialog is wired to a store
+ * that can be tested end to end.
  */
+
+/** How an attempt to create a project ended. */
+export type CreateProjectResult =
+  | { readonly ok: true; readonly project: ProjectRecord }
+  /** The submission broke an intake rule; nothing was written. */
+  | { readonly ok: false; readonly reason: "invalid"; readonly errors: NewProjectErrors }
+  /** Another project already has this website. */
+  | { readonly ok: false; readonly reason: "duplicate-domain" }
+  /** This store does not persist projects. */
+  | { readonly ok: false; readonly reason: "unavailable" };
 
 /** The client roster and the instant its figures describe. */
 export type ProjectRoster = {
@@ -46,4 +59,11 @@ export type ProjectRepository = {
    * null when the id matches no project.
    */
   getProjectDetail(id: string, rangeId: RangeId): Promise<ProjectDetail | null>;
+
+  /**
+   * Validates and stores a new project. Returns the stored record — not a
+   * `Project`, because a project that has just been created has no reporting
+   * data behind it yet.
+   */
+  createProject(input: NewProjectInput): Promise<CreateProjectResult>;
 };

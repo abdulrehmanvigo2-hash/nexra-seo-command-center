@@ -1,3 +1,4 @@
+import { initialsOf, normaliseDomain } from "@/lib/projects/intake-rules";
 import type { NewProjectInput, ProjectListItem } from "@/types/project";
 
 /**
@@ -9,22 +10,6 @@ import type { NewProjectInput, ProjectListItem } from "@/types/project";
  * write to yet. When there is, creation becomes a repository concern and this
  * module is where the session-only version is retired.
  */
-
-/** Two-letter monogram from a project name. */
-function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "NP";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
-/** Strips the scheme and any trailing slash, leaving the bare host and path. */
-export function normaliseDomain(url: string): string {
-  return url
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/+$/, "");
-}
 
 /**
  * A roster row for a project created in this session.

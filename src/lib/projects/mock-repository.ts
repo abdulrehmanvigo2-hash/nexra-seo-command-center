@@ -15,7 +15,8 @@ import type { ProjectRepository } from "@/lib/projects/contract";
  * A thin adapter: every record comes from `@/lib/mock/projects`, which stays
  * the only project dataset in the product, so this returns exactly what the
  * screens rendered before the boundary existed. It adds no delay and no
- * storage of its own.
+ * storage of its own — which is why `createProject` reports the store as
+ * unavailable rather than pretending to keep what it was given.
  */
 export const mockProjectRepository: ProjectRepository = {
   async listProjectIds() {
@@ -32,5 +33,9 @@ export const mockProjectRepository: ProjectRepository = {
 
   async getProjectDetail(id, rangeId) {
     return getProjectDetail(id, rangeId);
+  },
+
+  async createProject() {
+    return { ok: false, reason: "unavailable" };
   },
 };

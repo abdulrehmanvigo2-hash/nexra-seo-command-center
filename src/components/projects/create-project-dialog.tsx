@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/cn";
+import { DOMAIN_PATTERN, MAX_COMPETITORS } from "@/lib/projects/intake-rules";
 import {
   INDUSTRY_OPTIONS,
   LANGUAGE_OPTIONS,
@@ -33,10 +34,6 @@ import type {
  * record is saved anywhere.
  */
 
-const MAX_COMPETITORS = 5;
-
-/** Accepts a bare host or a full URL; rejects anything without a dot. */
-const DOMAIN_PATTERN = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i;
 
 type Draft = {
   name: string;

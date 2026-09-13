@@ -143,7 +143,8 @@ export function holdingPattern(agent: AgentOperation): AgentOperation {
 // Roster rows
 // ---------------------------------------------------------------------------
 
-function buildListItem(project: Project): ProjectListItem {
+/** One roster row for a project record. Exported for stores that supply their own records. */
+export function buildProjectListItem(project: Project): ProjectListItem {
   const range = ROSTER_RANGE;
   const trend = buildTrendSeries(project, range);
   const keywords = buildKeywordSnapshot(project, range, trend);
@@ -199,7 +200,7 @@ function buildListItem(project: Project): ProjectListItem {
 let rosterCache: readonly ProjectListItem[] | null = null;
 
 export function getProjectList(): readonly ProjectListItem[] {
-  rosterCache ??= PROJECTS.map(buildListItem);
+  rosterCache ??= PROJECTS.map(buildProjectListItem);
   return rosterCache;
 }
 
@@ -307,8 +308,14 @@ export function getProjectDetail(
   rangeId: RangeId = DEFAULT_RANGE_ID,
 ): ProjectDetail | null {
   const project = getProjectRecord(projectId);
-  if (!project) return null;
+  return project ? buildProjectDetail(project, rangeId) : null;
+}
 
+/** The workspace for a project record. Exported for stores that supply their own records. */
+export function buildProjectDetail(
+  project: Project,
+  rangeId: RangeId = DEFAULT_RANGE_ID,
+): ProjectDetail {
   const range = getRange(rangeId);
   const trend = buildTrendSeries(project, range);
   const keywords = buildKeywordSnapshot(project, range, trend);
