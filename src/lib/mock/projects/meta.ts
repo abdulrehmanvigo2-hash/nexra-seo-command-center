@@ -147,7 +147,7 @@ export const TASK_STATUS_META: Record<
 > = {
   todo: { label: "Todo", tone: "neutral" },
   "in-progress": { label: "In progress", tone: "accent" },
-  review: { label: "Review", tone: "warning" },
+  review: { label: "In review", tone: "warning" },
   blocked: { label: "Blocked", tone: "critical" },
   completed: { label: "Completed", tone: "positive" },
 };

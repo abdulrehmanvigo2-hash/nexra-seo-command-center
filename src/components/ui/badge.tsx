@@ -89,8 +89,8 @@ const STATUS_META: Record<Status, { label: string; tone: BadgeTone }> = {
   running: { label: "Running", tone: "accent" },
   queued: { label: "Queued", tone: "neutral" },
   paused: { label: "Paused", tone: "warning" },
-  review: { label: "Needs review", tone: "warning" },
-  complete: { label: "Complete", tone: "positive" },
+  review: { label: "In review", tone: "warning" },
+  complete: { label: "Completed", tone: "positive" },
   failed: { label: "Failed", tone: "critical" },
   draft: { label: "Draft", tone: "neutral" },
 };

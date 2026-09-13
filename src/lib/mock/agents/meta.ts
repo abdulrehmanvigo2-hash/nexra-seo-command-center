@@ -62,7 +62,7 @@ export const AGENT_STATUS_META: Record<
     description: "Finished its current assignment.",
   },
   "needs-review": {
-    label: "Needs review",
+    label: "In review",
     status: "review",
     description: "Output is waiting on a human decision.",
   },
@@ -203,7 +203,7 @@ export const AGENT_TASK_STATUS_META: Record<
 > = {
   queued: { label: "Queued", status: "queued", meter: "neutral" },
   working: { label: "Working", status: "running", meter: "accent" },
-  review: { label: "Review", status: "review", meter: "warning" },
+  review: { label: "In review", status: "review", meter: "warning" },
   blocked: { label: "Blocked", status: "failed", meter: "critical" },
   completed: { label: "Completed", status: "complete", meter: "positive" },
 };
@@ -343,7 +343,7 @@ export const WORKFLOW_STATE_META: Record<
   }
 > = {
   complete: {
-    label: "Complete",
+    label: "Completed",
     tone: "positive",
     ring: "border-positive/40",
     dot: "bg-positive",
@@ -357,7 +357,7 @@ export const WORKFLOW_STATE_META: Record<
     icon: "bolt",
   },
   review: {
-    label: "Review",
+    label: "In review",
     tone: "warning",
     ring: "border-warning/45",
     dot: "bg-warning",
