@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useState } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { buttonClasses } from "@/components/ui/button";
@@ -10,8 +10,8 @@ import { MetricTileGrid } from "@/components/ui/metric-tile";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StackedMeter } from "@/components/ui/meter";
+import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { TrendIndicator } from "@/components/ui/trend-indicator";
-import { cn } from "@/lib/cn";
 import { formatCompact, formatFullDate, formatPercent } from "@/lib/format";
 import { INTENT_META } from "@/lib/mock/keywords";
 import {
@@ -116,8 +116,6 @@ export function CompetitorWorkspace({
     Record<string, OpportunityState>
   >({});
 
-  const tablistRef = useRef<HTMLDivElement>(null);
-
   const sortedOverlap = useMemo(
     () =>
       detail === null
@@ -190,27 +188,6 @@ export function CompetitorWorkspace({
           },
     );
     setPage(1);
-  };
-
-  const handleTabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const keys = ["ArrowRight", "ArrowLeft", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-
-    event.preventDefault();
-    const index = TABS.findIndex((entry) => entry.id === tab);
-    const next =
-      event.key === "ArrowRight"
-        ? (index + 1) % TABS.length
-        : event.key === "ArrowLeft"
-          ? (index - 1 + TABS.length) % TABS.length
-          : event.key === "Home"
-            ? 0
-            : TABS.length - 1;
-
-    changeTab(TABS[next].id);
-    tablistRef.current
-      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-      [next]?.focus();
   };
 
   const overlapPageCount = Math.max(
@@ -294,52 +271,19 @@ export function CompetitorWorkspace({
 
       <MetricTileGrid metrics={detail.metrics} />
 
-      <div className="relative -mx-1 overflow-x-auto px-1">
-        <div
-          ref={tablistRef}
-          role="tablist"
-          aria-label={`${record.name} sections`}
-          onKeyDown={handleTabKeys}
-          className="inline-flex min-w-full items-center gap-1 border-b border-border"
-        >
-          {TABS.map((entry) => {
-            const isSelected = entry.id === tab;
-            const count = tabCounts[entry.id];
-
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                role="tab"
-                id={`competitor-tab-${entry.id}`}
-                aria-selected={isSelected}
-                aria-controls={`competitor-panel-${entry.id}`}
-                tabIndex={isSelected ? 0 : -1}
-                onClick={() => changeTab(entry.id)}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-[12.5px] font-medium whitespace-nowrap transition-colors",
-                  isSelected
-                    ? "border-accent text-fg"
-                    : "border-transparent text-fg-subtle hover:text-fg-muted",
-                )}
-              >
-                <Icon name={entry.icon} className="h-3.5 w-3.5" />
-                {entry.label}
-                {count !== undefined && (
-                  <span className="tabular text-[11px] text-fg-subtle">
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <TabList
+        tabs={TABS}
+        value={tab}
+        onChange={changeTab}
+        label={`${record.name} sections`}
+        idPrefix="competitor"
+        counts={tabCounts}
+      />
 
       <div
         role="tabpanel"
-        id={`competitor-panel-${tab}`}
-        aria-labelledby={`competitor-tab-${tab}`}
+        id={tabPanelDomId("competitor", tab)}
+        aria-labelledby={tabDomId("competitor", tab)}
         tabIndex={0}
         className="space-y-4 focus-visible:outline-none"
       >

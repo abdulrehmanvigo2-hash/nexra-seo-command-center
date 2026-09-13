@@ -1,13 +1,13 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useState } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { MetricTileGrid } from "@/components/ui/metric-tile";
 import { Panel, PanelFooter } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
-import { cn } from "@/lib/cn";
+import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import { Pagination } from "@/components/keywords/pagination";
 import {
@@ -122,8 +122,6 @@ export function ReportsWorkspace() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  const tablistRef = useRef<HTMLDivElement>(null);
-
   // ---------------------------------------------------------------------
   // The selection
   // ---------------------------------------------------------------------
@@ -211,23 +209,6 @@ export function ReportsWorkspace() {
   const changeTab = (next: TabId) => {
     setTab(next);
     setPage(1);
-  };
-
-  /** Roving tab focus: Arrow keys move, Home and End jump to the ends. */
-  const handleTabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const index = TABS.findIndex((entry) => entry.id === tab);
-    let next = index;
-
-    if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
-    else if (event.key === "ArrowLeft")
-      next = (index - 1 + TABS.length) % TABS.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = TABS.length - 1;
-    else return;
-
-    event.preventDefault();
-    changeTab(TABS[next].id);
-    tablistRef.current?.querySelectorAll("button")[next]?.focus();
   };
 
   const scopeName =
@@ -339,52 +320,19 @@ export function ReportsWorkspace() {
         </PanelFooter>
       </Panel>
 
-      <div className="relative -mx-1 overflow-x-auto px-1">
-        <div
-          ref={tablistRef}
-          role="tablist"
-          aria-label="Reports sections"
-          onKeyDown={handleTabKeys}
-          className="inline-flex min-w-full items-center gap-1 border-b border-border"
-        >
-          {TABS.map((entry) => {
-            const isSelected = entry.id === tab;
-            const count = tabCounts[entry.id];
-
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                role="tab"
-                id={`reports-tab-${entry.id}`}
-                aria-selected={isSelected}
-                aria-controls={`reports-panel-${entry.id}`}
-                tabIndex={isSelected ? 0 : -1}
-                onClick={() => changeTab(entry.id)}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-[12.5px] font-medium whitespace-nowrap transition-colors",
-                  isSelected
-                    ? "border-accent text-fg"
-                    : "border-transparent text-fg-subtle hover:text-fg-muted",
-                )}
-              >
-                <Icon name={entry.icon} className="h-3.5 w-3.5" />
-                {entry.label}
-                {count !== undefined && (
-                  <span className="tabular text-[11px] text-fg-subtle">
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <TabList
+        tabs={TABS}
+        value={tab}
+        onChange={changeTab}
+        label="Reports sections"
+        idPrefix="reports"
+        counts={tabCounts}
+      />
 
       <div
         role="tabpanel"
-        id={`reports-panel-${tab}`}
-        aria-labelledby={`reports-tab-${tab}`}
+        id={tabPanelDomId("reports", tab)}
+        aria-labelledby={tabDomId("reports", tab)}
         tabIndex={0}
         className="space-y-4 focus-visible:outline-none"
       >

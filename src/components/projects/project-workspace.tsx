@@ -5,9 +5,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
 } from "react";
-import { Icon, type IconName } from "@/components/icons";
+import { type IconName } from "@/components/icons";
 import { AgentOperations } from "@/components/dashboard/agent-operations";
 import { ContentSnapshot } from "@/components/dashboard/content-snapshot";
 import { KeywordSnapshot } from "@/components/dashboard/keyword-snapshot";
@@ -15,7 +14,7 @@ import { ScoreStrip } from "@/components/dashboard/metric-cards";
 import { PerformanceChart } from "@/components/dashboard/performance-chart";
 import { TechnicalSnapshot } from "@/components/dashboard/technical-snapshot";
 import { SectionHeader } from "@/components/ui/section-header";
-import { cn } from "@/lib/cn";
+import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { CURRENT_USER } from "@/lib/mock/workspace";
 import { getProjectDetail } from "@/lib/mock/projects";
 import { ProjectCompetitors, type PendingCompetitor } from "@/components/projects/project-competitors";
@@ -117,8 +116,6 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     timers.current.push(setTimeout(callback, delay));
   };
 
-  const tablistRef = useRef<HTMLDivElement>(null);
-
   if (!detail || !settings) return null;
 
   const competitors = detail.competitors.filter(
@@ -128,28 +125,6 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const notes = [...addedNotes, ...detail.notes].sort(
     (a, b) => Date.parse(b.at) - Date.parse(a.at),
   );
-
-  /** Roving focus across the tab strip, as a tablist is expected to behave. */
-  const handleTabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const keys = ["ArrowRight", "ArrowLeft", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-
-    event.preventDefault();
-    const index = TABS.findIndex((entry) => entry.id === tab);
-    const next =
-      event.key === "ArrowRight"
-        ? (index + 1) % TABS.length
-        : event.key === "ArrowLeft"
-          ? (index - 1 + TABS.length) % TABS.length
-          : event.key === "Home"
-            ? 0
-            : TABS.length - 1;
-
-    setTab(TABS[next].id);
-    tablistRef.current
-      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-      [next]?.focus();
-  };
 
   const changeIssueStatus = (id: string, status: ProjectIssueStatus) =>
     setIssueStatuses((current) => ({ ...current, [id]: status }));
@@ -209,46 +184,18 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         onRunAnalysis={runAnalysis}
       />
 
-      <div className="relative -mx-1 overflow-x-auto px-1">
-        <div
-          ref={tablistRef}
-          role="tablist"
-          aria-label="Project sections"
-          onKeyDown={handleTabKeys}
-          className="inline-flex min-w-full items-center gap-1 border-b border-border"
-        >
-          {TABS.map((entry) => {
-            const selected = entry.id === tab;
-
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                role="tab"
-                id={`tab-${entry.id}`}
-                aria-selected={selected}
-                aria-controls={`panel-${entry.id}`}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => setTab(entry.id)}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-[12.5px] font-medium whitespace-nowrap transition-colors",
-                  selected
-                    ? "border-accent text-fg"
-                    : "border-transparent text-fg-subtle hover:text-fg-muted",
-                )}
-              >
-                <Icon name={entry.icon} className="h-3.5 w-3.5" />
-                {entry.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <TabList
+        tabs={TABS}
+        value={tab}
+        onChange={setTab}
+        label="Project sections"
+        idPrefix="project"
+      />
 
       <div
         role="tabpanel"
-        id={`panel-${tab}`}
-        aria-labelledby={`tab-${tab}`}
+        id={tabPanelDomId("project", tab)}
+        aria-labelledby={tabDomId("project", tab)}
         tabIndex={0}
         className="space-y-4 focus-visible:outline-none"
       >

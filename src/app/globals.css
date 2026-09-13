@@ -71,6 +71,21 @@ body {
   border-radius: 2px;
 }
 
+/*
+ * A tab strip scrolls horizontally, so a ring drawn outside the button is
+ * clipped at the first and last tab. Drawing it inside keeps it whole and lets
+ * the strip sit exactly on the content column it belongs to — the twelve
+ * copies this replaced bought that clearance with a negative margin, which
+ * pushed the strip 4px past the column on each side instead.
+ *
+ * It has to live here rather than as a utility on the button: the rule above
+ * is unlayered, and an unlayered declaration wins over anything in Tailwind's
+ * `@layer utilities` whatever its specificity.
+ */
+[role="tab"]:focus-visible {
+  outline-offset: -2px;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-strong) transparent;

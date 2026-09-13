@@ -1,14 +1,14 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useState } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MetricTileGrid } from "@/components/ui/metric-tile";
 import { Panel, PanelFooter } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
-import { cn } from "@/lib/cn";
+import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import { Pagination } from "@/components/keywords/pagination";
 import {
@@ -148,8 +148,6 @@ export function TechnicalSeo() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [statuses, setStatuses] = useState<Record<string, IssueStatus>>({});
-
-  const tablistRef = useRef<HTMLDivElement>(null);
 
   // ---------------------------------------------------------------------
   // Narrowing
@@ -322,23 +320,6 @@ export function TechnicalSeo() {
     setPage(1);
   };
 
-  /** Roving tab focus: Arrow keys move, Home and End jump to the ends. */
-  const handleTabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const index = TABS.findIndex((entry) => entry.id === tab);
-    let next = index;
-
-    if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
-    else if (event.key === "ArrowLeft") next = (index - 1 + TABS.length) % TABS.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = TABS.length - 1;
-    else return;
-
-    event.preventDefault();
-    changeTab(TABS[next].id);
-    const buttons = tablistRef.current?.querySelectorAll("button");
-    buttons?.[next]?.focus();
-  };
-
   const scopeName =
     filters.project === "all"
       ? "the portfolio"
@@ -445,52 +426,19 @@ export function TechnicalSeo() {
         </PanelFooter>
       </Panel>
 
-      <div className="relative -mx-1 overflow-x-auto px-1">
-        <div
-          ref={tablistRef}
-          role="tablist"
-          aria-label="Technical SEO sections"
-          onKeyDown={handleTabKeys}
-          className="inline-flex min-w-full items-center gap-1 border-b border-border"
-        >
-          {TABS.map((entry) => {
-            const isSelected = entry.id === tab;
-            const count = tabCounts[entry.id];
-
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                role="tab"
-                id={`technical-tab-${entry.id}`}
-                aria-selected={isSelected}
-                aria-controls={`technical-panel-${entry.id}`}
-                tabIndex={isSelected ? 0 : -1}
-                onClick={() => changeTab(entry.id)}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-[12.5px] font-medium whitespace-nowrap transition-colors",
-                  isSelected
-                    ? "border-accent text-fg"
-                    : "border-transparent text-fg-subtle hover:text-fg-muted",
-                )}
-              >
-                <Icon name={entry.icon} className="h-3.5 w-3.5" />
-                {entry.label}
-                {count !== undefined && (
-                  <span className="tabular text-[11px] text-fg-subtle">
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <TabList
+        tabs={TABS}
+        value={tab}
+        onChange={changeTab}
+        label="Technical SEO sections"
+        idPrefix="technical"
+        counts={tabCounts}
+      />
 
       <div
         role="tabpanel"
-        id={`technical-panel-${tab}`}
-        aria-labelledby={`technical-tab-${tab}`}
+        id={tabPanelDomId("technical", tab)}
+        aria-labelledby={tabDomId("technical", tab)}
         tabIndex={0}
         className="space-y-4 focus-visible:outline-none"
       >

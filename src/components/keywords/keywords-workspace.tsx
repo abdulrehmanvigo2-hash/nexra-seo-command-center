@@ -6,14 +6,13 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
 } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelFooter } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
-import { cn } from "@/lib/cn";
+import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import {
   KEYWORDS_AS_OF,
@@ -186,7 +185,6 @@ export function KeywordsWorkspace() {
 
   const [dialog, setDialog] = useState<"import" | "discover" | null>(null);
 
-  const tablistRef = useRef<HTMLDivElement>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -485,28 +483,6 @@ export function KeywordsWorkspace() {
     );
   };
 
-  /** Roving focus across the tab strip, as a tablist is expected to behave. */
-  const handleTabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const keys = ["ArrowRight", "ArrowLeft", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-
-    event.preventDefault();
-    const index = TABS.findIndex((entry) => entry.id === tab);
-    const next =
-      event.key === "ArrowRight"
-        ? (index + 1) % TABS.length
-        : event.key === "ArrowLeft"
-          ? (index - 1 + TABS.length) % TABS.length
-          : event.key === "Home"
-            ? 0
-            : TABS.length - 1;
-
-    setTab(TABS[next].id);
-    tablistRef.current
-      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-      [next]?.focus();
-  };
-
   const scopeName =
     filters.project === "all"
       ? "every project"
@@ -610,52 +586,19 @@ export function KeywordsWorkspace() {
         </PanelFooter>
       </Panel>
 
-      <div className="relative -mx-1 overflow-x-auto px-1">
-        <div
-          ref={tablistRef}
-          role="tablist"
-          aria-label="Keyword intelligence sections"
-          onKeyDown={handleTabKeys}
-          className="inline-flex min-w-full items-center gap-1 border-b border-border"
-        >
-          {TABS.map((entry) => {
-            const isSelected = entry.id === tab;
-            const count = counts[entry.id];
-
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                role="tab"
-                id={`kw-tab-${entry.id}`}
-                aria-selected={isSelected}
-                aria-controls={`kw-panel-${entry.id}`}
-                tabIndex={isSelected ? 0 : -1}
-                onClick={() => setTab(entry.id)}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-[12.5px] font-medium whitespace-nowrap transition-colors",
-                  isSelected
-                    ? "border-accent text-fg"
-                    : "border-transparent text-fg-subtle hover:text-fg-muted",
-                )}
-              >
-                <Icon name={entry.icon} className="h-3.5 w-3.5" />
-                {entry.label}
-                {count !== undefined && (
-                  <span className="tabular text-[11px] text-fg-subtle">
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <TabList
+        tabs={TABS}
+        value={tab}
+        onChange={setTab}
+        label="Keyword intelligence sections"
+        idPrefix="kw"
+        counts={counts}
+      />
 
       <div
         role="tabpanel"
-        id={`kw-panel-${tab}`}
-        aria-labelledby={`kw-tab-${tab}`}
+        id={tabPanelDomId("kw", tab)}
+        aria-labelledby={tabDomId("kw", tab)}
         tabIndex={0}
         className="space-y-4 focus-visible:outline-none"
       >
