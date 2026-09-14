@@ -31,21 +31,37 @@ function rowsOf(response: unknown): readonly Record<string, unknown>[] {
 }
 
 /**
- * Totals from a query with no dimensions: one row, or none when the property
- * had no impressions in the window.
+ * Totals from a query with no dimensions, or null when the property had no
+ * impressions in the window.
+ *
+ * Google answers that case two ways: with no rows, or — observed live for a
+ * property with no search traffic — with one row of zeros, including a
+ * position of 0. Both are "no data". Passing the zero row on would show an
+ * average position that was never observed.
  */
 export function mapTotals(response: unknown): SearchPerformance | null {
   const [row] = rowsOf(response);
-  return row ? performanceFrom(row) : null;
+  const totals = row ? performanceFrom(row) : null;
+  return totals && totals.impressions > 0 ? totals : null;
 }
 
-/** Rows from a query with exactly one dimension (query or page). */
+/**
+ * Rows from a query with exactly one dimension (query or page). A row with no
+ * impressions carries no observed position, so it is dropped like any other
+ * row that cannot be read.
+ */
 export function mapDimensionRows(response: unknown): readonly SearchPerformanceRow[] {
   const mapped: SearchPerformanceRow[] = [];
   for (const row of rowsOf(response)) {
     const keys = row.keys;
     const performance = performanceFrom(row);
-    if (!performance || !Array.isArray(keys) || typeof keys[0] !== "string" || keys[0] === "") {
+    if (
+      !performance ||
+      performance.impressions === 0 ||
+      !Array.isArray(keys) ||
+      typeof keys[0] !== "string" ||
+      keys[0] === ""
+    ) {
       continue;
     }
     mapped.push({ key: keys[0], ...performance });
