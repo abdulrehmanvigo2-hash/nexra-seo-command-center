@@ -120,7 +120,9 @@ export function createSearchConsoleClient(options: ClientOptions): SearchConsole
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
     try {
-      response = await send(url, { ...init, signal: controller.signal });
+      // Never the Next.js data cache: answers are cached by the provider, with
+      // an expiry, and a token response must not be stored anywhere.
+      response = await send(url, { ...init, cache: "no-store", signal: controller.signal });
     } catch (error) {
       throw new SearchConsoleProviderError(
         error instanceof Error && error.name === "AbortError" ? "timeout" : "error",

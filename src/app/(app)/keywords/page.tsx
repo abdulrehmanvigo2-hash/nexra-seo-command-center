@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { KeywordsWorkspace } from "@/components/keywords/keywords-workspace";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 export const metadata: Metadata = {
   title: "Keyword Intelligence",
@@ -15,11 +17,16 @@ export const metadata: Metadata = {
  * so links from the dashboard and from a project workspace land on a filtered
  * view. `useSearchParams` needs a Suspense boundary during static rendering,
  * which is what this shell provides.
+ *
+ * The projects it can be filtered to come from the Projects repository, so a
+ * project created on the Projects screen is selectable here too.
  */
-export default function KeywordsPage() {
+export default async function KeywordsPage() {
+  const projects = projectOptionsFrom(await projectRepository.listProjects());
+
   return (
     <Suspense fallback={<KeywordsFallback />}>
-      <KeywordsWorkspace />
+      <KeywordsWorkspace projects={projects} />
     </Suspense>
   );
 }

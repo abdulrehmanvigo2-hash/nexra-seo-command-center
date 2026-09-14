@@ -170,8 +170,8 @@ export function SearchConsolePanel({
 
       <PanelFooter>
         <span>
-          {connected
-            ? `Search Console, ${connected.property}, ${windowLabel(connected.window)} (final data, Pacific time).`
+          {report && (report.state === "connected" || report.state === "no-data")
+            ? `Search Console, ${report.property}, ${windowLabel(report.window)} (final data, Pacific time).`
             : "Observed data from Search Console appears here once a property is connected."}
         </span>
         <span className="max-w-xl">{SEARCH_CONSOLE_SCOPE_NOTE}</span>

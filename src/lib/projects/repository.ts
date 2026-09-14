@@ -1,5 +1,6 @@
 import "server-only";
 
+import { connection } from "next/server";
 import type { ProjectRepository } from "@/lib/projects/contract";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
 import { mockProjectRepository } from "@/lib/projects/mock-repository";
@@ -36,11 +37,44 @@ function configuredRepository(): ProjectRepository {
       const client = createSupabaseServerClient<ProjectsDatabase>(
         readSupabaseServerConfig(process.env),
       );
-      return createSupabaseProjectRepository(createSupabaseProjectGateway(client));
+      return atRequestTime(
+        createSupabaseProjectRepository(createSupabaseProjectGateway(client)),
+      );
     }
     case "mock":
       return mockProjectRepository;
   }
+}
+
+/**
+ * A table's contents are only true when read, so a page built from them must
+ * be rendered when it is requested, not once at build time and replayed.
+ * Each read waits for a request (`connection()`) before querying, which
+ * excludes it from prerendering; the fixture roster, which cannot change,
+ * stays prerendered.
+ *
+ * `listProjectIds` is left as it is: `generateStaticParams` calls it at build
+ * time, outside any request, and the ids it returns only name routes — every
+ * page for them still reads its project when requested.
+ */
+function atRequestTime(repository: ProjectRepository): ProjectRepository {
+  return {
+    storesProjects: repository.storesProjects,
+    listProjectIds: () => repository.listProjectIds(),
+    async getProjectById(id) {
+      await connection();
+      return repository.getProjectById(id);
+    },
+    async listProjects() {
+      await connection();
+      return repository.listProjects();
+    },
+    async getProjectDetail(id, rangeId) {
+      await connection();
+      return repository.getProjectDetail(id, rangeId);
+    },
+    createProject: (input) => repository.createProject(input),
+  };
 }
 
 export const projectRepository: ProjectRepository = configuredRepository();

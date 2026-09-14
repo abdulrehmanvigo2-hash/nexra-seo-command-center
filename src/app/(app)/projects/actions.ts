@@ -80,6 +80,9 @@ export async function createProjectAction(
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${result.project.id}`);
+  // Analytics and Keywords list the roster in their project pickers.
+  revalidatePath("/analytics");
+  revalidatePath("/keywords");
 
   return { ok: true, project: unmeasuredListItem(result.project) };
 }

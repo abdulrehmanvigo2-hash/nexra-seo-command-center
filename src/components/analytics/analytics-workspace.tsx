@@ -19,7 +19,6 @@ import {
   SEGMENT_META,
   SEGMENT_ORDER,
   getAnalyticsOverview,
-  getAnalyticsProjectOptions,
   getAttribution,
   getPagePerformance,
   getSegments,
@@ -27,7 +26,9 @@ import {
 import { getKeywordList } from "@/lib/mock/keywords";
 import { AnomaliesView, LearningsView } from "@/components/analytics/insight-views";
 import { OverviewView } from "@/components/analytics/overview-view";
+import { UnmeasuredSelectionNotice } from "@/components/projects/unmeasured-selection-notice";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
+import type { ProjectOption } from "@/lib/projects/selection";
 import {
   AttributionTable,
   PagesTable,
@@ -96,9 +97,13 @@ type TabId = (typeof TABS)[number]["id"];
 const TAB_IDS: readonly string[] = TABS.map((tab) => tab.id);
 const RANGE_IDS: readonly string[] = ["7d", "30d", "3m", "6m", "12m"];
 
-export function AnalyticsWorkspace() {
+export function AnalyticsWorkspace({
+  projects,
+}: {
+  /** The Projects roster, read on the server from the Projects repository. */
+  projects: readonly ProjectOption[];
+}) {
   const searchParams = useSearchParams();
-  const projects = getAnalyticsProjectOptions();
 
   // Deep links from the Command Center or a project arrive as query
   // parameters. They seed the initial state and nothing more — changing a
@@ -273,11 +278,11 @@ export function AnalyticsWorkspace() {
     setPage(1);
   };
 
-  const scopeName =
+  const selectedProject =
     projectId === "portfolio"
-      ? "the portfolio"
-      : (projects.find((project) => project.id === projectId)?.name ??
-        "the portfolio");
+      ? null
+      : (projects.find((project) => project.id === projectId) ?? null);
+  const scopeName = selectedProject?.name ?? "the portfolio";
 
   const tabCounts: Partial<Record<TabId, number>> = {
     segments: filteredSegments.length,
@@ -356,7 +361,11 @@ export function AnalyticsWorkspace() {
         }
       />
 
-      <MetricTileGrid metrics={overview.metrics} />
+      {selectedProject && !selectedProject.measured ? (
+        <UnmeasuredSelectionNotice name={selectedProject.name} />
+      ) : (
+        <MetricTileGrid metrics={overview.metrics} />
+      )}
 
       <Panel>
         <AnalyticsToolbar

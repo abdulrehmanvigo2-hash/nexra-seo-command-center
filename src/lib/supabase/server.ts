@@ -108,6 +108,12 @@ export function readSupabaseServerConfig(env: Environment): SupabaseServerConfig
 /**
  * A Supabase client for server code. No session handling: nothing signs in on
  * the server, and nothing should be persisted between requests.
+ *
+ * Every request opts out of the Next.js data cache. Left to the default, a
+ * read made while prerendering was stored for a year and replayed by every
+ * later build, so a project created after that read never appeared in the
+ * prerendered roster. The table is the source of truth; pages that read it
+ * render from it when requested.
  */
 export function createSupabaseServerClient<Database>(
   config: SupabaseServerConfig,
@@ -117,6 +123,9 @@ export function createSupabaseServerClient<Database>(
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
+    },
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
     },
   });
 }

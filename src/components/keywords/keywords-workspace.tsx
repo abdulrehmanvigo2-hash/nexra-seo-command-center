@@ -62,7 +62,9 @@ import {
   compareKeywords,
   type KeywordSort,
 } from "@/components/keywords/sorting";
+import { UnmeasuredSelectionNotice } from "@/components/projects/unmeasured-selection-notice";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
+import type { ProjectOption } from "@/lib/projects/selection";
 import type { RangeId } from "@/types/dashboard";
 import type {
   AgentId,
@@ -115,12 +117,20 @@ type TabId = (typeof TABS)[number]["id"];
 
 const TAB_IDS: readonly string[] = TABS.map((tab) => tab.id);
 
-export function KeywordsWorkspace() {
+export function KeywordsWorkspace({
+  projects,
+}: {
+  /** The Projects roster, read on the server from the Projects repository. */
+  projects: readonly ProjectOption[];
+}) {
   const searchParams = useSearchParams();
 
   const records = getKeywordList();
   const clusters = getKeywordClusters();
-  const projects = getKeywordProjectOptions();
+  // The import and discovery tools write modelled keyword records, so they
+  // offer only the projects the modelled dataset covers. Selection, above,
+  // offers the whole roster.
+  const modelledProjects = getKeywordProjectOptions();
   const clusterFilterOptions = clusterOptions();
   const risk = cannibalizationRiskIndex();
 
@@ -484,11 +494,16 @@ export function KeywordsWorkspace() {
     );
   };
 
-  const scopeName =
+  const selectedProject =
     filters.project === "all"
-      ? "every project"
-      : (projects.find((project) => project.id === filters.project)?.name ??
-        "every project");
+      ? null
+      : (projects.find((project) => project.id === filters.project) ?? null);
+  const scopeName = selectedProject?.name ?? "every project";
+  const modelledDefaultProject = modelledProjects.some(
+    (project) => project.id === filters.project,
+  )
+    ? filters.project
+    : "all";
 
   const counts: Partial<Record<TabId, number>> = {
     keywords: filtered.length,
@@ -551,13 +566,17 @@ export function KeywordsWorkspace() {
         )}
       </div>
 
-      <KeywordPortfolio
-        metrics={metrics}
-        bands={bands}
-        intents={intents}
-        total={records.length}
-        filtered={filtered.length}
-      />
+      {selectedProject && !selectedProject.measured ? (
+        <UnmeasuredSelectionNotice name={selectedProject.name} />
+      ) : (
+        <KeywordPortfolio
+          metrics={metrics}
+          bands={bands}
+          intents={intents}
+          total={records.length}
+          filtered={filtered.length}
+        />
+      )}
 
       <Panel>
         <KeywordsToolbar
@@ -772,8 +791,8 @@ export function KeywordsWorkspace() {
 
       {dialog === "import" && (
         <ImportDialog
-          projects={projects}
-          defaultProjectId={filters.project}
+          projects={modelledProjects}
+          defaultProjectId={modelledDefaultProject}
           referenceIso={KEYWORDS_AS_OF}
           onClose={() => setDialog(null)}
           onImport={addImported}
@@ -782,8 +801,8 @@ export function KeywordsWorkspace() {
 
       {dialog === "discover" && (
         <DiscoverDialog
-          projects={projects}
-          defaultProjectId={filters.project}
+          projects={modelledProjects}
+          defaultProjectId={modelledDefaultProject}
           referenceIso={KEYWORDS_AS_OF}
           onClose={() => setDialog(null)}
           onAdd={addImported}

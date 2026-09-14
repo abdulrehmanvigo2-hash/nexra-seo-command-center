@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { AnalyticsWorkspace } from "@/components/analytics/analytics-workspace";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 export const metadata: Metadata = {
   title: "Analytics",
@@ -15,11 +17,16 @@ export const metadata: Metadata = {
  * string, so links from the Command Center and from a project land on the
  * right view. `useSearchParams` needs a Suspense boundary during static
  * rendering, which is what this shell provides.
+ *
+ * The projects it can be scoped to come from the Projects repository, so a
+ * project created on the Projects screen is selectable here too.
  */
-export default function AnalyticsPage() {
+export default async function AnalyticsPage() {
+  const projects = projectOptionsFrom(await projectRepository.listProjects());
+
   return (
     <Suspense fallback={<AnalyticsFallback />}>
-      <AnalyticsWorkspace />
+      <AnalyticsWorkspace projects={projects} />
     </Suspense>
   );
 }

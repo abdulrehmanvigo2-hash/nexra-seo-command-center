@@ -9,9 +9,10 @@ import type { ProjectDetail } from "@/types/project";
 type PageParams = { params: Promise<{ projectId: string }> };
 
 /**
- * Every project that exists at build time is prerendered. One created later is
- * rendered on its first request, and the create action revalidates its path so
- * a cached "not found" from before it existed cannot outlive it.
+ * With the fixture roster, every project is prerendered. With a stored roster
+ * the repository reads at request time (see `@/lib/projects/repository`), so
+ * each page renders from the table when requested; the create action still
+ * revalidates the path so a cached "not found" cannot outlive a new project.
  *
  * `dynamicParams` is deliberately left at its default rather than set to
  * `false`. Setting it turns an unknown id into a routing-level 404 answered by
