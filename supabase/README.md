@@ -1,7 +1,7 @@
 # Supabase
 
-Postgres schema for the parts of Nexra that are persisted. Today that is the
-project record only.
+Postgres schema for the parts of Nexra that are persisted: the project record,
+and the agent runs made against projects.
 
 ```
 supabase/
@@ -47,6 +47,27 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 The table has row level security enabled and no policies, so only the server,
 using the secret key, can read or write it.
+
+## Agent runs
+
+`public.agent_runs` (migration `20260914120000_create_agent_runs.sql`) records
+each request for one of the twelve agents to run a task on a project, and how
+it ended. It needs `PROJECTS_DATA_SOURCE=supabase`; with the mock roster the
+runtime answers `unavailable`.
+
+- Lifecycle, enforced by a trigger for every writer, the service role
+  included: `queued → running | cancelled`, `running → completed | failed |
+  cancelled`, `failed → queued` while attempts remain (3 by default). A run's
+  request — project, agent, task, input, operator — never changes.
+- An identical request cannot be queued or running twice (partial unique
+  index on project, agent, task type, and input hash).
+- Input and result metadata are bounded JSON, screened for credentials before
+  they are written. Failures store a fixed code and message, never exception
+  text. `executor = 'mock'` marks a simulated result.
+- A project with runs cannot be deleted (`on delete restrict`).
+
+Same access model as `projects`: row level security with no policies, granted
+to `service_role` only. Operators reach runs through `/api/agent-runs`.
 
 ## Signing in
 

@@ -1,0 +1,80 @@
+/**
+ * Shapes for the agent runtime (Backend Phase 6, Part 1).
+ *
+ * An agent run is one request for one of the twelve registry agents to carry
+ * out one task on one project, and the record of how it ended. It is the
+ * executed counterpart of the fixture task board in `@/types/agent`, not a
+ * replacement for it: the board is still modelled, and nothing on screen reads
+ * runs yet.
+ *
+ * Vocabulary: `queued` and `completed` mean what they mean on the task board.
+ * A run says `running` rather than the board's `working`, because it names one
+ * execution attempt, not a person-visible stage of work; and it adds `failed`
+ * and `cancelled`, which an execution can end in and a board task cannot.
+ */
+import type { AgentId } from "@/types/agent";
+
+export type AgentRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+
+/** What asked for the run. Schedules and workflows join this when they exist. */
+export type AgentRunSource = "operator";
+
+/** What carried the task out. `mock` results are simulated and carry no analysis. */
+export type AgentExecutorId = "mock";
+
+/** The tasks an agent can be asked to run. See `@/lib/agent-runs/task-types`. */
+export type AgentTaskType = "project-review" | "keyword-research";
+
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+export type JsonObject = { readonly [key: string]: JsonValue };
+
+/**
+ * Why an attempt failed. Fixed codes with fixed messages, so no exception
+ * text, stack, or provider response is ever stored or shown.
+ */
+export type AgentRunErrorCode =
+  | "timeout"
+  | "execution-failed"
+  | "rejected-output"
+  | "project-missing";
+
+export type AgentRunError = {
+  readonly code: AgentRunErrorCode;
+  readonly message: string;
+};
+
+export type AgentRun = {
+  readonly id: string;
+  readonly projectId: string;
+  readonly agentId: AgentId;
+  readonly taskType: AgentTaskType;
+  /** The validated task input. Never credentials. */
+  readonly input: JsonObject;
+  readonly status: AgentRunStatus;
+  readonly source: AgentRunSource;
+  /** What ran the current or last attempt; null until one starts. */
+  readonly executor: AgentExecutorId | null;
+  readonly attemptCount: number;
+  readonly maxAttempts: number;
+  /** Set when the run completed. */
+  readonly resultSummary: string | null;
+  readonly resultMetadata: JsonObject | null;
+  /** The most recent failure, kept through a retry. */
+  readonly error: AgentRunError | null;
+  /** Supabase Auth user id of the operator who created the run. */
+  readonly createdBy: string;
+  readonly cancelledBy: string | null;
+  /** ISO 8601 instants. */
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  /** The current or last attempt. */
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+};
