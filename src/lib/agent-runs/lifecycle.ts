@@ -1,4 +1,9 @@
-import type { AgentRun, AgentRunErrorCode, AgentRunStatus } from "@/types/agent-run";
+import type {
+  AgentRun,
+  AgentRunAttemptOutcome,
+  AgentRunErrorCode,
+  AgentRunStatus,
+} from "@/types/agent-run";
 
 /**
  * The run lifecycle, as pure rules.
@@ -9,8 +14,10 @@ import type { AgentRun, AgentRunErrorCode, AgentRunStatus } from "@/types/agent-
  *   completed, cancelled      final
  *
  * The database enforces the same graph in a trigger
- * (supabase/migrations/20260914120000_create_agent_runs.sql), so a writer that
- * skips these functions is still refused. These exist so the service can say
+ * (supabase/migrations/20260914120000_create_agent_runs.sql, extended in
+ * 20260916120000_add_agent_run_attempts.sql so a run starts and finishes only
+ * through its attempt's lease), so a writer that skips these functions is
+ * still refused. These exist so the service can say
  * no before it asks.
  */
 
@@ -60,8 +67,23 @@ export const AGENT_RUN_ERROR_MESSAGES: Readonly<Record<AgentRunErrorCode, string
   "execution-failed": "The executor could not complete the task.",
   "rejected-output": "The executor's result was refused because it was too large or looked like it contained a credential.",
   "project-missing": "The project this run belongs to could not be read.",
+  // Mirrored in agent_run_recover_expired
+  // (supabase/migrations/20260916120000_add_agent_run_attempts.sql), which
+  // writes it without the application.
+  "lease-expired": "The attempt stopped reporting progress before it finished, so it was abandoned.",
 };
 
 export function isAgentRunErrorCode(value: unknown): value is AgentRunErrorCode {
   return typeof value === "string" && Object.hasOwn(AGENT_RUN_ERROR_MESSAGES, value);
+}
+
+export const AGENT_RUN_ATTEMPT_OUTCOMES = [
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+] as const satisfies readonly AgentRunAttemptOutcome[];
+
+export function isAgentRunAttemptOutcome(value: unknown): value is AgentRunAttemptOutcome {
+  return typeof value === "string" && (AGENT_RUN_ATTEMPT_OUTCOMES as readonly string[]).includes(value);
 }

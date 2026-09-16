@@ -69,6 +69,35 @@ runtime answers `unavailable`.
 Same access model as `projects`: row level security with no policies, granted
 to `service_role` only. Operators reach runs through `/api/agent-runs`.
 
+### Attempts, leases, and recovery
+
+`public.agent_run_attempts` (migration `20260916120000_add_agent_run_attempts.sql`)
+keeps one row per execution attempt: its number, executor, worker label,
+start, last heartbeat, finish, outcome (`running | completed | failed |
+cancelled`), and a fixed error code or screened result metadata. `agent_runs`
+stays the current state.
+
+- A run starts only through `agent_run_claim`, which counts the attempt, writes
+  its row, and returns a lease token in one transaction. At most one attempt
+  per run is running, and attempt numbers are unique per run.
+- The worker renews the lease with `agent_run_heartbeat` and records the
+  outcome with `agent_run_finish`. Both are refused unless the token belongs to
+  the run's current, running attempt and the lease has not lapsed, so a
+  stale or duplicate worker cannot overwrite newer state. The `agent_runs`
+  trigger refuses any other path to `running`, `completed`, or `failed`.
+- Cancelling a running run closes its attempt; the worker's next heartbeat is
+  refused and it stops.
+- `agent_run_recover_expired(limit)` fails attempts whose lease has lapsed, and
+  their runs, with `lease-expired`. It never completes or re-queues a run, and a
+  second call finds nothing. Operators trigger it with
+  `POST /api/agent-runs/worker {"action":"recover-stale"}`; nothing schedules it
+  yet.
+- The four functions are `security definer` and executable by `service_role`
+  only. `service_role` can read and delete attempt rows but not write them.
+
+Applying the migration refuses to run while any run is `running`. After
+applying it, reload the API schema (`NOTIFY pgrst, 'reload schema';`).
+
 ## Signing in
 
 Every page, in either data mode, requires an operator to be signed in with

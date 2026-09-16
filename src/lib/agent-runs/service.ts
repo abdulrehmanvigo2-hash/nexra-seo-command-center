@@ -1,19 +1,15 @@
 import { createHash } from "node:crypto";
-import type { AgentRunStore } from "@/lib/agent-runs/contract";
-import type { AgentExecutor, ExecutionOutput } from "@/lib/agent-runs/executor";
-import {
-  AGENT_RUN_ERROR_MESSAGES,
-  DEFAULT_MAX_ATTEMPTS,
-  canCancel,
-  canRetry,
-} from "@/lib/agent-runs/lifecycle";
-import { canonicalJson, checkStorableJson, looksLikeSecret } from "@/lib/agent-runs/safety";
+import type { AgentRunStore, RecoveredAttempt } from "@/lib/agent-runs/contract";
+import type { AgentExecutor } from "@/lib/agent-runs/executor";
+import { DEFAULT_MAX_ATTEMPTS, canCancel, canRetry } from "@/lib/agent-runs/lifecycle";
+import { canonicalJson, checkStorableJson } from "@/lib/agent-runs/safety";
 import { agentMayRun, getTaskType } from "@/lib/agent-runs/task-types";
+import { createAgentRunWorker, type WorkerOutcome } from "@/lib/agent-runs/worker";
 import { getAgentRecord } from "@/lib/mock/agents/registry";
 import { isStorableProjectId } from "@/lib/projects/intake-rules";
 import type {
   AgentRun,
-  AgentRunErrorCode,
+  AgentRunAttempt,
   AgentRunStatus,
   JsonObject,
 } from "@/types/agent-run";
@@ -46,6 +42,10 @@ export type AgentRunServiceDependencies = {
   readonly now?: () => Date;
   /** How long one attempt may take before it fails with `timeout`. */
   readonly timeoutMs?: number;
+  /** Lease settings for the worker that executes runs; see `@/lib/agent-runs/worker`. */
+  readonly leaseSeconds?: number;
+  readonly heartbeatMs?: number;
+  readonly workerId?: string;
 };
 
 export type AgentRunFailure =
@@ -78,22 +78,39 @@ export type ListAgentRunsResult =
   | { readonly ok: true; readonly runs: readonly AgentRun[] }
   | AgentRunFailure;
 
+export type ListAttemptsResult =
+  | { readonly ok: true; readonly attempts: readonly AgentRunAttempt[] }
+  | AgentRunFailure;
+
+export type ExecuteNextResult =
+  /** `run` is null when nothing was queued. */
+  | { readonly ok: true; readonly run: AgentRun | null }
+  | AgentRunFailure;
+
+export type RecoverRunsResult =
+  | { readonly ok: true; readonly recovered: readonly RecoveredAttempt[] }
+  | AgentRunFailure;
+
 export type AgentRunService = {
   readonly storesRuns: boolean;
   createRun(operatorId: string, request: unknown): Promise<CreateAgentRunResult>;
-  /** Claims a queued run, runs one attempt, and records how it ended. */
+  /** Claims a queued run, runs one attempt under a lease, and records how it ended. */
   executeRun(runId: string): Promise<AgentRunResult>;
+  /** Claims and runs the oldest queued run no other worker holds. */
+  executeNextRun(): Promise<ExecuteNextResult>;
   cancelRun(operatorId: string, runId: string): Promise<AgentRunResult>;
   /** Puts a failed run back in the queue while it has attempts left. */
   retryRun(runId: string): Promise<AgentRunResult>;
+  /** Fails attempts whose lease expired, and their runs, with `lease-expired`. */
+  recoverStaleRuns(): Promise<RecoverRunsResult>;
   getRun(runId: string): Promise<AgentRunResult>;
+  /** A run's attempts, oldest first. */
+  listAttempts(runId: string): Promise<ListAttemptsResult>;
   listRuns(filter: unknown): Promise<ListAgentRunsResult>;
 };
 
-export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
 export const DEFAULT_LIST_LIMIT = 20;
 export const MAX_LIST_LIMIT = 100;
-const MAX_SUMMARY_LENGTH = 2_000;
 
 const REQUEST_FIELDS = ["projectId", "agentId", "taskType", "input"] as const;
 const LIST_FIELDS = ["projectId", "agentId", "limit"] as const;
@@ -137,56 +154,38 @@ export function inputHash(input: JsonObject): string {
   return createHash("sha256").update(canonicalJson(input)).digest("hex");
 }
 
-/** What an executor answered, if it is safe to keep. */
-function screenOutput(output: unknown): { summary: string; metadata: JsonObject | null } | null {
-  const object = plainObject(output) as Partial<ExecutionOutput> | null;
-  if (!object || typeof object.summary !== "string") return null;
-
-  const summary = object.summary.trim();
-  if (summary.length === 0 || summary.length > MAX_SUMMARY_LENGTH) return null;
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(summary)) return null;
-  if (looksLikeSecret(summary)) return null;
-
-  if (object.metadata === undefined) return { summary, metadata: null };
-  const metadata = checkStorableJson(object.metadata);
-  return metadata.ok ? { summary, metadata: metadata.value } : null;
+function executionResult(outcome: WorkerOutcome): AgentRunResult {
+  switch (outcome.status) {
+    case "executed":
+      return { ok: true, run: outcome.run };
+    case "not-queued":
+      return conflict(outcome.run, "Only a queued run can be started.");
+    case "exhausted":
+      return conflict(outcome.run, "This run has no attempts left.");
+    case "not-found":
+    case "empty":
+      return NOT_FOUND;
+  }
 }
 
 export function createAgentRunService(dependencies: AgentRunServiceDependencies): AgentRunService {
   const { store, executor, projects } = dependencies;
   const now = dependencies.now ?? (() => new Date());
-  const timeoutMs = dependencies.timeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
   const instant = () => now().toISOString();
+  const worker = createAgentRunWorker({
+    store,
+    executor,
+    projects,
+    workerId: dependencies.workerId,
+    leaseSeconds: dependencies.leaseSeconds,
+    heartbeatMs: dependencies.heartbeatMs,
+    timeoutMs: dependencies.timeoutMs,
+  });
 
   /** Re-reads a run that moved under us, to report where it went. */
   async function staleResult(runId: string, message: string): Promise<AgentRunFailure> {
     const current = await store.getById(runId);
     return current ? conflict(current, message) : NOT_FOUND;
-  }
-
-  /** Runs one attempt with a deadline. Resolves to the output or a failure code. */
-  async function attempt(
-    task: Parameters<AgentExecutor["execute"]>[0],
-  ): Promise<{ ok: true; output: unknown } | { ok: false; code: AgentRunErrorCode }> {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<"timeout">((resolve) => {
-      timer = setTimeout(() => {
-        controller.abort();
-        resolve("timeout");
-      }, timeoutMs);
-    });
-
-    try {
-      const outcome = await Promise.race([executor.execute(task, controller.signal), deadline]);
-      return outcome === "timeout" ? { ok: false, code: "timeout" } : { ok: true, output: outcome };
-    } catch {
-      // The executor's error text is deliberately dropped: it may quote a
-      // provider response or a credential.
-      return { ok: false, code: "execution-failed" };
-    } finally {
-      clearTimeout(timer);
-    }
   }
 
   return {
@@ -257,80 +256,21 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
       if (!store.storesRuns) return UNAVAILABLE;
       if (!isRunId(runId)) return NOT_FOUND;
 
-      const run = await store.getById(runId);
-      if (!run) return NOT_FOUND;
-      if (run.status !== "queued") return conflict(run, "Only a queued run can be started.");
-      if (run.attemptCount >= run.maxAttempts) {
-        return conflict(run, "This run has no attempts left.");
-      }
+      // The claim is atomic: of several concurrent requests, one starts the
+      // attempt and the rest see it running. If recording the outcome fails,
+      // the attempt keeps its lease until it expires and recovery closes it.
+      return executionResult(await worker.executeRun(runId));
+    },
 
-      const claimed = await store.transition(runId, "queued", {
-        status: "running",
-        executor: executor.id,
-        attemptCount: run.attemptCount + 1,
-        startedAt: instant(),
-        finishedAt: null,
-      });
-      if (claimed.status !== "updated") {
-        return staleResult(runId, "The run was started or cancelled by another request.");
-      }
-      const running = claimed.run;
+    async executeNextRun() {
+      if (!store.storesRuns) return UNAVAILABLE;
+      const outcome = await worker.executeNext();
+      return outcome.status === "executed" ? { ok: true, run: outcome.run } : { ok: true, run: null };
+    },
 
-      const fail = async (code: AgentRunErrorCode): Promise<AgentRunResult> => {
-        const failed = await store.transition(runId, "running", {
-          status: "failed",
-          finishedAt: instant(),
-          error: { code, message: AGENT_RUN_ERROR_MESSAGES[code] },
-        });
-        if (failed.status === "updated") return { ok: true, run: failed.run };
-        // Cancelled while it ran: the cancellation stands.
-        const current = await store.getById(runId);
-        return current ? { ok: true, run: current } : NOT_FOUND;
-      };
-
-      try {
-        let project: ProjectRecord | null;
-        try {
-          project = await projects.getProjectById(running.projectId);
-        } catch {
-          project = null;
-        }
-        if (!project) return await fail("project-missing");
-
-        const agent = getAgentRecord(running.agentId) as NonNullable<ReturnType<typeof getAgentRecord>>;
-        const outcome = await attempt({
-          runId,
-          attempt: running.attemptCount,
-          agent: { id: agent.id, name: agent.name },
-          project: { id: project.id, name: project.name, domain: project.domain },
-          taskType: running.taskType,
-          input: running.input,
-        });
-        if (!outcome.ok) return await fail(outcome.code);
-
-        const output = screenOutput(outcome.output);
-        if (!output) return await fail("rejected-output");
-
-        const completed = await store.transition(runId, "running", {
-          status: "completed",
-          finishedAt: instant(),
-          resultSummary: output.summary,
-          resultMetadata: output.metadata,
-          error: null,
-        });
-        if (completed.status === "updated") return { ok: true, run: completed.run };
-        const current = await store.getById(runId);
-        return current ? { ok: true, run: current } : NOT_FOUND;
-      } catch (error) {
-        // Recording the outcome itself failed. Try once to close the attempt
-        // so the run is not left running, then let the caller report it.
-        try {
-          await fail("execution-failed");
-        } catch {
-          // The original error is the one worth reporting.
-        }
-        throw error;
-      }
+    async recoverStaleRuns() {
+      if (!store.storesRuns) return UNAVAILABLE;
+      return { ok: true, recovered: await worker.recoverExpired() };
     },
 
     async cancelRun(operatorId, runId) {
@@ -380,6 +320,12 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
       if (!isRunId(runId)) return NOT_FOUND;
       const run = await store.getById(runId);
       return run ? { ok: true, run } : NOT_FOUND;
+    },
+
+    async listAttempts(runId) {
+      if (!store.storesRuns) return UNAVAILABLE;
+      if (!isRunId(runId)) return NOT_FOUND;
+      return { ok: true, attempts: await store.listAttempts(runId) };
     },
 
     async listRuns(filter) {

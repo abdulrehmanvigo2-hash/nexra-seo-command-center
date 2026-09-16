@@ -1,15 +1,22 @@
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type { AgentRunStore } from "@/lib/agent-runs/contract";
 import {
+  AGENT_RUN_ATTEMPT_READ_COLUMNS,
   AGENT_RUN_READ_COLUMNS,
+  agentRunAttemptRowToAttempt,
   agentRunRowToRun,
+  claimResultToOutcome,
+  finishResultToOutcome,
+  heartbeatResultToOutcome,
   newAgentRunInsert,
+  recoverResultToAttempts,
   runPatchToUpdate,
   type AgentRunsDatabase,
 } from "@/lib/agent-runs/supabase/schema";
 
 /**
- * The agent run store over the Postgres `agent_runs` table.
+ * The agent run store over the Postgres `agent_runs` and `agent_run_attempts`
+ * tables and their lease functions.
  *
  * A thin translation into Supabase calls. The rules — what may be asked,
  * which transitions are allowed, what an executor may report — live in the
@@ -116,6 +123,61 @@ export function createSupabaseAgentRunStore(
         throw new AgentRunStoreError(`move run from ${from} to ${patch.status}`, error);
       }
       return data ? { status: "updated", run: agentRunRowToRun(data) } : { status: "stale" };
+    },
+
+    // Claiming, heartbeats, finishing, and recovery are Postgres functions:
+    // each is one transaction, judged by the database clock.
+
+    async claim(request) {
+      const { data, error } = await client.rpc("agent_run_claim", {
+        p_run_id: request.runId,
+        p_executor: request.executor,
+        p_worker_id: request.workerId,
+        p_lease_seconds: request.leaseSeconds,
+      });
+      if (error) throw new AgentRunStoreError("claim run", error);
+      return claimResultToOutcome(data);
+    },
+
+    async heartbeat(lease, leaseSeconds) {
+      const { data, error } = await client.rpc("agent_run_heartbeat", {
+        p_attempt_id: lease.attemptId,
+        p_lease_token: lease.token,
+        p_lease_seconds: leaseSeconds,
+      });
+      if (error) throw new AgentRunStoreError("renew lease", error);
+      return heartbeatResultToOutcome(data);
+    },
+
+    async finish(lease, result) {
+      const completed = result.outcome === "completed";
+      const { data, error } = await client.rpc("agent_run_finish", {
+        p_attempt_id: lease.attemptId,
+        p_lease_token: lease.token,
+        p_outcome: result.outcome,
+        p_result_summary: completed ? result.summary : null,
+        p_result_metadata: completed ? result.metadata : null,
+        p_error_code: completed ? null : result.error.code,
+        p_error_message: completed ? null : result.error.message,
+      });
+      if (error) throw new AgentRunStoreError(`finish attempt as ${result.outcome}`, error);
+      return finishResultToOutcome(data);
+    },
+
+    async recoverExpired(limit) {
+      const { data, error } = await client.rpc("agent_run_recover_expired", { p_limit: limit });
+      if (error) throw new AgentRunStoreError("recover expired attempts", error);
+      return recoverResultToAttempts(data);
+    },
+
+    async listAttempts(runId) {
+      const { data, error } = await client
+        .from("agent_run_attempts")
+        .select(AGENT_RUN_ATTEMPT_READ_COLUMNS)
+        .eq("run_id", runId)
+        .order("attempt_number", { ascending: true });
+      if (error) throw new AgentRunStoreError("list attempts", error);
+      return data.map(agentRunAttemptRowToAttempt);
     },
   };
 }

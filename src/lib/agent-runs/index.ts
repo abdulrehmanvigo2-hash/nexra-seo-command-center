@@ -18,7 +18,9 @@ import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supa
  * `unavailable` rather than pretending.
  *
  * The executor is the mock executor, always, in this milestone. Nothing here
- * reaches a model, a crawler, or a third party.
+ * reaches a model, a crawler, or a third party. Each server process gets one
+ * random worker label and the default lease: 60 seconds, renewed every 15
+ * (`@/lib/agent-runs/worker`).
  *
  * Server-only: route handlers call it after confirming the operator.
  */

@@ -14,13 +14,16 @@ import { createRateLimiter } from "@/lib/security/rate-limit";
 /**
  * One agent run: read it, or move it through its lifecycle.
  *
- *   GET  /api/agent-runs/<id>
+ *   GET  /api/agent-runs/<id>   → { run, attempts }
  *   POST /api/agent-runs/<id>   { "action": "execute" | "cancel" | "retry" }
  *
- * `execute` claims a queued run and runs one attempt with the mock executor
- * before answering; `cancel` stops a queued or running run; `retry` puts a
- * failed run back in the queue while it has attempts left. A request that
- * does not fit the run's current state gets 409 with that state.
+ * `attempts` is the run's execution history, oldest first; leases and worker
+ * labels are not part of it. `execute` claims a queued run and runs one
+ * attempt with the mock executor, under a lease, before answering; if this
+ * request dies first, the lease expires and recovery fails the attempt (see
+ * `/api/agent-runs/worker`). `cancel` stops a queued or running run; `retry`
+ * puts a failed run back in the queue while it has attempts left. A request
+ * that does not fit the run's current state gets 409 with that state.
  *
  * Operators only, confirmed with the Auth server. Actions are limited per
  * operator — one execution at a time, and 60 actions per ten minutes.
@@ -46,8 +49,11 @@ export async function GET(_request: NextRequest, context: RouteContext<"/api/age
 
   const { runId } = await context.params;
   try {
-    const result = await agentRunService().getRun(runId);
-    return result.ok ? json({ run: result.run }) : failureResponse(result);
+    const service = agentRunService();
+    const result = await service.getRun(runId);
+    if (!result.ok) return failureResponse(result);
+    const history = await service.listAttempts(runId);
+    return history.ok ? json({ run: result.run, attempts: history.attempts }) : failureResponse(history);
   } catch (error) {
     logFailure("agent-runs read", error);
     return errorResponse("failed", 500);

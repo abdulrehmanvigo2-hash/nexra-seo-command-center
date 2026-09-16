@@ -1,13 +1,27 @@
-import type { NewAgentRun, RunPatch } from "@/lib/agent-runs/contract";
-import { isAgentRunErrorCode, isAgentRunStatus } from "@/lib/agent-runs/lifecycle";
+import type {
+  AttemptLease,
+  ClaimOutcome,
+  FinishOutcome,
+  HeartbeatOutcome,
+  NewAgentRun,
+  RecoveredAttempt,
+  RunPatch,
+} from "@/lib/agent-runs/contract";
+import {
+  isAgentRunAttemptOutcome,
+  isAgentRunErrorCode,
+  isAgentRunStatus,
+} from "@/lib/agent-runs/lifecycle";
 import { isAgentTaskType } from "@/lib/agent-runs/task-types";
 import { getAgentRecord } from "@/lib/mock/agents/registry";
-import type { AgentRun, JsonObject } from "@/types/agent-run";
+import type { AgentRun, AgentRunAttempt, JsonObject } from "@/types/agent-run";
 
 /**
- * The `agent_runs` table as the application sees it, and the translation to
- * and from `AgentRun`. Snake-case rows exist only in this folder. The columns
- * mirror supabase/migrations/20260914120000_create_agent_runs.sql.
+ * The `agent_runs` and `agent_run_attempts` tables and their functions as the
+ * application sees them, and the translation to and from `AgentRun` and
+ * `AgentRunAttempt`. Snake-case rows exist only in this folder. The columns
+ * mirror supabase/migrations/20260914120000_create_agent_runs.sql and
+ * 20260916120000_add_agent_run_attempts.sql.
  */
 
 export type AgentRunRow = {
@@ -55,6 +69,25 @@ export type AgentRunUpdate = Partial<
   >
 >;
 
+export type AgentRunAttemptRow = {
+  id: string;
+  run_id: string;
+  attempt_number: number;
+  executor: string;
+  worker_id: string;
+  lease_token: string;
+  lease_expires_at: string;
+  outcome: string;
+  result_metadata: JsonObject | null;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string;
+  heartbeat_at: string;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AgentRunsDatabase = {
   public: {
     Tables: {
@@ -64,11 +97,47 @@ export type AgentRunsDatabase = {
         Update: AgentRunUpdate;
         Relationships: [];
       };
+      agent_run_attempts: {
+        Row: AgentRunAttemptRow;
+        // Written only by the functions below: service_role has no insert or update grant.
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      agent_run_claim: {
+        Args: { p_run_id: string | null; p_executor: string; p_worker_id: string; p_lease_seconds: number };
+        Returns: unknown;
+      };
+      agent_run_heartbeat: {
+        Args: { p_attempt_id: string; p_lease_token: string; p_lease_seconds: number };
+        Returns: unknown;
+      };
+      agent_run_finish: {
+        Args: {
+          p_attempt_id: string;
+          p_lease_token: string;
+          p_outcome: "completed" | "failed";
+          p_result_summary: string | null;
+          p_result_metadata: JsonObject | null;
+          p_error_code: string | null;
+          p_error_message: string | null;
+        };
+        Returns: unknown;
+      };
+      agent_run_recover_expired: {
+        Args: { p_limit: number };
+        Returns: unknown;
+      };
+    };
   };
 };
+
+/** The attempt columns the application reads: everything but the lease token and worker label. */
+export const AGENT_RUN_ATTEMPT_READ_COLUMNS =
+  "id,run_id,attempt_number,executor,outcome,result_metadata,error_code,error_message,started_at,heartbeat_at,finished_at";
 
 /** Every column except `input_hash`, which only the database compares. */
 export const AGENT_RUN_READ_COLUMNS =
@@ -186,4 +255,116 @@ export function runPatchToUpdate(patch: RunPatch): AgentRunUpdate {
   }
   if (patch.cancelledBy !== undefined) update.cancelled_by = patch.cancelledBy;
   return update;
+}
+
+/** A stored attempt row as an `AgentRunAttempt`, checked column by column. */
+export function agentRunAttemptRowToAttempt(input: unknown): AgentRunAttempt {
+  if (!isObject(input)) throw new AgentRunRowError("agent_run_attempts row is not an object");
+  const row: Record<string, unknown> = { ...input };
+
+  const outcome = row.outcome;
+  const errorCode = row.error_code;
+  if (!isAgentRunAttemptOutcome(outcome)) {
+    throw new AgentRunRowError("agent_run_attempts.outcome is not an attempt outcome");
+  }
+  if (row.executor !== "mock") throw new AgentRunRowError("agent_run_attempts.executor is not an executor");
+  if (errorCode !== null && !isAgentRunErrorCode(errorCode)) {
+    throw new AgentRunRowError("agent_run_attempts.error_code is not an error code");
+  }
+  if (row.result_metadata !== null && !isObject(row.result_metadata)) {
+    throw new AgentRunRowError("agent_run_attempts.result_metadata is not an object");
+  }
+
+  return {
+    id: text(row, "id"),
+    runId: text(row, "run_id"),
+    attemptNumber: integer(row, "attempt_number"),
+    executor: "mock",
+    outcome,
+    resultMetadata: row.result_metadata,
+    error: errorCode === null ? null : { code: errorCode, message: text(row, "error_message") },
+    startedAt: instant(text(row, "started_at"), "started_at") as string,
+    heartbeatAt: instant(text(row, "heartbeat_at"), "heartbeat_at") as string,
+    finishedAt: instant(optionalText(row, "finished_at"), "finished_at"),
+  };
+}
+
+/*
+ * Function results. Each function answers with a JSON object whose `outcome`
+ * names what happened; anything else is schema drift and fails loudly.
+ */
+
+function functionResult(input: unknown, name: string): Record<string, unknown> {
+  if (!isObject(input) || typeof input.outcome !== "string") {
+    throw new AgentRunRowError(`${name} returned an unexpected result`);
+  }
+  return { ...input };
+}
+
+function leaseFromAttempt(input: unknown): AttemptLease {
+  if (!isObject(input)) throw new AgentRunRowError("agent_run_claim returned no attempt");
+  const row: Record<string, unknown> = { ...input };
+  return {
+    runId: text(row, "run_id"),
+    attemptId: text(row, "id"),
+    attemptNumber: integer(row, "attempt_number"),
+    token: text(row, "lease_token"),
+    expiresAt: instant(text(row, "lease_expires_at"), "lease_expires_at") as string,
+  };
+}
+
+export function claimResultToOutcome(input: unknown): ClaimOutcome {
+  const result = functionResult(input, "agent_run_claim");
+  switch (result.outcome) {
+    case "claimed":
+      return { status: "claimed", run: agentRunRowToRun(result.run), lease: leaseFromAttempt(result.attempt) };
+    case "empty":
+      return { status: "empty" };
+    case "not-found":
+      return { status: "not-found" };
+    case "not-queued":
+      return { status: "not-queued", run: agentRunRowToRun(result.run) };
+    case "exhausted":
+      return { status: "exhausted", run: agentRunRowToRun(result.run) };
+    default:
+      throw new AgentRunRowError("agent_run_claim returned an unknown outcome");
+  }
+}
+
+export function heartbeatResultToOutcome(input: unknown): HeartbeatOutcome {
+  const result = functionResult(input, "agent_run_heartbeat");
+  switch (result.outcome) {
+    case "renewed":
+      return {
+        status: "renewed",
+        expiresAt: instant(text(result, "lease_expires_at"), "lease_expires_at") as string,
+      };
+    case "lost":
+      return { status: "lost" };
+    default:
+      throw new AgentRunRowError("agent_run_heartbeat returned an unknown outcome");
+  }
+}
+
+export function finishResultToOutcome(input: unknown): FinishOutcome {
+  const result = functionResult(input, "agent_run_finish");
+  switch (result.outcome) {
+    case "finished":
+      return { status: "finished", run: agentRunRowToRun(result.run) };
+    case "lost":
+      return { status: "lost", run: result.run === undefined ? null : agentRunRowToRun(result.run) };
+    default:
+      throw new AgentRunRowError("agent_run_finish returned an unknown outcome");
+  }
+}
+
+export function recoverResultToAttempts(input: unknown): RecoveredAttempt[] {
+  if (!isObject(input) || !Array.isArray(input.recovered)) {
+    throw new AgentRunRowError("agent_run_recover_expired returned an unexpected result");
+  }
+  return input.recovered.map((entry) => {
+    if (!isObject(entry)) throw new AgentRunRowError("agent_run_recover_expired returned an unexpected entry");
+    const row: Record<string, unknown> = { ...entry };
+    return { runId: text(row, "run_id"), attemptNumber: integer(row, "attempt_number") };
+  });
 }

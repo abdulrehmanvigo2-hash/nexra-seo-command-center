@@ -1,5 +1,5 @@
 /**
- * Shapes for the agent runtime (Backend Phase 6, Part 1).
+ * Shapes for the agent runtime (Backend Phase 6, Parts 1 and 2).
  *
  * An agent run is one request for one of the twelve registry agents to carry
  * out one task on one project, and the record of how it ended. It is the
@@ -43,7 +43,9 @@ export type AgentRunErrorCode =
   | "timeout"
   | "execution-failed"
   | "rejected-output"
-  | "project-missing";
+  | "project-missing"
+  /** The attempt's lease ran out: its worker stopped reporting progress. */
+  | "lease-expired";
 
 export type AgentRunError = {
   readonly code: AgentRunErrorCode;
@@ -76,5 +78,30 @@ export type AgentRun = {
   readonly updatedAt: string;
   /** The current or last attempt. */
   readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+};
+
+export type AgentRunAttemptOutcome = "running" | "completed" | "failed" | "cancelled";
+
+/**
+ * One execution attempt of a run, as history. `AgentRun` stays the current
+ * state; attempts say what happened on the way. The lease that guards an
+ * attempt is not part of this shape and never leaves the server's store.
+ */
+export type AgentRunAttempt = {
+  readonly id: string;
+  readonly runId: string;
+  /** 1 for the first attempt. */
+  readonly attemptNumber: number;
+  readonly executor: AgentExecutorId;
+  readonly outcome: AgentRunAttemptOutcome;
+  /** Screened executor metadata, for a completed attempt. */
+  readonly resultMetadata: JsonObject | null;
+  /** Why the attempt failed, for a failed attempt. */
+  readonly error: AgentRunError | null;
+  /** ISO 8601 instants. */
+  readonly startedAt: string;
+  /** When the worker last proved the attempt was alive. */
+  readonly heartbeatAt: string;
   readonly finishedAt: string | null;
 };
