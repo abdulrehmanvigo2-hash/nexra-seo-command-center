@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { AgentRunFailure } from "@/lib/agent-runs/service";
 import { AgentRunRowError } from "@/lib/agent-runs/supabase/schema";
 import { AgentRunStoreError } from "@/lib/agent-runs/supabase/store";
+import { SharedRateLimitError, type AsyncRateLimiter } from "@/lib/security/shared-rate-limit";
 
 /**
  * What the agent-run route handlers share: how a request body is read, how a
@@ -25,6 +26,18 @@ export function json(body: unknown, status = 200): NextResponse {
 
 export function errorResponse(error: string, status: number): NextResponse {
   return json({ error }, status);
+}
+
+/**
+ * Records one hit against a shared limit. Null when allowed; otherwise the
+ * 429 to send, with `Retry-After`.
+ */
+export async function limitResponse(limiter: AsyncRateLimiter, key: string): Promise<NextResponse | null> {
+  const allowance = await limiter.consume(key);
+  if (allowance.allowed) return null;
+  const response = errorResponse("rate-limited", 429);
+  response.headers.set("Retry-After", String(Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000))));
+  return response;
 }
 
 /**
@@ -89,7 +102,7 @@ export function failureResponse(failure: AgentRunFailure): NextResponse {
 export function logFailure(route: string, error: unknown): void {
   console.error(
     `${route}:`,
-    error instanceof AgentRunStoreError || error instanceof AgentRunRowError
+    error instanceof AgentRunStoreError || error instanceof AgentRunRowError || error instanceof SharedRateLimitError
       ? `${error.name}: ${error.message}`
       : error instanceof Error
         ? error.name

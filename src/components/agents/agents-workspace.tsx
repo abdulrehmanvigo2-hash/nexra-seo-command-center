@@ -21,6 +21,7 @@ import {
   getTeamHealth,
 } from "@/lib/mock/agents";
 import { AgentBlockers } from "@/components/agents/agent-blockers";
+import { AgentRunHistory } from "@/components/agents/agent-run-history";
 import { AgentCard } from "@/components/agents/agent-card";
 import { AgentHandoffs } from "@/components/agents/agent-handoffs";
 import { AgentTasks } from "@/components/agents/agent-tasks";
@@ -51,6 +52,7 @@ import type {
   BlockerResolution,
   HandoffStatus,
 } from "@/types/agent";
+import type { ProjectOption } from "@/lib/projects/selection";
 
 /**
  * The AI Agents area: the team, what it is working on, and what is stopping it.
@@ -64,7 +66,7 @@ import type {
  * by pure, deterministic functions, so the server render and the first client
  * render produce identical markup.
  */
-export function AgentsWorkspace() {
+export function AgentsWorkspace({ projects: storedProjects }: { projects: readonly ProjectOption[] }) {
   const roster = getAgentList();
   const health = getTeamHealth();
   const workflows = getAgentWorkflows();
@@ -288,6 +290,8 @@ export function AgentsWorkspace() {
       />
 
       <CollaborationMatrix rows={collaboration} />
+
+      <AgentRunHistory projects={storedProjects} />
 
       <ActivityFeed
         events={activity}

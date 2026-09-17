@@ -1,20 +1,20 @@
 import type { NextRequest } from "next/server";
-import { agentRunService } from "@/lib/agent-runs";
+import { agentRunLimiter, agentRunService } from "@/lib/agent-runs";
 import {
   errorResponse,
   failureResponse,
   isSameOrigin,
   json,
+  limitResponse,
   logFailure,
   readJsonBody,
 } from "@/lib/agent-runs/http";
 import { getOperator } from "@/lib/auth/session";
-import { createRateLimiter } from "@/lib/security/rate-limit";
 
 /**
  * Agent runs: list them, or queue a new one.
  *
- *   GET  /api/agent-runs?project=<id>[&limit=n]
+ *   GET  /api/agent-runs?project=<id>[&agent=<id>][&limit=n]
  *   GET  /api/agent-runs?agent=<id>[&limit=n]
  *   POST /api/agent-runs   { projectId, agentId, taskType, input }
  *
@@ -24,11 +24,10 @@ import { createRateLimiter } from "@/lib/security/rate-limit";
  *
  * An identical request that is already queued or running is not queued twice:
  * the existing run comes back with `duplicate: true` and a 200 instead of 201.
- * Creates are limited per operator — one at a time, and 30 per ten minutes,
- * held in this process's memory.
+ * Creates are limited per operator: 30 per ten minutes, counted in Postgres so
+ * every instance shares the allowance, and one at a time per process.
  */
 
-const createsPerOperator = createRateLimiter({ limit: 30, windowMs: 10 * 60 * 1_000 });
 const inFlight = new Set<string>();
 
 export async function GET(request: NextRequest) {
@@ -61,18 +60,14 @@ export async function POST(request: NextRequest) {
   if (!operator) return errorResponse("unauthorized", 401);
 
   if (inFlight.has(operator.id)) return errorResponse("rate-limited", 429);
-  const allowance = createsPerOperator.consume(operator.id);
-  if (!allowance.allowed) {
-    const response = errorResponse("rate-limited", 429);
-    response.headers.set("Retry-After", String(Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000))));
-    return response;
-  }
 
   const body = await readJsonBody(request);
   if (!body.ok) return body.response;
 
   inFlight.add(operator.id);
   try {
+    const limited = await limitResponse(agentRunLimiter("create"), operator.id);
+    if (limited) return limited;
     const result = await agentRunService().createRun(operator.id, body.value);
     if (!result.ok) return failureResponse(result);
     return json({ run: result.run, duplicate: result.duplicate }, result.duplicate ? 200 : 201);

@@ -89,14 +89,50 @@ stays the current state.
   refused and it stops.
 - `agent_run_recover_expired(limit)` fails attempts whose lease has lapsed, and
   their runs, with `lease-expired`. It never completes or re-queues a run, and a
-  second call finds nothing. Operators trigger it with
-  `POST /api/agent-runs/worker {"action":"recover-stale"}`; nothing schedules it
-  yet.
+  second call finds nothing. The scheduled worker runs it
+  (`/api/worker/recover`), and operators can trigger it with
+  `POST /api/agent-runs/worker {"action":"recover-stale"}`.
 - The four functions are `security definer` and executable by `service_role`
   only. `service_role` can read and delete attempt rows but not write them.
 
 Applying the migration refuses to run while any run is `running`. After
 applying it, reload the API schema (`NOTIFY pgrst, 'reload schema';`).
+
+### Automatic retries, shared rate limits, and runtime status
+
+Migration `20260917120000_agent_runtime_production.sql`:
+
+- `executor` may be `mock` or `ai`, on runs and attempts.
+- `agent_run_schedule_retries(limit)` re-queues failed runs whose error code is
+  retryable (`timeout`, `execution-failed`, `lease-expired`,
+  `provider-unavailable`) and which have attempts left, with a backoff of 2, 4,
+  8 … minutes (at most 30) stored in `next_attempt_at`. `auto_retry_count` counts
+  these requeues and cannot reach `max_attempts`. Every other code is terminal.
+  A run whose identical request is already active is left failed.
+- The queue claim (`agent_run_claim(null, …)`) takes due runs only, oldest due
+  first. Claiming a named run — an operator's explicit request — does not wait
+  for the backoff.
+- `rate_limit_consume(key, limit, window_seconds)` counts hits in
+  `public.rate_limit_windows`, one row per key per fixed window, so every
+  application instance shares one allowance. Only the function writes the
+  table; `service_role` may read and delete rows for maintenance.
+- `agent_runtime_status()` returns queue and lease counts, no row contents.
+
+All four functions are `security definer`, executable by `service_role` only.
+
+### Applying migrations
+
+Migrations are applied in filename order, each pasted whole into the SQL
+Editor (or run with the Supabase CLI against a linked project):
+
+1. `20260913120000_create_projects.sql`, then `seed.sql`
+2. `20260913210000_grant_projects_to_service_role.sql`
+3. `20260914120000_create_agent_runs.sql`
+4. `20260916120000_add_agent_run_attempts.sql`
+5. `20260917120000_agent_runtime_production.sql`
+
+After each, run `NOTIFY pgrst, 'reload schema';` on its own so the API sees the
+new tables and functions.
 
 ## Signing in
 

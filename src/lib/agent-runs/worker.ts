@@ -1,14 +1,23 @@
 import { randomBytes } from "node:crypto";
+import { mayRunAutomatically } from "@/lib/agent-runs/action-policy";
 import type {
   AgentRunStore,
   AttemptLease,
   AttemptResult,
   RecoveredAttempt,
+  ScheduledRetry,
 } from "@/lib/agent-runs/contract";
-import type { AgentExecutor, ExecutionOutput, ExecutionTask } from "@/lib/agent-runs/executor";
+import {
+  ExecutorError,
+  type AgentExecutor,
+  type ExecutionOutput,
+  type ExecutionTask,
+} from "@/lib/agent-runs/executor";
 import { AGENT_RUN_ERROR_MESSAGES } from "@/lib/agent-runs/lifecycle";
 import { checkStorableJson, looksLikeSecret } from "@/lib/agent-runs/safety";
+import { getTaskType } from "@/lib/agent-runs/task-types";
 import { getAgentRecord } from "@/lib/mock/agents/registry";
+import { logEvent } from "@/lib/observability/log";
 import type { AgentRun, AgentRunErrorCode, JsonObject } from "@/types/agent-run";
 import type { ProjectRecord } from "@/types/project";
 
@@ -16,11 +25,16 @@ import type { ProjectRecord } from "@/types/project";
  * The execution boundary: how one attempt of one run is claimed, kept alive,
  * carried out, and recorded — with no HTTP, no operator, and no session.
  *
- * Whatever drives it — today an operator's request, later a queue consumer, a
- * scheduled job, or a long-running server process — calls the same three
- * operations: `executeRun` for a named run, `executeNext` for the oldest queued
- * run nobody else holds, and `recoverExpired` for attempts whose worker went
- * away. The caller is responsible for authorization; the worker trusts it.
+ * Whatever drives it — an operator's request, the scheduled worker routes
+ * (`/api/worker/*`), or a long-running server process — calls the same
+ * operations: `executeRun` for a named run, `executeNext` for the oldest due
+ * queued run nobody else holds, `processQueue` for a bounded batch of those,
+ * `recoverExpired` for attempts whose worker went away, and `scheduleRetries`
+ * to re-queue retryable failures with backoff. The caller is responsible for
+ * authorization; the worker trusts it.
+ *
+ * Before an attempt runs, the task type's action policy is checked again: a
+ * task that may not run automatically fails with `policy-blocked`.
  *
  * Ownership is a lease, not the lifetime of a request:
  *
@@ -78,11 +92,29 @@ export type WorkerOutcome =
   | { readonly status: "not-queued"; readonly run: AgentRun }
   | { readonly status: "exhausted"; readonly run: AgentRun };
 
+export type QueueBatch = {
+  /** Runs this batch claimed, in order, with how each attempt ended. */
+  readonly executed: readonly {
+    readonly runId: string;
+    readonly attemptNumber: number;
+    readonly status: AgentRun["status"];
+    readonly recorded: boolean;
+  }[];
+  /** Why the batch stopped claiming: nothing due, the batch size, or the time budget. */
+  readonly stoppedBy: "empty" | "batch-limit" | "time-budget";
+};
+
 export type AgentRunWorker = {
   readonly id: string;
   executeRun(runId: string): Promise<WorkerOutcome>;
   executeNext(): Promise<WorkerOutcome>;
+  /**
+   * Claims and runs due queued runs one at a time, up to `maxRuns`, and stops
+   * claiming once a further attempt could overrun `budgetMs`.
+   */
+  processQueue(options: { readonly maxRuns: number; readonly budgetMs: number }): Promise<QueueBatch>;
   recoverExpired(limit?: number): Promise<readonly RecoveredAttempt[]>;
+  scheduleRetries(limit?: number): Promise<readonly ScheduledRetry[]>;
 };
 
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
@@ -90,6 +122,8 @@ export const DEFAULT_LEASE_SECONDS = 60;
 export const DEFAULT_HEARTBEAT_MS = 15_000;
 export const DEFAULT_RECOVERY_LIMIT = 25;
 export const MAX_RECOVERY_LIMIT = 100;
+export const DEFAULT_RETRY_SCHEDULE_LIMIT = 25;
+export const MAX_QUEUE_BATCH = 10;
 const MAX_LEASE_SECONDS = 900;
 const MAX_SUMMARY_LENGTH = 2_000;
 
@@ -237,10 +271,11 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
       if (outcome === LEASE_LOST) return LEASE_LOST;
       if (outcome === TIMED_OUT) return { ok: false, code: "timeout" };
       return { ok: true, output: outcome };
-    } catch {
-      // The executor's error text is deliberately dropped: it may quote a
-      // provider response or a credential.
-      return { ok: false, code: "execution-failed" };
+    } catch (error) {
+      // Only the executor's own classification survives; its error text is
+      // deliberately dropped, since it may quote a provider response or a
+      // credential.
+      return { ok: false, code: error instanceof ExecutorError ? error.code : "execution-failed" };
     } finally {
       clearTimeout(timer);
       if (onLost) leaseSignal.removeEventListener("abort", onLost);
@@ -258,7 +293,9 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
     if (!project) return failure("project-missing");
 
     const agent = getAgentRecord(run.agentId);
-    if (!agent) return failure("execution-failed");
+    const definition = getTaskType(run.taskType);
+    if (!agent || !definition) return failure("execution-failed");
+    if (!mayRunAutomatically(definition.policy)) return failure("policy-blocked");
 
     const outcome = await runExecutor(
       {
@@ -286,6 +323,16 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
     if (claim.status !== "claimed") return claim;
 
     const { run, lease } = claim;
+    const context = {
+      runId: run.id,
+      projectId: run.projectId,
+      agentId: run.agentId,
+      taskType: run.taskType,
+      attempt: lease.attemptNumber,
+      executor: executor.id,
+    };
+    logEvent("info", "agent_run.transition", { ...context, from: "queued", to: "running" });
+
     const keeper = keepLease(store, lease, leaseSeconds, heartbeatMs, heldSince);
     let result: AttemptResult | typeof LEASE_LOST;
     try {
@@ -293,11 +340,13 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
     } finally {
       await keeper.stop();
     }
+    const durationMs = Math.round(performance.now() - heldSince);
 
     if (result === LEASE_LOST) {
       // Someone else now decides this attempt: a cancellation already has, and
       // recovery will once the lease expires. Write nothing.
       const current = await store.getById(run.id);
+      logEvent("warn", "agent_run.lease_lost", { ...context, status: current?.status ?? null, durationMs });
       return { status: "executed", run: current ?? run, attemptNumber: lease.attemptNumber, recorded: false };
     }
 
@@ -305,20 +354,90 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
     // holds. If recording throws, the attempt stays running until its lease
     // expires and recovery closes it.
     const finished = await store.finish(lease, result);
-    return finished.status === "finished"
-      ? { status: "executed", run: finished.run, attemptNumber: lease.attemptNumber, recorded: true }
-      : { status: "executed", run: finished.run ?? run, attemptNumber: lease.attemptNumber, recorded: false };
+    if (finished.status === "finished") {
+      logEvent(result.outcome === "completed" ? "info" : "warn", "agent_run.transition", {
+        ...context,
+        from: "running",
+        to: result.outcome,
+        errorCode: result.outcome === "failed" ? result.error.code : null,
+        durationMs,
+      });
+      return { status: "executed", run: finished.run, attemptNumber: lease.attemptNumber, recorded: true };
+    }
+    logEvent("warn", "agent_run.result_refused", { ...context, status: finished.run?.status ?? null, durationMs });
+    return { status: "executed", run: finished.run ?? run, attemptNumber: lease.attemptNumber, recorded: false };
   }
 
   return {
     id: workerId,
     executeRun: (runId) => execute(runId),
     executeNext: () => execute(null),
+
+    async processQueue({ maxRuns, budgetMs }) {
+      if (!Number.isInteger(maxRuns) || maxRuns < 1 || maxRuns > MAX_QUEUE_BATCH) {
+        throw new Error(`Agent run worker: a queue batch runs 1 to ${MAX_QUEUE_BATCH} runs.`);
+      }
+      if (!Number.isInteger(budgetMs) || budgetMs < 1) {
+        throw new Error("Agent run worker: the batch time budget must be a positive whole number of milliseconds.");
+      }
+      const startedAt = performance.now();
+      const executed: QueueBatch["executed"][number][] = [];
+      let stoppedBy: QueueBatch["stoppedBy"] = "batch-limit";
+
+      while (executed.length < maxRuns) {
+        // Claim only if a full attempt, and recording it, still fits the budget.
+        if (performance.now() - startedAt + timeoutMs > budgetMs) {
+          stoppedBy = "time-budget";
+          break;
+        }
+        const outcome = await execute(null);
+        if (outcome.status !== "executed") {
+          stoppedBy = "empty";
+          break;
+        }
+        executed.push({
+          runId: outcome.run.id,
+          attemptNumber: outcome.attemptNumber,
+          status: outcome.run.status,
+          recorded: outcome.recorded,
+        });
+      }
+      return { executed, stoppedBy };
+    },
+
     async recoverExpired(limit = DEFAULT_RECOVERY_LIMIT) {
       if (!Number.isInteger(limit) || limit < 1 || limit > MAX_RECOVERY_LIMIT) {
         throw new Error(`Agent run worker: recovery handles 1 to ${MAX_RECOVERY_LIMIT} attempts at a time.`);
       }
-      return store.recoverExpired(limit);
+      const recovered = await store.recoverExpired(limit);
+      for (const attempt of recovered) {
+        logEvent("warn", "agent_run.transition", {
+          runId: attempt.runId,
+          attempt: attempt.attemptNumber,
+          from: "running",
+          to: "failed",
+          errorCode: "lease-expired",
+        });
+      }
+      return recovered;
+    },
+
+    async scheduleRetries(limit = DEFAULT_RETRY_SCHEDULE_LIMIT) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_RECOVERY_LIMIT) {
+        throw new Error(`Agent run worker: retry scheduling handles 1 to ${MAX_RECOVERY_LIMIT} runs at a time.`);
+      }
+      const scheduled = await store.scheduleRetries(limit);
+      for (const retry of scheduled) {
+        logEvent("info", "agent_run.transition", {
+          runId: retry.runId,
+          attempt: retry.attemptCount,
+          from: "failed",
+          to: "queued",
+          errorCode: retry.errorCode,
+          reason: "automatic-retry",
+        });
+      }
+      return scheduled;
     },
   };
 }

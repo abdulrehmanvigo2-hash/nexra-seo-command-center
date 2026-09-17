@@ -11,6 +11,8 @@ import {
   newAgentRunInsert,
   recoverResultToAttempts,
   runPatchToUpdate,
+  scheduleResultToRetries,
+  statusResultToStatus,
   type AgentRunsDatabase,
 } from "@/lib/agent-runs/supabase/schema";
 
@@ -89,23 +91,15 @@ export function createSupabaseAgentRunStore(
       return data ? agentRunRowToRun(data) : null;
     },
 
-    async listByProject(projectId, limit) {
-      const { data, error } = await table()
-        .select(AGENT_RUN_READ_COLUMNS)
-        .eq("project_id", projectId)
+    async listRuns(filter) {
+      let query = table().select(AGENT_RUN_READ_COLUMNS);
+      if (filter.projectId !== undefined) query = query.eq("project_id", filter.projectId);
+      if (filter.agentId !== undefined) query = query.eq("agent_id", filter.agentId);
+      const { data, error } = await query
         .order("created_at", { ascending: false })
-        .limit(limit);
-      if (error) throw new AgentRunStoreError("list project runs", error);
-      return data.map(agentRunRowToRun);
-    },
-
-    async listByAgent(agentId, limit) {
-      const { data, error } = await table()
-        .select(AGENT_RUN_READ_COLUMNS)
-        .eq("agent_id", agentId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
-      if (error) throw new AgentRunStoreError("list agent runs", error);
+        .order("id", { ascending: false })
+        .limit(filter.limit);
+      if (error) throw new AgentRunStoreError("list runs", error);
       return data.map(agentRunRowToRun);
     },
 
@@ -178,6 +172,18 @@ export function createSupabaseAgentRunStore(
         .order("attempt_number", { ascending: true });
       if (error) throw new AgentRunStoreError("list attempts", error);
       return data.map(agentRunAttemptRowToAttempt);
+    },
+
+    async scheduleRetries(limit) {
+      const { data, error } = await client.rpc("agent_run_schedule_retries", { p_limit: limit });
+      if (error) throw new AgentRunStoreError("schedule retries", error);
+      return scheduleResultToRetries(data);
+    },
+
+    async runtimeStatus() {
+      const { data, error } = await client.rpc("agent_runtime_status", {});
+      if (error) throw new AgentRunStoreError("read runtime status", error);
+      return statusResultToStatus(data);
     },
   };
 }

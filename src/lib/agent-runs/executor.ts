@@ -1,5 +1,10 @@
 import type { AgentId } from "@/types/agent";
-import type { AgentExecutorId, AgentTaskType, JsonObject } from "@/types/agent-run";
+import type {
+  AgentExecutorId,
+  AgentRunErrorCode,
+  AgentTaskType,
+  JsonObject,
+} from "@/types/agent-run";
 
 /**
  * What carries a task out.
@@ -29,6 +34,28 @@ export type ExecutionOutput = {
   readonly summary: string;
   readonly metadata?: JsonObject;
 };
+
+/** The failure codes an executor may report. Anything else it throws is `execution-failed`. */
+export type ExecutorErrorCode = Extract<
+  AgentRunErrorCode,
+  "execution-failed" | "provider-unavailable" | "provider-rejected" | "provider-not-configured"
+>;
+
+/**
+ * A failure an executor classifies itself, so the runtime can tell a
+ * transient provider outage (retryable) from a refusal (terminal). Carries a
+ * code only: the message is fixed, and whatever the provider said stays out of
+ * the run record.
+ */
+export class ExecutorError extends Error {
+  readonly code: ExecutorErrorCode;
+
+  constructor(code: ExecutorErrorCode) {
+    super(`Agent executor failed: ${code}`);
+    this.name = "ExecutorError";
+    this.code = code;
+  }
+}
 
 export type AgentExecutor = {
   readonly id: AgentExecutorId;

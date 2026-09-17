@@ -6,6 +6,8 @@ import type {
   NewAgentRun,
   RecoveredAttempt,
   RunPatch,
+  RuntimeStatus,
+  ScheduledRetry,
 } from "@/lib/agent-runs/contract";
 import {
   isAgentRunAttemptOutcome,
@@ -14,14 +16,15 @@ import {
 } from "@/lib/agent-runs/lifecycle";
 import { isAgentTaskType } from "@/lib/agent-runs/task-types";
 import { getAgentRecord } from "@/lib/mock/agents/registry";
-import type { AgentRun, AgentRunAttempt, JsonObject } from "@/types/agent-run";
+import type { AgentExecutorId, AgentRun, AgentRunAttempt, JsonObject } from "@/types/agent-run";
 
 /**
  * The `agent_runs` and `agent_run_attempts` tables and their functions as the
  * application sees them, and the translation to and from `AgentRun` and
  * `AgentRunAttempt`. Snake-case rows exist only in this folder. The columns
- * mirror supabase/migrations/20260914120000_create_agent_runs.sql and
- * 20260916120000_add_agent_run_attempts.sql.
+ * mirror supabase/migrations/20260914120000_create_agent_runs.sql,
+ * 20260916120000_add_agent_run_attempts.sql, and
+ * 20260917120000_agent_runtime_production.sql.
  */
 
 export type AgentRunRow = {
@@ -46,6 +49,8 @@ export type AgentRunRow = {
   updated_at: string;
   started_at: string | null;
   finished_at: string | null;
+  next_attempt_at: string | null;
+  auto_retry_count: number;
 };
 
 export type AgentRunInsert = Pick<
@@ -131,6 +136,14 @@ export type AgentRunsDatabase = {
         Args: { p_limit: number };
         Returns: unknown;
       };
+      agent_run_schedule_retries: {
+        Args: { p_limit: number };
+        Returns: unknown;
+      };
+      agent_runtime_status: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
     };
   };
 };
@@ -141,7 +154,7 @@ export const AGENT_RUN_ATTEMPT_READ_COLUMNS =
 
 /** Every column except `input_hash`, which only the database compares. */
 export const AGENT_RUN_READ_COLUMNS =
-  "id,project_id,agent_id,task_type,input,status,source,executor,attempt_count,max_attempts,result_summary,result_metadata,error_code,error_message,created_by,cancelled_by,created_at,updated_at,started_at,finished_at";
+  "id,project_id,agent_id,task_type,input,status,source,executor,attempt_count,max_attempts,result_summary,result_metadata,error_code,error_message,created_by,cancelled_by,created_at,updated_at,started_at,finished_at,next_attempt_at,auto_retry_count";
 
 export class AgentRunRowError extends Error {
   constructor(message: string) {
@@ -171,6 +184,10 @@ function instant(value: string | null, column: string): string | null {
   return new Date(time).toISOString();
 }
 
+function isExecutor(value: unknown): value is AgentExecutorId {
+  return value === "mock" || value === "ai";
+}
+
 function integer(row: Record<string, unknown>, column: string): number {
   const value = row[column];
   if (typeof value !== "number" || !Number.isInteger(value)) {
@@ -196,7 +213,7 @@ export function agentRunRowToRun(input: unknown): AgentRun {
   if (!isAgentTaskType(taskType)) throw new AgentRunRowError("agent_runs.task_type is not a task type");
   if (!isAgentRunStatus(status)) throw new AgentRunRowError("agent_runs.status is not a run status");
   if (row.source !== "operator") throw new AgentRunRowError("agent_runs.source is not a run source");
-  if (executor !== null && executor !== "mock") throw new AgentRunRowError("agent_runs.executor is not an executor");
+  if (executor !== null && !isExecutor(executor)) throw new AgentRunRowError("agent_runs.executor is not an executor");
   if (errorCode !== null && !isAgentRunErrorCode(errorCode)) {
     throw new AgentRunRowError("agent_runs.error_code is not an error code");
   }
@@ -225,6 +242,9 @@ export function agentRunRowToRun(input: unknown): AgentRun {
     updatedAt: instant(text(row, "updated_at"), "updated_at") as string,
     startedAt: instant(optionalText(row, "started_at"), "started_at"),
     finishedAt: instant(optionalText(row, "finished_at"), "finished_at"),
+    // Absent only in a row written before 20260917120000; treated as never retried.
+    nextAttemptAt: row.next_attempt_at === undefined ? null : instant(optionalText(row, "next_attempt_at"), "next_attempt_at"),
+    autoRetryCount: row.auto_retry_count === undefined ? 0 : integer(row, "auto_retry_count"),
   };
 }
 
@@ -267,7 +287,8 @@ export function agentRunAttemptRowToAttempt(input: unknown): AgentRunAttempt {
   if (!isAgentRunAttemptOutcome(outcome)) {
     throw new AgentRunRowError("agent_run_attempts.outcome is not an attempt outcome");
   }
-  if (row.executor !== "mock") throw new AgentRunRowError("agent_run_attempts.executor is not an executor");
+  const executor = row.executor;
+  if (!isExecutor(executor)) throw new AgentRunRowError("agent_run_attempts.executor is not an executor");
   if (errorCode !== null && !isAgentRunErrorCode(errorCode)) {
     throw new AgentRunRowError("agent_run_attempts.error_code is not an error code");
   }
@@ -279,7 +300,7 @@ export function agentRunAttemptRowToAttempt(input: unknown): AgentRunAttempt {
     id: text(row, "id"),
     runId: text(row, "run_id"),
     attemptNumber: integer(row, "attempt_number"),
-    executor: "mock",
+    executor,
     outcome,
     resultMetadata: row.result_metadata,
     error: errorCode === null ? null : { code: errorCode, message: text(row, "error_message") },
@@ -367,4 +388,34 @@ export function recoverResultToAttempts(input: unknown): RecoveredAttempt[] {
     const row: Record<string, unknown> = { ...entry };
     return { runId: text(row, "run_id"), attemptNumber: integer(row, "attempt_number") };
   });
+}
+
+export function scheduleResultToRetries(input: unknown): ScheduledRetry[] {
+  if (!isObject(input) || !Array.isArray(input.scheduled)) {
+    throw new AgentRunRowError("agent_run_schedule_retries returned an unexpected result");
+  }
+  return input.scheduled.map((entry) => {
+    if (!isObject(entry)) throw new AgentRunRowError("agent_run_schedule_retries returned an unexpected entry");
+    const row: Record<string, unknown> = { ...entry };
+    return {
+      runId: text(row, "run_id"),
+      attemptCount: integer(row, "attempt_count"),
+      errorCode: text(row, "error_code"),
+      nextAttemptAt: instant(text(row, "next_attempt_at"), "next_attempt_at") as string,
+    };
+  });
+}
+
+export function statusResultToStatus(input: unknown): RuntimeStatus {
+  if (!isObject(input)) throw new AgentRunRowError("agent_runtime_status returned an unexpected result");
+  const row: Record<string, unknown> = { ...input };
+  return {
+    queuedDue: integer(row, "queued_due"),
+    queuedWaiting: integer(row, "queued_waiting"),
+    running: integer(row, "running"),
+    expiredLeases: integer(row, "expired_leases"),
+    failed: integer(row, "failed"),
+    oldestDueQueuedAt: instant(optionalText(row, "oldest_due_queued_at"), "oldest_due_queued_at"),
+    checkedAt: instant(text(row, "checked_at"), "checked_at") as string,
+  };
 }

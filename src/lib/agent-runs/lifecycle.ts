@@ -71,6 +71,10 @@ export const AGENT_RUN_ERROR_MESSAGES: Readonly<Record<AgentRunErrorCode, string
   // (supabase/migrations/20260916120000_add_agent_run_attempts.sql), which
   // writes it without the application.
   "lease-expired": "The attempt stopped reporting progress before it finished, so it was abandoned.",
+  "provider-unavailable": "The AI provider could not be reached or was temporarily overloaded.",
+  "provider-rejected": "The AI provider declined the request, or its answer could not be used.",
+  "provider-not-configured": "The AI executor is selected, but no AI provider is configured on the server.",
+  "policy-blocked": "This task's action policy does not allow it to run automatically.",
 };
 
 export function isAgentRunErrorCode(value: unknown): value is AgentRunErrorCode {

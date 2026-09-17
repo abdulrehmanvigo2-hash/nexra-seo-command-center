@@ -27,15 +27,17 @@ and reporting into a central orchestrator.
 
 ## Current Status
 
-**The project is currently in the Premium Frontend Foundation phase.**
+The frontend is complete, and Backend Phase 6 is complete: Supabase persistence for projects,
+operator sign-in, the Google Search Console integration, and the agent runtime (persistent
+runs, attempt history, leases and stale-run recovery, a scheduled worker, automatic retries,
+shared rate limits, and a provider boundary for AI execution).
 
-Work is focused entirely on the product surface: the application shell, navigation, layout
-system, reusable UI components, and the core screens — presented with realistic mock SEO data
-and mock AI agent activity.
+Most reporting figures on screen are still modelled fixtures and are labelled as such. The
+agent executor defaults to simulated output; AI execution needs a provider key. Nothing has
+been deployed.
 
-No backend, database, authentication, live APIs, AI integrations, scraping, billing, or
-external integrations are implemented at this stage. Those are deliberately deferred until the
-frontend architecture is stable.
+See [`docs/BACKEND.md`](docs/BACKEND.md) for the backend architecture, security model,
+environment variables, and deployment requirements.
 
 ## Planned Core Modules
 

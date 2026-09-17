@@ -17,6 +17,14 @@ export const LOGIN_PATH = "/login";
 /** Route handlers under here authorize each request themselves. */
 const SELF_AUTHORIZING_PREFIX = "/auth/";
 
+/**
+ * The scheduled worker's routes. A scheduler has no session, so these are
+ * passed through and authorize every request with the worker credential
+ * (`@/lib/security/worker-auth`) — or, for the status route, an operator
+ * session — in the handler itself.
+ */
+const WORKER_PREFIX = "/api/worker/";
+
 /** Data endpoints: a signed-out caller gets 401, not a sign-in page. */
 const API_PREFIX = "/api/";
 
@@ -81,7 +89,8 @@ export type AccessDecision =
  * carrying where they were headed. Anything else from them — a Server Action
  * POST, above all, or any request to a data endpoint under /api/ — is refused
  * outright; a redirect is not a meaningful answer
- * to a mutation. The sign-in page and the self-authorizing auth handlers are
+ * to a mutation. The sign-in page, the self-authorizing auth handlers, and the
+ * worker routes (which demand the worker credential themselves) are
  * reachable by anyone, and a signed-in operator who opens the sign-in page is
  * sent on.
  */
@@ -101,7 +110,7 @@ export function decideAccess(request: {
     return { kind: "allow", private: false };
   }
 
-  if (pathname.startsWith(SELF_AUTHORIZING_PREFIX)) {
+  if (pathname.startsWith(SELF_AUTHORIZING_PREFIX) || pathname.startsWith(WORKER_PREFIX)) {
     return { kind: "allow", private: true };
   }
 

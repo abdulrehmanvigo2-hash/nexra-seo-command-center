@@ -1,15 +1,15 @@
 import type { NextRequest } from "next/server";
-import { agentRunService } from "@/lib/agent-runs";
+import { agentRunLimiter, agentRunService } from "@/lib/agent-runs";
 import {
   errorResponse,
   failureResponse,
   isSameOrigin,
   json,
+  limitResponse,
   logFailure,
   readJsonBody,
 } from "@/lib/agent-runs/http";
 import { getOperator } from "@/lib/auth/session";
-import { createRateLimiter } from "@/lib/security/rate-limit";
 
 /**
  * The agent-run worker, triggered by hand.
@@ -23,20 +23,22 @@ import { createRateLimiter } from "@/lib/security/rate-limit";
  * the run's attempt limit. Calling it again finds nothing new.
  *
  * `run-next` claims the oldest queued run that no other worker holds and runs
- * one attempt with the mock executor inside this request.
+ * one attempt with the configured executor inside this request.
  *
- * Nothing calls this on a schedule. It exists so recovery and the worker path
- * can be exercised now, and it is what a scheduled job or queue consumer will
- * replace — calling the worker module directly, with its own credentials.
+ * This is the operator's manual trigger. The scheduled path is separate —
+ * `/api/worker/recover` and `/api/worker/process`, authorized by the worker
+ * credential rather than a session.
  *
  * Operators only, confirmed with the Auth server; same-origin; one worker
- * action per operator at a time, and 30 per ten minutes.
+ * action per operator at a time per process, and 30 per ten minutes shared
+ * across instances.
  */
+
+export const maxDuration = 300;
 
 const ACTIONS = ["recover-stale", "run-next"] as const;
 type Action = (typeof ACTIONS)[number];
 
-const actionsPerOperator = createRateLimiter({ limit: 30, windowMs: 10 * 60 * 1_000 });
 const inFlight = new Set<string>();
 
 function parseAction(body: unknown): Action | null {
@@ -54,12 +56,6 @@ export async function POST(request: NextRequest) {
   if (!operator) return errorResponse("unauthorized", 401);
 
   if (inFlight.has(operator.id)) return errorResponse("rate-limited", 429);
-  const allowance = actionsPerOperator.consume(operator.id);
-  if (!allowance.allowed) {
-    const response = errorResponse("rate-limited", 429);
-    response.headers.set("Retry-After", String(Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000))));
-    return response;
-  }
 
   const body = await readJsonBody(request);
   if (!body.ok) return body.response;
@@ -68,6 +64,8 @@ export async function POST(request: NextRequest) {
 
   inFlight.add(operator.id);
   try {
+    const limited = await limitResponse(agentRunLimiter("operator-worker"), operator.id);
+    if (limited) return limited;
     const service = agentRunService();
     switch (action) {
       case "recover-stale": {

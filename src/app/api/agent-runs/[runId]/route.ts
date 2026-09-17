@@ -1,15 +1,15 @@
 import type { NextRequest } from "next/server";
-import { agentRunService } from "@/lib/agent-runs";
+import { agentRunLimiter, agentRunService } from "@/lib/agent-runs";
 import {
   errorResponse,
   failureResponse,
   isSameOrigin,
   json,
+  limitResponse,
   logFailure,
   readJsonBody,
 } from "@/lib/agent-runs/http";
 import { getOperator } from "@/lib/auth/session";
-import { createRateLimiter } from "@/lib/security/rate-limit";
 
 /**
  * One agent run: read it, or move it through its lifecycle.
@@ -19,20 +19,23 @@ import { createRateLimiter } from "@/lib/security/rate-limit";
  *
  * `attempts` is the run's execution history, oldest first; leases and worker
  * labels are not part of it. `execute` claims a queued run and runs one
- * attempt with the mock executor, under a lease, before answering; if this
+ * attempt with the configured executor, under a lease, before answering; if this
  * request dies first, the lease expires and recovery fails the attempt (see
  * `/api/agent-runs/worker`). `cancel` stops a queued or running run; `retry`
  * puts a failed run back in the queue while it has attempts left. A request
  * that does not fit the run's current state gets 409 with that state.
  *
  * Operators only, confirmed with the Auth server. Actions are limited per
- * operator — one execution at a time, and 60 actions per ten minutes.
+ * operator: 60 per ten minutes, shared by every instance through Postgres, and
+ * one execution at a time per process.
  */
+
+/** An AI attempt may take two minutes; the platform must not cut it off first. */
+export const maxDuration = 300;
 
 const ACTIONS = ["execute", "cancel", "retry"] as const;
 type Action = (typeof ACTIONS)[number];
 
-const actionsPerOperator = createRateLimiter({ limit: 60, windowMs: 10 * 60 * 1_000 });
 const executing = new Set<string>();
 
 function parseAction(body: unknown): Action | null {
@@ -66,13 +69,6 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
   const operator = await getOperator();
   if (!operator) return errorResponse("unauthorized", 401);
 
-  const allowance = actionsPerOperator.consume(operator.id);
-  if (!allowance.allowed) {
-    const response = errorResponse("rate-limited", 429);
-    response.headers.set("Retry-After", String(Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000))));
-    return response;
-  }
-
   const body = await readJsonBody(request);
   if (!body.ok) return body.response;
   const action = parseAction(body.value);
@@ -82,6 +78,9 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
   const service = agentRunService();
 
   try {
+    const limited = await limitResponse(agentRunLimiter("action"), operator.id);
+    if (limited) return limited;
+
     switch (action) {
       case "execute": {
         if (executing.has(operator.id)) return errorResponse("rate-limited", 429);

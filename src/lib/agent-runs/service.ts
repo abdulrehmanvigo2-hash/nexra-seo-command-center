@@ -1,10 +1,20 @@
 import { createHash } from "node:crypto";
-import type { AgentRunStore, RecoveredAttempt } from "@/lib/agent-runs/contract";
+import { mayRunAutomatically } from "@/lib/agent-runs/action-policy";
+import type {
+  AgentRunStore,
+  RecoveredAttempt,
+  RuntimeStatus,
+  ScheduledRetry,
+} from "@/lib/agent-runs/contract";
 import type { AgentExecutor } from "@/lib/agent-runs/executor";
 import { DEFAULT_MAX_ATTEMPTS, canCancel, canRetry } from "@/lib/agent-runs/lifecycle";
 import { canonicalJson, checkStorableJson } from "@/lib/agent-runs/safety";
 import { agentMayRun, getTaskType } from "@/lib/agent-runs/task-types";
-import { createAgentRunWorker, type WorkerOutcome } from "@/lib/agent-runs/worker";
+import {
+  createAgentRunWorker,
+  type QueueBatch,
+  type WorkerOutcome,
+} from "@/lib/agent-runs/worker";
 import { getAgentRecord } from "@/lib/mock/agents/registry";
 import { isStorableProjectId } from "@/lib/projects/intake-rules";
 import type {
@@ -91,6 +101,19 @@ export type RecoverRunsResult =
   | { readonly ok: true; readonly recovered: readonly RecoveredAttempt[] }
   | AgentRunFailure;
 
+export type ProcessQueueResult =
+  | {
+      readonly ok: true;
+      /** Failed runs the retry policy re-queued before the batch ran. */
+      readonly scheduled: readonly ScheduledRetry[];
+      readonly batch: QueueBatch;
+    }
+  | AgentRunFailure;
+
+export type RuntimeStatusResult =
+  | { readonly ok: true; readonly status: RuntimeStatus }
+  | AgentRunFailure;
+
 export type AgentRunService = {
   readonly storesRuns: boolean;
   createRun(operatorId: string, request: unknown): Promise<CreateAgentRunResult>;
@@ -103,9 +126,16 @@ export type AgentRunService = {
   retryRun(runId: string): Promise<AgentRunResult>;
   /** Fails attempts whose lease expired, and their runs, with `lease-expired`. */
   recoverStaleRuns(): Promise<RecoverRunsResult>;
+  /**
+   * The scheduled queue job: re-queues retryable failures (with backoff), then
+   * runs a bounded batch of due queued runs.
+   */
+  processQueue(options: { readonly maxRuns: number; readonly budgetMs: number }): Promise<ProcessQueueResult>;
+  runtimeStatus(): Promise<RuntimeStatusResult>;
   getRun(runId: string): Promise<AgentRunResult>;
   /** A run's attempts, oldest first. */
   listAttempts(runId: string): Promise<ListAttemptsResult>;
+  /** Newest first, filtered by project, agent, or both. */
   listRuns(filter: unknown): Promise<ListAgentRunsResult>;
 };
 
@@ -211,6 +241,8 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
       const definition = getTaskType(taskType);
       if (!definition) return { ok: false, reason: "unknown-task-type" };
       if (!agentMayRun(definition, agent.id)) return { ok: false, reason: "task-not-allowed" };
+      // No approval workflow exists, so a task that needs one is not queued at all.
+      if (!mayRunAutomatically(definition.policy)) return { ok: false, reason: "task-not-allowed" };
 
       const parsed = definition.parseInput(body.input);
       if (!parsed.ok) return invalid(parsed.error);
@@ -271,6 +303,18 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
     async recoverStaleRuns() {
       if (!store.storesRuns) return UNAVAILABLE;
       return { ok: true, recovered: await worker.recoverExpired() };
+    },
+
+    async processQueue(options) {
+      if (!store.storesRuns) return UNAVAILABLE;
+      const scheduled = await worker.scheduleRetries();
+      const batch = await worker.processQueue(options);
+      return { ok: true, scheduled, batch };
+    },
+
+    async runtimeStatus() {
+      if (!store.storesRuns) return UNAVAILABLE;
+      return { ok: true, status: await store.runtimeStatus() };
     },
 
     async cancelRun(operatorId, runId) {
@@ -341,20 +385,24 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
       if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > MAX_LIST_LIMIT) {
         return invalid(`limit must be a whole number from 1 to ${MAX_LIST_LIMIT}.`);
       }
-      if ((projectId === undefined) === (agentId === undefined)) {
-        return invalid("Filter by exactly one of projectId or agentId.");
+      if (projectId === undefined && agentId === undefined) {
+        return invalid("Filter by projectId, agentId, or both.");
       }
 
-      if (projectId !== undefined) {
-        if (typeof projectId !== "string" || !isStorableProjectId(projectId)) {
-          return { ok: false, reason: "unknown-project" };
-        }
-        return { ok: true, runs: await store.listByProject(projectId, limit) };
+      if (projectId !== undefined && (typeof projectId !== "string" || !isStorableProjectId(projectId))) {
+        return { ok: false, reason: "unknown-project" };
       }
+      const agent = agentId === undefined ? undefined : typeof agentId === "string" ? getAgentRecord(agentId) : undefined;
+      if (agentId !== undefined && !agent) return { ok: false, reason: "unknown-agent" };
 
-      const agent = typeof agentId === "string" ? getAgentRecord(agentId) : undefined;
-      if (!agent) return { ok: false, reason: "unknown-agent" };
-      return { ok: true, runs: await store.listByAgent(agent.id, limit) };
+      return {
+        ok: true,
+        runs: await store.listRuns({
+          ...(projectId !== undefined ? { projectId: projectId as string } : {}),
+          ...(agent ? { agentId: agent.id } : {}),
+          limit,
+        }),
+      };
     },
   };
 }

@@ -1,3 +1,4 @@
+import type { ActionPolicy } from "@/lib/agent-runs/action-policy";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import type { AgentId } from "@/types/agent";
 import type { AgentTaskType, JsonObject } from "@/types/agent-run";
@@ -7,7 +8,13 @@ import type { AgentTaskType, JsonObject } from "@/types/agent-run";
  *
  * Deliberately few, and all read-only: a task here asks an agent to look and
  * report. Nothing publishes, sends, builds links, or changes a site — those
- * need review gates the runtime does not have yet.
+ * need review gates the runtime does not have yet. Each task declares its
+ * action policy (`@/lib/agent-runs/action-policy`), and the runtime refuses to
+ * run one whose policy needs approval.
+ *
+ * `instructions` is what a model-backed executor is asked to produce. It is
+ * fixed per task type: an operator supplies only the validated input fields,
+ * never free-form instructions, so a request cannot rewrite the task.
  *
  * Each task type parses its input strictly: an unknown field is refused, not
  * ignored, so nothing the caller did not mean to store is stored.
@@ -23,6 +30,9 @@ export type TaskTypeDefinition = {
   readonly description: string;
   /** The agents allowed to run it, or every agent. */
   readonly agents: readonly AgentId[] | "any";
+  readonly policy: ActionPolicy;
+  /** What a model-backed executor must produce, in plain text. */
+  readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
 };
 
@@ -63,6 +73,9 @@ const projectReview: TaskTypeDefinition = {
   label: "Project review",
   description: "Review the project from this agent's discipline and summarise what it finds.",
   agents: "any",
+  policy: "read-only",
+  instructions:
+    "Review the project from your discipline. Give the three to five most important observations or risks, each with one concrete recommended next step. You have no live data about the site: say where a conclusion depends on data you would need to check, and do not invent metrics.",
   parseInput(input): TaskInputResult {
     const object = objectWithOnly(input, ["focus"]);
     if (!object.ok) return object;
@@ -81,6 +94,9 @@ const keywordResearch: TaskTypeDefinition = {
   label: "Keyword research",
   description: "Expand seed keywords into candidates with search intent.",
   agents: ["keyword-intent"],
+  policy: "read-only",
+  instructions:
+    "Expand the seed keywords into up to fifteen candidate keywords. For each give the likely search intent (informational, commercial, transactional, or navigational) and a one-line rationale. You have no search-volume data: do not state volumes or difficulty scores.",
   parseInput(input): TaskInputResult {
     const object = objectWithOnly(input, ["seedKeywords"]);
     if (!object.ok) return object;

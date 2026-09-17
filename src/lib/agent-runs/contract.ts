@@ -114,6 +114,31 @@ export type RecoveredAttempt = {
   readonly attemptNumber: number;
 };
 
+export type ScheduledRetry = {
+  readonly runId: string;
+  /** Attempts made before the retry. */
+  readonly attemptCount: number;
+  readonly errorCode: string;
+  readonly nextAttemptAt: string;
+};
+
+/** Queue and lease counts. No row contents. */
+export type RuntimeStatus = {
+  readonly queuedDue: number;
+  readonly queuedWaiting: number;
+  readonly running: number;
+  readonly expiredLeases: number;
+  readonly failed: number;
+  readonly oldestDueQueuedAt: string | null;
+  readonly checkedAt: string;
+};
+
+export type RunListFilter = {
+  readonly projectId?: string;
+  readonly agentId?: AgentId;
+  readonly limit: number;
+};
+
 export type AgentRunStore = {
   /** False where runs cannot be kept; the service then refuses every call. */
   readonly storesRuns: boolean;
@@ -123,10 +148,8 @@ export type AgentRunStore = {
   findActiveDuplicate(
     run: Pick<NewAgentRun, "projectId" | "agentId" | "taskType" | "inputHash">,
   ): Promise<AgentRun | null>;
-  /** Newest first. */
-  listByProject(projectId: string, limit: number): Promise<readonly AgentRun[]>;
-  /** Newest first. */
-  listByAgent(agentId: AgentId, limit: number): Promise<readonly AgentRun[]>;
+  /** Newest first, by project, agent, or both. */
+  listRuns(filter: RunListFilter): Promise<readonly AgentRun[]>;
   /** Cancel and retry. Never `running`, `completed`, or `failed`: those go through a lease. */
   transition(id: string, from: AgentRunStatus, patch: RunPatch): Promise<TransitionOutcome>;
   /** Starts the next attempt of a queued run. */
@@ -138,6 +161,12 @@ export type AgentRunStore = {
   recoverExpired(limit: number): Promise<readonly RecoveredAttempt[]>;
   /** Oldest first. */
   listAttempts(runId: string): Promise<readonly AgentRunAttempt[]>;
+  /**
+   * Re-queues up to `limit` failed runs whose failure is retryable and which
+   * have attempts left, with backoff (`@/lib/agent-runs/retry-policy`).
+   */
+  scheduleRetries(limit: number): Promise<readonly ScheduledRetry[]>;
+  runtimeStatus(): Promise<RuntimeStatus>;
 };
 
 /** For a deployment with no database: the runtime is present but unavailable. */
@@ -146,12 +175,13 @@ export const unavailableAgentRunStore: AgentRunStore = {
   insert: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
   getById: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
   findActiveDuplicate: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
-  listByProject: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
-  listByAgent: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
+  listRuns: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
   transition: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
   claim: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
   heartbeat: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
   finish: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
   recoverExpired: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
   listAttempts: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
+  scheduleRetries: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
+  runtimeStatus: () => Promise.reject(new Error("Agent runs are not stored in this deployment.")),
 };
