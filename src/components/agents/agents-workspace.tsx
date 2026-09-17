@@ -177,9 +177,10 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
               className="mt-0.5 h-4 w-4 shrink-0 text-accent"
             />
             <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-fg-muted">
-              <span className="font-medium text-fg">Sync queued.</span> The
-              orchestration pass is mocked in this milestone — no agent runs, and
-              the figures below are unchanged fixtures.
+              <span className="font-medium text-fg">Sync queued.</span> This
+              orchestration pass is simulated — it starts no agent runs, and the
+              figures below are unchanged fixtures. Executed runs are listed in
+              Run History.
             </p>
             <Button
               variant="ghost"
@@ -299,7 +300,7 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
         eyebrow="Audit trail"
         title="Recent Agent Activity"
         description="What the twelve agents have done across every project, newest first."
-        footnote="Mock run records — no agent runtime exists in this milestone."
+        footnote="Modelled activity records — not produced by the agent runtime. Executed runs are listed in Run History."
       />
     </div>
   );

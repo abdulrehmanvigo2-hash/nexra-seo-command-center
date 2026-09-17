@@ -186,8 +186,8 @@ export function AgentConfigurationPanel({
 
         <PanelFooter>
           <span>
-            Changes are held in this session only — there is no backend behind
-            this form yet.
+            Changes are held in this session only — agent configuration is not
+            saved anywhere.
           </span>
           <div className="flex items-center gap-2">
             {dirty && (

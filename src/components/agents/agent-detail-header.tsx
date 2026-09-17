@@ -147,8 +147,8 @@ export function AgentDetailHeader({
           className={cn("mt-px h-3.5 w-3.5 shrink-0", queued && "text-accent")}
         />
         {queued
-          ? "Sync queued. The orchestration pass is mocked in this milestone — no agent runs, and the figures below are unchanged."
-          : "Mock operating data. The agents are simulated in this milestone: nothing on this page executes a run."}
+          ? "Sync queued. This orchestration pass is simulated — it starts no agent runs, and the figures below are unchanged."
+          : "Modelled operating data. Nothing on this page starts an agent run; executed runs are listed under AI Agents → Run History."}
       </p>
     </Panel>
   );

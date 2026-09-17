@@ -36,7 +36,7 @@ import type {
 
 /** Stated wherever a report figure appears, and printed into every export. */
 export const REPORTS_SOURCE_NOTE =
-  "Every figure in a report is quoted from the module that publishes it — Analytics, Technical SEO, Keyword Intelligence, Content Studio, AI Visibility, Backlinks and Competitor Intelligence. Reports recompute nothing, so a number here and the same number in its own module are one reading. Those modules run on the development dataset: no analytics property, Search Console, crawler or vendor API is connected.";
+  "Every figure in a report is quoted from the module that publishes it — Analytics, Technical SEO, Keyword Intelligence, Content Studio, AI Visibility, Backlinks and Competitor Intelligence. Reports recompute nothing, so a number here and the same number in its own module are one reading. Those modules run on the development dataset: no analytics property, crawler or vendor API is connected, and Search Console readings — shown in their own labelled panels — are not included in reports.";
 
 export const REPORTS_SOURCE_SHORT =
   "Composed from module readings — reports recompute nothing.";

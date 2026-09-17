@@ -165,7 +165,7 @@ export function ProjectDetailHeader({
           {analysisQueued ? (
             <span className="inline-flex items-center gap-1.5 text-positive">
               <Icon name="check" className="h-3.5 w-3.5" />
-              Analysis queued — the SEO Director has been notified
+              Analysis simulated — no agent run was started
             </span>
           ) : (
             <>

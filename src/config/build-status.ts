@@ -1,21 +1,22 @@
 /**
  * How the product describes its own data to the user.
  *
- * Every screen in Nexra runs on fixtures: there is no backend, no API and no
- * external provider connected (CLAUDE.md §4). That fact is worth stating in
- * the interface, and it is stated from here rather than inline, so the
- * wording is defined once and cannot drift back into naming a build phase
- * that had long since shipped, as earlier copies did.
+ * Most figures in Nexra are modelled fixtures. A few panels are backed by real
+ * data — stored projects, Search Console, executed agent runs — and each of
+ * those carries its own label. The wording is defined once here, so it cannot
+ * drift into claiming that nothing is live, or that everything is.
  *
  * Deliberately phrased in terms of what the user is looking at rather than
- * where the roadmap has got to. A phase number is a fact about the team, not
- * about the workspace, and it goes stale the moment the phase ends.
+ * where the roadmap has got to, and true whichever data source a deployment
+ * selects: with the fixture roster, the live-labelled panels say they are not
+ * connected.
  */
 export const BUILD_STATUS = {
   /** Short label beside the status dot. */
-  label: "Mock data",
+  label: "Modelled data",
   /** One line under the label. */
-  detail: "Frontend workspace",
+  detail: "Live panels are labelled",
   /** Used where only a tooltip fits, e.g. the collapsed sidebar rail. */
-  title: "Mock data — frontend workspace, no backend connected",
+  title:
+    "Most figures are modelled fixtures. Panels backed by live data — stored projects, Search Console, agent runs — are labelled as such.",
 } as const;

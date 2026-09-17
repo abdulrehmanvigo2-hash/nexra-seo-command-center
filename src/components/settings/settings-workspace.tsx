@@ -283,7 +283,7 @@ export function SettingsWorkspace() {
             <Panel>
               <PanelHeader
                 title="What this workspace holds"
-                description="Every figure in the product is a fixture. There is no backend, no database and no account, so nothing here has ever left this browser."
+                description="The preferences on this page stay in this browser. Most figures elsewhere are modelled fixtures; stored projects, Search Console readings and agent runs come from the server and are labelled where they appear."
               />
               <SettingList>
                 <SettingRow
@@ -306,8 +306,8 @@ export function SettingsWorkspace() {
                 />
                 <SettingRow
                   label="Everything else"
-                  description="Projects you create, keywords you import, task and issue states you change — all of it is held by the screen you changed it on and is gone when you reload."
-                  footnote="There is nothing to clear here: it was never written down."
+                  description="Keywords you import, and task and issue states you change, are held by the screen you changed them on and are gone when you reload. Projects are saved only when the workspace runs on the database."
+                  footnote="Nothing held in a screen is written down, so there is nothing to clear here."
                   render={() => <Badge tone="neutral">Session only</Badge>}
                 />
               </SettingList>

@@ -260,7 +260,7 @@ export function ProjectsWorkspace({
                 <span className="font-medium text-fg">{created.name}</span>{" "}
                 {created.stored
                   ? "was created and saved to the workspace. Nothing has measured it yet, so it is listed as awaiting its first crawl."
-                  : "was created and added to the roster. It is held in this session only — there is no backend yet, so it will not survive a reload."}
+                  : "was created and added to the roster. It is held in this session only — this workspace runs on the fixture roster, so it will not survive a reload."}
               </p>
               <Button
                 variant="ghost"

@@ -310,7 +310,7 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
             eyebrow="Audit trail"
             title="Recent Activity"
             description={`What ${configuration.displayName} has done across its projects, newest first.`}
-            footnote="Mock run records — no agent runtime exists in this milestone."
+            footnote="Modelled activity records — not produced by the agent runtime. Executed runs are listed under AI Agents → Run History."
           />
         )}
 
