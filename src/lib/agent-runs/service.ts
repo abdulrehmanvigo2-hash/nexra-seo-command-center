@@ -66,6 +66,11 @@ export type AgentRunFailure =
   | { readonly ok: false; readonly reason: "unknown-task-type" }
   /** The agent exists, but this task type is not one it runs. */
   | { readonly ok: false; readonly reason: "task-not-allowed" }
+  /**
+   * The task's action policy requires an approval workflow, which does not
+   * exist: it can be neither queued nor executed.
+   */
+  | { readonly ok: false; readonly reason: "approval-required" }
   | { readonly ok: false; readonly reason: "not-found" }
   /** The run is not in a state that allows this; `status` is its current state. */
   | {
@@ -141,9 +146,11 @@ export type AgentRunService = {
 
 export const DEFAULT_LIST_LIMIT = 20;
 export const MAX_LIST_LIMIT = 100;
+/** How deep a history list may page; older runs are for maintenance queries. */
+export const MAX_LIST_OFFSET = 1_000;
 
 const REQUEST_FIELDS = ["projectId", "agentId", "taskType", "input"] as const;
-const LIST_FIELDS = ["projectId", "agentId", "limit"] as const;
+const LIST_FIELDS = ["projectId", "agentId", "limit", "offset"] as const;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -242,7 +249,7 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
       if (!definition) return { ok: false, reason: "unknown-task-type" };
       if (!agentMayRun(definition, agent.id)) return { ok: false, reason: "task-not-allowed" };
       // No approval workflow exists, so a task that needs one is not queued at all.
-      if (!mayRunAutomatically(definition.policy)) return { ok: false, reason: "task-not-allowed" };
+      if (!mayRunAutomatically(definition.policy)) return { ok: false, reason: "approval-required" };
 
       const parsed = definition.parseInput(body.input);
       if (!parsed.ok) return invalid(parsed.error);
@@ -328,6 +335,9 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
 
       const cancelled = await store.transition(runId, run.status, {
         status: "cancelled",
+        // The database replaces this with its own clock (migration
+        // 20260918120000); it is sent because a cancelled run must carry a
+        // finish time, and a database without that migration uses this one.
         finishedAt: instant(),
         cancelledBy: operatorId,
       });
@@ -385,6 +395,10 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
       if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > MAX_LIST_LIMIT) {
         return invalid(`limit must be a whole number from 1 to ${MAX_LIST_LIMIT}.`);
       }
+      const offset = object.offset ?? 0;
+      if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0 || offset > MAX_LIST_OFFSET) {
+        return invalid(`offset must be a whole number from 0 to ${MAX_LIST_OFFSET}.`);
+      }
       if (projectId === undefined && agentId === undefined) {
         return invalid("Filter by projectId, agentId, or both.");
       }
@@ -401,6 +415,7 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
           ...(projectId !== undefined ? { projectId: projectId as string } : {}),
           ...(agent ? { agentId: agent.id } : {}),
           limit,
+          offset,
         }),
       };
     },

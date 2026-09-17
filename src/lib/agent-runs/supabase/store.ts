@@ -98,7 +98,7 @@ export function createSupabaseAgentRunStore(
       const { data, error } = await query
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
-        .limit(filter.limit);
+        .range(filter.offset ?? 0, (filter.offset ?? 0) + filter.limit - 1);
       if (error) throw new AgentRunStoreError("list runs", error);
       return data.map(agentRunRowToRun);
     },

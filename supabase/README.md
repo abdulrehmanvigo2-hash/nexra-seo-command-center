@@ -130,6 +130,8 @@ Editor (or run with the Supabase CLI against a linked project):
 3. `20260914120000_create_agent_runs.sql`
 4. `20260916120000_add_agent_run_attempts.sql`
 5. `20260917120000_agent_runtime_production.sql`
+6. `20260918120000_cancel_uses_database_time.sql` — cancellation times from the
+   database clock
 
 After each, run `NOTIFY pgrst, 'reload schema';` on its own so the API sees the
 new tables and functions.
@@ -154,9 +156,9 @@ accept sign-ups.
 Access is one level — operator or nobody. There are no roles and no
 per-project ownership; every operator can see and create every project.
 
-Before a public deployment: the sign-in and project-creation rate limits are
-held in one server process's memory, so several instances multiply them — move
-them to a shared store. Pages are prerendered and served to operators with
+Sign-in attempts and project creation are rate limited in Postgres
+(`rate_limit_consume`) on the database deployment, so every server instance
+shares the count; email addresses are keyed by hash, never stored. Pages are prerendered and served to operators with
 `Cache-Control: private, no-store`; a CDN in front must honour that and must
 not cache responses that the proxy has not seen. A signed-out session's
 unexpired access token still opens pages (the proxy verifies the token locally)

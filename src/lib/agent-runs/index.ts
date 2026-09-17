@@ -12,13 +12,8 @@ import { createSupabaseAgentRunStore } from "@/lib/agent-runs/supabase/store";
 import { logEvent } from "@/lib/observability/log";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
 import { projectRepository } from "@/lib/projects/repository";
-import { createRateLimiter } from "@/lib/security/rate-limit";
-import {
-  createSharedRateLimiter,
-  localRateLimiter,
-  type AsyncRateLimiter,
-  type RateLimitDatabase,
-} from "@/lib/security/shared-rate-limit";
+import { appRateLimiter } from "@/lib/security/app-rate-limit";
+import type { AsyncRateLimiter } from "@/lib/security/shared-rate-limit";
 import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supabase/server";
 
 /**
@@ -106,25 +101,13 @@ const LIMITS: Readonly<Record<LimitName, { readonly limit: number; readonly wind
   /** Manual worker triggers, per operator. */
   "operator-worker": { limit: 30, windowSeconds: 600 },
   /**
-   * Scheduled worker invocations, per job. The schedule needs 6 an hour;
-   * this caps what a leaked secret could drive.
+   * Scheduled worker invocations, per job. The default schedule needs one a
+   * day and a Pro schedule at most six an hour; this caps what a leaked
+   * secret could drive.
    */
   "scheduled-worker": { limit: 60, windowSeconds: 3_600 },
 };
 
-const limiters = new Map<LimitName, AsyncRateLimiter>();
-
 export function agentRunLimiter(name: LimitName): AsyncRateLimiter {
-  let limiter = limiters.get(name);
-  if (!limiter) {
-    const { limit, windowSeconds } = LIMITS[name];
-    limiter = storesInSupabase()
-      ? createSharedRateLimiter(
-          createSupabaseServerClient<RateLimitDatabase>(readSupabaseServerConfig(process.env)),
-          { name: `agent-runs.${name}`, limit, windowSeconds },
-        )
-      : localRateLimiter(createRateLimiter({ limit, windowMs: windowSeconds * 1_000 }));
-    limiters.set(name, limiter);
-  }
-  return limiter;
+  return appRateLimiter(`agent-runs.${name}`, LIMITS[name]);
 }

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { operatorFromUser, safeNextPath } from "@/lib/auth/access";
 import { AuthConfigurationError, readAuthConfig } from "@/lib/auth/config";
 import { createSessionClient } from "@/lib/auth/server-client";
-import { createRateLimiter } from "@/lib/security/rate-limit";
+import { consumeSignInAttempt } from "@/lib/auth/sign-in-limits";
 
 /**
  * Signs an operator in with email and password.
@@ -14,9 +14,11 @@ import { createRateLimiter } from "@/lib/security/rate-limit";
  * be used to learn which addresses have accounts. An account that signs in
  * correctly but is not an operator is signed straight back out.
  *
- * Attempts are limited per email address and across the whole server, in
- * this process's memory (see `createRateLimiter` for why that is not enough
- * for a public deployment). Supabase Auth applies its own limits behind these.
+ * Attempts are limited per email address and across the whole service
+ * (`@/lib/auth/sign-in-limits`), in Postgres on the database deployment so
+ * every server instance shares the count. If the count cannot be read,
+ * sign-in is refused rather than left unlimited. Supabase Auth applies its own
+ * limits behind these.
  */
 
 export type SignInState = {
@@ -30,10 +32,6 @@ const TOO_MANY = "Too many sign-in attempts. Wait a few minutes and try again.";
 
 const MAX_EMAIL_LENGTH = 320;
 const MAX_PASSWORD_LENGTH = 1_024;
-
-const FIFTEEN_MINUTES = 15 * 60 * 1_000;
-const attemptsPerEmail = createRateLimiter({ limit: 5, windowMs: FIFTEEN_MINUTES });
-const attemptsOverall = createRateLimiter({ limit: 50, windowMs: FIFTEEN_MINUTES });
 
 export async function signInAction(
   _previous: SignInState,
@@ -59,8 +57,13 @@ export async function signInAction(
   }
 
   const address = email.trim().toLowerCase();
-  if (!attemptsOverall.consume("all").allowed || !attemptsPerEmail.consume(address).allowed) {
-    return { error: TOO_MANY, email: address };
+  try {
+    if ((await consumeSignInAttempt(address)) === "limited") {
+      return { error: TOO_MANY, email: address };
+    }
+  } catch (error) {
+    console.error("signInAction: rate limit unavailable:", error instanceof Error ? error.name : "unknown error");
+    return { error: "Sign-in is unavailable right now. Try again in a moment.", email: address };
   }
 
   let signedIn = false;

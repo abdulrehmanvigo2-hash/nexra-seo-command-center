@@ -14,7 +14,7 @@ import { getOperator } from "@/lib/auth/session";
 /**
  * Agent runs: list them, or queue a new one.
  *
- *   GET  /api/agent-runs?project=<id>[&agent=<id>][&limit=n]
+ *   GET  /api/agent-runs?project=<id>[&agent=<id>][&limit=n][&offset=n]
  *   GET  /api/agent-runs?agent=<id>[&limit=n]
  *   POST /api/agent-runs   { projectId, agentId, taskType, input }
  *
@@ -38,10 +38,12 @@ export async function GET(request: NextRequest) {
   const project = params.get("project");
   const agent = params.get("agent");
   const limit = params.get("limit");
+  const offset = params.get("offset");
   const filter = {
     ...(project !== null ? { projectId: project } : {}),
     ...(agent !== null ? { agentId: agent } : {}),
     ...(limit !== null ? { limit: /^\d{1,3}$/.test(limit) ? Number(limit) : Number.NaN } : {}),
+    ...(offset !== null ? { offset: /^\d{1,4}$/.test(offset) ? Number(offset) : Number.NaN } : {}),
   };
 
   try {

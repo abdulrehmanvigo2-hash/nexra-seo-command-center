@@ -251,7 +251,7 @@ export function ProjectSettingsPanel({
         <PanelHeader
           eyebrow="Not yet available"
           title="Data sources and access"
-          description="Search Console is mapped to projects on the server by an administrator, not from this screen. Connecting analytics or a CMS needs explicit approval, so it is not part of this milestone."
+          description="Search Console is mapped to projects on the server by an administrator, not from this screen. Connecting analytics or a CMS needs explicit approval and is not built."
         />
         <PanelBody>
           <ul className="grid gap-2.5 sm:grid-cols-3">

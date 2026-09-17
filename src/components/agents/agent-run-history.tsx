@@ -51,7 +51,13 @@ const OUTCOME: Readonly<Record<AgentRunAttemptOutcome, { label: string; tone: Ba
 
 type Load =
   | { readonly status: "loading" }
-  | { readonly status: "loaded"; readonly runs: readonly AgentRun[] }
+  | {
+      readonly status: "loaded";
+      readonly runs: readonly AgentRun[];
+      /** Whether the last page was full, so an older page may exist. */
+      readonly hasMore: boolean;
+      readonly more: "idle" | "loading" | "failed";
+    }
   | { readonly status: "unavailable" }
   | { readonly status: "failed"; readonly message: string };
 
@@ -84,6 +90,15 @@ export function AgentRunHistory({ projects }: { projects: readonly ProjectOption
   const [expanded, setExpanded] = useState<string | null>(null);
   const [attempts, setAttempts] = useState<Record<string, AttemptsLoad>>({});
 
+  const listUrl = useCallback(
+    (offset: number) => {
+      const params = new URLSearchParams({ project: projectId, limit: String(LIST_LIMIT), offset: String(offset) });
+      if (agentId) params.set("agent", agentId);
+      return `/api/agent-runs?${params.toString()}`;
+    },
+    [projectId, agentId],
+  );
+
   useEffect(() => {
     if (!projectId) return;
     const controller = new AbortController();
@@ -92,15 +107,12 @@ export function AgentRunHistory({ projects }: { projects: readonly ProjectOption
     setExpanded(null);
     setAttempts({});
 
-    const params = new URLSearchParams({ project: projectId, limit: String(LIST_LIMIT) });
-    if (agentId) params.set("agent", agentId);
-
-    fetch(`/api/agent-runs?${params.toString()}`, { cache: "no-store", signal: controller.signal })
+    fetch(listUrl(0), { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (response.status === 503) return setLoad({ status: "unavailable" });
         if (!response.ok) return setLoad({ status: "failed", message: failureMessage(response.status) });
         const body = (await response.json()) as { runs: AgentRun[] };
-        setLoad({ status: "loaded", runs: body.runs });
+        setLoad({ status: "loaded", runs: body.runs, hasMore: body.runs.length === LIST_LIMIT, more: "idle" });
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === "AbortError") return;
@@ -108,7 +120,38 @@ export function AgentRunHistory({ projects }: { projects: readonly ProjectOption
       });
 
     return () => controller.abort();
-  }, [projectId, agentId, refreshKey]);
+  }, [listUrl, projectId, refreshKey]);
+
+  /**
+   * The next page, by offset. A run created since the first page shifts the
+   * list down by one, so rows already shown are skipped by id rather than
+   * listed twice. Runs are never deleted by the application, so nothing is
+   * skipped.
+   */
+  const loadMore = () => {
+    if (load.status !== "loaded" || load.more === "loading") return;
+    const shown = load.runs;
+    setLoad({ ...load, more: "loading" });
+    fetch(listUrl(shown.length), { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        const page = ((await response.json()) as { runs: AgentRun[] }).runs;
+        const seen = new Set(shown.map((run) => run.id));
+        setLoad((current) =>
+          current.status === "loaded" && current.runs === shown
+            ? {
+                status: "loaded",
+                runs: [...shown, ...page.filter((run) => !seen.has(run.id))],
+                hasMore: page.length === LIST_LIMIT,
+                more: "idle",
+              }
+            : current,
+        );
+      })
+      .catch(() =>
+        setLoad((current) => (current.status === "loaded" && current.runs === shown ? { ...current, more: "failed" } : current)),
+      );
+  };
 
   const toggle = useCallback(
     (runId: string) => {
@@ -193,24 +236,36 @@ export function AgentRunHistory({ projects }: { projects: readonly ProjectOption
           description={`No agent task has been run on ${projectName}${agentId ? ` by ${AGENT_NAMES[agentId as keyof typeof AGENT_NAMES]}` : ""}.`}
         />
       ) : (
-        <ul className="divide-y divide-border">
-          {load.runs.map((run) => (
-            <RunRow
-              key={run.id}
-              run={run}
-              open={expanded === run.id}
-              onToggle={() => toggle(run.id)}
-              attempts={attempts[run.id]}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="divide-y divide-border">
+            {load.runs.map((run) => (
+              <RunRow
+                key={run.id}
+                run={run}
+                open={expanded === run.id}
+                onToggle={() => toggle(run.id)}
+                attempts={attempts[run.id]}
+              />
+            ))}
+          </ul>
+          {(load.hasMore || load.more === "failed") && (
+            <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border px-4 py-3">
+              {load.more === "failed" && (
+                <span className="text-[12px] text-critical">Older runs could not be loaded.</span>
+              )}
+              <Button icon="chevron-down" onClick={loadMore} disabled={load.more === "loading"}>
+                {load.more === "loading" ? "Loading…" : load.more === "failed" ? "Try again" : "Load older runs"}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       <PanelFooter>
         <span>Stored runs, newest first. Times in UTC.</span>
         {load.status === "loaded" && (
           <span>
-            {load.runs.length === LIST_LIMIT ? `Latest ${LIST_LIMIT}` : `${load.runs.length} run${load.runs.length === 1 ? "" : "s"}`}
+            {load.hasMore ? `Latest ${load.runs.length}` : `${load.runs.length} run${load.runs.length === 1 ? "" : "s"}`}
           </span>
         )}
       </PanelFooter>

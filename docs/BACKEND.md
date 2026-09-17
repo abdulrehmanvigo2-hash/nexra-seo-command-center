@@ -114,22 +114,55 @@ It has no HTTP or auth of its own. Three callers use it:
 | Diagnostics | `GET /api/worker/status` | worker credential or operator session |
 
 Execution happens inside the invoking request; nothing runs detached after a
-response. `vercel.json` schedules:
+response.
 
-| Job | Schedule | What it does |
+#### Schedule
+
+`vercel.json` ships a schedule that deploys on **every** Vercel plan:
+
+| Job | Schedule (UTC) | What it does |
 |---|---|---|
-| `/api/worker/recover` | every 15 min | fails up to 25 expired attempts |
-| `/api/worker/process` | every 10 min | re-queues retryable failures, then runs up to 5 due runs within a 240 s budget (`maxDuration` 300 s) |
+| `/api/worker/recover` | `0 4 * * *` — daily, 04:00 | fails up to 25 expired attempts |
+| `/api/worker/process` | `30 5 * * *` — daily, 05:30 | re-queues retryable failures, then runs up to 5 due runs within a 240 s budget |
 
-Both are safe to call repeatedly and concurrently: claims use row locks
+Vercel's limits, from its documentation (checked 2026-09-17): Hobby cron jobs
+run at most **once per day**, and a more frequent expression **fails the
+deployment**; Hobby timing is only accurate to the hour (04:00 may fire at any
+time until 04:59, hence the 90-minute gap). Pro and Enterprise allow once per
+minute. The deployment plan was not verifiable from this environment, so the
+daily schedule is the default.
+
+On a **daily** schedule, an automatic retry and the recovery of an abandoned
+attempt wait until the next run. Operators are not blocked: executing a run is
+immediate, and `POST /api/agent-runs/worker {"action":"recover-stale"}` recovers
+on demand.
+
+**On Pro or Enterprise**, replace the two schedules with:
+
+```json
+{ "path": "/api/worker/recover", "schedule": "*/15 * * * *" },
+{ "path": "/api/worker/process", "schedule": "*/10 * * * *" }
+```
+
+Both jobs are safe to call repeatedly and concurrently: claims use row locks
 (`for update skip locked` for the queue), so overlapping invocations never run
-the same attempt. With no work, both answer 200 with empty lists.
+the same attempt. With no work, both answer 200 with empty lists. The
+scheduled-job limit (60 per hour per job) leaves room for either schedule.
 
-Why this frequency: runs are operator-initiated and read-only, so minutes of
-latency are acceptable; backoffs start at 2 minutes; and each invocation is
-capped. Vercel's cron frequency and function duration limits depend on the plan
-— confirm the plan allows a 10-minute cron and a 300 s function before deploying,
-or lengthen the schedule.
+#### Function duration
+
+The worker routes and `POST /api/agent-runs/<id>` set `maxDuration = 300`. With
+Fluid compute — on by default for new projects — 300 s is the **maximum on
+Hobby** and the default on Pro and Enterprise (maximum 800 s), so it deploys on
+every plan. Keep Fluid compute enabled: without it Hobby functions are limited
+to 60 s.
+
+The queue job stops **claiming** once another attempt could overrun its 240 s
+budget: it claims only while elapsed time plus one attempt's timeout (30 s mock,
+120 s AI) fits, so the last attempt starts by 120 s and ends by 240 s, leaving
+60 s under the limit to record the result and respond. If a function is
+terminated anyway, its attempt keeps its lease only until the lease expires,
+and recovery fails it with `lease-expired`.
 
 ### Retry policy
 
@@ -173,8 +206,10 @@ against simulated HTTP responses (success, refusal, truncation, 400/401/404,
 
 Every task type declares `read-only`, `draft`, `approval-required`, or
 `executable` (`src/lib/agent-runs/action-policy.ts`). Only `read-only` and
-`draft` run; an `approval-required` task is refused at creation and, if its
-policy is tightened later, failed with `policy-blocked` before execution. Both
+`draft` run. No approval workflow exists, so an `approval-required` task is
+refused at creation with `422 {"error":"approval-required"}` and a message
+saying so, and, if its policy is tightened after runs were queued, those runs
+fail with `policy-blocked` before execution. Both
 existing tasks are `read-only`. Never automated: publishing, deleting pages,
 creating backlinks, outreach, destructive Search Console actions, DNS or domain
 changes.
@@ -184,7 +219,8 @@ changes.
 Agents → Run History: project and agent filters, status, task, created /
 started / finished, attempts (with automatic retries), screened summary labelled
 simulated or model-generated, fixed error message, next retry time, and
-expandable attempts.
+expandable attempts. 25 runs per page with "Load older runs"
+(`GET /api/agent-runs?…&offset=n`, offset ≤ 1,000).
 
 ## Security model
 
@@ -197,9 +233,13 @@ expandable attempts.
   JSON bodies ≤ 16 KB.
 - Worker: `CRON_SECRET` ≥ 32 characters, compared in constant time via SHA-256,
   never logged or stored; a bare 401 for every failure.
-- Rate limits shared across instances (Postgres): run creation 30/10 min and run
-  actions 60/10 min per operator; manual worker triggers 30/10 min per operator;
-  scheduled jobs 60/hour per job. Refusals are 429 with `Retry-After`.
+- Rate limits shared across instances (Postgres, `src/lib/security/app-rate-limit.ts`):
+  sign-in 5 per email address (stored as a hash) and 50 overall per 15 min;
+  project creation 10/10 min, run creation 30/10 min, run actions 60/10 min, and
+  manual worker triggers 30/10 min per operator; scheduled jobs 60/hour per job.
+  Refusals are 429 with `Retry-After` (sign-in: a fixed "too many attempts"
+  message). If the shared count cannot be read, the request is refused. On the
+  fixture data source, counts are per process.
 - Stored failures and API errors are fixed codes and messages; no exception or
   provider text.
 - Logs are JSON lines with allowlisted fields (run, project, agent, task,
@@ -232,7 +272,8 @@ All server-only. `.env.example` has placeholders.
 2. Set the environment variables above in the hosting project (production scope),
    including a fresh random `CRON_SECRET` (`openssl rand -hex 32`).
 3. Create operator accounts in Supabase Auth; disable open sign-ups.
-4. Confirm the hosting plan supports the cron schedule and 300 s functions.
+4. Keep Fluid compute enabled (the default). On Pro or Enterprise, optionally
+   switch to the 10/15-minute schedule above.
 5. Keep `NEXRA_AGENT_EXECUTOR` unset until a provider key and budget are agreed.
 6. After deploying, call `GET /api/worker/status` with the worker credential and
    check that counts return and `expiredLeases` stays at 0.
@@ -244,14 +285,13 @@ Nothing has been deployed.
 - Execution runs inside a request or a cron invocation, not a long-lived
   worker: one invocation handles at most 5 runs, so sustained backlogs drain at
   the schedule's pace.
-- Sign-in attempts and project creation are still rate limited in process
-  memory, not in the shared table.
 - Shared limits use fixed windows: up to twice a limit can pass across a window
   boundary.
-- Run cancellation and manual retry take their timestamps from the application
-  server's clock; claims, attempts, recovery, and retry scheduling use the
-  database clock. Servers without synchronised clocks show slightly inconsistent
-  times.
+- On the default daily schedule, automatic retries and recovery of abandoned
+  attempts happen once a day unless an operator triggers them.
+- Rows written before migration `20260918120000` may carry a cancellation time
+  from the application server's clock; every lifecycle time since comes from the
+  database.
 - The AI executor has no tools or live data; its output is advice, labelled as
   model-generated. It has not been exercised against the live provider.
 - No approval workflow exists; `approval-required` tasks cannot run at all.

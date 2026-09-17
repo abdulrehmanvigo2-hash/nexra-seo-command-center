@@ -137,6 +137,8 @@ export type RunListFilter = {
   readonly projectId?: string;
   readonly agentId?: AgentId;
   readonly limit: number;
+  /** Rows to skip, newest first; 0 for the first page. */
+  readonly offset?: number;
 };
 
 export type AgentRunStore = {

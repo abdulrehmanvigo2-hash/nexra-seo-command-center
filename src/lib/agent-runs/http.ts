@@ -84,6 +84,7 @@ const FAILURE_STATUS: Readonly<Record<AgentRunFailure["reason"], number>> = {
   "unknown-agent": 422,
   "unknown-task-type": 422,
   "task-not-allowed": 422,
+  "approval-required": 422,
   "not-found": 404,
   conflict: 409,
   unavailable: 503,
@@ -95,7 +96,13 @@ export function failureResponse(failure: AgentRunFailure): NextResponse {
       ? { error: failure.reason, message: failure.message }
       : failure.reason === "conflict"
         ? { error: failure.reason, status: failure.status, message: failure.message }
-        : { error: failure.reason };
+        : failure.reason === "approval-required"
+          ? {
+              error: failure.reason,
+              message:
+                "This task needs a person to approve each action, and Nexra has no approval workflow yet, so it cannot be queued or run.",
+            }
+          : { error: failure.reason };
   return json(body, FAILURE_STATUS[failure.reason]);
 }
 

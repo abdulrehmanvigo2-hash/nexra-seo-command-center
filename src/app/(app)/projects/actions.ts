@@ -5,7 +5,7 @@ import { getOperator } from "@/lib/auth/session";
 import { unmeasuredListItem } from "@/lib/projects/fixture-analytics";
 import type { NewProjectErrors } from "@/lib/projects/intake-rules";
 import { projectRepository } from "@/lib/projects/repository";
-import { createRateLimiter } from "@/lib/security/rate-limit";
+import { appRateLimiter } from "@/lib/security/app-rate-limit";
 import type { NewProjectInput, ProjectListItem } from "@/types/project";
 
 /**
@@ -21,8 +21,10 @@ import type { NewProjectInput, ProjectListItem } from "@/types/project";
  * this route is not relied on — before the repository, and its secret key,
  * are touched at all. The repository then validates the input as `unknown`.
  *
- * Writes are limited per operator: one at a time, and a handful per ten
- * minutes, held in this process's memory (see `createRateLimiter`).
+ * Writes are limited per operator: one at a time per process, and 10 per ten
+ * minutes, counted in Postgres on the database deployment so every server
+ * instance shares the allowance (`@/lib/security/app-rate-limit`). If the
+ * count cannot be read, nothing is written.
  *
  * On success the roster and the new project's page are revalidated. Called
  * from a Server Action, `revalidatePath` also re-renders the page the user is
@@ -40,7 +42,7 @@ export type CreateProjectActionResult =
   /** The store does not persist projects, or failed to; nothing was written. */
   | { readonly ok: false; readonly reason: "unavailable" | "failed" };
 
-const createsPerOperator = createRateLimiter({ limit: 10, windowMs: 10 * 60 * 1_000 });
+const CREATES = { limit: 10, windowSeconds: 10 * 60 } as const;
 const inFlight = new Set<string>();
 
 export async function createProjectAction(
@@ -52,18 +54,18 @@ export async function createProjectAction(
   if (inFlight.has(operator.id)) {
     return { ok: false, reason: "rate-limited", retryAfterSeconds: 1 };
   }
-  const allowance = createsPerOperator.consume(operator.id);
-  if (!allowance.allowed) {
-    return {
-      ok: false,
-      reason: "rate-limited",
-      retryAfterSeconds: Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000)),
-    };
-  }
 
   inFlight.add(operator.id);
   let result: Awaited<ReturnType<typeof projectRepository.createProject>>;
   try {
+    const allowance = await appRateLimiter("projects.create", CREATES).consume(operator.id);
+    if (!allowance.allowed) {
+      return {
+        ok: false,
+        reason: "rate-limited",
+        retryAfterSeconds: Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000)),
+      };
+    }
     result = await projectRepository.createProject(input);
   } catch (error) {
     // The detail stays in the server log; the browser learns only that it failed.
