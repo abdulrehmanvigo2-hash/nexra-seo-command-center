@@ -7,8 +7,10 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
-import { DASHBOARD_PROJECTS, DATE_RANGES } from "@/lib/mock/dashboard";
-import type { DashboardProject, ProjectId, RangeId } from "@/types/dashboard";
+import { DATE_RANGES } from "@/lib/mock/dashboard";
+import { PORTFOLIO_PROJECT_ID } from "@/lib/projects/intake-rules";
+import type { ProjectOption } from "@/lib/projects/selection";
+import type { ProjectId, RangeId } from "@/types/dashboard";
 
 /**
  * The dashboard's own header: which project is being viewed, over what window,
@@ -16,10 +18,19 @@ import type { DashboardProject, ProjectId, RangeId } from "@/types/dashboard";
  *
  * Sits below the application header, which owns the workspace and the account.
  * This one owns the selection that everything on the page is derived from.
+ *
+ * The project it names is a `ProjectOption` from the Projects repository, not
+ * a fixture record: the roster is whatever the configured store holds, so a
+ * project the fixture layer has never heard of is still selectable and still
+ * named correctly here. Whether anything has *measured* it is a separate
+ * question, answered by `measured` — the header states that plainly instead of
+ * dating figures that do not exist.
  */
 export function DashboardHeader({
   project,
+  projects,
   onProjectChange,
+  measured,
   range,
   onRangeChange,
   generatedAt,
@@ -29,8 +40,12 @@ export function DashboardHeader({
   analysisQueued,
   onRunAnalysis,
 }: {
-  project: DashboardProject;
+  project: ProjectOption;
+  /** Every selectable option, the roll-up first. */
+  projects: readonly ProjectOption[];
   onProjectChange: (id: ProjectId) => void;
+  /** False where nothing has measured the selected project. */
+  measured: boolean;
   range: RangeId;
   onRangeChange: (id: RangeId) => void;
   /** ISO instant the fixtures represent. */
@@ -42,6 +57,7 @@ export function DashboardHeader({
   analysisQueued: boolean;
   onRunAnalysis: () => void;
 }) {
+  const portfolio = project.id === PORTFOLIO_PROJECT_ID;
   return (
     <section className="rounded-panel border border-border bg-surface">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4 px-4 py-4 sm:px-5">
@@ -65,6 +81,7 @@ export function DashboardHeader({
 
               <ProjectSelector
                 project={project}
+                projects={projects}
                 onProjectChange={onProjectChange}
               />
             </div>
@@ -80,7 +97,7 @@ export function DashboardHeader({
             The roll-up has no workspace of its own; a single project does, and
             it is the same record the Projects module lists.
           */}
-          {!project.portfolio && (
+          {!portfolio && (
             <Link
               href={`/projects/${project.id}`}
               className={buttonClasses("secondary", "sm")}
@@ -130,6 +147,14 @@ export function DashboardHeader({
               <Icon name="check" className="h-3.5 w-3.5" />
               Analysis simulated — no agent run was started
             </span>
+          ) : !measured ? (
+            /* No figures exist for this project, so there is nothing to date
+               and no "mock data" to label. Saying either would imply the page
+               below is showing something. */
+            <>
+              <Icon name="clock" className="h-3.5 w-3.5" />
+              <span>Not measured yet — no reporting data for this project</span>
+            </>
           ) : (
             <>
               <Icon name="clock" className="h-3.5 w-3.5" />
@@ -151,9 +176,11 @@ export function DashboardHeader({
 /** Switches the project every dataset on the page is derived from. */
 function ProjectSelector({
   project,
+  projects,
   onProjectChange,
 }: {
-  project: DashboardProject;
+  project: ProjectOption;
+  projects: readonly ProjectOption[];
   onProjectChange: (id: ProjectId) => void;
 }) {
   return (
@@ -174,7 +201,7 @@ function ProjectSelector({
           <div className="px-3 pt-2 pb-1.5 text-[10.5px] font-medium tracking-[0.08em] text-fg-subtle uppercase">
             Projects
           </div>
-          {DASHBOARD_PROJECTS.map((entry) => {
+          {projects.map((entry) => {
             const selected = entry.id === project.id;
 
             return (
@@ -189,7 +216,7 @@ function ProjectSelector({
                 }}
                 className={cn(
                   "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-surface-hover",
-                  entry.portfolio && "border-b border-border",
+                  entry.id === PORTFOLIO_PROJECT_ID && "border-b border-border",
                 )}
               >
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border-strong bg-surface text-[10.5px] font-semibold text-fg-muted">
@@ -199,8 +226,12 @@ function ProjectSelector({
                   <span className="block truncate text-[12.5px] text-fg">
                     {entry.name}
                   </span>
+                  {/* An unmeasured project is selectable, and the row says so
+                      before it is chosen rather than after. */}
                   <span className="block truncate text-[11px] text-fg-subtle">
-                    {entry.domain}
+                    {entry.measured
+                      ? entry.domain
+                      : `${entry.domain} · Not measured`}
                   </span>
                 </span>
                 {selected && (

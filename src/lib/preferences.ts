@@ -2,11 +2,14 @@
 
 import { useSyncExternalStore } from "react";
 import {
-  DASHBOARD_PROJECTS,
   DATE_RANGES,
   DEFAULT_PROJECT_ID,
   DEFAULT_RANGE_ID,
 } from "@/lib/mock/dashboard";
+import {
+  PORTFOLIO_PROJECT_ID,
+  isStorableProjectId,
+} from "@/lib/projects/intake-rules";
 import type { ProjectId, RangeId } from "@/types/dashboard";
 
 /**
@@ -61,8 +64,17 @@ const STORAGE_KEY = "nexra.preferences.v1";
 const VALIDATORS: {
   [K in keyof Preferences]: (value: unknown) => value is Preferences[K];
 } = {
+  /**
+   * Any id a project could be stored under, plus the roll-up. It cannot be
+   * checked against the roster here: this module runs in the browser with no
+   * repository to ask, and the roster is whatever the configured store holds.
+   * So the shape is validated and existence is not — the Command Center
+   * resolves the id against the roster it was given and falls back to the
+   * roll-up when nothing matches.
+   */
   commandCenterProject: (value): value is ProjectId =>
-    DASHBOARD_PROJECTS.some((project) => project.id === value),
+    typeof value === "string" &&
+    (value === PORTFOLIO_PROJECT_ID || isStorableProjectId(value)),
   commandCenterRange: (value): value is RangeId =>
     DATE_RANGES.some((range) => range.id === value),
   projectsView: (value): value is RosterView =>

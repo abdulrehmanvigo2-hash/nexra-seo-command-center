@@ -19,7 +19,11 @@ import {
   SettingRow,
   SettingSwitch,
 } from "@/components/settings/setting-row";
-import { DASHBOARD_PROJECTS, DATE_RANGES } from "@/lib/mock/dashboard";
+import { DATE_RANGES } from "@/lib/mock/dashboard";
+import {
+  withPortfolioOption,
+  type ProjectOption,
+} from "@/lib/projects/selection";
 import {
   DEFAULT_PREFERENCES,
   PREFERENCES_STORAGE_KEY,
@@ -62,7 +66,12 @@ const VIEW_OPTIONS = [
   { value: "table", label: "Table" },
 ] as const;
 
-export function SettingsWorkspace() {
+export function SettingsWorkspace({
+  projects,
+}: {
+  /** The Projects roster, read on the server from the Projects repository. */
+  projects: readonly ProjectOption[];
+}) {
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
 
@@ -74,15 +83,19 @@ export function SettingsWorkspace() {
   const preferences = usePreferences();
   const atDefaults = isDefault(preferences);
 
+  // The same list the dashboard's own selector offers: the roll-up, then the
+  // roster from the Projects repository.
+  const options = withPortfolioOption(projects);
+
   const projectName =
-    DASHBOARD_PROJECTS.find(
+    options.find(
       (project) => project.id === preferences.commandCenterProject,
     )?.name ?? "All Projects";
   const rangeCaption =
     DATE_RANGES.find((range) => range.id === preferences.commandCenterRange)
       ?.caption ?? "Last 30 days";
   const defaultProjectName =
-    DASHBOARD_PROJECTS.find(
+    options.find(
       (project) => project.id === DEFAULT_PREFERENCES.commandCenterProject,
     )?.name ?? "All Projects";
 
@@ -144,9 +157,15 @@ export function SettingsWorkspace() {
                           event.target.value as ProjectId,
                         )
                       }
-                      options={DASHBOARD_PROJECTS.map((project) => ({
+                      /* A select offers text and nothing else, so an
+                         unmeasured project carries the fact in its label
+                         rather than being indistinguishable until it is
+                         chosen. */
+                      options={options.map((project) => ({
                         value: project.id,
-                        label: project.name,
+                        label: project.measured
+                          ? project.name
+                          : `${project.name} — not measured`,
                       }))}
                     />
                   </span>
