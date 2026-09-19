@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { SettingsWorkspace } from "@/components/settings/settings-workspace";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -14,11 +16,17 @@ export const metadata: Metadata = {
  * The workspace reads its section from the query string, so a link can open
  * Settings on a particular tab. `useSearchParams` needs a Suspense boundary
  * during static rendering, which is what this shell provides.
+ *
+ * The projects the Command Center default can be set to come from the Projects
+ * repository, so the setting offers exactly what the dashboard's own selector
+ * offers.
  */
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const projects = projectOptionsFrom(await projectRepository.listProjects());
+
   return (
     <Suspense fallback={<SettingsFallback />}>
-      <SettingsWorkspace />
+      <SettingsWorkspace projects={projects} />
     </Suspense>
   );
 }

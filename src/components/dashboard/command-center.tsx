@@ -16,8 +16,14 @@ import { KpiGrid, ScoreStrip } from "@/components/dashboard/metric-cards";
 import { PerformanceChart } from "@/components/dashboard/performance-chart";
 import { PriorityActions } from "@/components/dashboard/priority-actions";
 import { TechnicalSnapshot } from "@/components/dashboard/technical-snapshot";
+import { UnmeasuredSelectionNotice } from "@/components/projects/unmeasured-selection-notice";
 import { SectionHeader } from "@/components/ui/section-header";
-import { getDashboardSnapshot } from "@/lib/mock/dashboard";
+import { DATA_AS_OF, getDashboardSnapshot } from "@/lib/mock/dashboard";
+import {
+  PORTFOLIO_OPTION,
+  withPortfolioOption,
+  type ProjectOption,
+} from "@/lib/projects/selection";
 import { usePreference } from "@/lib/preferences";
 import type { ProjectId, RangeId } from "@/types/dashboard";
 
@@ -32,8 +38,20 @@ import type { ProjectId, RangeId } from "@/types/dashboard";
  * A client component because the selection is interactive. The snapshot
  * builder is pure and deterministic, so the server render and the first client
  * render produce identical markup.
+ *
+ * The roster arrives as a prop, read by the route through the Projects
+ * repository, so every stored project is selectable here — not only the nine
+ * the fixture layer models. What a stored project does *not* get is invented
+ * figures: the snapshot builder knows nine ids and silently answers with the
+ * roll-up for anything else, so an unmeasured selection is resolved before the
+ * builder is called and the page says there is nothing to show instead.
  */
-export function CommandCenter() {
+export function CommandCenter({
+  projects,
+}: {
+  /** The Projects roster, read on the server from the Projects repository. */
+  projects: readonly ProjectOption[];
+}) {
   /**
    * The opening project and window come from Settings; an explicit choice
    * here overrides them for the rest of the session.
@@ -49,8 +67,25 @@ export function CommandCenter() {
   const [chosenProject, setChosenProject] = useState<ProjectId | null>(null);
   const [chosenRange, setChosenRange] = useState<RangeId | null>(null);
 
-  const projectId = chosenProject ?? preferredProject;
+  const requestedProject = chosenProject ?? preferredProject;
   const rangeId = chosenRange ?? preferredRange;
+
+  const options = useMemo(() => withPortfolioOption(projects), [projects]);
+
+  /**
+   * The selection, resolved against the roster that actually exists.
+   *
+   * A stored preference outlives the roster it was chosen from — a data source
+   * switched, a project that is no longer listed — and an id nothing matches
+   * would otherwise reach `getDashboardSnapshot`, which answers with the
+   * roll-up for any id it does not know. That fallback is fine as a
+   * destination and dangerous as a silent one, so it happens here, once, where
+   * the header and the figures both read the same resolved option and agree on
+   * what is on screen.
+   */
+  const project =
+    options.find((option) => option.id === requestedProject) ?? PORTFOLIO_OPTION;
+  const projectId = project.id;
 
   const [refreshing, setRefreshing] = useState(false);
   const [refreshedNow, setRefreshedNow] = useState(false);
@@ -72,9 +107,12 @@ export function CommandCenter() {
     timers.current.push(timer);
   };
 
+  // Nothing has measured this project, so nothing is built for it. The
+  // builder is not called at all: every section below reads the snapshot, and
+  // a snapshot for an unknown id is another project's numbers.
   const snapshot = useMemo(
-    () => getDashboardSnapshot(projectId, rangeId),
-    [projectId, rangeId],
+    () => (project.measured ? getDashboardSnapshot(projectId, rangeId) : null),
+    [project.measured, projectId, rangeId],
   );
 
   const selectProject = (id: ProjectId) => {
@@ -107,20 +145,41 @@ export function CommandCenter() {
     schedule(() => setAnalysisQueued(false), 4_000);
   };
 
+  const header = (
+    <DashboardHeader
+      project={project}
+      projects={options}
+      onProjectChange={selectProject}
+      measured={project.measured}
+      range={rangeId}
+      onRangeChange={selectRange}
+      generatedAt={snapshot?.generatedAt ?? DATA_AS_OF}
+      refreshing={refreshing}
+      refreshedNow={refreshedNow}
+      onRefresh={refresh}
+      analysisQueued={analysisQueued}
+      onRunAnalysis={runAnalysis}
+    />
+  );
+
+  /*
+    An unmeasured project keeps the header — it is the only way back to
+    another selection — and nothing else. Every section below this point is a
+    view onto the snapshot, and there is no snapshot: showing them empty would
+    read as zeroes, and showing them full would be some other project's work.
+  */
+  if (!snapshot) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <UnmeasuredSelectionNotice name={project.name} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <DashboardHeader
-        project={snapshot.project}
-        onProjectChange={selectProject}
-        range={rangeId}
-        onRangeChange={selectRange}
-        generatedAt={snapshot.generatedAt}
-        refreshing={refreshing}
-        refreshedNow={refreshedNow}
-        onRefresh={refresh}
-        analysisQueued={analysisQueued}
-        onRunAnalysis={runAnalysis}
-      />
+      {header}
 
       <section className="space-y-3">
         <SectionHeader
