@@ -51,13 +51,45 @@ const client = createSupabaseServerClient<CrawlsDatabase>(config);
 const crawls = createSupabaseCrawlStore(client);
 const pagesStore = createSupabaseCrawlPageStore(client);
 
+/**
+ * Says which kind of problem an error is, rather than leaving "unreachable"
+ * to mean any of five different things.
+ */
+function diagnose(error: { message?: string; code?: string; details?: string; hint?: string }): string {
+  const code = error.code ?? "";
+  const message = error.message ?? "";
+  if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network/i.test(message)) {
+    return "NETWORK — the Supabase host could not be reached from this machine";
+  }
+  if (code === "PGRST301" || /jwt|api key|unauthorized/i.test(message)) {
+    return "CREDENTIALS — SUPABASE_SERVICE_ROLE_KEY is missing, wrong, or not the secret key";
+  }
+  if (code === "PGRST205" || /schema cache/i.test(message)) {
+    return "API — the table exists but PostgREST has not picked it up; run: notify pgrst, 'reload schema';";
+  }
+  if (code === "42P01") return "SCHEMA — the table does not exist in this database";
+  if (code === "42501") return "PERMISSION — the key cannot read this table (grants or RLS)";
+  if (code === "42703") return "SCRIPT — this check asked for a column the table does not have";
+  return "UNCLASSIFIED";
+}
+
 for (const table of ["crawls", "crawl_pages", "crawl_page_signals"] as const) {
-  const { error } = await client.from(table).select("crawl_id", { count: "exact", head: true }).limit(1);
-  // `crawls` has no crawl_id column; a column error still proves the table is
-  // there and reachable, which is what is being checked.
-  const reachable = error === null || /column/i.test(error.message);
-  line(`${table.padEnd(20)} ${reachable ? "reachable" : `UNREACHABLE — ${error?.message}`}`);
-  if (!reachable) fail(`${table} is not available`);
+  // `select("*")` rather than a named column: the three tables do not share a
+  // key name, and asking for one that is absent fails the check for a reason
+  // that has nothing to do with whether the table is reachable. No `head`
+  // either — PostgREST returns no body for a HEAD request, so an error comes
+  // back with an empty message and says nothing at all.
+  const { count, error } = await client.from(table).select("*", { count: "exact" }).limit(1);
+  if (error) {
+    line(`${table.padEnd(20)} UNREACHABLE`);
+    line(`  diagnosis  ${diagnose(error)}`);
+    line(`  code       ${error.code ?? "(none)"}`);
+    line(`  message    ${error.message || "(empty)"}`);
+    if (error.details) line(`  details    ${error.details}`);
+    if (error.hint) line(`  hint       ${error.hint}`);
+    fail(`${table} is not available`);
+  }
+  line(`${table.padEnd(20)} reachable, ${count ?? 0} row(s)`);
 }
 
 head("2. The crawl");
