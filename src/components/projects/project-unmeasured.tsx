@@ -4,6 +4,7 @@ import {
   ProjectMonogram,
   ProjectStatusBadge,
 } from "@/components/projects/project-chrome";
+import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
@@ -20,6 +21,14 @@ import type { ProjectRecord } from "@/types/project";
  * full workspace would mean inventing all of that, and a 404 would deny a
  * project that plainly exists. This shows what is known, in the same header
  * the measured workspace uses, and says plainly what is not there yet.
+ *
+ * Unmeasured is not the same as unknown. Where the project is mapped to a
+ * Search Console property, Google has observed it whether or not anything in
+ * this product has, so that report is shown here — the one screen for the
+ * project that would otherwise hold nothing. It is the same panel Analytics
+ * and Keyword Intelligence use, kept above the modelled-figures notice rather
+ * than inside it: observed clicks are not a health score, and nothing below
+ * borrows a number from it.
  */
 export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
   const facts: { icon: IconName; label: string; value: string }[] = [
@@ -110,6 +119,15 @@ export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
           ))}
         </dl>
       </section>
+
+      {/*
+        Thirty days, the window the rest of the product defaults to. This
+        screen has no window selector and does not gain one here: a control
+        that only reshapes one panel is not worth the second reading of the
+        page. Every state the panel can be in — not configured, no property,
+        access refused, no data, unavailable — says so itself.
+      */}
+      <SearchConsolePanel projectId={project.id} rangeId="30d" view="summary" />
 
       <Panel>
         <EmptyState
