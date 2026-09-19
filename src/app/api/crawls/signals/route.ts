@@ -38,7 +38,12 @@ export async function GET(request: NextRequest) {
 
     const result = await crawlService().signalsForProject(projectId);
     return result.ok
-      ? json({ crawl: result.crawl, signals: result.signals, unread: result.unread })
+      ? json({
+          crawl: result.crawl,
+          signals: result.signals,
+          unread: result.unread,
+          findings: result.findings,
+        })
       : json({ error: result.reason }, FAILURE_STATUS[result.reason]);
   } catch (error) {
     logFailure("crawl signals read", error);

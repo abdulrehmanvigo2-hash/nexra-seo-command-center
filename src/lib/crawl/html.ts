@@ -1,3 +1,4 @@
+import { sameSite } from "@/lib/crawl/host";
 import type { PageSignals, SignalState } from "@/types/crawl";
 
 /**
@@ -338,16 +339,18 @@ export type LinkTally = {
  * fragment, `mailto:`, `tel:`, `javascript:`, a malformed href — is neither
  * internal nor external, and is counted apart rather than forced into one.
  *
- * The host is compared exactly, the same way the URL policy compares it: a
- * subdomain is a different host, and `evil-example.com` does not end up
- * internal to `example.com`.
+ * The host is compared by the same rule the URL policy uses, and from the same
+ * module so the two cannot drift: a site and its `www.` form are one site, an
+ * arbitrary subdomain is not, and `evil-example.com` does not end up internal
+ * to `example.com`. Comparing exactly here was wrong the moment a crawl began
+ * following a site's own apex-to-www redirect — every link on a `www` page
+ * then counted as external, and a well-linked page read as an orphan.
  */
 export function classifyLinks(
   hrefs: readonly string[],
   base: string,
   site: string,
 ): LinkTally {
-  const host = site.toLowerCase();
   let internal = 0;
   let external = 0;
   let other = 0;
@@ -375,7 +378,7 @@ export function classifyLinks(
       other += 1;
       continue;
     }
-    if (resolved.hostname.toLowerCase() === host) internal += 1;
+    if (sameSite(resolved.hostname, site)) internal += 1;
     else external += 1;
   }
 

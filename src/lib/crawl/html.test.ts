@@ -307,3 +307,45 @@ describe("helpers", () => {
     assert.equal(normaliseText("  a \n\t b  "), "a b");
   });
 });
+
+describe("classifyLinks and the site's two names", () => {
+  /**
+   * The crawl pins itself to the project's domain, which is usually the apex,
+   * while the site serves its pages from `www`. Comparing hosts exactly made
+   * every internal link on those pages external — so a page linking to six
+   * others reported no internal links out, and the analysis built on that
+   * reported it as linking nowhere.
+   */
+
+  test("a link on the www page back to the site is internal", () => {
+    const tally = classifyLinks(
+      ["/services", "https://www.example.com/about", "https://example.com/pricing"],
+      "https://www.example.com/",
+      "example.com",
+    );
+    assert.deepEqual(tally, { internal: 3, external: 0, other: 0 });
+  });
+
+  test("and the reverse, for a crawl pinned to the www host", () => {
+    const tally = classifyLinks(
+      ["https://example.com/a", "https://www.example.com/b"],
+      "https://example.com/",
+      "www.example.com",
+    );
+    assert.deepEqual(tally, { internal: 2, external: 0, other: 0 });
+  });
+
+  test("nothing else becomes internal", () => {
+    const tally = classifyLinks(
+      [
+        "https://evil-example.com/",
+        "https://blog.example.com/",
+        "https://example.com.attacker.com/",
+        "https://wwwexample.com/",
+      ],
+      "https://www.example.com/",
+      "example.com",
+    );
+    assert.deepEqual(tally, { internal: 0, external: 4, other: 0 });
+  });
+});

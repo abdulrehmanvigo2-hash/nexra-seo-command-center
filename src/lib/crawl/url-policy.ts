@@ -1,6 +1,7 @@
 import "server-only";
 
 import { lookup as dnsLookup } from "node:dns/promises";
+import { sameSite } from "@/lib/crawl/host";
 import type { UrlCheck, UrlRefusal } from "@/types/crawl";
 
 /**
@@ -70,36 +71,6 @@ export function canonicaliseUrl(input: string, base?: string): URL | null {
 
 function refuse(refusal: UrlRefusal): UrlCheck {
   return { ok: false, refusal };
-}
-
-/**
- * A host with its leading `www.` removed, if it had one.
- *
- * `www.example.com` and `example.com` are one site: almost every site on the
- * web serves one and redirects to it from the other, and which of the two an
- * operator typed into the project's domain field is an accident. Treating them
- * as different hosts means the very first hop of a crawl — the apex redirecting
- * to the canonical www host, or the reverse — is refused as off-site, and the
- * site reads as unreachable when it is simply canonicalising.
- *
- * Only the exact label `www` is dropped, and only once. Everything else about
- * the hostname is left alone, so this widens "the same site" by one specific
- * host and by nothing else.
- */
-export function bareHost(hostname: string): string {
-  return hostname.startsWith("www.") ? hostname.slice(4) : hostname;
-}
-
-/**
- * Whether a URL's host is the site the crawl is pinned to.
- *
- * Compared as whole labels rather than by suffix: `evil-example.com` ends with
- * `example.com` under a naive check, and a crawl that wanders onto another host
- * is both a bug and a way to make this server fetch somewhere it was never
- * pointed. The one host treated as the same site is the `www.` pair above.
- */
-function sameSite(hostname: string, site: string): boolean {
-  return bareHost(hostname) === bareHost(site.toLowerCase());
 }
 
 /**

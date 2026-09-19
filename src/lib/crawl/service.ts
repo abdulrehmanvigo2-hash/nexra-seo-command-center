@@ -1,4 +1,5 @@
 import type { CrawlPageStore, CrawlStore } from "@/lib/crawl/contract";
+import { findingsFor, type CrawlFinding } from "@/lib/crawl/findings";
 import { runPageFetchPass, type PageFetchOptions } from "@/lib/crawl/page-fetcher";
 import { DEFAULT_CRAWL_DELAY_MS } from "@/lib/crawl/politeness";
 import { crawlDelayMs } from "@/lib/crawl/robots";
@@ -168,6 +169,14 @@ export type CrawlService = {
          * rows that already exist, nothing computed.
          */
         unread: readonly CrawlPage[];
+        /**
+         * Deterministic findings over that crawl's own evidence.
+         *
+         * Empty until the pass completes: a rule counted over half a crawl
+         * would describe the half, and "no duplicate titles" across three of
+         * seven pages is not a fact about the site.
+         */
+        findings: readonly CrawlFinding[];
       }
     | CrawlFailure
   >;
@@ -311,7 +320,7 @@ export function createCrawlService(dependencies: CrawlServiceDependencies): Craw
       const resolved = await resolve(projectId);
       if (!resolved.ok) return resolved;
       const [latest] = await store.listForProject(resolved.project.id, 1);
-      if (!latest) return { ok: true, crawl: null, signals: [], unread: [] };
+      if (!latest) return { ok: true, crawl: null, signals: [], unread: [], findings: [] };
       const capped = Math.min(limit, MAX_SIGNALS_READ);
       const [signals, all] = await Promise.all([
         pages.listSignals(latest.id, capped),
@@ -324,6 +333,7 @@ export function createCrawlService(dependencies: CrawlServiceDependencies): Craw
         // Anything the crawl did not read: failed, refused, skipped, or still
         // queued. `fetched` is the only state that produces signals.
         unread: all.filter((page) => page.state !== "fetched").slice(0, capped),
+        findings: latest.status === "completed" ? findingsFor(signals, all) : [],
       };
     },
   };

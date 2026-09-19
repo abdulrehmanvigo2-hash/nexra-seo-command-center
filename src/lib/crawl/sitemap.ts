@@ -1,7 +1,8 @@
 import "server-only";
 
 import { fetchPage, fetchRobots, type FetchPageOptions } from "@/lib/crawl/fetcher";
-import { bareHost, checkUrl } from "@/lib/crawl/url-policy";
+import { bareHost } from "@/lib/crawl/host";
+import { checkUrl } from "@/lib/crawl/url-policy";
 import type {
   DiscoveredUrl,
   DiscoveryLimit,
