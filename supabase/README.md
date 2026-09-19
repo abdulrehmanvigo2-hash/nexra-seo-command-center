@@ -48,6 +48,37 @@ SUPABASE_SERVICE_ROLE_KEY=...
 The table has row level security enabled and no policies, so only the server,
 using the secret key, can read or write it.
 
+## Crawls
+
+`public.crawls` and `public.crawl_urls` (migration
+`20260919120000_create_crawls.sql`) record what the product found when it asked
+a real website what it has. One `crawls` row is one discovery pass over one
+project's site: it reads robots.txt, follows the sitemaps that file advertises
+(or `/sitemap.xml` when it advertises none), and writes the page URLs the site
+claims to have into `crawl_urls`.
+
+This is the first table holding evidence rather than something the agency
+typed, and it is deliberately narrow. A discovered URL has **not** been
+fetched: there is no page content, status code, title or score here, because
+nothing has measured those yet. `limits` being non-empty means the pass hit a
+bound and the inventory is a sample, never a complete list — nothing
+downstream may present it as one.
+
+- Lifecycle, enforced by a trigger for every writer, the service role
+  included: `queued → discovering → completed | failed`, and `cancelled` from
+  either of the first two. A crawl's request — project, site, source, who
+  asked — never changes.
+- One crawl per project at a time (partial unique index). A second request
+  while one is in flight returns the one already running.
+- `failure_code` is a fixed code, never exception text: the row outlives the
+  request that wrote it and an error message can quote a URL.
+- Same access model as `projects`: row level security with no policies,
+  granted to `service_role` only.
+
+Nothing calls these tables yet — there is no route, no UI and no schedule.
+`src/lib/crawl` holds the fetch policy, robots handling and sitemap discovery
+they are built for.
+
 ## Agent runs
 
 `public.agent_runs` (migration `20260914120000_create_agent_runs.sql`) records

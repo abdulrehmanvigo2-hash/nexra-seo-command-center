@@ -134,3 +134,101 @@ export type RobotsPolicy =
     }
   | { readonly state: "missing" }
   | { readonly state: "unavailable" };
+
+// ---------------------------------------------------------------------------
+// Sitemaps
+// ---------------------------------------------------------------------------
+
+/** Where a sitemap document came from. */
+export type SitemapSource =
+  /** A `Sitemap:` line in robots.txt. */
+  | "robots"
+  /** The conventional `/sitemap.xml`, tried when robots.txt named none. */
+  | "well-known"
+  /** Listed inside a sitemap index. */
+  | "index";
+
+/** What one sitemap document turned out to be. */
+export type SitemapKind = "urlset" | "sitemapindex" | "unknown";
+
+/** One sitemap the discovery pass tried to read. */
+export type SitemapDocument = {
+  readonly url: string;
+  readonly source: SitemapSource;
+  readonly kind: SitemapKind;
+  /** `<loc>` entries found, before deduplication or policy filtering. */
+  readonly locations: number;
+  /** Null when the document was read; otherwise why it was not. */
+  readonly failure: FetchFailure | "malformed" | null;
+};
+
+/** One page URL a crawl found, and where it was listed. */
+export type DiscoveredUrl = {
+  readonly url: string;
+  readonly source: SitemapSource | "homepage";
+};
+
+/** Why a discovery pass stopped before it had read everything. */
+export type DiscoveryLimit = "sitemaps" | "urls" | "depth";
+
+/**
+ * Everything one discovery pass found.
+ *
+ * Always a result, never an exception: a site with no sitemap, a malformed one,
+ * or one that could not be served is an ordinary finding, and the crawl that
+ * follows needs to know which of those happened.
+ */
+export type SitemapDiscovery = {
+  readonly urls: readonly DiscoveredUrl[];
+  readonly documents: readonly SitemapDocument[];
+  readonly robots: RobotsPolicy["state"];
+  /** Limits that were reached; empty when the site was read in full. */
+  readonly limits: readonly DiscoveryLimit[];
+};
+
+// ---------------------------------------------------------------------------
+// The stored record
+// ---------------------------------------------------------------------------
+
+/** Where a crawl is in its lifecycle. Mirrors the table's own check. */
+export type CrawlStatus = "queued" | "discovering" | "completed" | "failed" | "cancelled";
+
+/**
+ * Why a crawl stopped early. A fixed code, never exception text: the row
+ * outlives the request that wrote it, and an error message can quote a URL.
+ */
+export type CrawlFailureCode =
+  /** The site would not serve robots.txt, so it has not consented to a crawl. */
+  | "robots-unavailable"
+  /** The project's own domain failed the URL policy. */
+  | "site-refused"
+  /** Nothing to read: no sitemap, and none could be found. */
+  | "no-sitemap"
+  | "store-error"
+  | "timeout";
+
+/** What asked for a crawl. */
+export type CrawlSource = "operator" | "schedule";
+
+/** One discovery pass over one project's website, as it is stored. */
+export type Crawl = {
+  readonly id: string;
+  readonly projectId: string;
+  /** The host visited, as resolved when the crawl was created. */
+  readonly site: string;
+  readonly status: CrawlStatus;
+  /** Null until the pass has read robots.txt. */
+  readonly robotsState: RobotsPolicy["state"] | null;
+  readonly sitemapCount: number;
+  readonly discoveredCount: number;
+  /** Non-empty means the inventory is a sample, never a complete list. */
+  readonly limits: readonly DiscoveryLimit[];
+  readonly failureCode: CrawlFailureCode | null;
+  /** Supabase Auth user id of the operator who asked, where one did. */
+  readonly createdBy: string | null;
+  readonly source: CrawlSource;
+  readonly createdAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly updatedAt: string;
+};

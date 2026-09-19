@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --experimental-strip-types --no-warnings --import ./scripts/test-setup.mjs --test \"src/**/*.test.ts\"",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "db:seed:generate": "node scripts/generate-projects-seed.mjs",
