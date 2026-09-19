@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { unavailableCrawlStore, type CrawlStore } from "@/lib/crawl/contract";
-import { createCrawlService, siteForProject } from "@/lib/crawl/service";
-import type { Crawl, CrawlFailureCode, SitemapDiscovery } from "@/types/crawl";
+import {
+  unavailableCrawlPageStore,
+  unavailableCrawlStore,
+  type CrawlPageStore,
+  type CrawlStore,
+} from "@/lib/crawl/contract";
+import { memoryPageStore } from "@/lib/crawl/page-fetcher.test";
+import { MAX_PAGES_PER_CRAWL, createCrawlService, siteForProject } from "@/lib/crawl/service";
+import type {
+  Crawl,
+  CrawlFailureCode,
+  FetchOutcome,
+  SitemapDiscovery,
+} from "@/types/crawl";
 import type { ProjectRecord } from "@/types/project";
 
 /**
@@ -55,7 +66,9 @@ function memoryStore() {
     [...crawls.values()].find(
       (crawl) =>
         crawl.projectId === projectId &&
-        (crawl.status === "queued" || crawl.status === "discovering"),
+        (crawl.status === "queued" ||
+          crawl.status === "discovering" ||
+          crawl.status === "fetching"),
     ) ?? null;
 
   const store: CrawlStore = {
@@ -71,6 +84,10 @@ function memoryStore() {
         sitemapCount: 0,
         discoveredCount: 0,
         limits: [],
+        pagesTotal: 0,
+        pagesFetched: 0,
+        pagesFailed: 0,
+        pagesSkipped: 0,
         failureCode: null,
         createdBy: input.createdBy,
         source: input.source,
@@ -114,9 +131,36 @@ function memoryStore() {
       crawls.set(id, next);
       return next;
     },
-    async fail(id, code: CrawlFailureCode) {
+    async beginFetching(id, discovery) {
       const crawl = crawls.get(id);
       if (!crawl || crawl.status !== "discovering") return null;
+      urls.set(id, discovery.urls);
+      const next: Crawl = {
+        ...crawl,
+        status: "fetching",
+        robotsState: discovery.robots,
+        sitemapCount: discovery.documents.length,
+        discoveredCount: discovery.urls.length,
+        limits: discovery.limits,
+      };
+      crawls.set(id, next);
+      return next;
+    },
+    async completeFetch(id, limits) {
+      const crawl = crawls.get(id);
+      if (!crawl || crawl.status !== "fetching") return null;
+      const next: Crawl = {
+        ...crawl,
+        status: "completed",
+        limits,
+        finishedAt: "2026-09-19T05:10:00Z",
+      };
+      crawls.set(id, next);
+      return next;
+    },
+    async fail(id, code: CrawlFailureCode) {
+      const crawl = crawls.get(id);
+      if (!crawl || (crawl.status !== "discovering" && crawl.status !== "fetching")) return null;
       const next: Crawl = {
         ...crawl,
         status: "failed",
@@ -143,10 +187,12 @@ function memoryStore() {
 
 function service(options: {
   store?: CrawlStore;
+  pages?: CrawlPageStore;
   project?: ProjectRecord | null;
   discover?: (site: string) => Promise<SitemapDiscovery>;
 } = {}) {
   const { store } = options.store ? { store: options.store } : memoryStore();
+  const pages = options.pages ?? memoryPageStore().store;
   const seen: string[] = [];
   const discover =
     options.discover ??
@@ -157,8 +203,12 @@ function service(options: {
   return {
     seen,
     store,
+    pages,
     service: createCrawlService({
       store,
+      pages,
+      readRobots: async () => ({ state: "parsed", groups: [], sitemaps: [] }),
+      fetchPass: { fetchPage: async () => { throw new Error("not used"); } },
       projects: {
         async getProjectById(id) {
           const project = options.project === undefined ? PROJECT : options.project;
@@ -194,7 +244,7 @@ describe("startDiscovery", () => {
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.equal(result.started, true);
-    assert.equal(result.crawl.status, "completed");
+    assert.equal(result.crawl.status, "fetching");
     assert.equal(result.crawl.discoveredCount, 2);
     assert.equal(result.crawl.sitemapCount, 1);
     assert.equal(result.crawl.robotsState, "parsed");
@@ -246,7 +296,7 @@ describe("startDiscovery", () => {
       }),
     });
     const result = await crawls.startDiscovery("operator-1", "nexra-agency");
-    assert.equal(result.ok && result.crawl.status, "completed");
+    assert.equal(result.ok && result.crawl.status, "fetching");
     assert.equal(result.ok && result.crawl.discoveredCount, 1);
   });
 
@@ -291,6 +341,8 @@ describe("startDiscovery", () => {
   test("answers unavailable where crawls are not stored", async () => {
     const crawls = createCrawlService({
       store: unavailableCrawlStore,
+      pages: unavailableCrawlPageStore,
+      readRobots: async () => ({ state: "missing" }),
       projects: { async getProjectById() { return PROJECT; } },
       discover: async () => DISCOVERY,
     });
@@ -310,6 +362,8 @@ describe("duplicate crawls", () => {
 
     const crawls = createCrawlService({
       store,
+      pages: memoryPageStore().store,
+      readRobots: async () => ({ state: "missing" }),
       projects: { async getProjectById() { return PROJECT; } },
       discover: async () => {
         await held;
@@ -330,7 +384,7 @@ describe("duplicate crawls", () => {
 
     gate.open();
     const settled = await first;
-    assert.equal(settled.ok && settled.crawl.status, "completed");
+    assert.equal(settled.ok && settled.crawl.status, "fetching");
 
     // Exactly one crawl exists for the project.
     assert.equal((await store.listForProject("nexra-agency")).length, 1);
@@ -338,7 +392,8 @@ describe("duplicate crawls", () => {
 
   test("a new pass may start once the previous one has finished", async () => {
     const { service: crawls, store } = service();
-    await crawls.startDiscovery("operator-1", "nexra-agency");
+    const first = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (first.ok) await store.completeFetch(first.crawl.id, []);
     const again = await crawls.startDiscovery("operator-1", "nexra-agency");
     assert.equal(again.ok && again.started, true);
     assert.equal((await store.listForProject("nexra-agency")).length, 2);
@@ -358,7 +413,7 @@ describe("latestForProject", () => {
     const result = await crawls.latestForProject("nexra-agency");
     assert.equal(result.ok, true);
     if (!result.ok || result.crawl === null) return assert.fail("expected a crawl");
-    assert.equal(result.crawl.status, "completed");
+    assert.equal(result.crawl.status, "fetching");
   });
 
   test("validates the project the same way starting one does", async () => {
@@ -370,5 +425,122 @@ describe("latestForProject", () => {
     const unknown = service({ project: null });
     const result = await unknown.service.latestForProject("nexra-agency");
     assert.equal(result.ok === false && result.reason, "unknown-project");
+  });
+});
+
+describe("runFetchSlice", () => {
+  /** A service whose discovery hands over `count` pages, with a fake fetch. */
+  const withPages = (count: number, fetchPage?: (url: string) => Promise<FetchOutcome>) => {
+    const memory = memoryPageStore();
+    const { store } = memoryStore();
+    const asked: string[] = [];
+    const crawls = createCrawlService({
+      store,
+      pages: memory.store,
+      readRobots: async () => ({ state: "missing" }),
+      projects: { async getProjectById() { return PROJECT; } },
+      discover: async () => ({
+        urls: Array.from({ length: count }, (_, i) => ({
+          url: `https://nexraagency.com/p${i}`,
+          source: "robots" as const,
+        })),
+        documents: [],
+        robots: "parsed",
+        limits: [],
+      }),
+      fetchPass: {
+        crawlDelayMs: 0,
+        fetchPage: async (url) => {
+          asked.push(url);
+          return (
+            fetchPage?.(url) ??
+            ({
+              state: "fetched",
+              url,
+              status: 200,
+              contentType: "text/html",
+              body: "",
+              bytes: 1,
+              elapsedMs: 1,
+              redirects: [],
+            } as FetchOutcome)
+          );
+        },
+      },
+    });
+    return { crawls, store, memory, asked };
+  };
+
+  test("discovery queues the pages and leaves the crawl fetching", async () => {
+    const { crawls, memory } = withPages(4);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    assert.equal(started.ok && started.crawl.status, "fetching");
+    assert.equal(await memory.store.countPendingPages(started.ok ? started.crawl.id : ""), 4);
+  });
+
+  test("a slice fetches the queue and completes the crawl when it empties", async () => {
+    const { crawls } = withPages(3);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+
+    const slice = await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+    assert.equal(slice.ok, true);
+    if (!slice.ok) return;
+    assert.equal(slice.pass.fetched, 3);
+    assert.equal(slice.pass.remaining, 0);
+    assert.equal(slice.crawl.status, "completed");
+  });
+
+  test("a slice that leaves work keeps the crawl fetching", async () => {
+    const { crawls } = withPages(5);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+
+    const first = await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 2 });
+    assert.equal(first.ok && first.crawl.status, "fetching");
+    assert.equal(first.ok && first.pass.remaining, 3);
+
+    const second = await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+    assert.equal(second.ok && second.crawl.status, "completed");
+  });
+
+  test("slices never fetch the same page twice", async () => {
+    const { crawls, asked } = withPages(6);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+    await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 2 });
+    await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 2 });
+    await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+    assert.equal(asked.length, 6);
+    assert.equal(new Set(asked).size, 6);
+  });
+
+  test("a slice on a crawl that is not fetching does nothing", async () => {
+    const { crawls } = withPages(1);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+    await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+
+    const again = await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+    assert.equal(again.ok && again.crawl.status, "completed");
+    assert.equal(again.ok && again.pass.claimed, 0);
+  });
+
+  test("an unknown crawl is refused", async () => {
+    const { crawls } = withPages(1);
+    const result = await crawls.runFetchSlice("no-such-crawl", { budgetMs: 1_000, maxPages: 1 });
+    assert.equal(result.ok === false && result.reason, "unknown-project");
+  });
+
+  test("the page cap is applied at hand-over and recorded on the crawl", async () => {
+    const { crawls, memory } = withPages(MAX_PAGES_PER_CRAWL + 7);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+    assert.equal(started.crawl.limits.includes("pages"), true, "a capped crawl says it is a sample");
+    assert.equal(
+      await memory.store.countPendingPages(started.crawl.id),
+      MAX_PAGES_PER_CRAWL,
+      "no more than the cap is ever queued",
+    );
   });
 });

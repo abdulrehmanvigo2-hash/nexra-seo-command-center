@@ -16,14 +16,20 @@ import { CRAWL_READ_COLUMNS, CRAWL_URL_READ_COLUMNS } from "@/lib/crawl/supabase
  * and a parser is a second thing that can disagree with Postgres.
  */
 
-const SQL = readFileSync(
-  new URL("../../../../supabase/migrations/20260919120000_create_crawls.sql", import.meta.url),
-  "utf8",
-);
+const read = (name: string) =>
+  readFileSync(new URL(`../../../../supabase/migrations/${name}`, import.meta.url), "utf8");
+
+/** The crawl schema is two migrations; the second widens what the first made. */
+const CRAWLS_SQL = read("20260919120000_create_crawls.sql");
+const PAGES_SQL = read("20260920120000_create_crawl_pages.sql");
+const SQL = `${CRAWLS_SQL}\n${PAGES_SQL}`;
 
 /** The quoted values of an `in (...)` list following a named constraint. */
 function constraintValues(constraint: string): string[] {
-  const clause = SQL.split(constraint)[1];
+  // The last statement naming a constraint is the one in force: the second
+  // migration drops and re-adds the two it widens.
+  const parts = SQL.split(constraint);
+  const clause = parts[parts.length - 1];
   assert.ok(clause !== undefined, `constraint ${constraint} is not in the migration`);
   const list = clause.match(/in\s*\(([^)]*)\)/i);
   assert.ok(list, `constraint ${constraint} has no in (...) list`);
@@ -35,11 +41,15 @@ function declaredColumns(table: string): string[] {
   const block = SQL.split(`create table public.${table} (`)[1];
   assert.ok(block !== undefined, `table ${table} is not in the migration`);
   const body = block.split("\n);")[0];
-  return body
+  const created = body
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => /^[a-z_]+ (text|uuid|integer|timestamptz|text\[\])\b/.test(line))
+    .filter((line) => /^[a-z_]+ (text|uuid|integer|timestamptz|jsonb|text\[\])\b/.test(line))
     .map((line) => line.split(" ")[0]);
+
+  // Columns a later migration added to the same table count as declared.
+  const added = [...SQL.matchAll(/add column ([a-z_]+)\s/g)].map((match) => match[1]);
+  return [...created, ...(table === "crawls" ? added : [])];
 }
 
 describe("crawls migration agrees with the TypeScript", () => {
@@ -49,7 +59,54 @@ describe("crawls migration agrees with the TypeScript", () => {
       "completed",
       "discovering",
       "failed",
+      "fetching",
       "queued",
+    ]);
+  });
+
+  test("page states match CrawlPageState", () => {
+    assert.deepEqual(constraintValues("crawl_pages_state_valid"), [
+      "failed",
+      "fetched",
+      "fetching",
+      "pending",
+      "refused",
+      "skipped",
+    ]);
+  });
+
+  test("page failures match CrawlPageFailure", () => {
+    assert.deepEqual(constraintValues("crawl_pages_failure_valid"), [
+      "lease-expired",
+      "network",
+      "redirect-refused",
+      "refused",
+      "robots-disallowed",
+      "timeout",
+      "too-large",
+      "too-many-redirects",
+      "unsupported-type",
+    ]);
+  });
+
+  test("page refusals match UrlRefusal", () => {
+    assert.deepEqual(constraintValues("crawl_pages_refusal_valid"), [
+      "credentials",
+      "dns",
+      "hostname",
+      "ip-literal",
+      "off-site",
+      "port",
+      "private-address",
+      "scheme",
+      "too-long",
+    ]);
+  });
+
+  test("skip reasons match CrawlPageSkipReason", () => {
+    assert.deepEqual(constraintValues("crawl_pages_skip_reason_valid"), [
+      "page-limit",
+      "robots-disallowed",
     ]);
   });
 
@@ -87,11 +144,12 @@ describe("crawls migration agrees with the TypeScript", () => {
   test("limit values match DiscoveryLimit", () => {
     // An array containment check rather than an `in (...)` list, so it is read
     // from the array literal itself and nothing beyond it.
-    const clause = SQL.split("crawls_limits_valid")[1];
+    const parts = SQL.split("crawls_limits_valid");
+    const clause = parts[parts.length - 1];
     const literal = clause.match(/array\[([^\]]*)\]/i);
     assert.ok(literal, "crawls_limits_valid has no array literal");
     const listed = [...literal[1].matchAll(/'([^']+)'/g)].map((match) => match[1]).sort();
-    assert.deepEqual(listed, ["depth", "sitemaps", "urls"]);
+    assert.deepEqual(listed, ["depth", "pages", "sitemaps", "urls"]);
   });
 
   test("every column the store reads exists in the migration", () => {
@@ -111,8 +169,8 @@ describe("crawls migration agrees with the TypeScript", () => {
     assert.match(SQL, /char_length\(url\) between 8 and 2048/);
   });
 
-  test("both tables have row level security and explicit grants", () => {
-    for (const table of ["crawls", "crawl_urls"]) {
+  test("every table has row level security and explicit grants", () => {
+    for (const table of ["crawls", "crawl_urls", "crawl_pages"]) {
       assert.match(SQL, new RegExp(`alter table public\\.${table} enable row level security`));
       assert.match(SQL, new RegExp(`grant select, insert, update, delete on table public\\.${table} to service_role`));
       assert.match(SQL, new RegExp(`revoke all on table public\\.${table} from anon`));
@@ -120,11 +178,24 @@ describe("crawls migration agrees with the TypeScript", () => {
     }
   });
 
-  test("the migration is additive: it creates and never drops or alters existing tables", () => {
-    assert.equal(/\bdrop\s+(table|column|constraint|index)\b/i.test(SQL), false);
-    // The only `alter table` statements are the two that enable RLS on the new
-    // tables; nothing reaches an existing one.
-    const alters = [...SQL.matchAll(/alter table public\.(\w+)/g)].map((m) => m[1]);
-    assert.deepEqual([...new Set(alters)].sort(), ["crawl_urls", "crawls"]);
+  test("no migration drops a table or a column", () => {
+    // Constraints and one partial index are dropped and immediately re-added
+    // with a wider definition, which keeps every existing row valid. Dropping
+    // a table or a column would not, and never happens.
+    assert.equal(/\bdrop\s+(table|column)\b/i.test(SQL), false);
+  });
+
+  test("the page migration only widens crawls and creates its own tables", () => {
+    const alters = [...PAGES_SQL.matchAll(/alter table public\.(\w+)/g)].map((m) => m[1]);
+    assert.deepEqual([...new Set(alters)].sort(), ["crawl_pages", "crawls"]);
+    const created = [...PAGES_SQL.matchAll(/create table public\.(\w+)/g)].map((m) => m[1]);
+    assert.deepEqual(created, ["crawl_pages"]);
+  });
+
+  test("every added column carries a default, so existing rows stay valid", () => {
+    for (const [, column] of PAGES_SQL.matchAll(/add column (\w+)[^,]*/g)) {
+      const clause = PAGES_SQL.split(`add column ${column}`)[1].split("add column")[0];
+      assert.match(clause, /default/, `${column} must have a default`);
+    }
   });
 });

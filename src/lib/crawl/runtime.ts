@@ -1,6 +1,8 @@
 import "server-only";
 
-import { unavailableCrawlStore } from "@/lib/crawl/contract";
+import { unavailableCrawlPageStore, unavailableCrawlStore } from "@/lib/crawl/contract";
+import { fetchPage, fetchRobots } from "@/lib/crawl/fetcher";
+import { createSupabaseCrawlPageStore } from "@/lib/crawl/supabase/page-store";
 import { createCrawlService, type CrawlService } from "@/lib/crawl/service";
 import { discoverSitemapUrls } from "@/lib/crawl/sitemap";
 import type { CrawlsDatabase } from "@/lib/crawl/supabase/schema";
@@ -37,6 +39,28 @@ const DISCOVERY_BUDGET = {
   maxDocuments: 20,
 } as const;
 
+/**
+ * What one page request may cost.
+ *
+ * Tighter than the fetch boundary's own defaults: a crawl makes hundreds of
+ * these, and a page that needs more than ten seconds or half a megabyte of
+ * HTML is not one this stage needs to wait for.
+ */
+const PAGE_FETCH = {
+  requestTimeoutMs: 10_000,
+  maxBytes: 500_000,
+  concurrency: 3,
+} as const;
+
+/**
+ * What one slice may spend.
+ *
+ * The routes allow 300 seconds; this leaves a wide margin for claiming,
+ * recording and answering. The page ceiling caps a slice even on a fast site,
+ * so one request never runs away with a crawl.
+ */
+export const FETCH_SLICE = { budgetMs: 200_000, maxPages: 60 } as const;
+
 function storesInSupabase(): boolean {
   return selectProjectDataSource(process.env) === "supabase";
 }
@@ -50,8 +74,15 @@ function configuredService(): CrawlService {
 
   return createCrawlService({
     store,
+    pages: storesInSupabase()
+      ? createSupabaseCrawlPageStore(
+          createSupabaseServerClient<CrawlsDatabase>(readSupabaseServerConfig(process.env)),
+        )
+      : unavailableCrawlPageStore,
     projects: projectRepository,
     discover: (site) => discoverSitemapUrls(site, DISCOVERY_BUDGET),
+    readRobots: (site) => fetchRobots(`https://${site}`, { timeoutMs: DISCOVERY_BUDGET.timeoutMs }),
+    fetchPass: { ...PAGE_FETCH, fetchPage },
   });
 }
 
@@ -70,11 +101,13 @@ export function crawlService(): CrawlService {
  * allowance is small: this is a button an operator presses when adding a
  * project, not something to hold down.
  */
-type LimitName = "start" | "read";
+type LimitName = "start" | "read" | "fetch-slice";
 
 const LIMITS: Readonly<Record<LimitName, { readonly limit: number; readonly windowSeconds: number }>> = {
   start: { limit: 10, windowSeconds: 600 },
   read: { limit: 300, windowSeconds: 600 },
+  /** Slices an operator's page may drive. Generous: each one is bounded work. */
+  "fetch-slice": { limit: 200, windowSeconds: 600 },
 };
 
 export function crawlLimiter(name: LimitName): AsyncRateLimiter {

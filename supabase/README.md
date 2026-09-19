@@ -79,6 +79,26 @@ Nothing calls these tables yet — there is no route, no UI and no schedule.
 `src/lib/crawl` holds the fetch policy, robots handling and sitemap discovery
 they are built for.
 
+### Page fetching
+
+`public.crawl_pages` (migration `20260920120000_create_crawl_pages.sql`) is
+both the queue and the record. One row per discovered URL: its state, and what
+the URL answered — status code, final URL, redirect chain, content type, bytes
+and duration, or the classified reason there was no answer. No titles, no
+headings, no scores; reading meaning out of a response is a later stage.
+
+- `pending` is the frontier. `crawl_pages_claim` leases a batch with
+  `for update skip locked`, so overlapping workers take disjoint pages;
+  a result is written only under a live lease, which is what makes a retried
+  or duplicated worker idempotent.
+- `crawl_pages_recover_expired` returns lapsed leases to the queue, or ends
+  them as `lease-expired` once no attempt remains. A crashed worker therefore
+  costs a lease, never progress.
+- The four counters on `crawls` are maintained by a trigger, so the panel reads
+  one row and two workers finishing at once cannot leave the totals wrong.
+- `crawls` gained a `fetching` status and a `pages` limit. Both widen existing
+  constraints; every row already stored stays valid.
+
 ## Agent runs
 
 `public.agent_runs` (migration `20260914120000_create_agent_runs.sql`) records

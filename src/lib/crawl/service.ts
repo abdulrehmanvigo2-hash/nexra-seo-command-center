@@ -1,7 +1,17 @@
-import type { CrawlStore } from "@/lib/crawl/contract";
+import type { CrawlPageStore, CrawlStore } from "@/lib/crawl/contract";
+import { runPageFetchPass, type PageFetchOptions } from "@/lib/crawl/page-fetcher";
+import { DEFAULT_CRAWL_DELAY_MS } from "@/lib/crawl/politeness";
+import { crawlDelayMs } from "@/lib/crawl/robots";
 import { checkUrl } from "@/lib/crawl/url-policy";
 import { isStorableProjectId } from "@/lib/projects/intake-rules";
-import type { Crawl, CrawlSource, SitemapDiscovery } from "@/types/crawl";
+import type {
+  Crawl,
+  CrawlLimit,
+  CrawlSource,
+  FetchPassResult,
+  RobotsPolicy,
+  SitemapDiscovery,
+} from "@/types/crawl";
 import type { ProjectRecord } from "@/types/project";
 
 /**
@@ -49,8 +59,51 @@ export type StartCrawlResult =
     }
   | CrawlFailure;
 
+/**
+ * The most pages one crawl will fetch.
+ *
+ * Deliberately small for a first version. A site with more listed pages is
+ * crawled as a sample and says so: the crawl carries the `pages` limit, and
+ * every screen reading it must present the result as part of the site.
+ */
+export const MAX_PAGES_PER_CRAWL = 500;
+
+/** What a slice reports when the crawl has no queue to work. */
+const IDLE_PASS: FetchPassResult = {
+  claimed: 0,
+  fetched: 0,
+  failed: 0,
+  skipped: 0,
+  recovered: 0,
+  stoppedBy: "empty",
+  remaining: 0,
+};
+
 export type CrawlServiceDependencies = {
   readonly store: CrawlStore;
+  readonly pages: CrawlPageStore;
+  /**
+   * Reads the site's robots.txt for a fetch slice. A slice spends one request
+   * on this rather than storing the rules, so a site that changes its mind
+   * between slices is obeyed rather than a stale copy.
+   */
+  readonly readRobots: (site: string) => Promise<RobotsPolicy>;
+  /** Everything the fetch pass needs beyond the crawl itself. */
+  readonly fetchPass?: Partial<
+    Pick<
+      PageFetchOptions,
+      | "concurrency"
+      | "batchSize"
+      | "leaseSeconds"
+      | "maxBytes"
+      | "requestTimeoutMs"
+      | "clock"
+      | "gate"
+      | "fetchOptions"
+      | "fetchPage"
+      | "crawlDelayMs"
+    >
+  >;
   readonly projects: {
     getProjectById(id: string): Promise<ProjectRecord | null>;
   };
@@ -79,10 +132,21 @@ export type CrawlService = {
     source?: CrawlSource,
   ): Promise<StartCrawlResult>;
   latestForProject(projectId: unknown): Promise<{ ok: true; crawl: Crawl | null } | CrawlFailure>;
+  /**
+   * Runs one bounded slice of the fetch stage and reports what is left.
+   *
+   * Safe to call repeatedly and from more than one caller at once: the queue
+   * hands out disjoint batches, and a slice that finds nothing left completes
+   * the crawl.
+   */
+  runFetchSlice(
+    crawlId: string,
+    budget: { readonly budgetMs: number; readonly maxPages: number },
+  ): Promise<{ ok: true; crawl: Crawl; pass: FetchPassResult } | CrawlFailure>;
 };
 
 export function createCrawlService(dependencies: CrawlServiceDependencies): CrawlService {
-  const { store, projects, discover } = dependencies;
+  const { store, pages, projects, discover, readRobots, fetchPass = {} } = dependencies;
 
   const resolve = async (
     projectId: unknown,
@@ -145,8 +209,56 @@ export function createCrawlService(dependencies: CrawlServiceDependencies): Craw
         return { ok: true, crawl: failed ?? started, started: true };
       }
 
-      const completed = await store.recordDiscovery(started.id, discovery);
-      return { ok: true, crawl: completed ?? started, started: true };
+      // The page cap is applied here, where the crawl can record that it was
+      // applied. Queueing everything and stopping partway would leave a crawl
+      // that looks complete and is not.
+      const capped = discovery.urls.slice(0, MAX_PAGES_PER_CRAWL);
+      const limits: CrawlLimit[] =
+        discovery.urls.length > MAX_PAGES_PER_CRAWL
+          ? [...discovery.limits, "pages"]
+          : [...discovery.limits];
+      const recorded = { ...discovery, urls: capped, limits };
+
+      if (capped.length === 0) {
+        const completed = await store.recordDiscovery(started.id, recorded);
+        return { ok: true, crawl: completed ?? started, started: true };
+      }
+
+      // Pages are queued before the crawl moves on, so a crawl in `fetching`
+      // always has a queue behind it.
+      await pages.enqueuePages(started.id, capped);
+      const handed = await store.beginFetching(started.id, recorded);
+      return { ok: true, crawl: handed ?? started, started: true };
+    },
+
+    async runFetchSlice(crawlId, budget) {
+      const crawl = await store.get(crawlId);
+      if (!crawl) return { ok: false, reason: "unknown-project" };
+      // Only a crawl in the fetch stage has a queue to work; anything else is
+      // either not there yet or already finished.
+      if (crawl.status !== "fetching") return { ok: true, crawl, pass: IDLE_PASS };
+
+      const robots = await readRobots(crawl.site);
+      if (!fetchPass.fetchPage) return { ok: false, reason: "unavailable" };
+      const pass = await runPageFetchPass({
+        ...fetchPass,
+        fetchPage: fetchPass.fetchPage,
+        crawlId: crawl.id,
+        site: crawl.site,
+        robots,
+        store: pages,
+        budgetMs: budget.budgetMs,
+        maxPages: budget.maxPages,
+        crawlDelayMs: Math.max(
+          crawlDelayMs(robots) ?? 0,
+          fetchPass.crawlDelayMs ?? DEFAULT_CRAWL_DELAY_MS,
+        ),
+      });
+
+      // Nothing left in the queue ends the crawl. Done here rather than in the
+      // pass so a slice stays a slice and the lifecycle stays in one place.
+      const finished = pass.remaining === 0 ? await store.completeFetch(crawl.id, crawl.limits) : null;
+      return { ok: true, crawl: finished ?? (await store.get(crawl.id)) ?? crawl, pass };
     },
 
     async latestForProject(projectId) {

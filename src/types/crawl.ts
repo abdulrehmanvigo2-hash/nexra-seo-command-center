@@ -191,7 +191,33 @@ export type SitemapDiscovery = {
 // ---------------------------------------------------------------------------
 
 /** Where a crawl is in its lifecycle. Mirrors the table's own check. */
-export type CrawlStatus = "queued" | "discovering" | "completed" | "failed" | "cancelled";
+export type CrawlStatus =
+  | "queued"
+  | "discovering"
+  /** Discovery handed over; the queued pages are being fetched. */
+  | "fetching"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/**
+ * Every bound a crawl can hit, discovery's and the fetch stage's.
+ *
+ * Recorded on the crawl so nothing downstream can read a partial pass as a
+ * complete one.
+ */
+export type CrawlLimit = DiscoveryLimit | "pages";
+
+/**
+ * A discovery result as the crawl records it.
+ *
+ * Same shape, but its limits may include one discovery cannot produce: the
+ * page cap is applied after the sitemaps are read, and it belongs on the same
+ * list so nothing has to look in two places to learn a crawl is a sample.
+ */
+export type RecordedDiscovery = Omit<SitemapDiscovery, "limits"> & {
+  readonly limits: readonly CrawlLimit[];
+};
 
 /**
  * Why a crawl stopped early. A fixed code, never exception text: the row
@@ -221,8 +247,16 @@ export type Crawl = {
   readonly robotsState: RobotsPolicy["state"] | null;
   readonly sitemapCount: number;
   readonly discoveredCount: number;
-  /** Non-empty means the inventory is a sample, never a complete list. */
-  readonly limits: readonly DiscoveryLimit[];
+  /** Non-empty means the crawl is a sample, never a complete list. */
+  readonly limits: readonly CrawlLimit[];
+  /** Pages queued for fetching. Zero until discovery hands over. */
+  readonly pagesTotal: number;
+  /** Pages the server answered, whatever the status. */
+  readonly pagesFetched: number;
+  /** Pages with no answer: timeout, connection, too large, lease lost. */
+  readonly pagesFailed: number;
+  /** Pages not requested: refused by policy, robots, or past a limit. */
+  readonly pagesSkipped: number;
   readonly failureCode: CrawlFailureCode | null;
   /** Supabase Auth user id of the operator who asked, where one did. */
   readonly createdBy: string | null;
@@ -231,4 +265,88 @@ export type Crawl = {
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
   readonly updatedAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// One discovered URL, and what it answered
+// ---------------------------------------------------------------------------
+
+/**
+ * Where one URL is in the fetch stage.
+ *
+ * `pending` is the queue. `fetched` means the server answered — a 404 and a
+ * 500 are answers, and findings, not failures. The three ends that are not an
+ * answer are kept apart on purpose: `failed` is "we asked and got nothing",
+ * `refused` is "the URL policy would not let us ask", and `skipped` is "we
+ * chose not to ask", which is what robots.txt and a reached limit produce.
+ */
+export type CrawlPageState =
+  | "pending"
+  | "fetching"
+  | "fetched"
+  | "failed"
+  | "refused"
+  | "skipped";
+
+/** Why a page was deliberately not requested. */
+export type CrawlPageSkipReason = "robots-disallowed" | "page-limit";
+
+/** A failure the fetch stage can record beyond the fetcher's own set. */
+export type CrawlPageFailure = FetchFailure | "lease-expired";
+
+/** One discovered URL and everything observed about it. Facts only. */
+export type CrawlPage = {
+  readonly crawlId: string;
+  readonly url: string;
+  readonly state: CrawlPageState;
+  readonly attemptCount: number;
+  readonly maxAttempts: number;
+  readonly httpStatus: number | null;
+  /** Where the request ended up, after redirects. */
+  readonly finalUrl: string | null;
+  readonly redirects: readonly RedirectHop[];
+  readonly contentType: string | null;
+  readonly bytes: number | null;
+  readonly durationMs: number | null;
+  readonly failure: CrawlPageFailure | null;
+  readonly refusal: UrlRefusal | null;
+  readonly skipReason: CrawlPageSkipReason | null;
+  readonly discoveredAt: string;
+  readonly fetchedAt: string | null;
+};
+
+/** A leased page, with the token a result must be recorded against. */
+export type ClaimedPage = CrawlPage & { readonly leaseToken: string };
+
+/** What one attempt at one URL concluded. Written back under the lease. */
+export type PageObservation =
+  | {
+      readonly state: "fetched";
+      readonly httpStatus: number;
+      readonly finalUrl: string;
+      readonly redirects: readonly RedirectHop[];
+      readonly contentType: string | null;
+      readonly bytes: number;
+      readonly durationMs: number;
+    }
+  | {
+      readonly state: "failed";
+      readonly failure: CrawlPageFailure;
+      readonly refusal: UrlRefusal | null;
+      readonly redirects: readonly RedirectHop[];
+      readonly durationMs: number;
+    }
+  | { readonly state: "refused"; readonly refusal: UrlRefusal }
+  | { readonly state: "skipped"; readonly skipReason: CrawlPageSkipReason };
+
+/** What one slice of the fetch stage did. */
+export type FetchPassResult = {
+  readonly claimed: number;
+  readonly fetched: number;
+  readonly failed: number;
+  readonly skipped: number;
+  readonly recovered: number;
+  /** Why the slice stopped, so a caller knows whether to come back. */
+  readonly stoppedBy: "empty" | "budget" | "batch-limit";
+  readonly remaining: number;
 };

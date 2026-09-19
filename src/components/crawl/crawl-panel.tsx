@@ -97,13 +97,53 @@ export function CrawlPanel({ projectId }: { projectId: string }) {
   const crawl = load.status === "loaded" ? load.crawl : null;
   const running = isCrawlRunning(crawl);
 
+  /**
+   * Drives the next slice of the fetch stage.
+   *
+   * A crawl of hundreds of pages does not fit in one request, so the page asks
+   * for one bounded slice at a time. Closing the tab does not lose the crawl:
+   * the queue is in the database and the worker route can finish it.
+   */
+  const advance = useCallback(
+    async (crawlId: string) => {
+      try {
+        const response = await fetch("/api/crawls/pages", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ crawlId }),
+        });
+        if (!alive.current) return;
+        if (!response.ok) {
+          // A slice that will not run is not a reason to lose the status; the
+          // poll below keeps reporting whatever the crawl actually says.
+          setLoad({ status: "failed", message: messageForStatus(response.status) });
+          return;
+        }
+        const body = (await response.json()) as { crawl: Crawl };
+        if (alive.current) setLoad({ status: "loaded", crawl: body.crawl });
+      } catch {
+        if (alive.current) setLoad({ status: "failed", message: FAILED_TO_READ });
+      }
+    },
+    [],
+  );
+
+  // Read out of the record rather than closing over it, so the effect depends
+  // on the three things that actually decide what happens next.
+  const activeId = crawl?.id ?? null;
+  const activeStatus = crawl?.status ?? null;
+  const changedAt = crawl?.updatedAt ?? null;
+
   useEffect(() => {
-    if (!running) return;
-    timer.current = setTimeout(() => void read(), POLL_MS);
+    if (!running || activeId === null) return;
+    timer.current = setTimeout(() => {
+      void (activeStatus === "fetching" ? advance(activeId) : read());
+    }, POLL_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [running, read, crawl?.updatedAt]);
+  }, [running, read, advance, activeId, activeStatus, changedAt]);
 
   const start = async () => {
     if (starting || running) return;
@@ -138,7 +178,7 @@ export function CrawlPanel({ projectId }: { projectId: string }) {
       <PanelHeader
         eyebrow="Site discovery"
         title="Pages this site lists"
-        description="Reads the site's robots.txt and sitemaps to find out which pages it says it has. The first step of a crawl."
+        description="Reads the site's robots.txt and sitemaps, then fetches each page and records what it answered. No page is analysed yet."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {meta && (
@@ -197,14 +237,14 @@ export function CrawlPanel({ projectId }: { projectId: string }) {
             </p>
           </div>
 
-          {crawl.status === "completed" && (
-            <dl className="mt-3.5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {(crawl.status === "completed" || crawl.status === "fetching") && (
+            <dl className="mt-3.5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <Reading label="Pages listed" value={formatNumber(crawl.discoveredCount)} />
-              <Reading label="Sitemaps read" value={formatNumber(crawl.sitemapCount)} />
-              <Reading
-                label="robots.txt"
-                value={crawl.robotsState === "missing" ? "None published" : "Read"}
-              />
+              <Reading label="Queued" value={formatNumber(crawl.pagesTotal)} />
+              <Reading label="Fetched" value={formatNumber(crawl.pagesFetched)} />
+              <Reading label="Failed" value={formatNumber(crawl.pagesFailed)} />
+              {/* Refused by the URL policy, disallowed by robots, or past a limit. */}
+              <Reading label="Skipped" value={formatNumber(crawl.pagesSkipped)} />
             </dl>
           )}
 

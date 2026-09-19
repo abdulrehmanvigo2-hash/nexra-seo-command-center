@@ -1,9 +1,13 @@
 import type {
+  ClaimedPage,
   Crawl,
   CrawlFailureCode,
+  CrawlLimit,
+  CrawlPage,
   CrawlSource,
   DiscoveredUrl,
-  SitemapDiscovery,
+  PageObservation,
+  RecordedDiscovery,
 } from "@/types/crawl";
 
 /**
@@ -56,7 +60,19 @@ export type CrawlStore = {
    * crawl completed with rows missing: if the URLs cannot be written, the
    * crawl fails instead.
    */
-  recordDiscovery(id: string, discovery: SitemapDiscovery): Promise<Crawl | null>;
+  recordDiscovery(id: string, discovery: RecordedDiscovery): Promise<Crawl | null>;
+
+  /**
+   * Records what discovery found and hands the crawl to the fetch stage.
+   *
+   * Used instead of `recordDiscovery` when there are pages to fetch. The crawl
+   * moves to `fetching` rather than `completed`, so nothing reads it as
+   * finished while its queue is still full.
+   */
+  beginFetching(id: string, discovery: RecordedDiscovery): Promise<Crawl | null>;
+
+  /** fetching → completed, once the queue is empty. */
+  completeFetch(id: string, limits: readonly CrawlLimit[]): Promise<Crawl | null>;
 
   fail(id: string, code: CrawlFailureCode): Promise<Crawl | null>;
 
@@ -90,6 +106,12 @@ export const unavailableCrawlStore: CrawlStore = {
   async recordDiscovery() {
     return null;
   },
+  async beginFetching() {
+    return null;
+  },
+  async completeFetch() {
+    return null;
+  },
   async fail() {
     return null;
   },
@@ -97,6 +119,71 @@ export const unavailableCrawlStore: CrawlStore = {
     return null;
   },
   async listUrls() {
+    return [];
+  },
+};
+
+/**
+ * The queue side of a crawl: the discovered URLs, and what each answered.
+ *
+ * Separate from `CrawlStore` because a caller needs one or the other. The
+ * fetch pass never touches the crawl record, and the operator flow that starts
+ * a crawl never claims a page.
+ *
+ * Every method is safe to call twice. `enqueuePages` ignores URLs already
+ * queued, `recordPage` writes only under a live lease, and
+ * `recoverExpiredPages` touches only leases that have already lapsed — so a
+ * retried worker, an overlapping worker and a crashed worker all converge on
+ * the same rows rather than duplicating them.
+ */
+export type CrawlPageStore = {
+  /**
+   * Adds discovered URLs to the queue. Returns how many were new; a URL
+   * already queued for this crawl is left exactly as it is.
+   */
+  enqueuePages(crawlId: string, urls: readonly DiscoveredUrl[]): Promise<number>;
+
+  /** Leases up to `limit` pending pages. Concurrent callers get disjoint sets. */
+  claimPages(crawlId: string, limit: number, leaseSeconds: number): Promise<readonly ClaimedPage[]>;
+
+  /**
+   * Writes one attempt's outcome, if the lease is still this caller's. False
+   * when it is not — the page was recovered or claimed by someone else, and
+   * this result is stale and must not be written.
+   */
+  recordPage(
+    crawlId: string,
+    url: string,
+    leaseToken: string,
+    observation: PageObservation,
+  ): Promise<boolean>;
+
+  /** Returns lapsed leases to the queue, or ends them when no attempt remains. */
+  recoverExpiredPages(crawlId: string, limit: number): Promise<number>;
+
+  countPendingPages(crawlId: string): Promise<number>;
+
+  listPages(crawlId: string, limit?: number): Promise<readonly CrawlPage[]>;
+};
+
+/** The page queue for a deployment that does not store crawls. */
+export const unavailableCrawlPageStore: CrawlPageStore = {
+  async enqueuePages() {
+    return 0;
+  },
+  async claimPages() {
+    return [];
+  },
+  async recordPage() {
+    return false;
+  },
+  async recoverExpiredPages() {
+    return 0;
+  },
+  async countPendingPages() {
+    return 0;
+  },
+  async listPages() {
     return [];
   },
 };

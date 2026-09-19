@@ -30,7 +30,9 @@ registerHooks({
     }
     if (specifier.startsWith("@/")) {
       const path = specifier.slice(2);
-      const resolved = /\.[a-z]+$/i.test(path) ? path : `${path}.ts`;
+      // Only a real source extension counts: a specifier such as
+      // "…/page-fetcher.test" ends in a dot-word but is still a .ts file.
+      const resolved = /\.(ts|tsx|mts|cts|js|mjs|cjs|json)$/i.test(path) ? path : `${path}.ts`;
       return nextResolve(new URL(resolved, SRC).href, context);
     }
     return nextResolve(specifier, context);

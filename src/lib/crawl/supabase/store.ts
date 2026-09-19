@@ -57,10 +57,31 @@ export function createSupabaseCrawlStore(
     const { data, error } = await crawls()
       .select(CRAWL_READ_COLUMNS)
       .eq("project_id", projectId)
-      .in("status", ["queued", "discovering"])
+      .in("status", ["queued", "discovering", "fetching"])
       .maybeSingle();
     if (error) throw new CrawlStoreError("read active crawl", error);
     return data ? crawlRowToCrawl(data) : null;
+  };
+
+  /**
+   * Writes the discovered URLs before the crawl's status moves on. A pass that
+   * stored its counters and then failed to store its rows would read as a site
+   * with no pages, which is a finding nobody measured.
+   */
+  const storeDiscoveredUrls = async (id: string, discovery: { urls: readonly { url: string; source: string }[] }) => {
+    const rows = discoveredUrlInserts(
+      id,
+      discovery.urls as Parameters<typeof discoveredUrlInserts>[1],
+    );
+    for (let offset = 0; offset < rows.length; offset += URL_INSERT_BATCH) {
+      const { error } = await client
+        .from("crawl_urls")
+        .upsert(rows.slice(offset, offset + URL_INSERT_BATCH), {
+          onConflict: "crawl_id,url",
+          ignoreDuplicates: true,
+        });
+      if (error) throw new CrawlStoreError("store discovered urls", error);
+    }
   };
 
   /** Applies a status change only while the crawl is still in `from`. */
@@ -132,21 +153,7 @@ export function createSupabaseCrawlStore(
     },
 
     async recordDiscovery(id, discovery) {
-      const rows = discoveredUrlInserts(id, discovery.urls);
-
-      // The URLs go in before the crawl is completed. A pass that stored its
-      // counters and then failed to store its rows would read as a site with
-      // no pages, which is a finding nobody measured.
-      for (let offset = 0; offset < rows.length; offset += URL_INSERT_BATCH) {
-        const { error } = await client
-          .from("crawl_urls")
-          .upsert(rows.slice(offset, offset + URL_INSERT_BATCH), {
-            onConflict: "crawl_id,url",
-            ignoreDuplicates: true,
-          });
-        if (error) throw new CrawlStoreError("store discovered urls", error);
-      }
-
+      await storeDiscoveredUrls(id, discovery);
       return transition(
         id,
         "discovering",
@@ -159,6 +166,31 @@ export function createSupabaseCrawlStore(
           finished_at: new Date().toISOString(),
         },
         "complete crawl",
+      );
+    },
+
+    async beginFetching(id, discovery) {
+      await storeDiscoveredUrls(id, discovery);
+      return transition(
+        id,
+        "discovering",
+        {
+          status: "fetching",
+          robots_state: discovery.robots,
+          sitemap_count: discovery.documents.length,
+          discovered_count: discovery.urls.length,
+          limits: [...discovery.limits],
+        },
+        "begin fetching",
+      );
+    },
+
+    completeFetch(id, limits) {
+      return transition(
+        id,
+        "fetching",
+        { status: "completed", limits: [...limits], finished_at: new Date().toISOString() },
+        "complete fetch",
       );
     },
 

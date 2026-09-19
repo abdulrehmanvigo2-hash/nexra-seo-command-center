@@ -1,4 +1,4 @@
-import type { Crawl, CrawlFailureCode, CrawlStatus, DiscoveryLimit } from "@/types/crawl";
+import type { Crawl, CrawlFailureCode, CrawlLimit, CrawlStatus } from "@/types/crawl";
 
 /**
  * Wording for a crawl, and the arithmetic for showing one.
@@ -11,7 +11,7 @@ import type { Crawl, CrawlFailureCode, CrawlStatus, DiscoveryLimit } from "@/typ
 
 /** Plain statement of what a discovery pass does and does not establish. */
 export const DISCOVERY_SCOPE_NOTE =
-  "Discovery reads the pages this site lists in its sitemaps. The pages have not been fetched or analysed yet, so there is still no health score, no on-page data and no issue list.";
+  "This records what each page answered — its status, where it ended up, its type and size. Nothing has been read out of the responses yet, so there is still no title, heading, issue or health score.";
 
 export type CrawlTone = "neutral" | "accent" | "positive" | "warning" | "critical";
 
@@ -20,6 +20,7 @@ export const CRAWL_STATUS_META: Readonly<
 > = {
   queued: { label: "Queued", tone: "neutral" },
   discovering: { label: "Discovering pages", tone: "accent" },
+  fetching: { label: "Fetching pages", tone: "accent" },
   completed: { label: "Discovery complete", tone: "positive" },
   failed: { label: "Discovery failed", tone: "critical" },
   cancelled: { label: "Cancelled", tone: "warning" },
@@ -42,10 +43,11 @@ export const CRAWL_FAILURE_COPY: Readonly<Record<CrawlFailureCode, string>> = {
   timeout: "The site did not answer in time. No pages were recorded from this pass.",
 };
 
-const LIMIT_COPY: Readonly<Record<DiscoveryLimit, string>> = {
+const LIMIT_COPY: Readonly<Record<CrawlLimit, string>> = {
   sitemaps: "more sitemap files than one pass reads",
   urls: "more URLs than one pass keeps",
   depth: "sitemap indexes nested deeper than one pass follows",
+  pages: "more pages than one crawl fetches",
 };
 
 /**
@@ -55,7 +57,7 @@ const LIMIT_COPY: Readonly<Record<DiscoveryLimit, string>> = {
  * saying so would present a sample as a total, which is the same lie as an
  * invented metric.
  */
-export function describeLimits(limits: readonly DiscoveryLimit[]): string | null {
+export function describeLimits(limits: readonly CrawlLimit[]): string | null {
   if (limits.length === 0) return null;
   const reasons = limits.map((limit) => LIMIT_COPY[limit]);
   const listed =
@@ -67,7 +69,12 @@ export function describeLimits(limits: readonly DiscoveryLimit[]): string | null
 
 /** Whether a crawl is still going, and the page should keep checking. */
 export function isCrawlRunning(crawl: Crawl | null): boolean {
-  return crawl !== null && (crawl.status === "queued" || crawl.status === "discovering");
+  return (
+    crawl !== null &&
+    (crawl.status === "queued" ||
+      crawl.status === "discovering" ||
+      crawl.status === "fetching")
+  );
 }
 
 /** One line summarising where a crawl got to. */
@@ -80,10 +87,17 @@ export function describeCrawl(crawl: Crawl | null): string {
       return "Waiting to start.";
     case "discovering":
       return "Reading this site's robots.txt and sitemaps.";
+    case "fetching":
+      return `Fetching the ${crawl.pagesTotal.toLocaleString("en-GB")} pages this site lists. ${(
+        crawl.pagesFetched + crawl.pagesFailed + crawl.pagesSkipped
+      ).toLocaleString("en-GB")} done so far.`;
     case "completed":
-      return crawl.discoveredCount === 1
-        ? "Found 1 page listed by this site."
-        : `Found ${crawl.discoveredCount.toLocaleString("en-GB")} pages listed by this site.`;
+      if (crawl.pagesTotal === 0) {
+        return crawl.discoveredCount === 1
+          ? "Found 1 page listed by this site."
+          : `Found ${crawl.discoveredCount.toLocaleString("en-GB")} pages listed by this site.`;
+      }
+      return `Fetched ${crawl.pagesFetched.toLocaleString("en-GB")} of ${crawl.pagesTotal.toLocaleString("en-GB")} pages. The responses are recorded; nothing has been analysed yet.`;
     case "failed":
       return crawl.failureCode === null
         ? "The pass failed."

@@ -1,12 +1,20 @@
 import type {
+  ClaimedPage,
   Crawl,
   CrawlFailureCode,
+  CrawlLimit,
+  CrawlPage,
+  CrawlPageFailure,
+  CrawlPageSkipReason,
+  CrawlPageState,
   CrawlSource,
   CrawlStatus,
   DiscoveredUrl,
-  DiscoveryLimit,
+  PageObservation,
+  RedirectHop,
   RobotsPolicy,
   SitemapSource,
+  UrlRefusal,
 } from "@/types/crawl";
 
 /**
@@ -29,6 +37,10 @@ export type CrawlRow = {
   sitemap_count: number;
   discovered_count: number;
   limits: string[];
+  pages_total: number;
+  pages_fetched: number;
+  pages_failed: number;
+  pages_skipped: number;
   failure_code: string | null;
   created_by: string | null;
   source: CrawlSource;
@@ -51,6 +63,32 @@ export type CrawlUrlRow = {
 export type CrawlUrlInsert = Omit<CrawlUrlRow, "discovered_at"> &
   Partial<Pick<CrawlUrlRow, "discovered_at">>;
 
+/** A row of `public.crawl_pages`: one discovered URL and what it answered. */
+export type CrawlPageRow = {
+  crawl_id: string;
+  url: string;
+  state: CrawlPageState;
+  attempt_count: number;
+  max_attempts: number;
+  lease_token: string | null;
+  lease_expires_at: string | null;
+  http_status: number | null;
+  final_url: string | null;
+  redirects: RedirectHop[];
+  content_type: string | null;
+  bytes: number | null;
+  duration_ms: number | null;
+  failure: string | null;
+  refusal: string | null;
+  skip_reason: string | null;
+  discovered_at: string;
+  fetched_at: string | null;
+  updated_at: string;
+};
+
+export type CrawlPageInsert = Pick<CrawlPageRow, "crawl_id" | "url"> &
+  Partial<Omit<CrawlPageRow, "crawl_id" | "url">>;
+
 export type CrawlsDatabase = {
   public: {
     Tables: {
@@ -61,14 +99,29 @@ export type CrawlsDatabase = {
         Update: Partial<CrawlUrlInsert>;
         Relationships: [];
       };
+      crawl_pages: {
+        Row: CrawlPageRow;
+        Insert: CrawlPageInsert;
+        Update: Partial<CrawlPageRow>;
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      crawl_pages_claim: {
+        Args: { p_crawl_id: string; p_limit: number; p_lease_seconds: number };
+        Returns: unknown;
+      };
+      crawl_pages_recover_expired: {
+        Args: { p_crawl_id: string | null; p_limit: number };
+        Returns: unknown;
+      };
+    };
   };
 };
 
 export const CRAWL_READ_COLUMNS =
-  "id,project_id,site,status,robots_state,sitemap_count,discovered_count,limits,failure_code,created_by,source,created_at,started_at,finished_at,updated_at";
+  "id,project_id,site,status,robots_state,sitemap_count,discovered_count,limits,pages_total,pages_fetched,pages_failed,pages_skipped,failure_code,created_by,source,created_at,started_at,finished_at,updated_at";
 
 export const CRAWL_URL_READ_COLUMNS = "crawl_id,url,source,discovered_at";
 
@@ -83,6 +136,7 @@ export class CrawlRowError extends Error {
 const STATUSES: readonly CrawlStatus[] = [
   "queued",
   "discovering",
+  "fetching",
   "completed",
   "failed",
   "cancelled",
@@ -95,7 +149,7 @@ const FAILURE_CODES: readonly CrawlFailureCode[] = [
   "timeout",
 ];
 const ROBOTS_STATES: readonly RobotsPolicy["state"][] = ["parsed", "missing", "unavailable"];
-const LIMITS: readonly DiscoveryLimit[] = ["sitemaps", "urls", "depth"];
+const LIMITS: readonly CrawlLimit[] = ["sitemaps", "urls", "depth", "pages"];
 const URL_SOURCES: readonly DiscoveredUrl["source"][] = [
   "robots",
   "well-known",
@@ -187,6 +241,10 @@ export function crawlRowToCrawl(input: unknown): Crawl {
     sitemapCount: count(row, "sitemap_count"),
     discoveredCount: count(row, "discovered_count"),
     limits,
+    pagesTotal: count(row, "pages_total"),
+    pagesFetched: count(row, "pages_fetched"),
+    pagesFailed: count(row, "pages_failed"),
+    pagesSkipped: count(row, "pages_skipped"),
     failureCode: failureCode === null ? null : oneOf(failureCode, FAILURE_CODES, "failure_code"),
     createdBy: nullableText(row, "created_by"),
     source: oneOf(text(row, "source"), ["operator", "schedule"] as const, "source"),
@@ -214,4 +272,174 @@ export function discoveredUrlInserts(
   urls: readonly DiscoveredUrl[],
 ): readonly CrawlUrlInsert[] {
   return urls.map((entry) => ({ crawl_id: crawlId, url: entry.url, source: entry.source }));
+}
+
+// ---------------------------------------------------------------------------
+// crawl_pages
+// ---------------------------------------------------------------------------
+
+export const CRAWL_PAGE_READ_COLUMNS =
+  "crawl_id,url,state,attempt_count,max_attempts,lease_token,lease_expires_at,http_status,final_url,redirects,content_type,bytes,duration_ms,failure,refusal,skip_reason,discovered_at,fetched_at,updated_at";
+
+const PAGE_STATES: readonly CrawlPageState[] = [
+  "pending",
+  "fetching",
+  "fetched",
+  "failed",
+  "refused",
+  "skipped",
+];
+const PAGE_FAILURES: readonly CrawlPageFailure[] = [
+  "refused",
+  "timeout",
+  "network",
+  "too-many-redirects",
+  "redirect-refused",
+  "too-large",
+  "unsupported-type",
+  "robots-disallowed",
+  "lease-expired",
+];
+const REFUSALS: readonly UrlRefusal[] = [
+  "scheme",
+  "credentials",
+  "port",
+  "ip-literal",
+  "hostname",
+  "too-long",
+  "private-address",
+  "dns",
+  "off-site",
+];
+const SKIP_REASONS: readonly CrawlPageSkipReason[] = ["robots-disallowed", "page-limit"];
+
+function nullableCount(row: Record<string, unknown>, column: string): number | null {
+  const value = row[column];
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new CrawlRowError(`crawl_pages.${column} is not a count: ${String(value)}`);
+  }
+  return value;
+}
+
+/**
+ * The redirect chain, checked rather than trusted.
+ *
+ * It is `jsonb`, so the database enforces only that it is an array. A hop that
+ * is not the shape the fetcher writes is dropped rather than carried into a
+ * report as a fact nobody observed.
+ */
+function redirectsOf(value: unknown): readonly RedirectHop[] {
+  if (!Array.isArray(value)) {
+    throw new CrawlRowError("crawl_pages.redirects is not an array");
+  }
+  return value.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const hop = entry as Record<string, unknown>;
+    return typeof hop.url === "string" &&
+      typeof hop.status === "number" &&
+      typeof hop.location === "string"
+      ? [{ url: hop.url, status: hop.status, location: hop.location }]
+      : [];
+  });
+}
+
+export function crawlPageRowToPage(input: unknown): CrawlPage {
+  if (typeof input !== "object" || input === null) {
+    throw new CrawlRowError("crawl_pages row is not an object");
+  }
+  const row: Record<string, unknown> = { ...input };
+
+  const failure = nullableText(row, "failure");
+  const refusal = nullableText(row, "refusal");
+  const skipReason = nullableText(row, "skip_reason");
+
+  return {
+    crawlId: text(row, "crawl_id"),
+    url: text(row, "url"),
+    state: oneOf(text(row, "state"), PAGE_STATES, "state"),
+    attemptCount: count(row, "attempt_count"),
+    maxAttempts: count(row, "max_attempts"),
+    httpStatus: nullableCount(row, "http_status"),
+    finalUrl: nullableText(row, "final_url"),
+    redirects: redirectsOf(row.redirects ?? []),
+    contentType: nullableText(row, "content_type"),
+    bytes: nullableCount(row, "bytes"),
+    durationMs: nullableCount(row, "duration_ms"),
+    failure: failure === null ? null : oneOf(failure, PAGE_FAILURES, "failure"),
+    refusal: refusal === null ? null : oneOf(refusal, REFUSALS, "refusal"),
+    skipReason: skipReason === null ? null : oneOf(skipReason, SKIP_REASONS, "skip_reason"),
+    discoveredAt: instant(text(row, "discovered_at"), "discovered_at"),
+    fetchedAt: nullableInstant(nullableText(row, "fetched_at"), "fetched_at"),
+  };
+}
+
+/** A claimed row, which must carry the lease token the result is written under. */
+export function crawlPageRowToClaimed(input: unknown): ClaimedPage {
+  const page = crawlPageRowToPage(input);
+  const token = (input as Record<string, unknown>).lease_token;
+  if (typeof token !== "string") {
+    throw new CrawlRowError("crawl_pages.lease_token is missing on a claimed page");
+  }
+  return { ...page, leaseToken: token };
+}
+
+/**
+ * One observation as the columns it sets.
+ *
+ * Every field the observation does not carry is written as null, so a retried
+ * attempt cannot leave a value from a previous one standing beside a
+ * contradictory result. The lease is cleared in the same update, which is what
+ * takes the row out of the queue.
+ */
+export function observationToUpdate(observation: PageObservation): Partial<CrawlPageRow> {
+  const cleared = {
+    lease_token: null,
+    lease_expires_at: null,
+    fetched_at: new Date().toISOString(),
+    http_status: null,
+    final_url: null,
+    redirects: [] as RedirectHop[],
+    content_type: null,
+    bytes: null,
+    duration_ms: null,
+    failure: null,
+    refusal: null,
+    skip_reason: null,
+  } satisfies Partial<CrawlPageRow>;
+
+  switch (observation.state) {
+    case "fetched":
+      return {
+        ...cleared,
+        state: "fetched",
+        http_status: observation.httpStatus,
+        final_url: observation.finalUrl,
+        redirects: [...observation.redirects],
+        content_type: observation.contentType,
+        bytes: observation.bytes,
+        duration_ms: observation.durationMs,
+      };
+    case "failed":
+      return {
+        ...cleared,
+        state: "failed",
+        failure: observation.failure,
+        refusal: observation.refusal,
+        redirects: [...observation.redirects],
+        duration_ms: observation.durationMs,
+      };
+    case "refused":
+      return { ...cleared, state: "refused", refusal: observation.refusal };
+    case "skipped":
+      return { ...cleared, state: "skipped", skip_reason: observation.skipReason };
+  }
+}
+
+/** The rows a discovery hands to the queue. Defaults do the rest. */
+export function pageInserts(
+  crawlId: string,
+  urls: readonly DiscoveredUrl[],
+): readonly CrawlPageInsert[] {
+  return urls.map((entry) => ({ crawl_id: crawlId, url: entry.url }));
 }
