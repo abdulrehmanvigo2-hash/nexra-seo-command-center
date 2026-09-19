@@ -1,5 +1,6 @@
 import "server-only";
 
+import { MAX_HTML_BYTES } from "@/lib/crawl/html";
 import { CRAWLER_TOKEN, MAX_ROBOTS_BYTES, parseRobots } from "@/lib/crawl/robots";
 import {
   canonicaliseUrl,
@@ -37,7 +38,18 @@ import type {
 export const CRAWLER_USER_AGENT = `Mozilla/5.0 (compatible; ${CRAWLER_TOKEN}/1.0; +https://nexra.example/bot)`;
 
 export const DEFAULT_TIMEOUT_MS = 15_000;
-export const DEFAULT_MAX_BYTES = 2_000_000;
+/**
+ * The largest body this crawler will read, and why that number.
+ *
+ * It is the extractor's own ceiling. `extractSignals` scans at most
+ * `MAX_HTML_BYTES` and truncates beyond it, so a body larger than this is one
+ * nobody would parse in full — and a word count taken from a truncated
+ * document would be a measurement of the truncation, not of the page. Reading
+ * to exactly that point and refusing past it keeps the two ends agreeing:
+ * everything fetched is parsed whole, and everything else is refused outright
+ * rather than silently measured wrong.
+ */
+export const DEFAULT_MAX_BYTES = MAX_HTML_BYTES;
 export const DEFAULT_MAX_REDIRECTS = 5;
 
 /**

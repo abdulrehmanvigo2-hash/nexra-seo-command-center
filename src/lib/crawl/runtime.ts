@@ -2,6 +2,7 @@ import "server-only";
 
 import { unavailableCrawlPageStore, unavailableCrawlStore } from "@/lib/crawl/contract";
 import { fetchPage, fetchRobots } from "@/lib/crawl/fetcher";
+import { MAX_HTML_BYTES } from "@/lib/crawl/html";
 import { createSupabaseCrawlPageStore } from "@/lib/crawl/supabase/page-store";
 import { createCrawlService, type CrawlService } from "@/lib/crawl/service";
 import { discoverSitemapUrls } from "@/lib/crawl/sitemap";
@@ -42,13 +43,27 @@ const DISCOVERY_BUDGET = {
 /**
  * What one page request may cost.
  *
- * Tighter than the fetch boundary's own defaults: a crawl makes hundreds of
- * these, and a page that needs more than ten seconds or half a megabyte of
- * HTML is not one this stage needs to wait for.
+ * The time and concurrency are this stage's own: a crawl makes hundreds of
+ * these, and a page that needs more than ten seconds is not one it should
+ * wait for.
+ *
+ * The byte cap is not a separate judgement. It is `MAX_HTML_BYTES`, the most
+ * the extractor will scan, because the two have to be the same number. Held
+ * tighter — it was half a megabyte — this stage refused pages the parser was
+ * dimensioned for and reported them as too large, which is true of the cap
+ * and not of the page. Modern marketing homepages built with a React
+ * framework routinely exceed half a megabyte of HTML on their own: the
+ * server-rendered markup carries the framework's hydration payload inline as
+ * well as the content. Held looser, the extractor would truncate and the word
+ * count would describe the truncation rather than the page.
+ *
+ * It remains a hard ceiling, enforced while the body streams: the read stops
+ * and the socket is cancelled the moment it is passed, so nothing larger is
+ * ever held in memory.
  */
-const PAGE_FETCH = {
+export const PAGE_FETCH = {
   requestTimeoutMs: 10_000,
-  maxBytes: 500_000,
+  maxBytes: MAX_HTML_BYTES,
   concurrency: 3,
 } as const;
 

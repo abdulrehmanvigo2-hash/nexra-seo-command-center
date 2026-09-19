@@ -1,3 +1,4 @@
+import { MAX_HTML_BYTES } from "@/lib/crawl/html";
 import type {
   Crawl,
   CrawlFailureCode,
@@ -267,7 +268,7 @@ const PAGE_FAILURE_COPY: Readonly<Record<CrawlPageFailure, string>> = {
   network: "The connection failed.",
   "too-many-redirects": "More redirects than the crawler follows.",
   "redirect-refused": "A redirect pointed somewhere the policy refuses.",
-  "too-large": "The page is larger than the crawler will read.",
+  "too-large": `The page is larger than the ${Math.round(MAX_HTML_BYTES / 1_000_000)} MB of HTML the crawler reads.`,
   "unsupported-type": "Not a content type this crawler reads.",
   "robots-disallowed": "robots.txt disallows this URL for our crawler.",
   "lease-expired": "The worker holding this page stopped before recording an answer.",

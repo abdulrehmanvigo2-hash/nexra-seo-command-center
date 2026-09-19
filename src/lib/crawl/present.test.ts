@@ -176,7 +176,9 @@ describe("describePageOutcome", () => {
 
   test("names the failure the crawl recorded", () => {
     assert.match(describePageOutcome(page({ failure: "timeout" })), /No answer within the time/);
-    assert.match(describePageOutcome(page({ failure: "too-large" })), /larger than the crawler will read/);
+    // The reason names the limit: "too large" without a number sent us
+    // looking at the page when the answer was the cap.
+    assert.match(describePageOutcome(page({ failure: "too-large" })), /larger than the 2 MB of HTML/);
   });
 
   test("adds the refusal, because 'refused' alone does not say what was wrong", () => {

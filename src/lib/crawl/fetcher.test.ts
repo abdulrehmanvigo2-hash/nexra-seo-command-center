@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import { fetchPage, fetchRobots } from "@/lib/crawl/fetcher";
+import { DEFAULT_MAX_BYTES, fetchPage, fetchRobots } from "@/lib/crawl/fetcher";
+import { MAX_HTML_BYTES, extractSignals } from "@/lib/crawl/html";
 import type { AddressLookup } from "@/lib/crawl/url-policy";
 
 /**
@@ -274,5 +276,168 @@ describe("fetchRobots", () => {
     });
     const policy = await fetchRobots("https://example.com", { lookup: publicDns, fetch: send });
     assert.equal(policy.state, "unavailable");
+  });
+});
+
+describe("the body size cap", () => {
+  /**
+   * The cap that refused the Nexra Agency homepage. It was half a megabyte at
+   * the crawl's fetch pass while the extractor was dimensioned for two, so
+   * pages in between came back `too-large` — a fact about the cap, not the
+   * page. These pin the two ends together and pin the ceiling itself down.
+   */
+
+  /** HTML of roughly `bytes`, shaped like a framework-rendered page. */
+  const pageOf = (bytes: number) => {
+    const head = "<html><head><title>Home</title></head><body><h1>Home</h1>";
+    const tail = "</body></html>";
+    const filler = '<script>self.__next_f.push([1,"' + "x".repeat(1_000) + '"])</script>';
+    const repeats = Math.max(0, Math.ceil((bytes - head.length - tail.length) / filler.length));
+    return head + filler.repeat(repeats) + tail;
+  };
+
+  test("the fetch cap is the extractor's ceiling, so nothing fetched is truncated", () => {
+    // Two numbers for one thing is what caused the bug; they are now one.
+    assert.equal(DEFAULT_MAX_BYTES, MAX_HTML_BYTES);
+  });
+
+  test("and the crawl's own pass does not set a tighter one of its own", () => {
+    // `runtime.ts` wires the real crawl and cannot be imported here — it
+    // pulls `next/server` — so it is read as text, the way the migration
+    // check reads its SQL. A literal here is exactly the drift that refused
+    // the Nexra Agency homepage while the parser was dimensioned for it.
+    const wiring = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+    const pass = wiring.split("export const PAGE_FETCH = {")[1]?.split("} as const;")[0];
+    assert.ok(pass, "PAGE_FETCH is not in runtime.ts");
+    assert.match(pass, /maxBytes:\s*MAX_HTML_BYTES\s*,/);
+  });
+
+  test("an ordinary page is read", async () => {
+    const body = pageOf(20_000);
+    const { send } = router({ "https://example.com/": html(body) });
+    const outcome = await fetchPage("https://example.com/", { lookup: publicDns, fetch: send });
+    assert.equal(outcome.state, "fetched");
+    if (outcome.state !== "fetched") return;
+    assert.equal(outcome.body.length, body.length);
+  });
+
+  test("a realistic large homepage is read whole", async () => {
+    // ~900 KB: over the old half-megabyte cap, under the ceiling. This is the
+    // shape that failed on the real site.
+    const body = pageOf(900_000);
+    assert.ok(body.length > 500_000 && body.length < MAX_HTML_BYTES);
+    const { send } = router({ "https://example.com/": html(body) });
+    const outcome = await fetchPage("https://example.com/", { lookup: publicDns, fetch: send });
+    assert.equal(outcome.state, "fetched");
+    if (outcome.state !== "fetched") return;
+    assert.equal(outcome.body.length, body.length, "the body is not truncated");
+    assert.equal(outcome.bytes, body.length);
+  });
+
+  test("and still parses, rather than being read and dropped", async () => {
+    const body = pageOf(900_000);
+    const { send } = router({ "https://example.com/": html(body) });
+    const outcome = await fetchPage("https://example.com/", { lookup: publicDns, fetch: send });
+    if (outcome.state !== "fetched") return assert.fail("expected a fetch");
+    const signals = extractSignals({
+      body: outcome.body,
+      contentType: outcome.contentType,
+      finalUrl: outcome.url,
+      site: "example.com",
+    });
+    assert.equal(signals.state, "parsed");
+    assert.equal(signals.title, "Home");
+  });
+
+  test("a genuinely oversized response is still refused", async () => {
+    const body = pageOf(MAX_HTML_BYTES + 500_000);
+    const { send } = router({ "https://example.com/": html(body) });
+    const outcome = await fetchPage("https://example.com/", { lookup: publicDns, fetch: send });
+    assert.equal(outcome.state, "failed");
+    if (outcome.state !== "failed") return;
+    assert.equal(outcome.failure, "too-large");
+  });
+
+  test("a declared length over the cap is refused without reading the body", async () => {
+    // The fetcher checks the declared length before it takes a reader, so in
+    // production nothing is pulled at all. The stream machinery fills its own
+    // queue speculatively when the Response is built, so one chunk can be
+    // pulled here regardless; what this pins down is that a nine-megabyte
+    // body is refused without being transferred.
+    const chunk = new TextEncoder().encode("y".repeat(64 * 1024));
+    let pulled = 0;
+    const send = async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            pulled += 1;
+            controller.enqueue(chunk);
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/html", "content-length": "9000000" } },
+      );
+    const outcome = await fetchPage("https://example.com/", { lookup: publicDns, fetch: send });
+    assert.equal(outcome.state === "failed" && outcome.failure, "too-large");
+    assert.ok(pulled <= 1, `refused after ${pulled} chunks; the body is not transferred`);
+  });
+
+  test("the read is bounded: a stream that never ends is cut off, not drained", async () => {
+    // No content-length, so the only thing that can stop this is the counter.
+    const chunk = new TextEncoder().encode("y".repeat(64 * 1024));
+    let pushed = 0;
+    let cancelled = false;
+    const send = async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            pushed += 1;
+            // Far more than the cap: an unbounded read would never return.
+            if (pushed > 10_000) return controller.close();
+            controller.enqueue(chunk);
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+
+    const outcome = await fetchPage("https://example.com/", { lookup: publicDns, fetch: send });
+    assert.equal(outcome.state === "failed" && outcome.failure, "too-large");
+    const ceiling = Math.ceil(MAX_HTML_BYTES / chunk.byteLength) + 2;
+    assert.ok(
+      pushed <= ceiling,
+      `stopped after ${pushed} chunks, which must be at most ${ceiling}`,
+    );
+    assert.equal(cancelled, true, "the socket is released rather than left draining");
+  });
+
+  test("the cap travels through a redirect, and the redirect rules still hold", async () => {
+    const body = pageOf(900_000);
+    const { send } = router({
+      "https://example.com/": redirect("https://www.example.com/", 308),
+      "https://www.example.com/": html(body),
+    });
+    const outcome = await fetchPage("https://example.com/", {
+      lookup: publicDns,
+      fetch: send,
+      site: "example.com",
+    });
+    assert.equal(outcome.state, "fetched");
+    if (outcome.state !== "fetched") return;
+    assert.equal(outcome.url, "https://www.example.com/");
+    assert.equal(outcome.body.length, body.length);
+
+    // A large page somewhere else is still off-site, cap or no cap.
+    const away = router({
+      "https://example.com/": redirect("https://evil-example.com/", 302),
+      "https://evil-example.com/": html(body),
+    });
+    const refused = await fetchPage("https://example.com/", {
+      lookup: publicDns,
+      fetch: away.send,
+      site: "example.com",
+    });
+    assert.equal(refused.state === "failed" && refused.failure, "redirect-refused");
   });
 });
