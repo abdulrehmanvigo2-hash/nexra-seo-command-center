@@ -620,6 +620,80 @@ describe("signalsForProject", () => {
     }
   });
 
+  test("reports the pages that produced no signals, and why", async () => {
+    // A crawl that fetched some pages and not others: the counters say two of
+    // three, and an operator has no way to learn which two without this.
+    const memory = memoryPageStore();
+    const { store } = memoryStore();
+    const urls = [
+      "https://nexraagency.com/a",
+      "https://nexraagency.com/slow",
+      "https://nexraagency.com/big",
+    ];
+    const crawls = createCrawlService({
+      store,
+      pages: memory.store,
+      readRobots: async () => ({ state: "missing" }),
+      projects: { async getProjectById() { return PROJECT; } },
+      discover: async () => ({
+        urls: urls.map((url) => ({ url, source: "robots" as const })),
+        documents: [],
+        robots: "parsed",
+        limits: [],
+      }),
+      fetchPass: {
+        crawlDelayMs: 0,
+        fetchPage: async (url) => {
+          if (url.endsWith("/slow")) {
+            return { state: "failed", url, failure: "timeout", refusal: null, elapsedMs: 1, redirects: [] } as FetchOutcome;
+          }
+          if (url.endsWith("/big")) {
+            return { state: "failed", url, failure: "too-large", refusal: null, elapsedMs: 1, redirects: [] } as FetchOutcome;
+          }
+          return {
+            state: "fetched",
+            url,
+            status: 200,
+            contentType: "text/html",
+            body: "<html><head><title>A</title></head><body>one two</body></html>",
+            bytes: 1,
+            elapsedMs: 1,
+            redirects: [],
+          } as FetchOutcome;
+        },
+      },
+    });
+
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+    // Each failure is retried to its attempt ceiling before it is final.
+    for (let slice = 0; slice < 5; slice += 1) {
+      await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+    }
+
+    const result = await crawls.signalsForProject("nexra-agency");
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+
+    assert.deepEqual(
+      result.signals.map((page) => page.url),
+      ["https://nexraagency.com/a"],
+      "only the page that answered has signals",
+    );
+    assert.deepEqual(
+      [...result.unread].map((page) => `${page.url} ${page.state} ${page.failure}`).sort(),
+      [
+        "https://nexraagency.com/big failed too-large",
+        "https://nexraagency.com/slow failed timeout",
+      ],
+      "the pages with no signals carry the reason the crawl recorded",
+    );
+    assert.ok(
+      result.unread.every((page) => page.state !== "fetched"),
+      "a page that was read is not listed as unread",
+    );
+  });
+
   test("it is a read: nothing is fetched and the crawl is untouched", async () => {
     const { crawls } = withBodies(CRAWLED);
     const started = await crawls.startDiscovery("operator-1", "nexra-agency");

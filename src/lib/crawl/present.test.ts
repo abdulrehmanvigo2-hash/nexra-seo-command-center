@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { duplicateTitleGroups, summariseSignals } from "@/lib/crawl/present";
-import type { StoredPageSignals } from "@/types/crawl";
+import {
+  describePageOutcome,
+  duplicateTitleGroups,
+  summariseSignals,
+} from "@/lib/crawl/present";
+import type { CrawlPage, StoredPageSignals } from "@/types/crawl";
 
 /**
  * The arithmetic behind the signals panel.
@@ -146,5 +150,61 @@ describe("duplicateTitleGroups", () => {
       page({ url: "https://e.com/b", title: "home" }),
     ]);
     assert.equal(group.title, "Home", "the first spelling seen, not the folded key");
+  });
+});
+
+describe("describePageOutcome", () => {
+  const page = (over: Partial<CrawlPage>): CrawlPage => ({
+    crawlId: "crawl-1",
+    url: "https://example.com/a",
+    state: "failed",
+    attemptCount: 3,
+    maxAttempts: 3,
+    httpStatus: null,
+    finalUrl: null,
+    redirects: [],
+    contentType: null,
+    bytes: null,
+    durationMs: null,
+    failure: null,
+    refusal: null,
+    skipReason: null,
+    discoveredAt: "2026-09-19T05:00:00Z",
+    fetchedAt: null,
+    ...over,
+  });
+
+  test("names the failure the crawl recorded", () => {
+    assert.match(describePageOutcome(page({ failure: "timeout" })), /No answer within the time/);
+    assert.match(describePageOutcome(page({ failure: "too-large" })), /larger than the crawler will read/);
+  });
+
+  test("adds the refusal, because 'refused' alone does not say what was wrong", () => {
+    const text = describePageOutcome(
+      page({ state: "refused", failure: "refused", refusal: "private-address" }),
+    );
+    assert.match(text, /policy refused it/);
+    assert.match(text, /internal address/);
+  });
+
+  test("a skipped page gives the reason it was never requested", () => {
+    assert.match(
+      describePageOutcome(page({ state: "skipped", skipReason: "robots-disallowed" })),
+      /robots\.txt disallows/,
+    );
+  });
+
+  test("an answer with a status reports the status and nothing more", () => {
+    assert.equal(
+      describePageOutcome(page({ state: "fetched", httpStatus: 404 })),
+      "The site answered 404.",
+    );
+  });
+
+  test("a page still in the queue says so rather than inventing a fault", () => {
+    assert.equal(
+      describePageOutcome(page({ state: "pending", attemptCount: 0 })),
+      "Queued, not yet requested.",
+    );
   });
 });

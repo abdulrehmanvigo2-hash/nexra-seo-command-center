@@ -7,6 +7,7 @@ import { isStorableProjectId } from "@/lib/projects/intake-rules";
 import type {
   Crawl,
   CrawlLimit,
+  CrawlPage,
   CrawlSource,
   FetchPassResult,
   RobotsPolicy,
@@ -153,7 +154,22 @@ export type CrawlService = {
     projectId: unknown,
     limit?: number,
   ): Promise<
-    { ok: true; crawl: Crawl | null; signals: readonly StoredPageSignals[] } | CrawlFailure
+    | {
+        ok: true;
+        crawl: Crawl | null;
+        signals: readonly StoredPageSignals[];
+        /**
+         * The pages of that crawl that produced no signals, and why.
+         *
+         * A crawl that fetched six of eight pages has two whose reason is
+         * already in the page row — a timeout, a refused address, a type this
+         * crawler does not read. The counters alone cannot say which, so an
+         * operator would have to read the database to find out. These are the
+         * rows that already exist, nothing computed.
+         */
+        unread: readonly CrawlPage[];
+      }
+    | CrawlFailure
   >;
   /**
    * Runs one bounded slice of the fetch stage and reports what is left.
@@ -295,11 +311,19 @@ export function createCrawlService(dependencies: CrawlServiceDependencies): Craw
       const resolved = await resolve(projectId);
       if (!resolved.ok) return resolved;
       const [latest] = await store.listForProject(resolved.project.id, 1);
-      if (!latest) return { ok: true, crawl: null, signals: [] };
+      if (!latest) return { ok: true, crawl: null, signals: [], unread: [] };
+      const capped = Math.min(limit, MAX_SIGNALS_READ);
+      const [signals, all] = await Promise.all([
+        pages.listSignals(latest.id, capped),
+        pages.listPages(latest.id, MAX_PAGES_PER_CRAWL),
+      ]);
       return {
         ok: true,
         crawl: latest,
-        signals: await pages.listSignals(latest.id, Math.min(limit, MAX_SIGNALS_READ)),
+        signals,
+        // Anything the crawl did not read: failed, refused, skipped, or still
+        // queued. `fetched` is the only state that produces signals.
+        unread: all.filter((page) => page.state !== "fetched").slice(0, capped),
       };
     },
   };

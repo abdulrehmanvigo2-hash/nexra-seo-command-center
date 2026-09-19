@@ -1,7 +1,7 @@
 import "server-only";
 
 import { fetchPage, fetchRobots, type FetchPageOptions } from "@/lib/crawl/fetcher";
-import { checkUrl } from "@/lib/crawl/url-policy";
+import { bareHost, checkUrl } from "@/lib/crawl/url-policy";
 import type {
   DiscoveredUrl,
   DiscoveryLimit,
@@ -114,6 +114,33 @@ export function parseSitemap(xml: string): { kind: SitemapKind; locations: reado
   }
 
   return { kind, locations };
+}
+
+/**
+ * Whether two URLs are the same homepage on the two forms of one host.
+ *
+ * `https://example.com/` and `https://www.example.com/` are one page served
+ * under the two names a site answers to. Nothing else counts: the path, query
+ * and scheme must match, and the hosts must be the `www.` pair the URL policy
+ * already treats as one site — never two different hosts.
+ */
+function sameHomepageOtherHost(a: string, b: string): boolean {
+  let left: URL;
+  let right: URL;
+  try {
+    left = new URL(a);
+    right = new URL(b);
+  } catch {
+    return false;
+  }
+  if (left.href === right.href) return false;
+  if (left.hostname === right.hostname) return false;
+  if (bareHost(left.hostname) !== bareHost(right.hostname)) return false;
+  return (
+    left.protocol === right.protocol &&
+    left.pathname === right.pathname &&
+    left.search === right.search
+  );
 }
 
 export type DiscoverOptions = FetchPageOptions & {
@@ -261,6 +288,24 @@ export async function discoverSitemapUrls(
       break;
     }
     queue = next;
+  }
+
+  // The homepage is seeded from the operator's domain before any sitemap is
+  // read, because a site that lists nothing still has one. Once the site has
+  // listed its own pages, that guess is no longer needed: if the site's
+  // listing carries the same homepage under the other form of its host — the
+  // apex where we guessed www, or the reverse — the site has said which name
+  // it uses, and keeping both would store one page twice and report its title
+  // as shared between two pages. Only the URL this function invented is
+  // dropped, and only for the host the policy already counts as the same site.
+  const seeded = `${origin}/`;
+  if (urls.has(seeded)) {
+    for (const entry of urls.values()) {
+      if (entry.source === "homepage") continue;
+      if (!sameHomepageOtherHost(entry.url, seeded)) continue;
+      urls.delete(seeded);
+      break;
+    }
   }
 
   return {

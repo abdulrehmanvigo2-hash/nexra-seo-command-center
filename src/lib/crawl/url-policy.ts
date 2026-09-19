@@ -86,7 +86,7 @@ function refuse(refusal: UrlRefusal): UrlCheck {
  * the hostname is left alone, so this widens "the same site" by one specific
  * host and by nothing else.
  */
-function bareHost(hostname: string): string {
+export function bareHost(hostname: string): string {
   return hostname.startsWith("www.") ? hostname.slice(4) : hostname;
 }
 

@@ -420,3 +420,70 @@ describe("gzipped sitemaps", () => {
     assert.equal(result.documents[0].failure, null);
   });
 });
+
+describe("the homepage the walk seeds", () => {
+  /**
+   * The seed exists for a site that lists nothing. Once a site has listed its
+   * own pages, keeping our guess as well stores one page twice — and the
+   * signals panel then reports that page's title as shared between two pages,
+   * which is a duplicate we invented rather than one the site has.
+   */
+
+  test("is dropped when the site lists the same homepage on its www host", async () => {
+    const result = await discover({
+      "https://example.com/robots.txt": robotsFile(
+        "Sitemap: https://www.example.com/sitemap.xml",
+      ),
+      "https://www.example.com/sitemap.xml": xml(
+        urlset("https://www.example.com/", "https://www.example.com/services"),
+      ),
+    });
+    assert.deepEqual(found(result), [
+      "https://www.example.com/",
+      "https://www.example.com/services",
+    ]);
+  });
+
+  test("and the other way round, for a site that canonicalises to its apex", async () => {
+    const result = await discoverSitemapUrls("www.example.com", {
+      lookup: publicDns,
+      fetch: router({
+        "https://www.example.com/robots.txt": robotsFile("Sitemap: https://example.com/s.xml"),
+        "https://example.com/s.xml": xml(urlset("https://example.com/")),
+      }).send,
+    });
+    assert.deepEqual(found(result), ["https://example.com/"]);
+  });
+
+  test("is kept when the site's listing does not include its homepage", async () => {
+    const result = await discover({
+      "https://example.com/robots.txt": robotsFile("Sitemap: https://www.example.com/s.xml"),
+      "https://www.example.com/s.xml": xml(urlset("https://www.example.com/services")),
+    });
+    // Nothing listed the homepage, so the one URL a crawl can be certain of
+    // stays in the list.
+    assert.deepEqual(found(result), [
+      "https://example.com/",
+      "https://www.example.com/services",
+    ]);
+  });
+
+  test("is kept when the site lists that same homepage itself", async () => {
+    const result = await discover({
+      "https://example.com/robots.txt": robotsFile("Sitemap: https://example.com/s.xml"),
+      "https://example.com/s.xml": xml(urlset("https://example.com/", "https://example.com/a")),
+    });
+    assert.deepEqual(found(result), ["https://example.com/", "https://example.com/a"]);
+  });
+
+  test("is not dropped by a listed page that merely looks like the homepage", async () => {
+    const result = await discover({
+      "https://example.com/robots.txt": robotsFile("Sitemap: https://www.example.com/s.xml"),
+      "https://www.example.com/s.xml": xml(
+        urlset("https://www.example.com/?ref=x", "https://www.example.com/index.html"),
+      ),
+    });
+    // A different query or path is a different page, whatever the host.
+    assert.ok(found(result).includes("https://example.com/"));
+  });
+});

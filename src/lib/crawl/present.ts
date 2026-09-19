@@ -2,9 +2,14 @@ import type {
   Crawl,
   CrawlFailureCode,
   CrawlLimit,
+  CrawlPage,
+  CrawlPageFailure,
+  CrawlPageSkipReason,
+  CrawlPageState,
   CrawlStatus,
   SignalState,
   StoredPageSignals,
+  UrlRefusal,
 } from "@/types/crawl";
 
 /**
@@ -223,4 +228,83 @@ export function duplicateTitleGroups(
   return [...groups.values()]
     .filter((group) => group.pages > 1)
     .sort((a, b) => b.pages - a.pages || a.title.localeCompare(b.title));
+}
+
+// ---------------------------------------------------------------------------
+// Pages a crawl did not read
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a page produced no signals, in the words of the row that recorded it.
+ *
+ * The counters on a crawl say six of eight pages were fetched. They cannot say
+ * which two were not, or why, and until this existed the only way to find out
+ * was to read the database. Everything below is a label for a stored code —
+ * nothing is inferred, scored, or turned into advice.
+ */
+
+export const PAGE_STATE_LABEL: Readonly<Record<CrawlPageState, string>> = {
+  pending: "Queued",
+  fetching: "In flight",
+  fetched: "Fetched",
+  failed: "Failed",
+  refused: "Refused",
+  skipped: "Skipped",
+};
+
+export const PAGE_STATE_TONE: Readonly<Record<CrawlPageState, CrawlTone>> = {
+  pending: "neutral",
+  fetching: "accent",
+  fetched: "positive",
+  failed: "critical",
+  refused: "warning",
+  skipped: "neutral",
+};
+
+const PAGE_FAILURE_COPY: Readonly<Record<CrawlPageFailure, string>> = {
+  refused: "The URL policy refused it, so no request was made.",
+  timeout: "No answer within the time allowed.",
+  network: "The connection failed.",
+  "too-many-redirects": "More redirects than the crawler follows.",
+  "redirect-refused": "A redirect pointed somewhere the policy refuses.",
+  "too-large": "The page is larger than the crawler will read.",
+  "unsupported-type": "Not a content type this crawler reads.",
+  "robots-disallowed": "robots.txt disallows this URL for our crawler.",
+  "lease-expired": "The worker holding this page stopped before recording an answer.",
+};
+
+const REFUSAL_COPY: Readonly<Record<UrlRefusal, string>> = {
+  scheme: "not http or https",
+  credentials: "the URL carries a username or password",
+  port: "a port other than the scheme's default",
+  "ip-literal": "an IP address rather than a hostname",
+  hostname: "not a public hostname",
+  "too-long": "longer than the crawler stores",
+  "private-address": "resolves to an internal address",
+  dns: "the hostname does not resolve",
+  "off-site": "not on this site",
+};
+
+const SKIP_COPY: Readonly<Record<CrawlPageSkipReason, string>> = {
+  "robots-disallowed": "robots.txt disallows this URL for our crawler.",
+  "page-limit": "The crawl reached its page limit before this URL.",
+};
+
+/**
+ * One sentence for why a page was not read, from the codes already stored.
+ *
+ * A refusal refines a failure rather than replacing it — "refused" alone does
+ * not say what was wrong with the URL — so both are shown when both exist.
+ */
+export function describePageOutcome(page: CrawlPage): string {
+  if (page.skipReason !== null) return SKIP_COPY[page.skipReason];
+  if (page.failure !== null) {
+    const reason = PAGE_FAILURE_COPY[page.failure];
+    return page.refusal === null ? reason : `${reason} (${REFUSAL_COPY[page.refusal]})`;
+  }
+  if (page.refusal !== null) return `Not requested: ${REFUSAL_COPY[page.refusal]}.`;
+  if (page.httpStatus !== null) return `The site answered ${page.httpStatus}.`;
+  if (page.state === "pending") return "Queued, not yet requested.";
+  if (page.state === "fetching") return "Being requested now.";
+  return "No reason was recorded.";
 }

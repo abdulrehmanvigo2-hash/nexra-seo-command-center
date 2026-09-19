@@ -4,8 +4,7 @@ import {
   ProjectMonogram,
   ProjectStatusBadge,
 } from "@/components/projects/project-chrome";
-import { CrawlPanel } from "@/components/crawl/crawl-panel";
-import { CrawlSignalsPanel } from "@/components/crawl/signals-panel";
+import { CrawlSection } from "@/components/crawl/crawl-section";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -127,14 +126,13 @@ export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
         measurement of the site, and it is deliberately above the observed and
         modelled panels: it is what an operator came here to do.
       */}
-      <CrawlPanel projectId={project.id} />
-
       {/*
-        What that crawl read out of the pages it fetched. Directly below the
-        pass that produced it, and counts only: a page with no title is
-        reported as a page with no title, not as an issue with a severity.
+        …and, directly below it, what that crawl read out of the pages it
+        fetched: counts only, so a page with no title is reported as a page
+        with no title and not as an issue with a severity. The two are one
+        component because the second has to know when the first has advanced.
       */}
-      <CrawlSignalsPanel projectId={project.id} />
+      <CrawlSection projectId={project.id} />
 
       {/*
         Thirty days, the window the rest of the product defaults to. This

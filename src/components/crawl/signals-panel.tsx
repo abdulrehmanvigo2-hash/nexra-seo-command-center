@@ -17,11 +17,14 @@ import {
 } from "@/components/ui/table";
 import { formatNumber } from "@/lib/format";
 import {
+  PAGE_STATE_LABEL,
+  PAGE_STATE_TONE,
   SIGNALS_SCOPE_NOTE,
   SIGNAL_STATE_META,
+  describePageOutcome,
   summariseSignals,
 } from "@/lib/crawl/present";
-import type { Crawl, StoredPageSignals } from "@/types/crawl";
+import type { Crawl, CrawlPage, StoredPageSignals } from "@/types/crawl";
 
 /**
  * What the crawl read out of each page.
@@ -31,9 +34,12 @@ import type { Crawl, StoredPageSignals } from "@/types/crawl";
  * title, not as an issue, a severity or a lost point of a score. Nothing on
  * this panel is weighted, and nothing recommends anything.
  *
- * Read once on mount and on request, not polled. Signals appear as pages are
- * fetched, and the crawl panel above already polls while a pass runs; a second
- * poll over a few hundred rows would cost far more than it showed.
+ * Not polled. The crawl panel above already polls the crawl's one status row
+ * while a pass runs, and a second poll over a few hundred signal rows would
+ * cost far more than it showed. Instead that panel reports its progress, and
+ * `progress` changing is what re-reads this one — so a pass that fetches its
+ * pages while this panel is open fills it in, rather than leaving it saying
+ * nothing has been read until someone presses Refresh.
  */
 
 /** Rows rendered. A crawl holds at most a few hundred; the table shows a slice. */
@@ -45,6 +51,7 @@ type Load =
       readonly status: "loaded";
       readonly crawl: Crawl | null;
       readonly signals: readonly StoredPageSignals[];
+      readonly unread: readonly CrawlPage[];
     }
   | { readonly status: "failed"; readonly message: string };
 
@@ -67,7 +74,17 @@ function pathOf(url: string): string {
   }
 }
 
-export function CrawlSignalsPanel({ projectId }: { projectId: string }) {
+export function CrawlSignalsPanel({
+  projectId,
+  progress = 0,
+}: {
+  readonly projectId: string;
+  /**
+   * A number the crawl panel changes whenever the pass advances. Its value
+   * means nothing; that it changed means there is more to read.
+   */
+  readonly progress?: number;
+}) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [reloading, setReloading] = useState(false);
   const alive = useRef(true);
@@ -93,9 +110,15 @@ export function CrawlSignalsPanel({ projectId }: { projectId: string }) {
       const body = (await response.json()) as {
         crawl: Crawl | null;
         signals: readonly StoredPageSignals[];
+        unread?: readonly CrawlPage[];
       };
       if (!alive.current) return;
-      setLoad({ status: "loaded", crawl: body.crawl, signals: body.signals });
+      setLoad({
+        status: "loaded",
+        crawl: body.crawl,
+        signals: body.signals,
+        unread: body.unread ?? [],
+      });
     } catch {
       if (alive.current) setLoad({ status: "failed", message: FAILED_TO_READ });
     }
@@ -104,7 +127,7 @@ export function CrawlSignalsPanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the first read belongs to this mount, as in the crawl panel above
     void read();
-  }, [read]);
+  }, [read, progress]);
 
   const refresh = async () => {
     if (reloading) return;
@@ -114,6 +137,7 @@ export function CrawlSignalsPanel({ projectId }: { projectId: string }) {
   };
 
   const signals = load.status === "loaded" ? load.signals : [];
+  const unread = load.status === "loaded" ? load.unread : [];
   const summary = summariseSignals(signals);
   const rows = signals.slice(0, MAX_ROWS);
 
@@ -233,6 +257,50 @@ export function CrawlSignalsPanel({ projectId }: { projectId: string }) {
                   );
                 })
               )}
+            </TableBody>
+          </Table>
+        </>
+      )}
+
+      {unread.length > 0 && (
+        <>
+          <div className="border-t border-border px-4 pt-4 pb-1">
+            <h3 className="text-[13px] font-semibold text-fg">
+              Pages not read ({formatNumber(unread.length)})
+            </h3>
+            <p className="mt-1 text-[12px] leading-snug text-fg-subtle">
+              Discovered, but no on-page signals came from them. The reason is the one the
+              crawl recorded at the time.
+            </p>
+          </div>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell>Page</TableHeaderCell>
+                <TableHeaderCell>State</TableHeaderCell>
+                <TableHeaderCell>Reason</TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {unread.slice(0, MAX_ROWS).map((page) => (
+                <TableRow key={page.url}>
+                  <TableCell>
+                    <span className="block max-w-[22rem] truncate" title={page.url}>
+                      {pathOf(page.url)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge tone={PAGE_STATE_TONE[page.state]}>
+                      {PAGE_STATE_LABEL[page.state]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="block max-w-[26rem] text-fg-muted">
+                      {describePageOutcome(page)}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </>

@@ -53,7 +53,21 @@ function messageForStatus(status: number): string {
   return FAILED_TO_READ;
 }
 
-export function CrawlPanel({ projectId }: { projectId: string }) {
+export function CrawlPanel({
+  projectId,
+  onProgress,
+}: {
+  readonly projectId: string;
+  /**
+   * Called whenever this crawl's page counters move, or it finishes.
+   *
+   * The signals panel below reads a few hundred rows and so is not polled.
+   * This panel is already polling the crawl's one status row, so it is the
+   * cheapest place to notice that there is more to read, and it says so
+   * rather than leaving the panel below stale for the length of a pass.
+   */
+  readonly onProgress?: () => void;
+}) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [starting, setStarting] = useState(false);
 
@@ -96,6 +110,15 @@ export function CrawlPanel({ projectId }: { projectId: string }) {
   // Poll only while something is actually happening.
   const crawl = load.status === "loaded" ? load.crawl : null;
   const running = isCrawlRunning(crawl);
+
+  // Keyed on what a reader of the pages would notice: a different crawl, more
+  // pages answered, or the pass ending.
+  const answered = crawl === null ? -1 : crawl.pagesFetched + crawl.pagesFailed + crawl.pagesSkipped;
+  const crawlId = crawl?.id ?? null;
+  const status = crawl?.status ?? null;
+  useEffect(() => {
+    onProgress?.();
+  }, [onProgress, crawlId, answered, status]);
 
   /**
    * Drives the next slice of the fetch stage.
