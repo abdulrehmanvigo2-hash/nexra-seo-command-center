@@ -11,7 +11,9 @@ import type {
   CrawlStatus,
   DiscoveredUrl,
   PageObservation,
+  PageSignals,
   RedirectHop,
+  SignalState,
   RobotsPolicy,
   SitemapSource,
   UrlRefusal,
@@ -89,6 +91,28 @@ export type CrawlPageRow = {
 export type CrawlPageInsert = Pick<CrawlPageRow, "crawl_id" | "url"> &
   Partial<Omit<CrawlPageRow, "crawl_id" | "url">>;
 
+/** A row of `public.crawl_page_signals`: what one page's HTML declared. */
+export type CrawlPageSignalsRow = {
+  crawl_id: string;
+  url: string;
+  state: SignalState;
+  title: string | null;
+  meta_description: string | null;
+  canonical_url: string | null;
+  meta_robots: string | null;
+  h1: string[];
+  h2: string[];
+  word_count: number | null;
+  internal_links: number | null;
+  external_links: number | null;
+  other_links: number | null;
+  parsed_at: string;
+  updated_at: string;
+};
+
+export type CrawlPageSignalsInsert = Omit<CrawlPageSignalsRow, "updated_at"> &
+  Partial<Pick<CrawlPageSignalsRow, "updated_at">>;
+
 export type CrawlsDatabase = {
   public: {
     Tables: {
@@ -103,6 +127,12 @@ export type CrawlsDatabase = {
         Row: CrawlPageRow;
         Insert: CrawlPageInsert;
         Update: Partial<CrawlPageRow>;
+        Relationships: [];
+      };
+      crawl_page_signals: {
+        Row: CrawlPageSignalsRow;
+        Insert: CrawlPageSignalsInsert;
+        Update: Partial<CrawlPageSignalsRow>;
         Relationships: [];
       };
     };
@@ -442,4 +472,72 @@ export function pageInserts(
   urls: readonly DiscoveredUrl[],
 ): readonly CrawlPageInsert[] {
   return urls.map((entry) => ({ crawl_id: crawlId, url: entry.url }));
+}
+
+// ---------------------------------------------------------------------------
+// crawl_page_signals
+// ---------------------------------------------------------------------------
+
+export const CRAWL_PAGE_SIGNALS_READ_COLUMNS =
+  "crawl_id,url,state,title,meta_description,canonical_url,meta_robots,h1,h2,word_count,internal_links,external_links,other_links,parsed_at,updated_at";
+
+const SIGNAL_STATES: readonly SignalState[] = ["parsed", "not-html", "empty", "failed"];
+
+/** A stored heading list, checked rather than trusted: it is `jsonb`. */
+function headings(value: unknown, column: string): readonly string[] {
+  if (!Array.isArray(value)) {
+    throw new CrawlRowError(`crawl_page_signals.${column} is not an array`);
+  }
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+export function crawlPageSignalsRowToSignals(input: unknown): PageSignals {
+  if (typeof input !== "object" || input === null) {
+    throw new CrawlRowError("crawl_page_signals row is not an object");
+  }
+  const row: Record<string, unknown> = { ...input };
+  return {
+    state: oneOf(text(row, "state"), SIGNAL_STATES, "state"),
+    title: nullableText(row, "title"),
+    metaDescription: nullableText(row, "meta_description"),
+    canonicalUrl: nullableText(row, "canonical_url"),
+    metaRobots: nullableText(row, "meta_robots"),
+    h1: headings(row.h1 ?? [], "h1"),
+    h2: headings(row.h2 ?? [], "h2"),
+    wordCount: nullableCount(row, "word_count"),
+    internalLinks: nullableCount(row, "internal_links"),
+    externalLinks: nullableCount(row, "external_links"),
+    otherLinks: nullableCount(row, "other_links"),
+    parsedAt: instant(text(row, "parsed_at"), "parsed_at"),
+  };
+}
+
+/**
+ * One page's signals as the row to write.
+ *
+ * Upserted on `(crawl_id, url)`, so re-reading a page overwrites its previous
+ * signals rather than adding a second set: one page, one answer, whichever
+ * attempt produced it.
+ */
+export function signalsToRow(
+  crawlId: string,
+  url: string,
+  signals: PageSignals,
+): CrawlPageSignalsInsert {
+  return {
+    crawl_id: crawlId,
+    url,
+    state: signals.state,
+    title: signals.title,
+    meta_description: signals.metaDescription,
+    canonical_url: signals.canonicalUrl,
+    meta_robots: signals.metaRobots,
+    h1: [...signals.h1],
+    h2: [...signals.h2],
+    word_count: signals.wordCount,
+    internal_links: signals.internalLinks,
+    external_links: signals.externalLinks,
+    other_links: signals.otherLinks,
+    parsed_at: signals.parsedAt,
+  };
 }

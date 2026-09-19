@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import { CRAWL_READ_COLUMNS, CRAWL_URL_READ_COLUMNS } from "@/lib/crawl/supabase/schema";
+import {
+  CRAWL_PAGE_SIGNALS_READ_COLUMNS,
+  CRAWL_READ_COLUMNS,
+  CRAWL_URL_READ_COLUMNS,
+} from "@/lib/crawl/supabase/schema";
 
 /**
  * The migration and the TypeScript that reads it have to agree.
@@ -22,7 +26,8 @@ const read = (name: string) =>
 /** The crawl schema is two migrations; the second widens what the first made. */
 const CRAWLS_SQL = read("20260919120000_create_crawls.sql");
 const PAGES_SQL = read("20260920120000_create_crawl_pages.sql");
-const SQL = `${CRAWLS_SQL}\n${PAGES_SQL}`;
+const SIGNALS_SQL = read("20260921120000_create_crawl_page_signals.sql");
+const SQL = `${CRAWLS_SQL}\n${PAGES_SQL}\n${SIGNALS_SQL}`;
 
 /** The quoted values of an `in (...)` list following a named constraint. */
 function constraintValues(constraint: string): string[] {
@@ -44,11 +49,12 @@ function declaredColumns(table: string): string[] {
   const created = body
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => /^[a-z_]+ (text|uuid|integer|timestamptz|jsonb|text\[\])\b/.test(line))
+    // A column name may carry digits: `h1`, `h2`.
+    .filter((line) => /^[a-z_][a-z0-9_]* (text|uuid|integer|timestamptz|jsonb|text\[\])\b/.test(line))
     .map((line) => line.split(" ")[0]);
 
   // Columns a later migration added to the same table count as declared.
-  const added = [...SQL.matchAll(/add column ([a-z_]+)\s/g)].map((match) => match[1]);
+  const added = [...SQL.matchAll(/add column ([a-z_][a-z0-9_]*)\s/g)].map((match) => match[1]);
   return [...created, ...(table === "crawls" ? added : [])];
 }
 
@@ -100,6 +106,15 @@ describe("crawls migration agrees with the TypeScript", () => {
       "private-address",
       "scheme",
       "too-long",
+    ]);
+  });
+
+  test("signal states match SignalState", () => {
+    assert.deepEqual(constraintValues("crawl_page_signals_state_valid"), [
+      "empty",
+      "failed",
+      "not-html",
+      "parsed",
     ]);
   });
 
@@ -161,6 +176,27 @@ describe("crawls migration agrees with the TypeScript", () => {
     for (const column of CRAWL_URL_READ_COLUMNS.split(",")) {
       assert.ok(urls.includes(column), `crawl_urls.${column} is read but not declared`);
     }
+    const signals = declaredColumns("crawl_page_signals");
+    for (const column of CRAWL_PAGE_SIGNALS_READ_COLUMNS.split(",")) {
+      assert.ok(signals.includes(column), `crawl_page_signals.${column} is read but not declared`);
+    }
+  });
+
+  test("the signals migration only creates its own table", () => {
+    const created = [...SIGNALS_SQL.matchAll(/create table public\.(\w+)/g)].map((m) => m[1]);
+    assert.deepEqual(created, ["crawl_page_signals"]);
+    const alters = [...SIGNALS_SQL.matchAll(/alter table public\.(\w+)/g)].map((m) => m[1]);
+    assert.deepEqual([...new Set(alters)], ["crawl_page_signals"]);
+  });
+
+  test("no migration stores a raw page body", () => {
+    // Signals are extracted in memory and the body discarded; a column for it
+    // would be a liability and a cost for something only the extractor reads.
+    assert.equal(/\b(body|html|content|raw)\s+text\b/i.test(SQL), false);
+  });
+
+  test("signals reference the page row they describe", () => {
+    assert.match(SIGNALS_SQL, /references public\.crawl_pages \(crawl_id, url\) on delete cascade/);
   });
 
   test("the URL length cap matches the crawler's own", () => {
@@ -170,7 +206,7 @@ describe("crawls migration agrees with the TypeScript", () => {
   });
 
   test("every table has row level security and explicit grants", () => {
-    for (const table of ["crawls", "crawl_urls", "crawl_pages"]) {
+    for (const table of ["crawls", "crawl_urls", "crawl_pages", "crawl_page_signals"]) {
       assert.match(SQL, new RegExp(`alter table public\\.${table} enable row level security`));
       assert.match(SQL, new RegExp(`grant select, insert, update, delete on table public\\.${table} to service_role`));
       assert.match(SQL, new RegExp(`revoke all on table public\\.${table} from anon`));

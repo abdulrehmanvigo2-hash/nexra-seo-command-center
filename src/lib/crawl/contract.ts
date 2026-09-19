@@ -7,6 +7,7 @@ import type {
   CrawlSource,
   DiscoveredUrl,
   PageObservation,
+  PageSignals,
   RecordedDiscovery,
 } from "@/types/crawl";
 
@@ -164,6 +165,9 @@ export type CrawlPageStore = {
   countPendingPages(crawlId: string): Promise<number>;
 
   listPages(crawlId: string, limit?: number): Promise<readonly CrawlPage[]>;
+
+  /** The on-page signals read from this crawl's fetched pages. */
+  listSignals(crawlId: string, limit?: number): Promise<readonly PageSignals[]>;
 };
 
 /** The page queue for a deployment that does not store crawls. */
@@ -184,6 +188,9 @@ export const unavailableCrawlPageStore: CrawlPageStore = {
     return 0;
   },
   async listPages() {
+    return [];
+  },
+  async listSignals() {
     return [];
   },
 };

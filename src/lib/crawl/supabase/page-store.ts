@@ -4,8 +4,11 @@ import {
   CRAWL_PAGE_READ_COLUMNS,
   crawlPageRowToClaimed,
   crawlPageRowToPage,
+  crawlPageSignalsRowToSignals,
+  CRAWL_PAGE_SIGNALS_READ_COLUMNS,
   observationToUpdate,
   pageInserts,
+  signalsToRow,
   type CrawlsDatabase,
 } from "@/lib/crawl/supabase/schema";
 import { CrawlStoreError } from "@/lib/crawl/supabase/store";
@@ -70,7 +73,30 @@ export function createSupabaseCrawlPageStore(
         .select("url")
         .maybeSingle();
       if (error) throw new CrawlStoreError("record page", error);
-      return data !== null;
+      // The lease was not this caller's: the result is stale and nothing —
+      // including its signals — may be written.
+      if (data === null) return false;
+
+      if (observation.state === "fetched") {
+        // After the page row, because the signals row references it. Upserted
+        // on the same key, so a re-read replaces rather than duplicates.
+        const { error: signalsError } = await client
+          .from("crawl_page_signals")
+          .upsert(signalsToRow(crawlId, url, observation.signals), { onConflict: "crawl_id,url" });
+        if (signalsError) throw new CrawlStoreError("record page signals", signalsError);
+      }
+      return true;
+    },
+
+    async listSignals(crawlId, limit = 1_000) {
+      const { data, error } = await client
+        .from("crawl_page_signals")
+        .select(CRAWL_PAGE_SIGNALS_READ_COLUMNS)
+        .eq("crawl_id", crawlId)
+        .order("url", { ascending: true })
+        .limit(limit);
+      if (error) throw new CrawlStoreError("list page signals", error);
+      return data.map(crawlPageSignalsRowToSignals);
     },
 
     async recoverExpiredPages(crawlId, limit) {

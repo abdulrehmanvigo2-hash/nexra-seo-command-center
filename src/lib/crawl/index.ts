@@ -70,3 +70,14 @@ export type {
 
 export { CrawlStoreError, createSupabaseCrawlStore } from "@/lib/crawl/supabase/store";
 export { type CrawlsDatabase } from "@/lib/crawl/supabase/schema";
+
+export {
+  MAX_HEADINGS,
+  MAX_HTML_BYTES,
+  classifyLinks,
+  extractSignals,
+  isHtmlType,
+  normaliseText,
+  type ExtractInput,
+  type LinkTally,
+} from "@/lib/crawl/html";

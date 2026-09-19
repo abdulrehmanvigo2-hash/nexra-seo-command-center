@@ -40,6 +40,13 @@ export const DEFAULT_TIMEOUT_MS = 15_000;
 export const DEFAULT_MAX_BYTES = 2_000_000;
 export const DEFAULT_MAX_REDIRECTS = 5;
 
+/**
+ * What a gzip payload may expand to. Separate from the wire cap on purpose:
+ * compression ratios of a thousand to one are ordinary, and malicious ones are
+ * far higher.
+ */
+export const DEFAULT_MAX_DECOMPRESSED_BYTES = 20_000_000;
+
 /** Content types the crawler will read a body for. */
 const HTML_TYPES = ["text/html", "application/xhtml+xml"] as const;
 
@@ -53,6 +60,13 @@ export type FetchPageOptions = {
   readonly maxRedirects?: number;
   /** Content-type prefixes to accept; defaults to HTML. */
   readonly accept?: readonly string[];
+  /**
+   * Decompress a gzip *payload* (`.xml.gz`, `application/gzip`) under
+   * `maxDecompressedBytes`. Off by default: only sitemap discovery asks for it.
+   */
+  readonly gunzip?: boolean;
+  /** Cap on what a gzip payload may become. Ignored unless `gunzip`. */
+  readonly maxDecompressedBytes?: number;
   readonly fetch?: Fetch;
   readonly lookup?: AddressLookup;
   readonly now?: () => number;
@@ -75,18 +89,18 @@ function mediaType(header: string | null): string | null {
 }
 
 /**
- * Reads at most `maxBytes` from the response.
+ * Reads at most `maxBytes` of the response, as bytes.
  *
- * Streamed rather than `response.text()`: a `Content-Length` can lie or be
- * absent, and the point of a cap is not to hold a body this server never agreed
- * to receive. Returns null once the cap is passed, and the caller stops.
+ * Streamed rather than `response.arrayBuffer()`: a `Content-Length` can lie or
+ * be absent, and the point of a cap is not to hold a body this server never
+ * agreed to receive. Returns null once the cap is passed, and the caller stops.
  */
-async function readCapped(response: Response, maxBytes: number): Promise<{ text: string; bytes: number } | null> {
+async function readCappedBytes(response: Response, maxBytes: number): Promise<Uint8Array | null> {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) return null;
 
   const body = response.body;
-  if (!body) return { text: "", bytes: 0 };
+  if (!body) return new Uint8Array(0);
 
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -113,7 +127,76 @@ async function readCapped(response: Response, maxBytes: number): Promise<{ text:
     joined.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return { text: new TextDecoder("utf-8").decode(joined), bytes };
+  return joined;
+}
+
+/**
+ * Decompresses a gzip payload under its own, separate cap.
+ *
+ * Needed for `.xml.gz` sitemaps, where the *body* is gzip data. This is not
+ * the same thing as `Content-Encoding: gzip`, which the runtime already
+ * decompresses before the cap above ever counts a byte — that case has always
+ * been safe, because the cap is applied to what comes out.
+ *
+ * Here there are two caps and both matter. The wire cap bounds what is read
+ * from the socket; this one bounds what the compressed bytes are allowed to
+ * become, which is what stops a few hundred kilobytes of zeros claiming to be
+ * gigabytes. Output is counted as it arrives and the stream is cancelled the
+ * moment it passes the limit, so the bomb is never allocated.
+ *
+ * Null means "could not read this": either it expanded past the cap, or it is
+ * not valid gzip. Neither is a reason to hold anything in memory.
+ */
+async function inflateCapped(bytes: Uint8Array, maxBytes: number): Promise<string | null> {
+  let stream: ReadableStream<Uint8Array>;
+  try {
+    stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream("gzip"));
+  } catch {
+    return null;
+  }
+
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      // Checked before keeping the chunk: the cap is on what is held, not on
+      // what has already been held.
+      if (total > maxBytes) return null;
+      chunks.push(value);
+    }
+  } catch {
+    // Malformed gzip. The stream rejects rather than producing garbage.
+    return null;
+  } finally {
+    reader.releaseLock();
+    await stream.cancel().catch(() => undefined);
+  }
+
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8").decode(joined);
+}
+
+/** Whether a response is a gzip payload rather than gzip transfer encoding. */
+export function isGzipPayload(url: string, contentType: string | null): boolean {
+  if (contentType !== null) {
+    const media = contentType.split(";")[0].trim().toLowerCase();
+    if (media === "application/gzip" || media === "application/x-gzip") return true;
+  }
+  try {
+    return new URL(url).pathname.toLowerCase().endsWith(".gz");
+  } catch {
+    return false;
+  }
 }
 
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
@@ -135,6 +218,8 @@ export async function fetchPage(
     maxBytes = DEFAULT_MAX_BYTES,
     maxRedirects = DEFAULT_MAX_REDIRECTS,
     accept = HTML_TYPES,
+    gunzip = false,
+    maxDecompressedBytes = DEFAULT_MAX_DECOMPRESSED_BYTES,
     fetch: send = (input, init) => fetch(input, init),
     lookup,
     now = Date.now,
@@ -226,26 +311,47 @@ export async function fetchPage(
       };
     }
 
-    if (contentType !== null && !accept.some((prefix) => contentType.startsWith(prefix))) {
+    // A gzip payload is accepted on its own terms: the caller asked for one,
+    // and its media type is never in the HTML or XML list it would be checked
+    // against.
+    const compressed = gunzip && isGzipPayload(current, contentType);
+    if (
+      !compressed &&
+      contentType !== null &&
+      !accept.some((prefix) => contentType.startsWith(prefix))
+    ) {
       await response.body?.cancel().catch(() => undefined);
       return failed(current, "unsupported-type", elapsed(), redirects);
     }
 
-    let read: { text: string; bytes: number } | null;
+    let raw: Uint8Array | null;
     try {
-      read = await readCapped(response, maxBytes);
+      raw = await readCappedBytes(response, maxBytes);
     } catch {
       return failed(current, "network", elapsed(), redirects);
     }
-    if (read === null) return failed(current, "too-large", elapsed(), redirects);
+    if (raw === null) return failed(current, "too-large", elapsed(), redirects);
+
+    let body: string;
+    if (compressed) {
+      const inflated = await inflateCapped(raw, maxDecompressedBytes);
+      // Expanded past its cap, or not valid gzip. Either way there is nothing
+      // here this crawler can read.
+      if (inflated === null) return failed(current, "unsupported-type", elapsed(), redirects);
+      body = inflated;
+    } else {
+      body = new TextDecoder("utf-8").decode(raw);
+    }
 
     return {
       state: "fetched",
       url: current,
       status: response.status,
       contentType,
-      body: read.text,
-      bytes: read.bytes,
+      body,
+      // The bytes that crossed the wire, which is what a crawl is accountable
+      // for; a decompressed size is not a transfer size.
+      bytes: raw.byteLength,
       elapsedMs: elapsed(),
       redirects,
     };

@@ -99,6 +99,24 @@ headings, no scores; reading meaning out of a response is a later stage.
 - `crawls` gained a `fetching` status and a `pages` limit. Both widen existing
   constraints; every row already stored stays valid.
 
+### On-page signals
+
+`public.crawl_page_signals` (migration `20260921120000_create_crawl_page_signals.sql`)
+holds what each fetched page's HTML declared: title, meta description,
+canonical, meta robots, every `h1` and `h2`, word count, and internal /
+external / other link counts. Facts only — no scores, no issues, no
+recommendations.
+
+- One row per page, keyed and foreign-keyed on `(crawl_id, url)`, so it goes
+  when the page row does and a re-read replaces rather than duplicates.
+- `state` separates `parsed`, `not-html`, `empty` and `failed`. A PDF is
+  `not-html`, which is a fact about the page and never a parse error.
+- The measurement columns are null for anything but `parsed`: a word count of
+  zero on an image would be a measurement nobody made.
+- **No raw HTML is stored anywhere.** Signals are extracted in memory by the
+  fetch pass, from the body it just validated, and the body is discarded when
+  that function returns.
+
 ## Agent runs
 
 `public.agent_runs` (migration `20260914120000_create_agent_runs.sql`) records

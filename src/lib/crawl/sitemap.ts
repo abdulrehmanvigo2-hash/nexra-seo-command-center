@@ -26,14 +26,12 @@ import type {
  * every direction a hostile or simply broken file could push it: how many
  * documents are read, how deep an index may nest, and how many URLs come back.
  *
- * Gzipped sitemaps (`.xml.gz`) are **not** read, and the content-type gate
- * refuses them. Node has `DecompressionStream`, so supporting them needs no
- * dependency — but it does need a second byte cap applied to the
- * *decompressed* stream, because the fetcher's cap counts bytes on the wire
- * and a few hundred kilobytes of gzip expands to gigabytes. That cap belongs
- * in the fetch boundary, with its own tests, rather than bolted on here; until
- * then a site publishing only gzipped sitemaps discovers its homepage and
- * nothing else, and says so through a `unsupported-type` document failure.
+ * Gzipped sitemaps (`.xml.gz`) are read. The fetch boundary decompresses a
+ * gzip *payload* under a second, separate cap on what it may expand to, so a
+ * compression bomb is refused rather than allocated; a payload that will not
+ * decompress comes back as `unsupported-type`, like any other body this
+ * crawler cannot read. `Content-Encoding: gzip` is a different thing and was
+ * always safe — the runtime decompresses it before the wire cap counts a byte.
  *
  * The XML is read by pulling `<loc>` values out rather than by building a
  * document tree. That is deliberate. A real sitemap is a flat list of
@@ -56,6 +54,9 @@ export const MAX_DISCOVERED_URLS = 50_000;
 export const MAX_SITEMAP_BYTES = 10_000_000;
 
 const XML_TYPES = ["text/xml", "application/xml", "text/plain", "application/rss+xml"] as const;
+
+/** Sitemaps may be served gzipped; the fetcher caps what one may expand to. */
+const SITEMAP_FETCH = { gunzip: true } as const;
 
 const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   amp: "&",
@@ -193,6 +194,7 @@ export async function discoverSitemapUrls(
 
       const outcome = await fetchPage(location.url, {
         ...fetchOptions,
+        ...SITEMAP_FETCH,
         site: host,
         maxBytes: fetchOptions.maxBytes ?? MAX_SITEMAP_BYTES,
         accept: XML_TYPES,

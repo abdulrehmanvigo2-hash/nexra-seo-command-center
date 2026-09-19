@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { gzipSync } from "node:zlib";
 import { describe, test } from "node:test";
 import { discoverSitemapUrls, initialSitemaps, parseSitemap } from "@/lib/crawl/sitemap";
 import type { AddressLookup } from "@/lib/crawl/url-policy";
@@ -323,5 +324,99 @@ describe("discoverSitemapUrls", () => {
     });
     assert.equal(seen.some((url) => url.endsWith("robots.txt")), false);
     assert.deepEqual(found(result), ["https://example.com/", "https://example.com/a"]);
+  });
+});
+
+describe("gzipped sitemaps", () => {
+  const gz = (body: string): Route =>
+    () =>
+      new Response(new Uint8Array(gzipSync(Buffer.from(body, "utf8"))), {
+        status: 200,
+        headers: { "content-type": "application/gzip" },
+      });
+
+  test("a valid .xml.gz sitemap is read", async () => {
+    const result = await discover({
+      "https://example.com/robots.txt": robotsFile("Sitemap: https://example.com/s.xml.gz"),
+      "https://example.com/s.xml.gz": gz(urlset("https://example.com/a", "https://example.com/b")),
+    });
+    assert.deepEqual(found(result), [
+      "https://example.com/",
+      "https://example.com/a",
+      "https://example.com/b",
+    ]);
+    assert.equal(result.documents[0].failure, null);
+  });
+
+  test("a gzipped index is walked like any other", async () => {
+    const result = await discover({
+      "https://example.com/robots.txt": robotsFile("Sitemap: https://example.com/i.xml.gz"),
+      "https://example.com/i.xml.gz": gz(index("https://example.com/s.xml.gz")),
+      "https://example.com/s.xml.gz": gz(urlset("https://example.com/deep")),
+    });
+    assert.deepEqual(found(result), ["https://example.com/", "https://example.com/deep"]);
+  });
+
+  test("malformed gzip fails safely and is recorded, not thrown", async () => {
+    const result = await discover({
+      "https://example.com/robots.txt": robotsFile("Sitemap: https://example.com/s.xml.gz"),
+      "https://example.com/s.xml.gz": () =>
+        new Response(new Uint8Array([0x1f, 0x8b, 0x08, 0x00, 1, 2, 3, 4]), {
+          status: 200,
+          headers: { "content-type": "application/gzip" },
+        }),
+    });
+    assert.equal(result.documents[0].failure, "unsupported-type");
+    // The crawl still stands: the homepage is there and nothing crashed.
+    assert.deepEqual(found(result), ["https://example.com/"]);
+  });
+
+  test("a decompression bomb is refused rather than allocated", async () => {
+    // ~1 MB of zeros compresses to about a kilobyte; the cap below is 5 KB.
+    const bomb = gzipSync(Buffer.alloc(1_000_000, 0));
+    assert.ok(bomb.byteLength < 50_000, "the compressed payload is small");
+
+    const result = await discoverSitemapUrls("example.com", {
+      lookup: publicDns,
+      fetch: router({
+        "https://example.com/robots.txt": robotsFile("Sitemap: https://example.com/s.xml.gz"),
+        "https://example.com/s.xml.gz": () =>
+          new Response(new Uint8Array(bomb), {
+            status: 200,
+            headers: { "content-type": "application/gzip" },
+          }),
+      }).send,
+      maxDecompressedBytes: 5_000,
+    });
+    assert.equal(result.documents[0].failure, "unsupported-type");
+    assert.deepEqual(found(result), ["https://example.com/"]);
+  });
+
+  test("the decompressed cap is separate from the wire cap", async () => {
+    // Comfortably under the wire cap, comfortably over the decompressed one.
+    const payload = gzipSync(Buffer.from("x".repeat(200_000), "utf8"));
+    const result = await discoverSitemapUrls("example.com", {
+      lookup: publicDns,
+      fetch: router({
+        "https://example.com/robots.txt": robotsFile("Sitemap: https://example.com/s.xml.gz"),
+        "https://example.com/s.xml.gz": () =>
+          new Response(new Uint8Array(payload), {
+            status: 200,
+            headers: { "content-type": "application/gzip" },
+          }),
+      }).send,
+      maxBytes: 1_000_000,
+      maxDecompressedBytes: 1_000,
+    });
+    assert.equal(result.documents[0].failure, "unsupported-type");
+  });
+
+  test("ordinary XML sitemaps are unaffected", async () => {
+    const result = await discover({
+      "https://example.com/robots.txt": robotsFile("Sitemap: https://example.com/s.xml"),
+      "https://example.com/s.xml": xml(urlset("https://example.com/plain")),
+    });
+    assert.deepEqual(found(result), ["https://example.com/", "https://example.com/plain"]);
+    assert.equal(result.documents[0].failure, null);
   });
 });

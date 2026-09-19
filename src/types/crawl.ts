@@ -328,6 +328,11 @@ export type PageObservation =
       readonly contentType: string | null;
       readonly bytes: number;
       readonly durationMs: number;
+      /**
+       * Read from the response body while the fetch pass still held it. The
+       * body itself is never stored and never leaves that function.
+       */
+      readonly signals: PageSignals;
     }
   | {
       readonly state: "failed";
@@ -349,4 +354,55 @@ export type FetchPassResult = {
   /** Why the slice stopped, so a caller knows whether to come back. */
   readonly stoppedBy: "empty" | "budget" | "batch-limit";
   readonly remaining: number;
+};
+
+// ---------------------------------------------------------------------------
+// On-page signals
+// ---------------------------------------------------------------------------
+
+/**
+ * How reading one response's signals went.
+ *
+ * `not-html` is not a failure: a PDF or an image is a fact about the page, and
+ * calling it a parse error would put it beside genuinely broken markup.
+ */
+export type SignalState =
+  /** HTML, read successfully. Absent values are null; nothing is invented. */
+  | "parsed"
+  /** The server answered with something that is not HTML. */
+  | "not-html"
+  /** HTML, but nothing in the body. */
+  | "empty"
+  /** The extractor itself could not finish. */
+  | "failed";
+
+/**
+ * The factual on-page signals of one page.
+ *
+ * Observations, not judgements: what the document says, with no view on
+ * whether a missing description or three `h1`s is a problem. Multiple headings
+ * are kept as they were found, because choosing one is already an opinion.
+ *
+ * Every value is null where the page did not carry it, and the numeric fields
+ * are null for anything but a `parsed` page — a word count of zero on a PDF
+ * would be a measurement nobody made.
+ */
+export type PageSignals = {
+  readonly state: SignalState;
+  readonly title: string | null;
+  readonly metaDescription: string | null;
+  /** As written in the document, not resolved. */
+  readonly canonicalUrl: string | null;
+  /** The generic `robots` meta, lower-cased; not `googlebot` or another agent. */
+  readonly metaRobots: string | null;
+  readonly h1: readonly string[];
+  readonly h2: readonly string[];
+  readonly wordCount: number | null;
+  /** Links to the crawled host. */
+  readonly internalLinks: number | null;
+  /** Links to any other host. */
+  readonly externalLinks: number | null;
+  /** Fragments, mailto/tel/javascript, and hrefs that do not parse. */
+  readonly otherLinks: number | null;
+  readonly parsedAt: string;
 };

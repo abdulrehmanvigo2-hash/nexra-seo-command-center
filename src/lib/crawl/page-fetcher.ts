@@ -1,4 +1,5 @@
 import type { CrawlPageStore } from "@/lib/crawl/contract";
+import { extractSignals } from "@/lib/crawl/html";
 import { isAllowed } from "@/lib/crawl/robots";
 import {
   createHostGate,
@@ -82,8 +83,16 @@ function pathAndQuery(url: string): string {
   }
 }
 
-/** One fetch outcome as the row's observation. */
-export function observationFor(outcome: FetchOutcome): PageObservation {
+/**
+ * One fetch outcome as the row's observation.
+ *
+ * Where there is a body, its signals are read here — synchronously, from the
+ * string the fetcher just produced, before this function returns and the body
+ * becomes unreachable. That is the whole of the raw-body strategy: the HTML
+ * exists for the length of one call and is never stored, sent anywhere, or
+ * handed to a second stage that would need it kept.
+ */
+export function observationFor(outcome: FetchOutcome, site: string): PageObservation {
   if (outcome.state === "fetched") {
     return {
       state: "fetched",
@@ -93,6 +102,12 @@ export function observationFor(outcome: FetchOutcome): PageObservation {
       contentType: outcome.contentType,
       bytes: outcome.bytes,
       durationMs: outcome.elapsedMs,
+      signals: extractSignals({
+        body: outcome.body,
+        contentType: outcome.contentType,
+        finalUrl: outcome.url,
+        site,
+      }),
     };
   }
   // "We would not ask" is not "we asked and got nothing", and the two are kept
@@ -178,7 +193,7 @@ export async function runPageFetchPass(options: PageFetchOptions): Promise<Fetch
         ...(maxBytes === undefined ? {} : { maxBytes }),
         ...(requestTimeoutMs === undefined ? {} : { timeoutMs: requestTimeoutMs }),
       });
-      return observationFor(outcome);
+      return observationFor(outcome, site);
     };
 
     const handle = async (page: ClaimedPage) => {

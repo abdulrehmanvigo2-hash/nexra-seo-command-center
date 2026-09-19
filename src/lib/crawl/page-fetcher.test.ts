@@ -9,6 +9,7 @@ import type {
   CrawlPage,
   FetchOutcome,
   PageObservation,
+  PageSignals,
   RobotsPolicy,
 } from "@/types/crawl";
 
@@ -48,6 +49,7 @@ export function memoryPageStore(clock?: { now: () => number }) {
   const now = () => clock?.now() ?? Date.now();
   const key = (crawlId: string, url: string) => `${crawlId}\u0000${url}`;
   const recorded: PageObservation[] = [];
+  const signals = new Map<string, PageSignals>();
   let claims = 0;
 
   const store: CrawlPageStore = {
@@ -116,6 +118,7 @@ export function memoryPageStore(clock?: { now: () => number }) {
             ? observation.refusal
             : null;
       row.skipReason = observation.state === "skipped" ? observation.skipReason : null;
+      if (observation.state === "fetched") signals.set(key(crawlId, url), observation.signals);
       recorded.push(observation);
       return true;
     },
@@ -148,12 +151,34 @@ export function memoryPageStore(clock?: { now: () => number }) {
     async listPages(crawlId) {
       return [...rows.values()].filter((row) => row.crawlId === crawlId);
     },
+
+    async listSignals(crawlId) {
+      return [...signals.entries()]
+        .filter(([id]) => id.startsWith(`${crawlId}\u0000`))
+        .map(([, value]) => value);
+    },
   };
 
-  return { store, rows, recorded, claimCount: () => claims };
+  return { store, rows, recorded, signals, claimCount: () => claims };
 }
 
 const CRAWL = "crawl-1";
+
+/** Stands in where a test is about the queue rather than about extraction. */
+const NO_SIGNALS = {
+  state: "not-html",
+  title: null,
+  metaDescription: null,
+  canonicalUrl: null,
+  metaRobots: null,
+  h1: [],
+  h2: [],
+  wordCount: null,
+  internalLinks: null,
+  externalLinks: null,
+  otherLinks: null,
+  parsedAt: "2026-09-21T10:00:00.000Z",
+} as const;
 const SITE = "example.com";
 const ALLOW_ALL: RobotsPolicy = { state: "missing" };
 
@@ -205,22 +230,23 @@ const pass = (
 
 describe("observationFor", () => {
   test("an answer of any status is a fetch", () => {
-    const observation = observationFor(fetched("https://example.com/a", 404));
+    const observation = observationFor(fetched("https://example.com/a", 404), SITE);
     assert.equal(observation.state, "fetched");
     assert.equal(observation.state === "fetched" && observation.httpStatus, 404);
   });
 
   test("a policy refusal is refused, not failed", () => {
-    const observation = observationFor(failed("https://example.com/a", "refused", "private-address"));
+    const observation = observationFor(failed("https://example.com/a", "refused", "private-address"), SITE);
     assert.equal(observation.state, "refused");
     assert.equal(observation.state === "refused" && observation.refusal, "private-address");
   });
 
   test("everything else is a failure, keeping the refusal where there is one", () => {
-    const timeout = observationFor(failed("https://example.com/a", "timeout"));
+    const timeout = observationFor(failed("https://example.com/a", "timeout"), SITE);
     assert.equal(timeout.state, "failed");
     const redirected = observationFor(
       failed("https://example.com/a", "redirect-refused", "off-site"),
+      SITE,
     );
     assert.equal(redirected.state === "failed" && redirected.refusal, "off-site");
   });
@@ -438,6 +464,7 @@ describe("runPageFetchPass", () => {
       contentType: "text/html",
       bytes: 10,
       durationMs: 1,
+      signals: NO_SIGNALS,
     });
     assert.equal(written, false);
     assert.equal([...memory.rows.values()][0].state, "pending");
@@ -538,5 +565,125 @@ describe("politeness", () => {
       return item;
     });
     assert.deepEqual(order, [3, 1, 2]);
+  });
+});
+
+describe("extraction inside the fetch pass", () => {
+  const html = (body: string) =>
+    `<!doctype html><html><head><title>T</title></head><body>${body}</body></html>`;
+
+  const served = (url: string, body: string, contentType = "text/html"): FetchOutcome => ({
+    state: "fetched",
+    url,
+    status: 200,
+    contentType,
+    body,
+    bytes: body.length,
+    elapsedMs: 4,
+    redirects: [],
+  });
+
+  test("signals are read from the body and persisted with the page", async () => {
+    const memory = await seeded(1);
+    await pass(memory, async (url) =>
+      served(url, html('<h1>Heading</h1><p>three little words</p><a href="/a">x</a>')),
+    );
+
+    const [signals] = await memory.store.listSignals(CRAWL);
+    assert.equal(signals.state, "parsed");
+    assert.equal(signals.title, "T");
+    assert.deepEqual(signals.h1, ["Heading"]);
+    // "Heading" + "three little words" + the link's "x": heading and anchor
+    // text are page copy too.
+    assert.equal(signals.wordCount, 5);
+    assert.equal(signals.internalLinks, 1);
+  });
+
+  test("the raw body is never handed to the store", async () => {
+    const memory = await seeded(1);
+    const secret = "THIS-MARKUP-MUST-NOT-BE-STORED";
+    await pass(memory, async (url) => served(url, html(`<p>${secret}</p>`)));
+
+    // Whatever the store kept, none of it is the document.
+    const stored = JSON.stringify([
+      [...memory.rows.values()],
+      memory.recorded,
+      await memory.store.listSignals(CRAWL),
+    ]);
+    assert.equal(stored.includes(secret), false);
+    assert.equal(stored.includes("<!doctype html"), false);
+  });
+
+  test("a non-HTML response is recorded as such, not as a parse failure", async () => {
+    const memory = await seeded(1);
+    await pass(memory, async (url) => served(url, "%PDF-1.4", "application/pdf"));
+
+    const [signals] = await memory.store.listSignals(CRAWL);
+    assert.equal(signals.state, "not-html");
+    assert.equal(signals.wordCount, null, "nothing is measured on a page nobody parsed");
+    // The fetch itself still succeeded: the page answered.
+    assert.equal([...memory.rows.values()][0].state, "fetched");
+  });
+
+  test("an empty HTML body is its own state", async () => {
+    const memory = await seeded(1);
+    await pass(memory, async (url) => served(url, ""));
+    assert.equal((await memory.store.listSignals(CRAWL))[0].state, "empty");
+  });
+
+  test("a page fetched twice has one set of signals, the latest", async () => {
+    const memory = await seeded(1);
+    await pass(memory, async (url) => served(url, html("<h1>First</h1>")));
+
+    // Put the page back in the queue and fetch it again, as a retry would.
+    const row = [...memory.rows.values()][0];
+    row.state = "pending";
+    row.attemptCount = 0;
+    await pass(memory, async (url) => served(url, html("<h1>Second</h1>")));
+
+    const all = await memory.store.listSignals(CRAWL);
+    assert.equal(all.length, 1, "one page, one row of signals");
+    assert.deepEqual(all[0].h1, ["Second"]);
+  });
+
+  test("signals are not written for a page whose lease was lost", async () => {
+    const memory = await seeded(1);
+    const [claimed] = await memory.store.claimPages(CRAWL, 1, 60);
+    const row = [...memory.rows.values()][0];
+    row.leaseExpiresAt = -1;
+    await memory.store.recoverExpiredPages(CRAWL, 10);
+
+    const written = await memory.store.recordPage(CRAWL, claimed.url, claimed.leaseToken, {
+      state: "fetched",
+      httpStatus: 200,
+      finalUrl: claimed.url,
+      redirects: [],
+      contentType: "text/html",
+      bytes: 10,
+      durationMs: 1,
+      signals: { ...NO_SIGNALS, state: "parsed" },
+    });
+    assert.equal(written, false);
+    assert.equal((await memory.store.listSignals(CRAWL)).length, 0);
+  });
+
+  test("a failed or skipped page produces no signals row", async () => {
+    const memory = await seeded(2);
+    await pass(memory, async (url) => failed(url, "timeout"));
+    assert.equal((await memory.store.listSignals(CRAWL)).length, 0);
+  });
+
+  test("links are classified against the crawl's site, not the page's host", async () => {
+    const memory = await seeded(1);
+    await pass(memory, async (url) =>
+      served(
+        url,
+        html('<a href="/in">a</a><a href="https://other.com/out">b</a><a href="#f">c</a>'),
+      ),
+    );
+    const [signals] = await memory.store.listSignals(CRAWL);
+    assert.equal(signals.internalLinks, 1);
+    assert.equal(signals.externalLinks, 1);
+    assert.equal(signals.otherLinks, 1);
   });
 });
