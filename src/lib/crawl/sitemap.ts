@@ -26,6 +26,15 @@ import type {
  * every direction a hostile or simply broken file could push it: how many
  * documents are read, how deep an index may nest, and how many URLs come back.
  *
+ * Gzipped sitemaps (`.xml.gz`) are **not** read, and the content-type gate
+ * refuses them. Node has `DecompressionStream`, so supporting them needs no
+ * dependency — but it does need a second byte cap applied to the
+ * *decompressed* stream, because the fetcher's cap counts bytes on the wire
+ * and a few hundred kilobytes of gzip expands to gigabytes. That cap belongs
+ * in the fetch boundary, with its own tests, rather than bolted on here; until
+ * then a site publishing only gzipped sitemaps discovers its homepage and
+ * nothing else, and says so through a `unsupported-type` document failure.
+ *
  * The XML is read by pulling `<loc>` values out rather than by building a
  * document tree. That is deliberate. A real sitemap is a flat list of
  * locations; the fields around them are not read, an XML parser would be a

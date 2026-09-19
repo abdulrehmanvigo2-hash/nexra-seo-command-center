@@ -4,6 +4,7 @@ import {
   ProjectMonogram,
   ProjectStatusBadge,
 } from "@/components/projects/project-chrome";
+import { CrawlPanel } from "@/components/crawl/crawl-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -119,6 +120,13 @@ export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
           ))}
         </dl>
       </section>
+
+      {/*
+        The one action this screen offers. Discovery is the first real
+        measurement of the site, and it is deliberately above the observed and
+        modelled panels: it is what an operator came here to do.
+      */}
+      <CrawlPanel projectId={project.id} />
 
       {/*
         Thirty days, the window the rest of the product defaults to. This

@@ -65,3 +65,38 @@ export type CrawlStore = {
   /** The URLs one crawl discovered, in the order they were found. */
   listUrls(crawlId: string, limit?: number): Promise<readonly DiscoveredUrl[]>;
 };
+
+/**
+ * The store for a deployment that does not keep crawls.
+ *
+ * With the fixture roster there is no `crawls` table and no project row for a
+ * crawl to reference, so every call answers as if the project were unknown
+ * rather than pretending a pass was recorded. The same choice the agent
+ * runtime makes for the same reason.
+ */
+export const unavailableCrawlStore: CrawlStore = {
+  async create() {
+    return { ok: false, reason: "unknown-project" };
+  },
+  async get() {
+    return null;
+  },
+  async listForProject() {
+    return [];
+  },
+  async start() {
+    return null;
+  },
+  async recordDiscovery() {
+    return null;
+  },
+  async fail() {
+    return null;
+  },
+  async cancel() {
+    return null;
+  },
+  async listUrls() {
+    return [];
+  },
+};
