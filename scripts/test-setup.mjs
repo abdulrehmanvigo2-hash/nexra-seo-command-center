@@ -1,5 +1,4 @@
 import { registerHooks } from "node:module";
-import { pathToFileURL } from "node:url";
 
 /**
  * Lets the test runner load the application's own modules.
@@ -20,7 +19,18 @@ import { pathToFileURL } from "node:url";
  * the same source the application ships, not a copy of it.
  */
 
-const SRC = pathToFileURL(new URL("../src/", import.meta.url).pathname).href;
+/**
+ * Where `@/…` resolves to, as a URL.
+ *
+ * `import.meta.url` is already a `file:` URL, so `new URL` is the whole job.
+ * Taking `.pathname` off it and handing that back to `pathToFileURL` — which
+ * is what this did — is a round-trip that is a no-op on POSIX and wrong on
+ * Windows: the pathname of `file:///D:/repo/src/` is `/D:/repo/src/`, and
+ * Windows reads a leading slash before a drive letter as drive-relative, so
+ * it resolves against the working directory and yields `D:\D:\repo\src\`.
+ * Every `@/…` import then fails to resolve.
+ */
+const SRC = new URL("../src/", import.meta.url).href;
 const EMPTY = "data:text/javascript,export {};";
 
 registerHooks({
