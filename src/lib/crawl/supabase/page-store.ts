@@ -4,7 +4,7 @@ import {
   CRAWL_PAGE_READ_COLUMNS,
   crawlPageRowToClaimed,
   crawlPageRowToPage,
-  crawlPageSignalsRowToSignals,
+  crawlPageSignalsRowToStored,
   CRAWL_PAGE_SIGNALS_READ_COLUMNS,
   observationToUpdate,
   pageInserts,
@@ -96,7 +96,7 @@ export function createSupabaseCrawlPageStore(
         .order("url", { ascending: true })
         .limit(limit);
       if (error) throw new CrawlStoreError("list page signals", error);
-      return data.map(crawlPageSignalsRowToSignals);
+      return data.map(crawlPageSignalsRowToStored);
     },
 
     async recoverExpiredPages(crawlId, limit) {

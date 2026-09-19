@@ -7,8 +7,8 @@ import type {
   CrawlSource,
   DiscoveredUrl,
   PageObservation,
-  PageSignals,
   RecordedDiscovery,
+  StoredPageSignals,
 } from "@/types/crawl";
 
 /**
@@ -167,7 +167,7 @@ export type CrawlPageStore = {
   listPages(crawlId: string, limit?: number): Promise<readonly CrawlPage[]>;
 
   /** The on-page signals read from this crawl's fetched pages. */
-  listSignals(crawlId: string, limit?: number): Promise<readonly PageSignals[]>;
+  listSignals(crawlId: string, limit?: number): Promise<readonly StoredPageSignals[]>;
 };
 
 /** The page queue for a deployment that does not store crawls. */

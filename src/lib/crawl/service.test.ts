@@ -7,7 +7,12 @@ import {
   type CrawlStore,
 } from "@/lib/crawl/contract";
 import { memoryPageStore } from "@/lib/crawl/page-fetcher.test";
-import { MAX_PAGES_PER_CRAWL, createCrawlService, siteForProject } from "@/lib/crawl/service";
+import {
+  MAX_PAGES_PER_CRAWL,
+  MAX_SIGNALS_READ,
+  createCrawlService,
+  siteForProject,
+} from "@/lib/crawl/service";
 import type {
   Crawl,
   CrawlFailureCode,
@@ -542,5 +547,124 @@ describe("runFetchSlice", () => {
       MAX_PAGES_PER_CRAWL,
       "no more than the cap is ever queued",
     );
+  });
+});
+
+describe("signalsForProject", () => {
+  /** A service that crawls two pages and serves each one the HTML given. */
+  const withBodies = (bodies: Readonly<Record<string, string>>) => {
+    const memory = memoryPageStore();
+    const { store } = memoryStore();
+    const urls = Object.keys(bodies);
+    const crawls = createCrawlService({
+      store,
+      pages: memory.store,
+      readRobots: async () => ({ state: "missing" }),
+      projects: { async getProjectById() { return PROJECT; } },
+      discover: async () => ({
+        urls: urls.map((url) => ({ url, source: "robots" as const })),
+        documents: [],
+        robots: "parsed",
+        limits: [],
+      }),
+      fetchPass: {
+        crawlDelayMs: 0,
+        fetchPage: async (url) =>
+          ({
+            state: "fetched",
+            url,
+            status: 200,
+            contentType: "text/html",
+            body: bodies[url] ?? "",
+            bytes: 1,
+            elapsedMs: 1,
+            redirects: [],
+          }) as FetchOutcome,
+      },
+    });
+    return { crawls, memory };
+  };
+
+  const CRAWLED = {
+    "https://nexraagency.com/a": "<html><head><title>Shared</title></head><body>one two</body></html>",
+    "https://nexraagency.com/b": "<html><head><title>Shared</title></head><body>three</body></html>",
+  };
+
+  test("a project with no crawl reads as no signals, not as a failure", async () => {
+    const { service: crawls } = service();
+    const result = await crawls.signalsForProject("nexra-agency");
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.crawl, null);
+    assert.deepEqual(result.signals, []);
+  });
+
+  test("returns the latest crawl's signals, with the URL each came from", async () => {
+    const { crawls } = withBodies(CRAWLED);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+    await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+
+    const result = await crawls.signalsForProject("nexra-agency");
+    assert.equal(result.ok, true);
+    if (!result.ok || result.crawl === null) return assert.fail("expected a crawl");
+    assert.equal(result.crawl.id, started.crawl.id);
+    assert.equal(result.signals.length, 2);
+    assert.deepEqual(
+      [...result.signals].map((page) => page.url).sort(),
+      ["https://nexraagency.com/a", "https://nexraagency.com/b"],
+    );
+    for (const page of result.signals) {
+      assert.equal(page.state, "parsed");
+      assert.equal(page.title, "Shared");
+    }
+  });
+
+  test("it is a read: nothing is fetched and the crawl is untouched", async () => {
+    const { crawls } = withBodies(CRAWLED);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+    await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+
+    const before = await crawls.latestForProject("nexra-agency");
+    await crawls.signalsForProject("nexra-agency");
+    const after = await crawls.latestForProject("nexra-agency");
+    assert.deepEqual(
+      before.ok && before.crawl,
+      after.ok && after.crawl,
+      "reading signals changes no record",
+    );
+  });
+
+  test("validates the project the same way the other reads do", async () => {
+    const { service: crawls } = service();
+    const reserved = await crawls.signalsForProject("portfolio");
+    assert.equal(reserved.ok === false && reserved.reason, "invalid");
+
+    const unknown = service({ project: null });
+    const result = await unknown.service.signalsForProject("nexra-agency");
+    assert.equal(result.ok === false && result.reason, "unknown-project");
+  });
+
+  test("a deployment that stores no crawls answers unknown-project, not empty", async () => {
+    const crawls = createCrawlService({
+      store: unavailableCrawlStore,
+      pages: unavailableCrawlPageStore,
+      readRobots: async () => ({ state: "missing" }),
+      projects: { async getProjectById() { return null; } },
+      discover: async () => DISCOVERY,
+    });
+    const result = await crawls.signalsForProject("nexra-agency");
+    assert.equal(result.ok === false && result.reason, "unknown-project");
+  });
+
+  test("never returns more rows than one crawl may hold", async () => {
+    const { crawls } = withBodies(CRAWLED);
+    const started = await crawls.startDiscovery("operator-1", "nexra-agency");
+    if (!started.ok) return assert.fail("expected a crawl");
+    await crawls.runFetchSlice(started.crawl.id, { budgetMs: 60_000, maxPages: 100 });
+
+    const result = await crawls.signalsForProject("nexra-agency", Number.MAX_SAFE_INTEGER);
+    assert.equal(result.ok && result.signals.length <= MAX_SIGNALS_READ, true);
   });
 });

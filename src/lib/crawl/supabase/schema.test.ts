@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   CrawlRowError,
+  crawlPageSignalsRowToStored,
   crawlRowToCrawl,
   crawlUrlRowToDiscovered,
   discoveredUrlInserts,
@@ -159,5 +160,42 @@ describe("discoveredUrlInserts", () => {
       { url: "https://example.com/", source: "homepage" },
     ]);
     assert.equal("discovered_at" in row, false);
+  });
+});
+
+
+describe("crawlPageSignalsRowToStored", () => {
+  const ROW = {
+    crawl_id: "crawl-1",
+    url: "https://example.com/a",
+    state: "parsed",
+    title: "A page",
+    meta_description: null,
+    canonical_url: null,
+    meta_robots: null,
+    h1: ["One"],
+    h2: [],
+    word_count: 12,
+    internal_links: 3,
+    external_links: 1,
+    other_links: 0,
+    parsed_at: "2026-09-21T10:00:00Z",
+    updated_at: "2026-09-21T10:00:00Z",
+  };
+
+  test("carries the URL alongside the signals", () => {
+    const stored = crawlPageSignalsRowToStored(ROW);
+    assert.equal(stored.url, "https://example.com/a");
+    assert.equal(stored.title, "A page");
+    assert.equal(stored.wordCount, 12);
+    assert.deepEqual(stored.h1, ["One"]);
+  });
+
+  test("refuses a row with no URL", () => {
+    assert.throws(() => crawlPageSignalsRowToStored({ ...ROW, url: null }), CrawlRowError);
+  });
+
+  test("refuses a state the application does not know", () => {
+    assert.throws(() => crawlPageSignalsRowToStored({ ...ROW, state: "scored" }), CrawlRowError);
   });
 });

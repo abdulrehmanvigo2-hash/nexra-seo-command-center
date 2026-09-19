@@ -5,6 +5,7 @@ import {
   ProjectStatusBadge,
 } from "@/components/projects/project-chrome";
 import { CrawlPanel } from "@/components/crawl/crawl-panel";
+import { CrawlSignalsPanel } from "@/components/crawl/signals-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -127,6 +128,13 @@ export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
         modelled panels: it is what an operator came here to do.
       */}
       <CrawlPanel projectId={project.id} />
+
+      {/*
+        What that crawl read out of the pages it fetched. Directly below the
+        pass that produced it, and counts only: a page with no title is
+        reported as a page with no title, not as an issue with a severity.
+      */}
+      <CrawlSignalsPanel projectId={project.id} />
 
       {/*
         Thirty days, the window the rest of the product defaults to. This

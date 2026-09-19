@@ -9,8 +9,8 @@ import type {
   CrawlPage,
   FetchOutcome,
   PageObservation,
-  PageSignals,
   RobotsPolicy,
+  StoredPageSignals,
 } from "@/types/crawl";
 
 /**
@@ -49,7 +49,7 @@ export function memoryPageStore(clock?: { now: () => number }) {
   const now = () => clock?.now() ?? Date.now();
   const key = (crawlId: string, url: string) => `${crawlId}\u0000${url}`;
   const recorded: PageObservation[] = [];
-  const signals = new Map<string, PageSignals>();
+  const signals = new Map<string, StoredPageSignals>();
   let claims = 0;
 
   const store: CrawlPageStore = {
@@ -118,7 +118,9 @@ export function memoryPageStore(clock?: { now: () => number }) {
             ? observation.refusal
             : null;
       row.skipReason = observation.state === "skipped" ? observation.skipReason : null;
-      if (observation.state === "fetched") signals.set(key(crawlId, url), observation.signals);
+      if (observation.state === "fetched") {
+        signals.set(key(crawlId, url), { url, ...observation.signals });
+      }
       recorded.push(observation);
       return true;
     },

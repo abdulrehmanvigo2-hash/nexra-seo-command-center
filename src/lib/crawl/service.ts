@@ -11,6 +11,7 @@ import type {
   FetchPassResult,
   RobotsPolicy,
   SitemapDiscovery,
+  StoredPageSignals,
 } from "@/types/crawl";
 import type { ProjectRecord } from "@/types/project";
 
@@ -67,6 +68,15 @@ export type StartCrawlResult =
  * every screen reading it must present the result as part of the site.
  */
 export const MAX_PAGES_PER_CRAWL = 500;
+
+/**
+ * The most signal rows one read returns.
+ *
+ * A crawl holds at most `MAX_PAGES_PER_CRAWL` of them, so this reads a whole
+ * crawl and is a ceiling rather than a page size. It stays a ceiling: a caller
+ * asking for more gets this.
+ */
+export const MAX_SIGNALS_READ = MAX_PAGES_PER_CRAWL;
 
 /** What a slice reports when the crawl has no queue to work. */
 const IDLE_PASS: FetchPassResult = {
@@ -132,6 +142,19 @@ export type CrawlService = {
     source?: CrawlSource,
   ): Promise<StartCrawlResult>;
   latestForProject(projectId: unknown): Promise<{ ok: true; crawl: Crawl | null } | CrawlFailure>;
+  /**
+   * The on-page signals of a project's most recent crawl.
+   *
+   * Read-only, and read by project rather than by crawl id: the caller names
+   * the project it is already looking at, and which crawl that is stays this
+   * side of the boundary.
+   */
+  signalsForProject(
+    projectId: unknown,
+    limit?: number,
+  ): Promise<
+    { ok: true; crawl: Crawl | null; signals: readonly StoredPageSignals[] } | CrawlFailure
+  >;
   /**
    * Runs one bounded slice of the fetch stage and reports what is left.
    *
@@ -266,6 +289,18 @@ export function createCrawlService(dependencies: CrawlServiceDependencies): Craw
       if (!resolved.ok) return resolved;
       const [latest] = await store.listForProject(resolved.project.id, 1);
       return { ok: true, crawl: latest ?? null };
+    },
+
+    async signalsForProject(projectId, limit = MAX_SIGNALS_READ) {
+      const resolved = await resolve(projectId);
+      if (!resolved.ok) return resolved;
+      const [latest] = await store.listForProject(resolved.project.id, 1);
+      if (!latest) return { ok: true, crawl: null, signals: [] };
+      return {
+        ok: true,
+        crawl: latest,
+        signals: await pages.listSignals(latest.id, Math.min(limit, MAX_SIGNALS_READ)),
+      };
     },
   };
 }

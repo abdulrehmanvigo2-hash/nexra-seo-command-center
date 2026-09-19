@@ -1,4 +1,11 @@
-import type { Crawl, CrawlFailureCode, CrawlLimit, CrawlStatus } from "@/types/crawl";
+import type {
+  Crawl,
+  CrawlFailureCode,
+  CrawlLimit,
+  CrawlStatus,
+  SignalState,
+  StoredPageSignals,
+} from "@/types/crawl";
 
 /**
  * Wording for a crawl, and the arithmetic for showing one.
@@ -11,7 +18,7 @@ import type { Crawl, CrawlFailureCode, CrawlLimit, CrawlStatus } from "@/types/c
 
 /** Plain statement of what a discovery pass does and does not establish. */
 export const DISCOVERY_SCOPE_NOTE =
-  "This records what each page answered — its status, where it ended up, its type and size. Nothing has been read out of the responses yet, so there is still no title, heading, issue or health score.";
+  "This records what each page answered — its status, where it ended up, its type and size. What was read out of each page is shown below it; nothing is scored, and there is no issue list or health score.";
 
 export type CrawlTone = "neutral" | "accent" | "positive" | "warning" | "critical";
 
@@ -97,7 +104,7 @@ export function describeCrawl(crawl: Crawl | null): string {
           ? "Found 1 page listed by this site."
           : `Found ${crawl.discoveredCount.toLocaleString("en-GB")} pages listed by this site.`;
       }
-      return `Fetched ${crawl.pagesFetched.toLocaleString("en-GB")} of ${crawl.pagesTotal.toLocaleString("en-GB")} pages. The responses are recorded; nothing has been analysed yet.`;
+      return `Fetched ${crawl.pagesFetched.toLocaleString("en-GB")} of ${crawl.pagesTotal.toLocaleString("en-GB")} pages. The responses are recorded and their on-page signals read; nothing is scored.`;
     case "failed":
       return crawl.failureCode === null
         ? "The pass failed."
@@ -105,4 +112,115 @@ export function describeCrawl(crawl: Crawl | null): string {
     case "cancelled":
       return "This pass was cancelled before it finished.";
   }
+}
+
+// ---------------------------------------------------------------------------
+// On-page signals
+// ---------------------------------------------------------------------------
+
+/** What the signals panel is, and what it deliberately is not. */
+export const SIGNALS_SCOPE_NOTE =
+  "Read from each page's own HTML. These are observations, not judgements: nothing here is scored, weighted, or turned into a recommendation.";
+
+export const SIGNAL_STATE_META: Readonly<
+  Record<SignalState, { readonly label: string; readonly tone: CrawlTone; readonly note: string }>
+> = {
+  parsed: { label: "Parsed", tone: "positive", note: "HTML that was read." },
+  "not-html": {
+    label: "Not HTML",
+    tone: "neutral",
+    note: "A PDF, image or other file. There is nothing on-page to read, which is a fact about the page and not a failure.",
+  },
+  empty: { label: "Empty", tone: "warning", note: "The response had no body." },
+  failed: {
+    label: "Unreadable",
+    tone: "critical",
+    note: "The body could not be read as HTML.",
+  },
+};
+
+/**
+ * Counts over the signals of one crawl. Every field is arithmetic on stored
+ * rows — nothing is estimated, and nothing is a score.
+ */
+export type SignalsSummary = {
+  /** Pages that were fetched and read; one row per page. */
+  readonly pages: number;
+  readonly states: Readonly<Record<SignalState, number>>;
+  /** Parsed pages carrying no non-blank `<title>`. */
+  readonly missingTitle: number;
+  /** Parsed pages whose title is shared with at least one other parsed page. */
+  readonly duplicateTitlePages: number;
+  /** How many distinct titles those pages share between them. */
+  readonly duplicateTitles: number;
+};
+
+/** Titles compare trimmed and case-folded; a browser and a SERP show them alike. */
+function titleKey(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+/**
+ * Summarises one crawl's signals.
+ *
+ * Only parsed pages count toward the title observations. A PDF has no
+ * `<title>` element to be missing, so counting it as a missing title would
+ * report a fact about the file format as if it were a fault on the page.
+ */
+export function summariseSignals(signals: readonly StoredPageSignals[]): SignalsSummary {
+  const states: Record<SignalState, number> = {
+    parsed: 0,
+    "not-html": 0,
+    empty: 0,
+    failed: 0,
+  };
+  let missingTitle = 0;
+  const byTitle = new Map<string, number>();
+
+  for (const page of signals) {
+    states[page.state] += 1;
+    if (page.state !== "parsed") continue;
+
+    const title = page.title === null ? "" : page.title.trim();
+    if (title.length === 0) {
+      missingTitle += 1;
+      continue;
+    }
+    const key = titleKey(title);
+    byTitle.set(key, (byTitle.get(key) ?? 0) + 1);
+  }
+
+  let duplicateTitlePages = 0;
+  let duplicateTitles = 0;
+  for (const count of byTitle.values()) {
+    if (count < 2) continue;
+    duplicateTitles += 1;
+    duplicateTitlePages += count;
+  }
+
+  return {
+    pages: signals.length,
+    states,
+    missingTitle,
+    duplicateTitlePages,
+    duplicateTitles,
+  };
+}
+
+/** The titles more than one parsed page carries, most-shared first. */
+export function duplicateTitleGroups(
+  signals: readonly StoredPageSignals[],
+): readonly { readonly title: string; readonly pages: number }[] {
+  const groups = new Map<string, { title: string; pages: number }>();
+  for (const page of signals) {
+    if (page.state !== "parsed" || page.title === null) continue;
+    const title = page.title.trim();
+    if (title.length === 0) continue;
+    const existing = groups.get(titleKey(title));
+    if (existing) existing.pages += 1;
+    else groups.set(titleKey(title), { title, pages: 1 });
+  }
+  return [...groups.values()]
+    .filter((group) => group.pages > 1)
+    .sort((a, b) => b.pages - a.pages || a.title.localeCompare(b.title));
 }

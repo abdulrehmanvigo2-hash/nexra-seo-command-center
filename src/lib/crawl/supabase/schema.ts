@@ -14,6 +14,7 @@ import type {
   PageSignals,
   RedirectHop,
   SignalState,
+  StoredPageSignals,
   RobotsPolicy,
   SitemapSource,
   UrlRefusal,
@@ -510,6 +511,20 @@ export function crawlPageSignalsRowToSignals(input: unknown): PageSignals {
     otherLinks: nullableCount(row, "other_links"),
     parsedAt: instant(text(row, "parsed_at"), "parsed_at"),
   };
+}
+
+/**
+ * The same row, with the URL it describes.
+ *
+ * What a reader needs and the extractor cannot supply: a list of signals is
+ * only useful next to the page each set came from.
+ */
+export function crawlPageSignalsRowToStored(input: unknown): StoredPageSignals {
+  if (typeof input !== "object" || input === null) {
+    throw new CrawlRowError("crawl_page_signals row is not an object");
+  }
+  const row: Record<string, unknown> = { ...input };
+  return { url: text(row, "url"), ...crawlPageSignalsRowToSignals(input) };
 }
 
 /**

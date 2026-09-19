@@ -406,3 +406,14 @@ export type PageSignals = {
   readonly otherLinks: number | null;
   readonly parsedAt: string;
 };
+
+/**
+ * One page's signals as they were stored, with the URL they were read from.
+ *
+ * The extractor does not know which queued URL it is working for — it is
+ * handed a body and a final URL — so the page's own URL is added by the store,
+ * which is the only layer that knows the row it wrote.
+ */
+export type StoredPageSignals = PageSignals & {
+  readonly url: string;
+};
