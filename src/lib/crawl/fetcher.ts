@@ -53,7 +53,7 @@ const HTML_TYPES = ["text/html", "application/xhtml+xml"] as const;
 type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
 export type FetchPageOptions = {
-  /** Restricts the whole redirect chain to one host. */
+  /** Restricts the whole redirect chain to one site (a host and its `www.`). */
   readonly site?: string;
   readonly timeoutMs?: number;
   readonly maxBytes?: number;
@@ -360,6 +360,12 @@ export async function fetchPage(
   return failed(current, "too-many-redirects", elapsed(), redirects);
 }
 
+/** A redirect chain as one line, for the diagnostic below. */
+function describeChain(redirects: readonly RedirectHop[]): string {
+  if (redirects.length === 0) return "none";
+  return redirects.map((hop) => `${hop.status}->${hop.location}`).join(" ");
+}
+
 /**
  * Reads a site's robots.txt.
  *
@@ -384,11 +390,29 @@ export async function fetchRobots(
   });
 
   if (outcome.state === "failed") {
-    // Nothing to read and no way to know why the site withheld it.
+    // Nothing to read, and `unavailable` is where six unrelated causes meet: a
+    // DNS failure, a refused address, a redirect off the site, a timeout, a
+    // dropped connection, a body too large. The crawl record keeps only the
+    // fixed code `robots-unavailable`, so without this line nobody — operator
+    // or engineer — can tell a site that blocked this crawler from one that
+    // never answered. Server-side only, and the URL is the public site the
+    // operator asked to crawl.
+    console.warn(
+      `crawl robots unavailable: ${outcome.url} failure=${outcome.failure}` +
+        (outcome.refusal === null ? "" : ` refusal=${outcome.refusal}`) +
+        ` chain=${describeChain(outcome.redirects)}`,
+    );
     return { state: "unavailable" };
   }
   if (outcome.status === 404 || outcome.status === 410) return { state: "missing" };
-  if (outcome.status >= 400) return { state: "unavailable" };
+  if (outcome.status >= 400) {
+    // The site answered, and refused. A 403 here is usually a bot filter.
+    console.warn(
+      `crawl robots unavailable: ${outcome.url} status=${outcome.status}` +
+        ` chain=${describeChain(outcome.redirects)}`,
+    );
+    return { state: "unavailable" };
+  }
 
   return parseRobots(outcome.body);
 }

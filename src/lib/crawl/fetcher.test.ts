@@ -235,4 +235,44 @@ describe("fetchRobots", () => {
       ["https://example.com/s.xml"],
     );
   });
+
+  test("follows the apex-to-www redirect nearly every site serves", async () => {
+    // The shape that made a reachable site read as unreachable: robots.txt on
+    // the apex 308s to the canonical www host, the hop was refused as
+    // off-site, and `unavailable` means the site never stated its rules — so
+    // the crawl failed before it began.
+    const { send, seen } = router({
+      "https://example.com/robots.txt": redirect("https://www.example.com/robots.txt", 308),
+      "https://www.example.com/robots.txt": plain(
+        "User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://www.example.com/sitemap.xml",
+      ),
+    });
+    const policy = await fetchRobots("https://example.com", { lookup: publicDns, fetch: send });
+    assert.equal(policy.state, "parsed");
+    assert.deepEqual(
+      policy.state === "parsed" ? policy.sitemaps : [],
+      ["https://www.example.com/sitemap.xml"],
+    );
+    assert.deepEqual(seen, [
+      "https://example.com/robots.txt",
+      "https://www.example.com/robots.txt",
+    ]);
+  });
+
+  test("and the www-to-apex redirect, for a site canonicalising the other way", async () => {
+    const { send } = router({
+      "https://www.example.com/robots.txt": redirect("https://example.com/robots.txt", 301),
+      "https://example.com/robots.txt": plain("User-agent: *\nDisallow: /x"),
+    });
+    const policy = await fetchRobots("https://www.example.com", { lookup: publicDns, fetch: send });
+    assert.equal(policy.state, "parsed");
+  });
+
+  test("still refuses a redirect that leaves the site", async () => {
+    const { send } = router({
+      "https://example.com/robots.txt": redirect("https://evil-example.com/robots.txt", 302),
+    });
+    const policy = await fetchRobots("https://example.com", { lookup: publicDns, fetch: send });
+    assert.equal(policy.state, "unavailable");
+  });
 });

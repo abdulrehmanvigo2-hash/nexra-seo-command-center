@@ -88,6 +88,43 @@ describe("checkUrl", () => {
       refusal: "off-site",
     });
   });
+
+  test("counts a site and its www. host as one site, in both directions", () => {
+    // Almost every site redirects one of these to the other, and the redirect
+    // is the first thing a crawl meets: robots.txt on the apex sending the
+    // crawler to the canonical www host. Refusing it reads as an unreachable
+    // site rather than as a site that canonicalises.
+    assert.deepEqual(checkUrl("https://www.example.com/x", { site: "example.com" }), {
+      ok: true,
+      url: "https://www.example.com/x",
+    });
+    assert.deepEqual(checkUrl("https://example.com/x", { site: "www.example.com" }), {
+      ok: true,
+      url: "https://example.com/x",
+    });
+    assert.deepEqual(checkUrl("https://www.example.com/x", { site: "www.example.com" }), {
+      ok: true,
+      url: "https://www.example.com/x",
+    });
+  });
+
+  test("widens nothing but that one host", () => {
+    // Only the exact label, and only the leading one.
+    for (const [url, site] of [
+      ["https://www.evil-example.com/", "example.com"],
+      ["https://wwwexample.com/", "example.com"],
+      ["https://www.blog.example.com/", "example.com"],
+      ["https://www.www.example.com/", "example.com"],
+      ["https://example.com.attacker.com/", "example.com"],
+      ["https://www.example.com.attacker.com/", "example.com"],
+    ] as const) {
+      assert.deepEqual(
+        checkUrl(url, { site }),
+        { ok: false, refusal: "off-site" },
+        `${url} must not count as ${site}`,
+      );
+    }
+  });
 });
 
 describe("isInternalAddress", () => {
