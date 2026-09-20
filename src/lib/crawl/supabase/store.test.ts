@@ -74,13 +74,13 @@ describe("createSupabaseCrawlStore — create", () => {
     assert.equal(outcome.crawl.projectId, "nexra-agency");
     assert.equal(outcome.crawl.hostScope, "nexraagency.com");
     assert.deepEqual(outcome.crawl.budget, NEW_CRAWL.budget);
-    assert.equal(db.rows.crawls.length, 1);
+    assert.equal(db.rows.nexra_crawls.length, 1);
   });
 
   test("a missing project is reported, not thrown", async () => {
     const { db, store } = storeWith();
     db.failNext({
-      table: "crawls",
+      table: "nexra_crawls",
       operation: "insert",
       error: postgrestError("23503", 'insert violates foreign key constraint "crawls_project_fkey"'),
     });
@@ -90,7 +90,7 @@ describe("createSupabaseCrawlStore — create", () => {
   test("any other database failure throws without quoting row values", async () => {
     const { db, store } = storeWith();
     db.failNext({
-      table: "crawls",
+      table: "nexra_crawls",
       operation: "insert",
       error: postgrestError("42501", "permission denied for table crawls", "secret row content"),
     });
@@ -132,7 +132,7 @@ describe("createSupabaseCrawlStore — finish", () => {
     assert.equal(finished.robotsState, "fetched");
     assert.equal(finished.sitemapState, "absent");
     assert.ok(finished.finishedAt !== null, "a finished crawl must carry a finish time");
-    assert.equal(db.rows.crawls[0].status, "completed");
+    assert.equal(db.rows.nexra_crawls[0].status, "completed");
   });
 
   test("records a partial crawl as a result, not a failure", async () => {
@@ -199,8 +199,8 @@ describe("createSupabaseCrawlStore — pages and links", () => {
       { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true },
     ]);
 
-    assert.equal(db.rows.crawl_pages.length, 1);
-    assert.equal(db.rows.crawl_links.length, 1);
+    assert.equal(db.rows.nexra_crawl_pages.length, 1);
+    assert.equal(db.rows.nexra_crawl_links.length, 1);
 
     const pages = await store.listPages(id, 500);
     assert.equal(pages.length, 1);
@@ -223,7 +223,7 @@ describe("createSupabaseCrawlStore — pages and links", () => {
     );
     await store.savePages("crawl-1", pages);
 
-    const batches = db.insertBatches.filter((entry) => entry.table === "crawl_pages");
+    const batches = db.insertBatches.filter((entry) => entry.table === "nexra_crawl_pages");
     assert.equal(batches.length, 3, "1,100 rows must not be sent as one statement");
     assert.deepEqual(
       batches.map((entry) => entry.count),
@@ -291,7 +291,7 @@ describe("createSupabaseCrawlStore — reads", () => {
     for (const started of ["2026-09-18T00:00:00.000Z", "2026-09-20T00:00:00.000Z", "2026-09-19T00:00:00.000Z"]) {
       const created = await store.insert(NEW_CRAWL);
       assert.ok(created.status === "inserted");
-      const row = db.rows.crawls.find((entry) => entry.id === created.crawl.id);
+      const row = db.rows.nexra_crawls.find((entry) => entry.id === created.crawl.id);
       if (row) row.started_at = started;
     }
 
@@ -303,6 +303,49 @@ describe("createSupabaseCrawlStore — reads", () => {
 
     assert.equal((await store.listByProject("nexra-agency", 2)).length, 2);
     assert.equal((await store.listByProject("another-project", 25)).length, 0);
+  });
+});
+
+describe("isolation from the foreign crawl subsystem", () => {
+  test("the store only ever names nexra_-prefixed tables", async () => {
+    /*
+     * This database also holds a separate, live crawl subsystem that owns the
+     * unprefixed names crawls, crawl_pages, crawl_page_signals and crawl_urls.
+     * A query against one of those would read or write another system's data.
+     * The fake records every table the store touches, so this asserts the
+     * boundary directly rather than trusting the type checker alone.
+     */
+    const { db, store } = storeWith();
+    const created = await store.insert(NEW_CRAWL);
+    assert.ok(created.status === "inserted");
+    await store.savePages(created.crawl.id, [pageFixture("https://nexraagency.com/")]);
+    await store.saveLinks(created.crawl.id, [
+      { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/a", rel: null, isInternal: true },
+    ]);
+    await store.finish(created.crawl.id, {
+      status: "completed",
+      stopReason: "completed",
+      robotsState: "fetched",
+      sitemapState: "absent",
+      pagesDiscovered: 1,
+      pagesFetched: 1,
+      pagesFailed: 0,
+      error: null,
+    });
+    await store.getById(created.crawl.id);
+    await store.listByProject("nexra-agency", 25);
+    await store.listPages(created.crawl.id, 500);
+
+    const touched = new Set(db.insertBatches.map((entry) => entry.table));
+    for (const table of touched) {
+      assert.ok(table.startsWith("nexra_"), `store wrote to unprefixed table "${table}"`);
+    }
+    // And the fake itself cannot hold an unprefixed table.
+    assert.deepEqual(Object.keys(db.rows).sort(), [
+      "nexra_crawl_links",
+      "nexra_crawl_pages",
+      "nexra_crawls",
+    ]);
   });
 });
 
@@ -397,7 +440,7 @@ describe("rows satisfy the migration's constraints", () => {
         isInternal: true,
       },
     ]);
-    const rel = db.rows.crawl_links[0].rel;
+    const rel = db.rows.nexra_crawl_links[0].rel;
     assert.ok(
       typeof rel === "string" && rel.length <= 200,
       `rel is ${String(rel).length} characters; the column allows 200`,

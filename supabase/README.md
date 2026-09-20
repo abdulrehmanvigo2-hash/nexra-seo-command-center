@@ -166,18 +166,25 @@ until it expires, although the Auth server refuses it for every write.
 
 ## Crawls
 
-`public.crawls`, `public.crawl_pages` and `public.crawl_links` (migration
-`20260920120000_create_crawls.sql`) hold what a crawl actually fetched from a
-project's own website. Like agent runs, they need `PROJECTS_DATA_SOURCE=supabase`;
+`public.nexra_crawls`, `public.nexra_crawl_pages` and
+`public.nexra_crawl_links` (migration `20260920120000_create_crawls.sql`) hold
+what a crawl actually fetched from a project's own website.
+
+**The `nexra_` prefix is required, not stylistic.** This database also holds a
+separate live crawl subsystem owning the unprefixed `crawls`, `crawl_pages`,
+`crawl_page_signals` and `crawl_urls`. Nothing in this repository may create,
+alter, grant on, or query those. Every constraint and index here is prefixed
+too, because a UNIQUE or PRIMARY KEY constraint creates a schema-scoped
+index. Like agent runs, they need `PROJECTS_DATA_SOURCE=supabase`;
 with the fixture roster the crawl service answers `unavailable` rather than
 crawling a real site and discarding what it found.
 
-- `crawls` is the run: its project, start URL, host scope, budgets, status,
+- `nexra_crawls` is the run: its project, start URL, host scope, budgets, status,
   why it stopped, and whether robots.txt and the sitemap could be read.
-- `crawl_pages` is one row per unique normalised URL, unique on
+- `nexra_crawl_pages` is one row per unique normalised URL, unique on
   `(crawl_id, url)`. That index is what makes a page appear once however many
   links point at it.
-- `crawl_links` is the link graph, which is where `depth` and the internal link
+- `nexra_crawl_links` is the link graph, which is where `depth` and the internal link
   counts come from.
 
 ### What is deliberately not here

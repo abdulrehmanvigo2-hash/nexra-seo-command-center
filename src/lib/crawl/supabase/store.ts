@@ -15,7 +15,13 @@ import {
 } from "@/lib/crawl/supabase/schema";
 
 /**
- * The crawl store over `crawls`, `crawl_pages`, and `crawl_links`.
+ * The crawl store over `nexra_crawls`, `nexra_crawl_pages`, and
+ * `nexra_crawl_links`.
+ *
+ * The prefix is load-bearing. The unprefixed names belong to a different,
+ * live crawl subsystem in the same database; this store must never reach
+ * them, and the typed client below is what makes that a compile error rather
+ * than a convention.
  *
  * A thin translation into Supabase calls, like the agent-run store: the rules
  * live in the service, the table's constraints enforce them again for any
@@ -56,7 +62,7 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
 
     async insert(crawl) {
       const { data, error } = await client
-        .from("crawls")
+        .from("nexra_crawls")
         .insert(newCrawlInsert(crawl))
         .select(CRAWL_READ_COLUMNS)
         .single();
@@ -71,7 +77,7 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
       // Conditional on the crawl still running, so a second finish cannot
       // overwrite the first one's outcome.
       const { data, error } = await client
-        .from("crawls")
+        .from("nexra_crawls")
         .update(completionToUpdate(completion))
         .eq("id", id)
         .eq("status", "running")
@@ -83,7 +89,7 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
 
     async getById(id) {
       const { data, error } = await client
-        .from("crawls")
+        .from("nexra_crawls")
         .select(CRAWL_READ_COLUMNS)
         .eq("id", id)
         .maybeSingle();
@@ -93,7 +99,7 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
 
     async listByProject(projectId, limit) {
       const { data, error } = await client
-        .from("crawls")
+        .from("nexra_crawls")
         .select(CRAWL_READ_COLUMNS)
         .eq("project_id", projectId)
         .order("started_at", { ascending: false })
@@ -105,7 +111,7 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
     async savePages(crawlId, pages) {
       await inBatches(pages, async (batch) => {
         const { error } = await client
-          .from("crawl_pages")
+          .from("nexra_crawl_pages")
           .insert(batch.map((page) => pageToInsert(crawlId, page)));
         if (error) throw new CrawlStoreError("save crawl pages", error);
       });
@@ -114,7 +120,7 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
     async saveLinks(crawlId, links) {
       await inBatches(links, async (batch) => {
         const { error } = await client
-          .from("crawl_links")
+          .from("nexra_crawl_links")
           .insert(batch.map((link) => linkToInsert(crawlId, link)));
         if (error) throw new CrawlStoreError("save crawl links", error);
       });
@@ -122,7 +128,7 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
 
     async listPages(crawlId, limit) {
       const { data, error } = await client
-        .from("crawl_pages")
+        .from("nexra_crawl_pages")
         .select(CRAWL_PAGE_READ_COLUMNS)
         .eq("crawl_id", crawlId)
         .order("depth", { ascending: true, nullsFirst: false })

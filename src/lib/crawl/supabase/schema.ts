@@ -10,9 +10,14 @@ import type {
 import type { CrawlCompletion, NewCrawl } from "@/lib/crawl/contract";
 
 /**
- * The row shapes of `public.crawls`, `public.crawl_pages`, and
- * `public.crawl_links`, and the translation between them and the product's
- * types.
+ * The row shapes of `public.nexra_crawls`, `public.nexra_crawl_pages`, and
+ * `public.nexra_crawl_links`, and the translation between them and the
+ * product's types.
+ *
+ * The `nexra_` prefix separates these from a different crawl subsystem that
+ * already owns the unprefixed names in this database. Because the Supabase
+ * client is typed by the keys below, a query against the wrong table does not
+ * compile.
  *
  * Every mapper is total: a row with a value the product does not recognise is
  * a failure, not a silently-coerced default. A crawl record is evidence of
@@ -128,20 +133,20 @@ export type CrawlLinkInsert = CrawlLinkRow;
 export type CrawlsDatabase = {
   public: {
     Tables: {
-      crawls: {
+      nexra_crawls: {
         Row: CrawlRow;
         Insert: CrawlInsert;
         Update: CrawlUpdate;
         Relationships: [];
       };
-      crawl_pages: {
+      nexra_crawl_pages: {
         Row: CrawlPageRow;
         Insert: CrawlPageInsert;
         // Pages are written once, when the crawl that observed them finishes.
         Update: { [_ in never]: never };
         Relationships: [];
       };
-      crawl_links: {
+      nexra_crawl_links: {
         Row: CrawlLinkRow;
         Insert: CrawlLinkInsert;
         Update: { [_ in never]: never };

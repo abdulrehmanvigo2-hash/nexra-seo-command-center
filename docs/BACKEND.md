@@ -22,7 +22,7 @@ Vercel Cron ── /api/worker/* ── agent runtime worker ── executor (mo
 | Sign-in | `src/lib/auth`, `src/proxy.ts` | Supabase Auth |
 | Search Console | `src/lib/search-console`, `/api/search-console/report` | Google API (read-only) |
 | Agent runtime | `src/lib/agent-runs`, `/api/agent-runs/*`, `/api/worker/*` | `public.agent_runs`, `public.agent_run_attempts` |
-| Crawl foundation | `src/lib/crawl`, `/api/crawls/*` | `public.crawls`, `public.crawl_pages`, `public.crawl_links` |
+| Crawl foundation | `src/lib/crawl`, `/api/crawls/*` | `public.nexra_crawls`, `public.nexra_crawl_pages`, `public.nexra_crawl_links` |
 | Shared rate limits | `src/lib/security/shared-rate-limit.ts` | `public.rate_limit_windows` |
 | Logs | `src/lib/observability/log.ts` | stdout (JSON lines) |
 
@@ -263,6 +263,25 @@ operator POST /api/crawls → running → completed        (frontier drained)
 
 `partial` is a real result, not a failure. Execution happens inside the
 operator's request; nothing runs detached and there is no schedule.
+
+### Table naming, and the subsystem we do not touch
+
+This database already contains a separate, live crawl subsystem that owns the
+unprefixed names `crawls`, `crawl_pages`, `crawl_page_signals` and
+`crawl_urls`. It holds real data, has its own triggers, and is not described
+anywhere in this repository — no commit here has ever defined those tables.
+
+Everything this product's crawl foundation creates therefore carries a
+`nexra_` prefix: the three tables, and every constraint and index on them. The
+prefix on constraints is not cosmetic — a UNIQUE or PRIMARY KEY constraint
+creates an index, index names are unique per schema, and reusing one would
+collide even where the table name did not.
+
+No migration, query or grant in this repository names the unprefixed tables.
+The Supabase client is typed by the `nexra_` keys, so reaching the other
+subsystem is a compile error rather than a convention. The one object the two
+share is `public.projects`, which this product owns; the crawl tables
+reference it and change nothing about it.
 
 ### Pinned connections
 

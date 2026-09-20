@@ -19,7 +19,7 @@ import type { CrawlsDatabase } from "@/lib/crawl/supabase/schema";
  * both the store tests and the service tests need it.
  */
 
-export type FakeTable = "crawls" | "crawl_pages" | "crawl_links";
+export type FakeTable = "nexra_crawls" | "nexra_crawl_pages" | "nexra_crawl_links";
 
 type Row = Record<string, unknown>;
 
@@ -34,7 +34,11 @@ export function postgrestError(code: string, message: string, details = ""): Pos
 }
 
 export class FakeSupabase {
-  readonly rows: Record<FakeTable, Row[]> = { crawls: [], crawl_pages: [], crawl_links: [] };
+  readonly rows: Record<FakeTable, Row[]> = {
+    nexra_crawls: [],
+    nexra_crawl_pages: [],
+    nexra_crawl_links: [],
+  };
 
   /** Every insert the store issued, in order, so batching can be asserted. */
   readonly insertBatches: { readonly table: FakeTable; readonly count: number }[] = [];
@@ -82,7 +86,7 @@ export class FakeSupabase {
  * the fake, not of the store.
  */
 const DEFAULTS: Record<FakeTable, Row> = {
-  crawls: {
+  nexra_crawls: {
     status: "running",
     stop_reason: null,
     robots_state: "unavailable",
@@ -95,7 +99,7 @@ const DEFAULTS: Record<FakeTable, Row> = {
     started_at: "2026-09-20T00:00:00.000Z",
     finished_at: null,
   },
-  crawl_pages: {
+  nexra_crawl_pages: {
     redirect_hops: 0,
     redirect_chain: [],
     schema_types: [],
@@ -104,7 +108,7 @@ const DEFAULTS: Record<FakeTable, Row> = {
     internal_links_in: 0,
     internal_links_out: 0,
   },
-  crawl_links: { discovered_at: "2026-09-20T00:00:00.000Z" },
+  nexra_crawl_links: { discovered_at: "2026-09-20T00:00:00.000Z" },
 };
 
 type Filter = { readonly column: string; readonly value: unknown };
