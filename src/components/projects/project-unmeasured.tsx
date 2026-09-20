@@ -4,6 +4,7 @@ import {
   ProjectMonogram,
   ProjectStatusBadge,
 } from "@/components/projects/project-chrome";
+import { CrawlPanel } from "@/components/crawl/crawl-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -128,6 +129,19 @@ export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
         access refused, no data, unavailable — says so itself.
       */}
       <SearchConsolePanel projectId={project.id} rangeId="30d" view="summary" />
+
+      {/*
+        The crawler belongs here more than anywhere else in the product. This
+        is the screen for a project nothing has measured, and the panel below
+        is the one control that can change that — so it sits above the notice
+        saying a first crawl is awaited, rather than behind the measured
+        workspace an unmeasured project never reaches.
+
+        It needs only the stored record: the id names the project, and the
+        server takes the site to fetch from that project's own domain. No
+        reporting data is required, and none is invented by rendering it.
+      */}
+      <CrawlPanel projectId={project.id} domain={project.domain} />
 
       <Panel>
         <EmptyState
