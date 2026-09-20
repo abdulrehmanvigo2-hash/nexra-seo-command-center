@@ -22,12 +22,15 @@ Vercel Cron ── /api/worker/* ── agent runtime worker ── executor (mo
 | Sign-in | `src/lib/auth`, `src/proxy.ts` | Supabase Auth |
 | Search Console | `src/lib/search-console`, `/api/search-console/report` | Google API (read-only) |
 | Agent runtime | `src/lib/agent-runs`, `/api/agent-runs/*`, `/api/worker/*` | `public.agent_runs`, `public.agent_run_attempts` |
+| Crawl foundation | `src/lib/crawl`, `/api/crawls/*` | `public.nexra_crawls`, `public.nexra_crawl_pages`, `public.nexra_crawl_links` |
 | Shared rate limits | `src/lib/security/shared-rate-limit.ts` | `public.rate_limit_windows` |
 | Logs | `src/lib/observability/log.ts` | stdout (JSON lines) |
 
 Everything else on screen — rankings, content, technical, competitor, backlink,
 AI-visibility, and reporting figures — is still modelled fixture data, labelled
-as such. Nothing measures it yet.
+as such. Nothing measures it yet. **The crawl foundation does not change that:**
+it stores what it observes and nothing reads it, so every Technical SEO screen
+is still fixture data and still says so.
 
 ## Supabase
 
@@ -222,6 +225,168 @@ simulated or model-generated, fixed error message, next retry time, and
 expandable attempts. 25 runs per page with "Load older runs"
 (`GET /api/agent-runs?…&offset=n`, offset ≤ 1,000).
 
+## Crawl foundation
+
+An operator asks for a crawl of a stored project; the engine walks that
+project's own host inside fixed budgets and records what each URL returned.
+Read-only with respect to the client's site: `GET` requests only, no forms
+submitted, no state changed anywhere but our own tables.
+
+**Nothing reads this data yet.** The Technical SEO screens are unchanged and
+still render fixtures. Connecting the two is a separate feature.
+
+### What it observes, derives, and refuses to guess
+
+| Observed | Derived | Never stored |
+|---|---|---|
+| final URL, HTTP status, redirect chain, robots meta, canonical href, title, meta description, H1, JSON-LD types, sitemap membership | crawl depth, internal link counts (within the crawl), canonical-is-self, length fields, robots.txt verdict | Google indexation, Core Web Vitals |
+
+There is no column for indexation or vitals in any of the three tables. A
+crawler cannot observe either — a 200 means the page answered us, not that
+anyone indexed it — and Search Console remains the authority for what it
+measures. A `null` anywhere in these tables means *unknown*, never false or
+zero: `in_sitemap` stays null when no sitemap could be read, and a URL that a
+budget left unvisited is recorded as `budget-skipped` rather than omitted, so
+"we did not look" is never mistaken for "there is nothing there".
+
+Internal link counts are within one crawl only. A bounded crawl cannot
+establish that a page has no inbound links anywhere, so **orphan status is not
+derived and must not be** from this data.
+
+### Lifecycle
+
+```
+operator POST /api/crawls → running → completed        (frontier drained)
+                                    → partial          (page or time budget)
+                                    → failed           (start URL unusable)
+```
+
+`partial` is a real result, not a failure. Execution happens inside the
+operator's request; nothing runs detached and there is no schedule.
+
+### Table naming, and the subsystem we do not touch
+
+This database already contains a separate, live crawl subsystem that owns the
+unprefixed names `crawls`, `crawl_pages`, `crawl_page_signals` and
+`crawl_urls`. It holds real data, has its own triggers, and is not described
+anywhere in this repository — no commit here has ever defined those tables.
+
+Everything this product's crawl foundation creates therefore carries a
+`nexra_` prefix: the three tables, and every constraint and index on them. The
+prefix on constraints is not cosmetic — a UNIQUE or PRIMARY KEY constraint
+creates an index, index names are unique per schema, and reusing one would
+collide even where the table name did not.
+
+No migration, query or grant in this repository names the unprefixed tables.
+The Supabase client is typed by the `nexra_` keys, so reaching the other
+subsystem is a compile error rather than a convention.
+
+### The two objects both subsystems reach
+
+Isolation runs one way only. Nothing here reaches into that subsystem, but two
+objects in `public` are reachable from both, and this repository defines both:
+
+- **`public.projects`** — the crawl tables reference it and change nothing
+  about it.
+- **`public.set_updated_at()`**, defined in
+  `20260913120000_create_projects.sql` for `projects_set_updated_at` — the
+  foreign subsystem binds that same function to two triggers of its own,
+  `crawls_set_updated_at` and `crawl_pages_set_updated_at`.
+
+The second is a dependency nobody declared, and it points the opposite way
+from every other rule here: their tables depend on our function. Production
+catalogue OIDs put the function at 17522 and those two triggers at 17861 and
+17913, so the function existed first and their subsystem was built against it.
+The migration defining it uses a bare `create function`, not `create or
+replace`, so it could not have applied at all had the name already been taken.
+
+What that costs us:
+
+- **Never `create or replace` it to mean something new.** A replaced body
+  changes what happens on every update to `crawls` and `crawl_pages`, silently
+  and with nothing raised to notice.
+- **Never `drop` it with `cascade`.** A plain `drop function` is safe —
+  Postgres refuses it while a trigger depends on it — but `cascade` would take
+  their two triggers with it and leave their `updated_at` columns stale.
+- Behaviour only this product wants belongs in a **new, prefixed function**,
+  never in this one.
+
+The crawl tables here do not use it. `nexra_crawls`, `nexra_crawl_pages` and
+`nexra_crawl_links` have no `updated_at` column and no triggers at all: a crawl
+row records one walk, written once and closed once, so there is nothing for a
+modification timestamp to say.
+
+### Pinned connections
+
+A check that a hostname resolves somewhere safe is worthless on its own,
+because the name is resolved again when the socket opens — a hostile resolver
+answers the check with a public address and the connection with a private one.
+The global `fetch` offers no way to say which address a request may use, so
+`src/lib/crawl/pinned-request.ts` sends through `node:http`/`node:https` with a
+custom `lookup` (`pinnedLookup`). That option is handed to `net.connect`, so it
+*replaces* address resolution: the socket goes to the one address the guard
+approved and the system resolver is never consulted for that request.
+
+The hostname is deliberately left alone. `host` and `servername` stay the name
+from the URL, so the `Host` header, TLS SNI, and certificate hostname
+verification all still work against the name — only the address lookup is
+replaced. `rejectUnauthorized` keeps its default, there is no custom
+`checkServerIdentity`, and `servername` is never an address. Connection pooling
+is off (`agent: false`), because the default agent keys sockets by host and
+port and a reused socket could outlive the pin that opened it.
+
+The pin is re-checked against the address policy twice: once before the request
+is built and once inside the lookup callback. Node's bundled `undici` would
+also work through a custom dispatcher, but no builtin module exposes it, so
+using it would mean taking a dependency for something the platform already
+does.
+
+### Safety boundaries
+
+- **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`
+  must name the project's host, matched exactly. A parent domain does not
+  authorise its subdomains.
+- **The target is never request input.** The body carries a project id; the
+  host comes from that project's stored `domain`.
+- **Address guard on every hop, and the approved address is what gets dialled.**
+  Redirects are followed manually so each hop is re-resolved, re-checked and
+  re-pinned on its own; loopback, RFC1918, CGNAT, link-local (including the
+  `169.254.169.254` metadata endpoint), IPv6 ULA/link-local, and their
+  IPv4-mapped spellings are all refused. Only `http`/`https`, only ports
+  80/443, no credentials in URLs.
+- **Same-site.** Fetching is confined to the project's host and its
+  subdomains, on a label boundary (`evil-example.com` does not match
+  `example.com`). External links are recorded, never fetched.
+- **Bounded.** 10 s per request, 60 s per crawl, 2 MB per response (streamed
+  and abandoned past the cap), 10 redirect hops, 300 links per page.
+  `Crawl-delay` is honoured up to 5 s. Pages, depth and concurrency are
+  configurable within fixed ceilings:
+
+  | Variable | Default | Range | Stored on the crawl row |
+  |---|---|---|---|
+  | `CRAWL_MAX_PAGES` | 50 | 1–500 | yes (`max_pages`) |
+  | `CRAWL_MAX_DEPTH` | 3 | 0–10 | yes (`max_depth`) |
+  | `CRAWL_CONCURRENCY` | 3 | 1–5 | no |
+
+  The defaults are the values that shipped, so setting none of them changes
+  nothing. A value that will not parse as a plain decimal integer, or that
+  falls outside its range, throws `CrawlConfigurationError` and the crawl
+  service is never constructed — a misconfigured server refuses to crawl
+  rather than crawling with limits nobody chose. The depth ceiling of 10 is
+  the same bound `crawl_pages.depth` declares, so no configurable depth can
+  produce a row the table rejects.
+
+  Concurrency is not stored on the crawl row, and that is deliberate: the
+  budget records what a crawl was *allowed to observe*, which a reader of the
+  record needs in order to tell a five-page crawl from a five-page site. How
+  quickly we asked is a property of the run, not of the readings it produced.
+- **robots.txt is obeyed, and an unreadable one is not permission.** A file
+  that could not be fetched leaves `robots_state = 'unavailable'` and every
+  page's `robots_txt_allowed` null.
+- **Operators only**, same-origin for the write, 10 crawls per operator per 10
+  minutes shared through Postgres, one at a time per operator.
+- **No new secret.** The crawl variables are policy, not credentials.
+
 ## Security model
 
 - Secrets are server-only environment variables; none has a `NEXT_PUBLIC_` name,
@@ -281,6 +446,21 @@ All server-only. `.env.example` has placeholders.
 Nothing has been deployed.
 
 ## Known limitations
+
+- **The crawler has still never been run against a real website**, and no
+  migration has been applied. The DNS-rebinding gap that previously blocked
+  this is closed (see *Pinned connections* above), but "the address policy is
+  now enforceable" is not the same as "this has been exercised against a live
+  origin".
+- A crawl runs inside the operator's request, so a crashed or timed-out request
+  leaves its row `running` with no `finished_at`. There is no recovery sweep
+  (that needs the scheduler this milestone deliberately omits); a reader should
+  treat a `running` crawl older than its `max_duration_ms` as abandoned.
+- A sitemap is read only when the origin serves it as XML, plain text, or HTML.
+  One served as something else is recorded as `unavailable`, which leaves
+  sitemap membership unknown rather than false.
+- Nothing reads crawl data yet: the Technical SEO screens are entirely fixture
+  data.
 
 - Execution runs inside a request or a cron invocation, not a long-lived
   worker: one invocation handles at most 5 runs, so sustained backlogs drain at

@@ -1,7 +1,7 @@
 # Supabase
 
 Postgres schema for the parts of Nexra that are persisted: the project record,
-and the agent runs made against projects.
+the agent runs made against projects, and the crawls made of their websites.
 
 ```
 supabase/
@@ -163,3 +163,47 @@ shares the count; email addresses are keyed by hash, never stored. Pages are pre
 not cache responses that the proxy has not seen. A signed-out session's
 unexpired access token still opens pages (the proxy verifies the token locally)
 until it expires, although the Auth server refuses it for every write.
+
+## Crawls
+
+`public.nexra_crawls`, `public.nexra_crawl_pages` and
+`public.nexra_crawl_links` (migration `20260920120000_create_crawls.sql`) hold
+what a crawl actually fetched from a project's own website.
+
+**The `nexra_` prefix is required, not stylistic.** This database also holds a
+separate live crawl subsystem owning the unprefixed `crawls`, `crawl_pages`,
+`crawl_page_signals` and `crawl_urls`. Nothing in this repository may create,
+alter, grant on, or query those. Every constraint and index here is prefixed
+too, because a UNIQUE or PRIMARY KEY constraint creates a schema-scoped
+index. Like agent runs, they need `PROJECTS_DATA_SOURCE=supabase`;
+with the fixture roster the crawl service answers `unavailable` rather than
+crawling a real site and discarding what it found.
+
+- `nexra_crawls` is the run: its project, start URL, host scope, budgets, status,
+  why it stopped, and whether robots.txt and the sitemap could be read.
+- `nexra_crawl_pages` is one row per unique normalised URL, unique on
+  `(crawl_id, url)`. That index is what makes a page appear once however many
+  links point at it.
+- `nexra_crawl_links` is the link graph, which is where `depth` and the internal link
+  counts come from.
+
+### What is deliberately not here
+
+**No indexation column and no Core Web Vitals columns exist in any of the three
+tables.** A crawler cannot observe whether Google indexed a URL — Search
+Console is the authority for that — and field vitals come from real user
+measurement, not from timing our own fetch. There is no column to put a guess
+in, which is the only reliable way to stop one being stored.
+
+**A null means unknown.** `in_sitemap`, `robots_txt_allowed`,
+`canonical_is_self` and `depth` are nullable because "we could not tell" is a
+real answer and is not the same as false or zero. Nothing in the application
+may collapse the two.
+
+**Internal link counts are within one crawl.** They are not site-wide, so they
+cannot decide whether a page is orphaned.
+
+Crawling is off unless the server sets `CRAWL_ENABLED` and names the project's
+host in `CRAWL_ALLOWED_HOSTS`. See `.env.example`, and the crawl section of
+[`docs/BACKEND.md`](../docs/BACKEND.md) for how connections are pinned to an
+approved address and what has still not been exercised against a live site.
