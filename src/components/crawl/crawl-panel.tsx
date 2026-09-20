@@ -23,12 +23,16 @@ import {
 } from "@/lib/crawl/pages-view";
 import {
   RUN_STATUS,
+  executability,
+  executeOutcome,
   hasResult,
   outputProvenance,
   queueRefusal,
   queuedNote,
+  reconciledNote,
   reviewRequest,
   type QueueState,
+  type Tone,
 } from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { AgentRun } from "@/types/agent-run";
@@ -102,6 +106,9 @@ export function CrawlPanel({
   const [review, setReview] = useState<QueueState>({ status: "idle" });
   /** Same reasoning as `inFlight`: a ref refuses the second click of a pair. */
   const queueing = useRef(false);
+  const [executing, setExecuting] = useState(false);
+  const runningNow = useRef(false);
+  const [executeNote, setExecuteNote] = useState<{ text: string; tone: Tone } | null>(null);
 
   const readLatest = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -215,6 +222,7 @@ export function CrawlPanel({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing state that belongs to a different crawl
     setReview({ status: "idle" });
+    setExecuteNote(null);
   }, [shownId]);
 
   const reviewable = reviewRequest(projectId, shown);
@@ -259,6 +267,62 @@ export function CrawlPanel({
     } finally {
       queueing.current = false;
     }
+  };
+
+  /**
+   * Runs the queued review now, instead of waiting for the scheduled worker.
+   *
+   * The request names the run on screen — `/api/agent-runs/<id>` with
+   * `{action:"execute"}` — so the attempt it claims is provably this one. The
+   * deployment-wide `run-next` worker action is deliberately not used: it
+   * claims the oldest queued run anywhere, which could belong to another
+   * project entirely.
+   *
+   * Whatever the POST answers, the run is read back afterwards and the panel
+   * shows the persisted state. An HTTP 200 says the request was accepted, not
+   * that anything was analysed, and a 409 means something else claimed the run
+   * first — which is the lease working, not a failure.
+   */
+  const runNow = async () => {
+    const current = review.status === "queued" ? review.run : null;
+    if (runningNow.current || current === null || !executability(current).ok) return;
+    runningNow.current = true;
+    setExecuting(true);
+    setExecuteNote(null);
+
+    const runId = current.id;
+    let outcome;
+    try {
+      const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "execute" }),
+        cache: "no-store",
+      });
+      const body: unknown = await response.json().catch(() => null);
+      outcome = executeOutcome(response.status, body);
+    } catch {
+      // The attempt may or may not have started. The read below decides.
+      outcome = executeOutcome(0, null);
+    }
+
+    // Always reconcile, including after a success: the POST body is not the
+    // authority on what was stored.
+    let persisted: AgentRun | null = null;
+    try {
+      const read = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
+      if (read.ok) {
+        const body = (await read.json()) as { run?: AgentRun };
+        persisted = body.run ?? null;
+      }
+    } catch {
+      persisted = null;
+    }
+
+    if (persisted) setReview({ status: "queued", run: persisted, duplicate: false });
+    setExecuteNote(reconciledNote(outcome, persisted));
+    runningNow.current = false;
+    setExecuting(false);
   };
 
   return (
@@ -364,6 +428,9 @@ export function CrawlPanel({
               blockedWhy={reviewable.ok ? null : reviewable.why}
               busy={review.status === "queuing"}
               onQueue={queueReview}
+              executing={executing}
+              executeNote={executeNote}
+              onRunNow={runNow}
             />
 
             {pages.status === "loading" && <Skeleton className="h-20 w-full" />}
@@ -396,16 +463,24 @@ function CrawlReview({
   blockedWhy,
   busy,
   onQueue,
+  executing,
+  executeNote,
+  onRunNow,
 }: {
   state: QueueState;
   /** Why the control is unavailable, or null when it can be used. */
   blockedWhy: string | null;
   busy: boolean;
   onQueue: () => void;
+  executing: boolean;
+  /** What the last execute attempt adds to the badge, or null. */
+  executeNote: { text: string; tone: Tone } | null;
+  onRunNow: () => void;
 }) {
   const queued = state.status === "queued" ? state : null;
   const run = queued?.run ?? null;
   const provenance = run ? outputProvenance(run) : null;
+  const runnable = executability(run);
 
   return (
     <section className="space-y-2 border-t border-border pt-4">
@@ -454,6 +529,35 @@ function CrawlReview({
               {queuedNote({ run, duplicate: queued.duplicate })}
             </span>
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              icon="bolt"
+              onClick={onRunNow}
+              disabled={!runnable.ok || executing}
+              title={runnable.why ?? undefined}
+              aria-busy={executing}
+            >
+              {executing ? "Running…" : "Run Now"}
+            </Button>
+            <span className="text-xs text-fg-subtle">
+              {runnable.ok
+                ? "Runs this run through the operator worker now, instead of waiting for the scheduled one."
+                : (runnable.why ?? "")}
+            </span>
+          </div>
+
+          {executeNote && (
+            <p
+              className={
+                executeNote.tone === "warning" ? "text-sm text-warning" : "text-sm text-fg-muted"
+              }
+              role="status"
+            >
+              {executeNote.text}
+            </p>
+          )}
 
           {run.error && (
             <p className="text-sm text-critical">

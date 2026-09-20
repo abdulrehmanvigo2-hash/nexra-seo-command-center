@@ -198,3 +198,93 @@ export function queuedNote(state: { readonly run: AgentRun; readonly duplicate: 
     ? "Queued. The scheduled worker picks runs up; nothing has been analysed yet."
     : "Queued.";
 }
+
+// ---------------------------------------------------------------------------
+// Running a queued run now
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether this run can be started by hand, and why not when it cannot.
+ *
+ * Only a queued run can be claimed — the server says so too, and answers 409
+ * with the run's real state for anything else. Offering the control for a
+ * run that cannot take it would turn a rule into an error message.
+ */
+export function executability(run: AgentRun | null): { readonly ok: boolean; readonly why: string | null } {
+  if (run === null) return { ok: false, why: "Queue a review first." };
+  if (run.status === "queued") return { ok: true, why: null };
+  if (run.status === "running") return { ok: false, why: "An attempt is already in progress." };
+  if (run.status === "completed") return { ok: false, why: "This run has already finished." };
+  if (run.status === "cancelled") return { ok: false, why: "This run was cancelled." };
+  return { ok: false, why: "This run failed. Retrying is a separate action." };
+}
+
+/**
+ * What the execute request came back as — never what it means.
+ *
+ * `executed` says the request was accepted, and nothing more: what actually
+ * happened is whatever the run says when it is read back. A 409 is not a
+ * failure; it means something else claimed the run first, which is exactly
+ * what the lease is for.
+ */
+export type ExecuteOutcome =
+  | { readonly kind: "accepted" }
+  | { readonly kind: "conflict" }
+  | { readonly kind: "refused"; readonly message: string };
+
+export function executeOutcome(httpStatus: number, body: unknown): ExecuteOutcome {
+  if (httpStatus === 409) return { kind: "conflict" };
+  if (httpStatus >= 200 && httpStatus < 300) return { kind: "accepted" };
+
+  const error = (body as { error?: unknown; message?: unknown } | null)?.error;
+  if (error === "not-found") {
+    return { kind: "refused", message: "This run no longer exists on the server." };
+  }
+  if (error === "unavailable") {
+    return { kind: "refused", message: "Agent runs are not stored on this deployment." };
+  }
+  if (httpStatus === 401) {
+    return { kind: "refused", message: "Your session has ended. Reload the page to sign in again." };
+  }
+  if (httpStatus === 403) {
+    return { kind: "refused", message: "This request was refused. Reload the page and try again." };
+  }
+  if (httpStatus === 429) {
+    return {
+      kind: "refused",
+      message: "Too many worker requests, or one is already running. Wait a moment and try again.",
+    };
+  }
+  return { kind: "refused", message: "The run could not be started." };
+}
+
+/**
+ * What to say once the run has been read back.
+ *
+ * The badge carries the state; this carries only what the request adds to it.
+ * A conflict whose run then reads `running` or `completed` is reported as
+ * what it is — someone else got there first — and never as a failure, because
+ * the work is happening or has happened.
+ */
+export function reconciledNote(
+  outcome: ExecuteOutcome,
+  run: AgentRun | null,
+): { readonly text: string; readonly tone: Tone } | null {
+  if (outcome.kind === "refused") return { text: outcome.message, tone: "warning" };
+
+  if (outcome.kind === "conflict") {
+    return run === null
+      ? {
+          text: "Already started elsewhere, and its current status could not be read. Refresh to see it.",
+          tone: "warning",
+        }
+      : { text: "Already started elsewhere. Refreshing its current status.", tone: "neutral" };
+  }
+
+  return run === null
+    ? {
+        text: "The attempt was accepted, but its result could not be read back. Refresh to see the stored state.",
+        tone: "warning",
+      }
+    : null;
+}

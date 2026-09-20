@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { describe, test } from "node:test";
 import type { AgentRun, AgentRunStatus } from "../../types/agent-run.ts";
 import type { Crawl } from "../../types/crawl.ts";
@@ -6,10 +7,13 @@ import {
   REVIEW_AGENT_ID,
   REVIEW_TASK_TYPE,
   RUN_STATUS,
+  executability,
+  executeOutcome,
   hasResult,
   outputProvenance,
   queueRefusal,
   queuedNote,
+  reconciledNote,
   reviewRequest,
 } from "./review-request.ts";
 
@@ -227,5 +231,108 @@ describe("refusals from the server", () => {
     for (const body of [{ error: "task-not-allowed" }, { error: "unavailable" }, null]) {
       assert.doesNotMatch(queueRefusal(422, body), /succe|analysed|complete/i);
     }
+  });
+});
+
+describe("Run Now availability", () => {
+  test("there is nothing to run before a run exists", () => {
+    const verdict = executability(null);
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.why ?? "", /Queue a review first/);
+  });
+
+  test("only a queued run can be started", () => {
+    assert.equal(executability(RUN).ok, true);
+    for (const status of ["running", "completed", "failed", "cancelled"] as const) {
+      const verdict = executability({ ...RUN, status });
+      assert.equal(verdict.ok, false);
+      assert.ok((verdict.why ?? "").length > 0);
+    }
+  });
+
+  test("an in-progress attempt is reported as in progress, not as an error", () => {
+    assert.match(executability({ ...RUN, status: "running" }).why ?? "", /already in progress/i);
+  });
+
+  test("no unavailability reason reads as a completed analysis", () => {
+    for (const status of ["running", "failed", "cancelled"] as const) {
+      assert.doesNotMatch(executability({ ...RUN, status }).why ?? "", /analys|succe/i);
+    }
+  });
+});
+
+describe("what the execute request came back as", () => {
+  test("a 2xx is accepted — which is not the same as analysed", () => {
+    assert.deepEqual(executeOutcome(200, { run: RUN }), { kind: "accepted" });
+    assert.deepEqual(executeOutcome(201, null), { kind: "accepted" });
+  });
+
+  test("a 409 is a conflict, never a refusal", () => {
+    assert.deepEqual(executeOutcome(409, { error: "conflict", status: "running" }), {
+      kind: "conflict",
+    });
+  });
+
+  test("other statuses are refusals with their own wording", () => {
+    assert.equal(executeOutcome(404, { error: "not-found" }).kind, "refused");
+
+    const expired = executeOutcome(401, null);
+    assert.match(expired.kind === "refused" ? expired.message : "", /session has ended/i);
+
+    const limited = executeOutcome(429, null);
+    assert.match(limited.kind === "refused" ? limited.message : "", /Wait a moment/i);
+
+    assert.equal(executeOutcome(503, { error: "unavailable" }).kind, "refused");
+  });
+
+  test("no outcome message claims the analysis succeeded", () => {
+    for (const status of [401, 403, 404, 429, 500, 503]) {
+      const outcome = executeOutcome(status, null);
+      if (outcome.kind !== "refused") continue;
+      assert.doesNotMatch(outcome.message, /succe|analys|complete/i);
+    }
+  });
+});
+
+describe("reconciling against the run that was read back", () => {
+  test("an accepted attempt says nothing extra — the badge carries the state", () => {
+    assert.equal(reconciledNote({ kind: "accepted" }, { ...RUN, status: "completed" }), null);
+  });
+
+  test("a conflict whose run is running or completed is not reported as a failure", () => {
+    for (const status of ["running", "completed"] as const) {
+      const note = reconciledNote({ kind: "conflict" }, { ...RUN, status });
+      assert.equal(note?.tone, "neutral");
+      assert.equal(note?.text, "Already started elsewhere. Refreshing its current status.");
+      assert.doesNotMatch(note?.text ?? "", /fail|error/i);
+    }
+  });
+
+  test("a conflict that could not be read back says the status is unknown", () => {
+    const note = reconciledNote({ kind: "conflict" }, null);
+    assert.equal(note?.tone, "warning");
+    assert.match(note?.text ?? "", /could not be read/i);
+  });
+
+  test("an accepted attempt that could not be read back does not claim a result", () => {
+    const note = reconciledNote({ kind: "accepted" }, null);
+    assert.match(note?.text ?? "", /could not be read back/i);
+    assert.doesNotMatch(note?.text ?? "", /succe|analys/i);
+  });
+
+  test("a refusal carries its message at a non-positive tone", () => {
+    const note = reconciledNote({ kind: "refused", message: "nope" }, null);
+    assert.equal(note?.text, "nope");
+    assert.equal(note?.tone, "warning");
+  });
+});
+
+describe("no secret reaches the browser", () => {
+  test("nothing in this module names a worker credential", async () => {
+    const source = await readFile(new URL("./review-request.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(source, /CRON_SECRET|SERVICE_ROLE|ANTHROPIC_API_KEY|Bearer/);
+    // The deployment-wide worker endpoint is deliberately not used here: it
+    // claims the oldest queued run anywhere, not the one on screen.
+    assert.doesNotMatch(source, /run-next|agent-runs\/worker/);
   });
 });
