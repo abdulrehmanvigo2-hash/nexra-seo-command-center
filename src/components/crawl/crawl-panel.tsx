@@ -21,7 +21,17 @@ import {
   pageRow,
   type PageRow,
 } from "@/lib/crawl/pages-view";
+import {
+  RUN_STATUS,
+  hasResult,
+  outputProvenance,
+  queueRefusal,
+  queuedNote,
+  reviewRequest,
+  type QueueState,
+} from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
+import type { AgentRun } from "@/types/agent-run";
 import type { Crawl, CrawlPage } from "@/types/crawl";
 
 /**
@@ -89,6 +99,9 @@ export function CrawlPanel({
    */
   const inFlight = useRef(false);
   const [pages, setPages] = useState<PagesLoad>({ status: "idle" });
+  const [review, setReview] = useState<QueueState>({ status: "idle" });
+  /** Same reasoning as `inFlight`: a ref refuses the second click of a pair. */
+  const queueing = useRef(false);
 
   const readLatest = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -197,6 +210,57 @@ export function CrawlPanel({
     return () => controller.abort();
   }, [shownId]);
 
+  // A review belongs to one crawl. Showing another crawl's run beside this
+  // one's pages would attribute findings to the wrong evidence.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing state that belongs to a different crawl
+    setReview({ status: "idle" });
+  }, [shownId]);
+
+  const reviewable = reviewRequest(projectId, shown);
+
+  /**
+   * Queues the Technical SEO agent to review this crawl.
+   *
+   * It queues and stops there. The run is executed later by the scheduled
+   * worker, through the same service an operator's own request would use —
+   * nothing here executes an agent, and the button never claims it did.
+   */
+  const queueReview = async () => {
+    if (queueing.current || !reviewable.ok) return;
+    queueing.current = true;
+    setReview({ status: "queuing" });
+
+    try {
+      const response = await fetch("/api/agent-runs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(reviewable.payload),
+        cache: "no-store",
+      });
+      const body: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setReview({ status: "refused", message: queueRefusal(response.status, body) });
+        return;
+      }
+
+      const parsed = body as { run?: AgentRun; duplicate?: boolean } | null;
+      setReview(
+        parsed?.run
+          ? { status: "queued", run: parsed.run, duplicate: parsed.duplicate === true }
+          : { status: "refused", message: "The server accepted the request but returned no run." },
+      );
+    } catch {
+      setReview({
+        status: "refused",
+        message: "The request did not complete. Refresh before asking again — it may have been queued.",
+      });
+    } finally {
+      queueing.current = false;
+    }
+  };
+
   return (
     <Panel>
       <PanelHeader
@@ -295,6 +359,13 @@ export function CrawlPanel({
               ))}
             </dl>
 
+            <CrawlReview
+              state={review}
+              blockedWhy={reviewable.ok ? null : reviewable.why}
+              busy={review.status === "queuing"}
+              onQueue={queueReview}
+            />
+
             {pages.status === "loading" && <Skeleton className="h-20 w-full" />}
 
             {pages.status === "failed" && (
@@ -308,6 +379,106 @@ export function CrawlPanel({
         )}
       </PanelBody>
     </Panel>
+  );
+}
+
+/**
+ * The Technical SEO agent's review of this crawl.
+ *
+ * Queueing is all this does. The run is carried out later by the scheduled
+ * worker, through the agent-run service an operator's own request would use,
+ * so there is one execution path and the browser is not on it. Until a run
+ * finishes there is nothing to read, and the wording says so rather than
+ * showing a tick for work that has not started.
+ */
+function CrawlReview({
+  state,
+  blockedWhy,
+  busy,
+  onQueue,
+}: {
+  state: QueueState;
+  /** Why the control is unavailable, or null when it can be used. */
+  blockedWhy: string | null;
+  busy: boolean;
+  onQueue: () => void;
+}) {
+  const queued = state.status === "queued" ? state : null;
+  const run = queued?.run ?? null;
+  const provenance = run ? outputProvenance(run) : null;
+
+  return (
+    <section className="space-y-2 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h4 className="text-xs font-medium text-fg">Technical SEO agent</h4>
+          <p className="text-xs text-fg-subtle">
+            Queues a read-only review of the pages above. The agent reads this crawl&apos;s
+            recorded readings; it changes nothing and fetches nothing.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          icon="agents"
+          onClick={onQueue}
+          disabled={blockedWhy !== null || busy}
+          title={blockedWhy ?? undefined}
+          aria-busy={busy}
+        >
+          {busy ? "Queueing…" : "Analyze with Technical SEO Agent"}
+        </Button>
+      </div>
+
+      {blockedWhy !== null && state.status === "idle" && (
+        <p className="text-xs text-fg-subtle">{blockedWhy}</p>
+      )}
+
+      {state.status === "refused" && (
+        <p className="text-sm text-warning" role="status">
+          <span className="font-medium">Not queued.</span> {state.message}
+        </p>
+      )}
+
+      {queued && run && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              tone={RUN_STATUS[run.status].tone}
+              dot
+              pulse={run.status === "running"}
+              title={RUN_STATUS[run.status].title}
+            >
+              {RUN_STATUS[run.status].label}
+            </Badge>
+            <span className="text-xs text-fg-subtle">
+              {queuedNote({ run, duplicate: queued.duplicate })}
+            </span>
+          </div>
+
+          {run.error && (
+            <p className="text-sm text-critical">
+              <span className="font-medium">{run.error.code}</span> — {run.error.message}
+            </p>
+          )}
+
+          {provenance && (
+            <p
+              className={provenance.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-subtle"}
+            >
+              {provenance.text}
+            </p>
+          )}
+
+          {hasResult(run) && (
+            <p className="text-sm whitespace-pre-wrap text-fg-muted">{run.resultSummary}</p>
+          )}
+
+          <p className="text-xs text-fg-subtle">
+            Full run history, including attempts, is on the Agents screen.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
 
