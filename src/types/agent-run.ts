@@ -27,7 +27,12 @@ export type AgentRunSource = "operator";
 export type AgentExecutorId = "mock" | "ai";
 
 /** The tasks an agent can be asked to run. See `@/lib/agent-runs/task-types`. */
-export type AgentTaskType = "project-review" | "keyword-research" | "crawl-review" | "on-page-review";
+export type AgentTaskType =
+  | "project-review"
+  | "keyword-research"
+  | "crawl-review"
+  | "on-page-review"
+  | "search-query-review";
 
 export type JsonValue =
   | string

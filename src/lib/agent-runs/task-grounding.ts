@@ -1,35 +1,74 @@
-import type { GroundingReader } from "@/lib/agent-runs/ai-executor";
+import { CRAWL_SOURCE, type GroundingReader } from "@/lib/agent-runs/ai-executor";
 import { getTaskType } from "@/lib/agent-runs/task-types";
 import { readCrawlGrounding, type CrawlGroundingReader } from "@/lib/crawl/grounding";
+import {
+  readSearchConsoleGrounding,
+  type SearchConsoleReportReader,
+} from "@/lib/search-console/grounding";
 
 /**
  * Which evidence a task is allowed to see, decided by what its task type
  * declares rather than by its name.
  *
  * The runtime reads the evidence, not the executor, which reaches no system of
- * its own. A task type that declares `evidence: "crawl"` is given one crawl
- * this product recorded — `crawl-review` and `on-page-review` today — and
- * every other task gets none. The run's project decides which crawls are
- * readable: the crawl id in the input is checked against it, so naming
- * another project's crawl is refused rather than answered.
+ * its own. A task type declaring `evidence: "crawl"` is given one crawl this
+ * product recorded (`crawl-review`, `on-page-review`); one declaring
+ * `evidence: "search-console"` is given the Search Console report for the
+ * run's own project and the window in its input (`search-query-review`);
+ * every other task gets none. In both cases the project is the run's: a crawl
+ * id is checked against it, and a report is fetched for it, so nothing a
+ * caller writes can reach another client's data.
  *
- * Pure apart from the reader it is handed, so the same dispatch runs against
- * the Supabase crawl store in the application and an in-memory one in a test.
+ * Pure apart from the readers it is handed, so the same dispatch runs against
+ * Supabase and Google in the application and in-memory fakes in a test.
  */
-export function createTaskGrounding(crawls: CrawlGroundingReader): GroundingReader {
+export type TaskGroundingReaders = {
+  readonly crawls: CrawlGroundingReader;
+  readonly searchConsole: SearchConsoleReportReader;
+};
+
+export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
   return async (task) => {
     const definition = getTaskType(task.taskType);
-    if (!definition || definition.evidence !== "crawl") return { ok: true, grounding: null };
+    if (!definition) return { ok: true, grounding: null };
 
-    const crawlId = task.input.crawlId;
-    if (typeof crawlId !== "string") return { ok: false, reason: "crawl-id-missing" };
+    switch (definition.evidence) {
+      case "none":
+        return { ok: true, grounding: null };
 
-    const result = await readCrawlGrounding(crawls, { crawlId, projectId: task.project.id });
-    if (!result.ok) return { ok: false, reason: result.reason };
+      case "crawl": {
+        const crawlId = task.input.crawlId;
+        if (typeof crawlId !== "string") return { ok: false, reason: "crawl-id-missing" };
 
-    return {
-      ok: true,
-      grounding: { text: result.grounding.text, summary: { ...result.grounding.summary } },
-    };
+        const result = await readCrawlGrounding(readers.crawls, { crawlId, projectId: task.project.id });
+        if (!result.ok) return { ok: false, reason: result.reason };
+
+        return {
+          ok: true,
+          grounding: {
+            text: result.grounding.text,
+            summary: { ...result.grounding.summary },
+            source: CRAWL_SOURCE,
+          },
+        };
+      }
+
+      case "search-console": {
+        const result = await readSearchConsoleGrounding(readers.searchConsole, {
+          projectId: task.project.id,
+          rangeId: task.input.range,
+        });
+        if (!result.ok) return { ok: false, reason: result.reason };
+
+        return {
+          ok: true,
+          grounding: {
+            text: result.grounding.text,
+            summary: { ...result.grounding.summary },
+            source: result.grounding.source,
+          },
+        };
+      }
+    }
   };
 }

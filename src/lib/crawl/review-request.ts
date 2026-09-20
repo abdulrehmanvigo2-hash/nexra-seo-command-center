@@ -19,26 +19,31 @@
 
 import type { AgentRun, AgentRunStatus } from "@/types/agent-run";
 import type { Crawl } from "@/types/crawl";
+import type { RangeId } from "@/types/dashboard";
+import type { SearchConsoleReport } from "@/types/search-console";
 
 /** The only agent the crawl review is allowed to run on. Mirrors the task type. */
 export const REVIEW_AGENT_ID = "technical-seo";
 export const REVIEW_TASK_TYPE = "crawl-review";
 
 export type CrawlReviewKind = typeof REVIEW_TASK_TYPE | "on-page-review";
+export type ReviewTaskType = CrawlReviewKind | "search-query-review";
 
-/** One review an operator can queue over a crawl: which agent, which task, and how the control reads. */
-export type CrawlReviewSpec = {
-  readonly taskType: CrawlReviewKind;
-  readonly agentId: typeof REVIEW_AGENT_ID | "on-page-seo";
+/** One review an operator can queue: which agent, which task, and how the control reads. */
+export type ReviewSpec = {
+  readonly taskType: ReviewTaskType;
+  readonly agentId: typeof REVIEW_AGENT_ID | "on-page-seo" | "keyword-intent";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
   readonly action: string;
   /** What the review reads, in one sentence, for the section under the button. */
   readonly summary: string;
+  /** What a grounded result was grounded in, for the provenance line: "this crawl's recorded pages". */
+  readonly groundedIn: string;
 };
 
-export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, CrawlReviewSpec>> = {
+export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, ReviewSpec>> = {
   "crawl-review": {
     taskType: REVIEW_TASK_TYPE,
     agentId: REVIEW_AGENT_ID,
@@ -46,6 +51,7 @@ export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, CrawlReviewSpec>> =
     action: "Analyze with Technical SEO Agent",
     summary:
       "Queues a read-only review of the pages above. The agent reads this crawl's recorded readings; it changes nothing and fetches nothing.",
+    groundedIn: "this crawl's recorded pages",
   },
   "on-page-review": {
     taskType: "on-page-review",
@@ -54,14 +60,33 @@ export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, CrawlReviewSpec>> =
     action: "Analyze with On-Page SEO Agent",
     summary:
       "Queues a read-only review of the titles, descriptions, headings, canonicals and links recorded above. Proposes changes for you to apply; it edits and publishes nothing.",
+    groundedIn: "this crawl's recorded pages",
   },
+};
+
+/**
+ * The Keyword & Search Intent agent's review of one Search Console window.
+ *
+ * The request carries a range and nothing else. The property read is the
+ * project's own, resolved on the server, and the queries come from Google —
+ * an operator supplies no keyword here, which is what separates this from
+ * `keyword-research`.
+ */
+export const SEARCH_QUERY_REVIEW: ReviewSpec = {
+  taskType: "search-query-review",
+  agentId: "keyword-intent",
+  agentName: "Keyword & Search Intent",
+  action: "Analyze with Keyword & Search Intent Agent",
+  summary:
+    "Queues a read-only review of the totals and top queries Google reported for this window. The agent reads the Search Console figures above; it changes nothing and fetches nothing beyond that report.",
+  groundedIn: "this project's Search Console report",
 };
 
 export type ReviewPayload = {
   readonly projectId: string;
-  readonly agentId: CrawlReviewSpec["agentId"];
-  readonly taskType: CrawlReviewKind;
-  readonly input: { readonly crawlId: string };
+  readonly agentId: ReviewSpec["agentId"];
+  readonly taskType: ReviewTaskType;
+  readonly input: { readonly crawlId: string } | { readonly range: RangeId };
 };
 
 export type Queueability =
@@ -81,7 +106,7 @@ const REVIEWABLE: readonly Crawl["status"][] = ["completed", "partial"];
 export function reviewRequest(
   projectId: string,
   crawl: Crawl | null,
-  review: CrawlReviewSpec = CRAWL_REVIEWS[REVIEW_TASK_TYPE],
+  review: ReviewSpec = CRAWL_REVIEWS[REVIEW_TASK_TYPE],
 ): Queueability {
   if (!projectId) return { ok: false, why: "No project is selected." };
   if (crawl === null) return { ok: false, why: "Run a crawl first: there is nothing to review." };
@@ -100,6 +125,42 @@ export function reviewRequest(
       agentId: review.agentId,
       taskType: review.taskType,
       input: { crawlId: crawl.id },
+    },
+  };
+}
+
+/**
+ * Whether the Search Console window on screen can be reviewed, and the body
+ * that would ask for it.
+ *
+ * Offered only for a connected report with queries in it — the same
+ * conditions the server's grounding reader refuses on, checked here so the
+ * control explains itself instead of being clicked and refused. The server
+ * remains the gate: it re-reads the report at execution time.
+ */
+export function searchQueryReviewRequest(
+  projectId: string | null,
+  report: SearchConsoleReport | null,
+  rangeId: RangeId,
+): Queueability {
+  if (!projectId) return { ok: false, why: "Choose a single project to review its search queries." };
+  if (report === null) return { ok: false, why: "Search Console data has not loaded yet." };
+  if (report.state !== "connected") {
+    return { ok: false, why: "Search Console is not connected for this project, so there are no queries to review." };
+  }
+  if (report.partial.includes("queries-unavailable")) {
+    return { ok: false, why: "Google did not return the top queries for this window, so there is nothing to review." };
+  }
+  if (report.queries.length === 0) {
+    return { ok: false, why: "Search Console reported no queries for this window, so there is nothing to review." };
+  }
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: SEARCH_QUERY_REVIEW.agentId,
+      taskType: SEARCH_QUERY_REVIEW.taskType,
+      input: { range: rangeId },
     },
   };
 }
@@ -167,24 +228,27 @@ export function hasResult(run: AgentRun): boolean {
  * on the result itself, where it cannot be missed, because the one failure
  * mode that matters here is a placeholder being read as analysis.
  */
-export function outputProvenance(run: AgentRun): { readonly text: string; readonly tone: Tone } | null {
+export function outputProvenance(
+  run: AgentRun,
+  groundedIn: string = CRAWL_REVIEWS[REVIEW_TASK_TYPE].groundedIn,
+): { readonly text: string; readonly tone: Tone } | null {
   const metadata = run.resultMetadata;
   if (metadata === null) return null;
 
   if (metadata.simulated === true) {
     return {
-      text: "Simulated — the mock executor read no crawl and analysed nothing. This is placeholder output, not analysis.",
+      text: "Simulated — the mock executor read no evidence and analysed nothing. This is placeholder output, not analysis.",
       tone: "warning",
     };
   }
   if (metadata.grounded === true) {
     return {
-      text: "Model output, grounded in this crawl's recorded pages. Advice, not measurement.",
+      text: `Model output, grounded in ${groundedIn}. Advice, not measurement.`,
       tone: "neutral",
     };
   }
   return {
-    text: "Model output, not grounded in any crawl data. Advice, not measurement.",
+    text: "Model output, not grounded in any recorded evidence. Advice, not measurement.",
     tone: "warning",
   };
 }
@@ -198,7 +262,7 @@ export function outputProvenance(run: AgentRun): { readonly text: string; readon
 export function queueRefusal(
   httpStatus: number,
   body: unknown,
-  review: CrawlReviewSpec = CRAWL_REVIEWS[REVIEW_TASK_TYPE],
+  review: ReviewSpec = CRAWL_REVIEWS[REVIEW_TASK_TYPE],
 ): string {
   const error = (body as { error?: unknown; message?: unknown } | null)?.error;
 
@@ -238,7 +302,7 @@ export function queueRefusal(
  */
 export function queuedNote(state: { readonly run: AgentRun; readonly duplicate: boolean }): string {
   if (state.duplicate) {
-    return "This crawl was already queued for review; showing that run rather than starting a second one.";
+    return "This review was already queued; showing that run rather than starting a second one.";
   }
   return state.run.status === "queued"
     ? "Queued. The scheduled worker picks runs up; nothing has been analysed yet."

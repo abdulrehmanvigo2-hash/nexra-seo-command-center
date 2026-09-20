@@ -366,6 +366,7 @@ describe("the on-page task type", () => {
     assert.equal(crawlReview?.evidence, "crawl");
     assert.equal(getTaskType("project-review")?.evidence, "none");
     assert.equal(getTaskType("keyword-research")?.evidence, "none");
+    assert.equal(getTaskType("search-query-review")?.evidence, "search-console");
   });
 
   test("its instructions demand observation, citation, page-bounded scope, and no edits", () => {

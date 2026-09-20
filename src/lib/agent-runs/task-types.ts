@@ -1,6 +1,8 @@
 import type { ActionPolicy } from "@/lib/agent-runs/action-policy";
 import { CRAWL_REVIEW_INSTRUCTIONS, ON_PAGE_REVIEW_INSTRUCTIONS } from "@/lib/crawl/grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
+import { isRangeId } from "@/lib/search-console/date-windows";
+import { SEARCH_QUERY_REVIEW_INSTRUCTIONS } from "@/lib/search-console/grounding";
 import type { AgentId } from "@/types/agent";
 import type { AgentTaskType, JsonObject } from "@/types/agent-run";
 
@@ -40,7 +42,7 @@ export type TaskTypeDefinition = {
    * second task over the same records is one declaration here, not a second
    * reader. `none` tasks reach the model with the validated input alone.
    */
-  readonly evidence: "none" | "crawl";
+  readonly evidence: "none" | "crawl" | "search-console";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -188,11 +190,40 @@ const onPageReview: TaskTypeDefinition = {
   parseInput: parseCrawlIdInput,
 };
 
+/**
+ * Review one Search Console window for the run's own project.
+ *
+ * The input names a range and nothing else. Which property is read follows
+ * from the run's project on the server, so no caller can point this task at
+ * another client's data, and no caller can supply a query of their own: the
+ * queries come from Google. Read-only, like every task here — it reads a
+ * report this product already fetches for the screen and starts nothing.
+ */
+const searchQueryReview: TaskTypeDefinition = {
+  id: "search-query-review",
+  label: "Search query review",
+  description: "Review the top queries and totals Search Console reported for one window.",
+  agents: ["keyword-intent"],
+  policy: "read-only",
+  evidence: "search-console",
+  instructions: SEARCH_QUERY_REVIEW_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, ["range"]);
+    if (!object.ok) return object;
+    const range = object.value.range;
+    if (!isRangeId(range)) {
+      return { ok: false, error: "range must be one of the reporting windows the product offers." };
+    }
+    return { ok: true, value: { range } };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
   crawlReview,
   onPageReview,
+  searchQueryReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

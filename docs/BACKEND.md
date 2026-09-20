@@ -71,16 +71,29 @@ never mixed into — modelled figures, with explicit not-connected, no-data,
 partial, and stale states. Verified for `nexra-agency`
 (`sc-domain:nexraagency.com`).
 
+One agent task reads it: `search-query-review`, for the Keyword & Search
+Intent agent. The runtime fetches the report for the run's own project and the
+range in the task input through the same cached provider the panel uses
+(`src/lib/search-console/grounding.ts`), serialises the window, the
+previous-window comparison where Google still holds it, and the top queries by
+clicks — each query quoted as third-party text, at most 25 rows, every absent
+reading written as "not established" — and refuses every non-connected state
+before anything is formatted. No caller can name a property or a query: the
+input carries a range and nothing else.
+
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Four task types exist, all read-only: `project-review` (any agent),
-`keyword-research` (Keyword & Search Intent), `crawl-review` (Technical SEO) and
-`on-page-review` (On-Page SEO). The last two take one input, a crawl id, and are
-grounded in the same recorded crawl (see below). Input is parsed strictly per
-task type, bounded, and screened for credentials; unknown fields are refused.
-Adding a task type needs no migration: the run table checks the id's format,
-not a list.
+project. Five task types exist, all read-only: `project-review` (any agent),
+`keyword-research` (Keyword & Search Intent, from operator seed keywords),
+`crawl-review` (Technical SEO), `on-page-review` (On-Page SEO) and
+`search-query-review` (Keyword & Search Intent, from Search Console). The two
+crawl reviews take one input, a crawl id, and are grounded in the same recorded
+crawl; the search query review takes one input, a range id, and is grounded in
+the project's own Search Console report (see below). Input is parsed strictly
+per task type, bounded, and screened for credentials; unknown fields are
+refused. Adding a task type needs no migration: the run table checks the id's
+format, not a list.
 
 Lifecycle, enforced in Postgres:
 
@@ -266,13 +279,18 @@ or per operator. That control has to come from the provider account.
   tools or live data and is told so. The answer is screened like any executor
   output; stored metadata is provider, model, token counts, and `grounded`.
   `grounded` is `true` only when evidence this product recorded was actually
-  loaded and put in the prompt — today the two tasks whose type declares
-  `evidence: "crawl"`, `crawl-review` and `on-page-review`, whose metadata
-  also carries an `evidence` object naming the crawl and its page counts. The
-  runtime picks the reader from that declaration
-  (`src/lib/agent-runs/task-grounding.ts`), so both read one serialisation of
-  the crawl (`src/lib/crawl/grounding.ts`) through one ownership check and one
-  byte ceiling. Every other task records `grounded: false`. Raw provider responses
+  loaded and put in the prompt — today the tasks whose type declares
+  `evidence: "crawl"` (`crawl-review`, `on-page-review`) or
+  `evidence: "search-console"` (`search-query-review`), whose metadata also
+  carries an `evidence` object naming the crawl and its page counts, or the
+  property, window and query count. The runtime picks the reader from that
+  declaration (`src/lib/agent-runs/task-grounding.ts`): the crawl tasks read
+  one serialisation of the crawl (`src/lib/crawl/grounding.ts`) through one
+  ownership check and one byte ceiling, and the search task reads the
+  project's report (`src/lib/search-console/grounding.ts`). Each reader names
+  its evidence to the model in its own terms, so the system prompt never
+  calls a Search Console report "crawl readings". Every other task records
+  `grounded: false`. Raw provider responses
   are not stored. Provider failures map to
   `provider-unavailable` or `provider-rejected`; provider text is dropped.
 

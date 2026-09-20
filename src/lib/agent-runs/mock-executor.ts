@@ -49,6 +49,22 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "search-query-review": {
+        const range = typeof task.input.range === "string" ? task.input.range : null;
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no report. `grounded: false` for the same
+          // reason as the crawl reviews: it looked at nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+          range,
+        };
+        return {
+          summary: `Simulated search query review by ${subject}. The mock executor read no Search Console data and analysed nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

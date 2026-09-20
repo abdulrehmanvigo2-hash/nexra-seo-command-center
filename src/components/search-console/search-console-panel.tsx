@@ -13,6 +13,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
+import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
+import { SEARCH_QUERY_REVIEW, searchQueryReviewRequest } from "@/lib/crawl/review-request";
 import { formatFullDate, formatNumber, formatPercent } from "@/lib/format";
 import {
   PARTIAL_COPY,
@@ -114,6 +116,17 @@ export function SearchConsolePanel({
   const report = load?.status === "loaded" ? load.report : null;
   const connected = report?.state === "connected" ? report : null;
 
+  /**
+   * The Keyword & Search Intent agent's review of this window. The run belongs
+   * to one project and one window, so it is dropped when either changes; the
+   * agent reads the same report this panel shows, on the server, at run time.
+   */
+  const review = useQueuedReview(
+    searchQueryReviewRequest(projectId, report, rangeId),
+    projectId ? `${projectId}:${rangeId}` : null,
+    SEARCH_QUERY_REVIEW,
+  );
+
   return (
     <Panel aria-busy={load?.status === "loading" || undefined}>
       <PanelHeader
@@ -166,6 +179,14 @@ export function SearchConsolePanel({
           unavailable={connected.partial.includes(view === "queries" ? "queries-unavailable" : "pages-unavailable")}
           noun={view === "queries" ? "Query" : "Page"}
         />
+      )}
+
+      {/* Offered where the queries are the subject — beside the summary and
+          the query list, not the page list, which this review does not read. */}
+      {projectId && view !== "pages" && load?.status === "loaded" && (
+        <div className="px-4 pb-4 sm:px-5">
+          <QueuedReview review={SEARCH_QUERY_REVIEW} {...review} />
+        </div>
       )}
 
       <PanelFooter>
