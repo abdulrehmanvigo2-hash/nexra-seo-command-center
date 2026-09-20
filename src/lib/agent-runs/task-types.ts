@@ -1,4 +1,5 @@
 import type { ActionPolicy } from "@/lib/agent-runs/action-policy";
+import { CRAWL_REVIEW_INSTRUCTIONS } from "@/lib/crawl/grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import type { AgentId } from "@/types/agent";
 import type { AgentTaskType, JsonObject } from "@/types/agent-run";
@@ -119,7 +120,37 @@ const keywordResearch: TaskTypeDefinition = {
   },
 };
 
-export const TASK_TYPES: readonly TaskTypeDefinition[] = [projectReview, keywordResearch];
+/** A crawl id is a uuid the store generated; nothing else is accepted. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Review one crawl this product already ran.
+ *
+ * The input names a crawl and nothing else. The observations come from the
+ * stored crawl record, read server-side and checked against the run's own
+ * project, so no caller can present text of their own as something this
+ * product observed. Read-only, like every task here: it reports on a crawl
+ * that already happened and starts nothing.
+ */
+const crawlReview: TaskTypeDefinition = {
+  id: "crawl-review",
+  label: "Crawl review",
+  description: "Review the observed pages of one completed crawl.",
+  agents: ["technical-seo"],
+  policy: "read-only",
+  instructions: CRAWL_REVIEW_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, ["crawlId"]);
+    if (!object.ok) return object;
+    const crawlId = object.value.crawlId;
+    if (typeof crawlId !== "string" || !UUID.test(crawlId)) {
+      return { ok: false, error: "crawlId must be the id of a crawl this project has run." };
+    }
+    return { ok: true, value: { crawlId: crawlId.toLowerCase() } };
+  },
+};
+
+export const TASK_TYPES: readonly TaskTypeDefinition[] = [projectReview, keywordResearch, crawlReview];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {
   return TASK_TYPES.find((definition) => definition.id === id);
