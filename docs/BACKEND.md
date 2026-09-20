@@ -279,9 +279,42 @@ collide even where the table name did not.
 
 No migration, query or grant in this repository names the unprefixed tables.
 The Supabase client is typed by the `nexra_` keys, so reaching the other
-subsystem is a compile error rather than a convention. The one object the two
-share is `public.projects`, which this product owns; the crawl tables
-reference it and change nothing about it.
+subsystem is a compile error rather than a convention.
+
+### The two objects both subsystems reach
+
+Isolation runs one way only. Nothing here reaches into that subsystem, but two
+objects in `public` are reachable from both, and this repository defines both:
+
+- **`public.projects`** — the crawl tables reference it and change nothing
+  about it.
+- **`public.set_updated_at()`**, defined in
+  `20260913120000_create_projects.sql` for `projects_set_updated_at` — the
+  foreign subsystem binds that same function to two triggers of its own,
+  `crawls_set_updated_at` and `crawl_pages_set_updated_at`.
+
+The second is a dependency nobody declared, and it points the opposite way
+from every other rule here: their tables depend on our function. Production
+catalogue OIDs put the function at 17522 and those two triggers at 17861 and
+17913, so the function existed first and their subsystem was built against it.
+The migration defining it uses a bare `create function`, not `create or
+replace`, so it could not have applied at all had the name already been taken.
+
+What that costs us:
+
+- **Never `create or replace` it to mean something new.** A replaced body
+  changes what happens on every update to `crawls` and `crawl_pages`, silently
+  and with nothing raised to notice.
+- **Never `drop` it with `cascade`.** A plain `drop function` is safe —
+  Postgres refuses it while a trigger depends on it — but `cascade` would take
+  their two triggers with it and leave their `updated_at` columns stale.
+- Behaviour only this product wants belongs in a **new, prefixed function**,
+  never in this one.
+
+The crawl tables here do not use it. `nexra_crawls`, `nexra_crawl_pages` and
+`nexra_crawl_links` have no `updated_at` column and no triggers at all: a crawl
+row records one walk, written once and closed once, so there is nothing for a
+modification timestamp to say.
 
 ### Pinned connections
 
