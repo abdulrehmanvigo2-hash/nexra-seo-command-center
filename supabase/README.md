@@ -197,6 +197,6 @@ may collapse the two.
 cannot decide whether a page is orphaned.
 
 Crawling is off unless the server sets `CRAWL_ENABLED` and names the project's
-host in `CRAWL_ALLOWED_HOSTS`. See `.env.example`, and the open DNS-rebinding
-gap recorded in [`docs/BACKEND.md`](../docs/BACKEND.md#known-limitations) —
-which has to be closed before this is pointed at any real website.
+host in `CRAWL_ALLOWED_HOSTS`. See `.env.example`, and the crawl section of
+[`docs/BACKEND.md`](../docs/BACKEND.md) for how connections are pinned to an
+approved address and what has still not been exercised against a live site.

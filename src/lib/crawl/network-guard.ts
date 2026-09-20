@@ -11,15 +11,17 @@
  *
  * The resolver is injected so the whole policy is testable without DNS.
  *
- * KNOWN GAP — DNS rebinding. This resolves the name, approves the addresses,
- * and then hands the URL to `fetch`, which resolves it again. A hostile
- * resolver can answer the check with a public address and the connection with
- * a private one. Closing it needs the socket pinned to the address that was
- * approved, which needs a custom dispatcher and a direct `undici` dependency.
- * Until that exists this crawler must not be pointed at a host the operator
- * does not control, which is what the allow-list in `./config` enforces.
+ * A check like this is worthless on its own, because the name can be resolved
+ * again between the approval and the connection — a hostile resolver answers
+ * the check with a public address and the connection with a private one. So
+ * the verdict carries a `pin`: the one approved address the connection must
+ * use. `pinnedLookup` turns it into the `lookup` function
+ * `node:http`/`node:https` accept, which replaces address resolution for that
+ * request and is therefore the point where this policy becomes binding rather
+ * than advisory. See `./pinned-request`.
  */
 
+import type { LookupFunction } from "node:net";
 import { isWithinHostScope } from "./url-policy.ts";
 
 export type ResolvedAddress = { readonly address: string; readonly family: 4 | 6 };
@@ -28,7 +30,16 @@ export type ResolvedAddress = { readonly address: string; readonly family: 4 | 6
 export type AddressResolver = (hostname: string) => Promise<readonly ResolvedAddress[]>;
 
 export type GuardVerdict =
-  | { readonly ok: true; readonly addresses: readonly ResolvedAddress[] }
+  | {
+      readonly ok: true;
+      readonly addresses: readonly ResolvedAddress[];
+      /**
+       * The one address the connection must use. Choosing it here rather than
+       * letting the socket re-resolve is what closes the gap between approving
+       * a name and connecting to it.
+       */
+      readonly pin: ResolvedAddress;
+    }
   | { readonly ok: false; readonly reason: GuardRejection };
 
 export type GuardRejection =
@@ -208,7 +219,7 @@ export async function guardUrl(url: URL, options: GuardOptions = {}): Promise<Gu
   if (literal !== null) {
     return isBlockedAddress(literal.address, literal.family)
       ? { ok: false, reason: "private-address" }
-      : { ok: true, addresses: [literal] };
+      : { ok: true, addresses: [literal], pin: literal };
   }
 
   let addresses: readonly ResolvedAddress[];
@@ -222,5 +233,53 @@ export async function guardUrl(url: URL, options: GuardOptions = {}): Promise<Gu
   // Every answer must pass. One private address among several is enough to
   // refuse: we cannot choose which one the connection will use.
   const blocked = addresses.some((entry) => isBlockedAddress(entry.address, entry.family));
-  return blocked ? { ok: false, reason: "private-address" } : { ok: true, addresses };
+  if (blocked) return { ok: false, reason: "private-address" };
+
+  // Every answer passed, so any of them is safe to use; the first is taken so
+  // the choice is deterministic and the stored record matches what was dialled.
+  return { ok: true, addresses, pin: addresses[0] };
 }
+
+/**
+ * The `lookup` a pinned request installs.
+ *
+ * `node:http` and `node:https` pass this straight to `net.connect`, so
+ * returning one address here *is* the connection target: no system resolver is
+ * consulted and there is no second answer to poison. The address is checked
+ * again here, at the moment of use, so no future refactor can route an
+ * unchecked address into a socket.
+ *
+ * Node 22 calls this with `{ all: true }` and expects an array; the
+ * three-argument form throws `ERR_INVALID_IP_ADDRESS`. Both shapes are
+ * answered, because the option is defined for both.
+ */
+export function pinnedLookup(
+  pin: ResolvedAddress,
+  isBlocked: AddressPolicy = isBlockedAddress,
+): LookupFunction {
+  return (_hostname, options, callback) => {
+    if (isBlocked(pin.address, pin.family)) {
+      callback(new Error("refused-unsafe"), "", pin.family);
+      return;
+    }
+    if (options.all === true) {
+      callback(null, [{ address: pin.address, family: pin.family }]);
+      return;
+    }
+    callback(null, pin.address, pin.family);
+  };
+}
+
+/**
+ * Whether an address is one to refuse.
+ *
+ * Injected for the same reason the resolver is: the tests that prove a socket
+ * goes where it was pinned have to pin it at a loopback address, which the
+ * real policy refuses. The default is always the real policy, and a test
+ * covers that default refusing loopback — so overriding it is a deliberate act
+ * in a test, never a quiet weakening of the production path.
+ */
+export type AddressPolicy = (address: string, family: 4 | 6) => boolean;
+
+/** The shape `net.connect` expects of a `lookup` option, as Node defines it. */
+export type { LookupFunction };

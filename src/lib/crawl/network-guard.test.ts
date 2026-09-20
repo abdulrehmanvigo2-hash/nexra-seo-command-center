@@ -113,6 +113,34 @@ describe("guardUrl", () => {
     assert.deepEqual(verdict, { ok: false, reason: "dns-error" });
   });
 
+  test("carries the approved address forward as the pin", async () => {
+    // The verdict is not just "safe": it names the one address the connection
+    // must use, which is what makes the check binding rather than advisory.
+    const verdict = await guardUrl(new URL("https://example.com/"), {
+      resolve: resolverFor("93.184.216.34", "93.184.216.35"),
+    });
+    assert.ok(verdict.ok);
+    assert.deepEqual(verdict.pin, { address: "93.184.216.34", family: 4 });
+  });
+
+  test("pins a literal address to itself", async () => {
+    const verdict = await guardUrl(new URL("http://93.184.216.34/"), {
+      resolve: async () => {
+        throw new Error("DNS must not be consulted for a literal address");
+      },
+    });
+    assert.ok(verdict.ok);
+    assert.deepEqual(verdict.pin, { address: "93.184.216.34", family: 4 });
+  });
+
+  test("a refused verdict carries no pin to connect with", async () => {
+    const verdict = await guardUrl(new URL("https://internal.example.com/"), {
+      resolve: resolverFor("10.0.0.5"),
+    });
+    assert.equal(verdict.ok, false);
+    assert.ok(!("pin" in verdict));
+  });
+
   test("refuses a host outside the crawl's scope", async () => {
     const verdict = await guardUrl(new URL("https://evil-example.com/"), {
       resolve: resolverFor("93.184.216.34"),

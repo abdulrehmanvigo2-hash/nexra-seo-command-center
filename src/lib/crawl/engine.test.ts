@@ -91,9 +91,9 @@ describe("runCrawl", () => {
       "https://example.com/dup": { body: "<h1>once</h1>" },
     } satisfies Record<string, Route>;
 
-    const counted: Fetch = async (input, init) => {
+    const counted: Fetch = async (input, init, pin) => {
       if (input === "https://example.com/dup") fetches += 1;
-      return siteFetch(routes)(input, init);
+      return siteFetch(routes)(input, init, pin);
     };
 
     const result = await crawl(routes, { fetch: counted });
@@ -386,5 +386,76 @@ describe("runCrawl", () => {
     for (const forbidden of ["indexStatus", "indexed", "coverageState", "lcp", "inp", "cls", "vitals"]) {
       assert.ok(!keys.includes(forbidden), `${forbidden} must not exist on a crawl reading`);
     }
+  });
+});
+
+describe("per-hop pinning", () => {
+  test("every redirect hop is resolved, validated and pinned on its own", async () => {
+    /*
+     * A redirect is an attacker-controlled way to reach an address nothing has
+     * approved, so hop three must be pinned by hop three's own check — never
+     * by hop zero's. Here each host resolves to a different address; the test
+     * asserts each request carried the pin belonging to its own hostname.
+     */
+    const addresses: Readonly<Record<string, string>> = {
+      "example.com": "93.184.216.34",
+      "a.example.com": "93.184.216.35",
+      "b.example.com": "93.184.216.36",
+    };
+    const resolve: AddressResolver = async (hostname) => {
+      const address = addresses[hostname];
+      if (address === undefined) throw new Error("ENOTFOUND");
+      return [{ address, family: 4 as const }];
+    };
+
+    const routes: Record<string, Route> = {
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": { body: `<a href="/hop">h</a>` },
+      "https://example.com/hop": { status: 301, location: "https://a.example.com/next" },
+      "https://a.example.com/next": { status: 302, location: "https://b.example.com/final" },
+      "https://b.example.com/final": { body: "<h1>final</h1>" },
+      "https://a.example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://b.example.com/robots.txt": ROBOTS_ALLOW_ALL,
+    };
+
+    const pins: { url: string; pin: string }[] = [];
+    const recording: Fetch = async (input, init, pin) => {
+      pins.push({ url: input, pin: pin.address });
+      return siteFetch(routes)(input, init, pin);
+    };
+
+    await crawl(routes, { fetch: recording, resolve });
+
+    const hopPins = pins.filter((entry) => /\/(hop|next|final)$/.test(entry.url));
+    assert.deepEqual(hopPins, [
+      { url: "https://example.com/hop", pin: "93.184.216.34" },
+      { url: "https://a.example.com/next", pin: "93.184.216.35" },
+      { url: "https://b.example.com/final", pin: "93.184.216.36" },
+    ]);
+  });
+
+  test("a hop that resolves to a private address is refused mid-chain", async () => {
+    // Hop zero is fine; hop one points at the metadata endpoint. The chain
+    // must stop there rather than inheriting hop zero's approval.
+    const resolve: AddressResolver = async (hostname) =>
+      hostname === "example.com"
+        ? [{ address: "93.184.216.34", family: 4 as const }]
+        : [{ address: "169.254.169.254", family: 4 as const }];
+
+    const result = await crawl(
+      {
+        "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+        "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+        "https://example.com/": { body: `<a href="/bad">b</a>` },
+        "https://example.com/bad": { status: 302, location: "https://inside.example.com/secret" },
+        "https://inside.example.com/secret": { body: "<h1>never reached</h1>" },
+      },
+      { resolve },
+    );
+
+    const refused = page(result.pages, "https://example.com/bad");
+    assert.equal(refused.fetchState, "refused-unsafe");
+    assert.equal(refused.title, null);
   });
 });

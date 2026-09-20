@@ -1,17 +1,23 @@
 /**
  * One HTTP exchange, bounded in every direction that can hurt.
  *
- * Redirects are followed by hand (`redirect: "manual"`) rather than by the
- * runtime, for one reason: every hop has to go back through the address guard.
- * A site can redirect a crawler anywhere, and a guard that only ran on the URL
- * an operator supplied protects nothing — the third hop is where a request
- * ends up at the metadata endpoint.
+ * Redirects are followed by hand rather than by the runtime, for one reason:
+ * every hop has to go back through the address guard. A site can redirect a
+ * crawler anywhere, and a guard that only ran on the URL an operator supplied
+ * protects nothing — the third hop is where a request ends up at the metadata
+ * endpoint.
  *
- * `fetch` and the guard are injected, so the engine's whole behaviour can be
- * exercised without a network.
+ * Each hop is validated *and pinned* on its own: the guard picks one approved
+ * address for that hop, and `pinnedRequest` connects to exactly that address.
+ * Hop three is pinned by hop three's own check, never by hop zero's, and no
+ * hop's connection re-resolves the name it was approved under.
+ *
+ * The sender and the resolver are injected, so the engine's whole behaviour
+ * can be exercised without a network.
  */
 
-import { guardUrl, type AddressResolver } from "./network-guard.ts";
+import { guardUrl, type AddressResolver, type ResolvedAddress } from "./network-guard.ts";
+import { pinnedRequest } from "./pinned-request.ts";
 import { normaliseUrl } from "./url-policy.ts";
 import type { CrawlFetchState } from "@/types/crawl";
 
@@ -72,7 +78,18 @@ export type FetchOutcome =
       >;
     };
 
-export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
+/**
+ * How a request is actually sent.
+ *
+ * The approved address is a parameter rather than something the sender works
+ * out, because a sender that resolves the name itself is the bug this design
+ * exists to prevent.
+ */
+export type Fetch = (
+  input: string,
+  init: { readonly method: string; readonly headers: Readonly<Record<string, string>>; readonly signal: AbortSignal },
+  pin: ResolvedAddress,
+) => Promise<Response>;
 
 export type FetcherOptions = {
   readonly userAgent: string;
@@ -145,7 +162,7 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
     hostScope,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxBodyBytes = MAX_BODY_BYTES,
-    fetch: send = (input, init) => fetch(input, init),
+    fetch: send = pinnedRequest,
     resolve,
     accept = HTML_TYPES,
   } = options;
@@ -179,16 +196,20 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
     try {
-      response = await send(normalised.url, {
-        method: "GET",
-        redirect: "manual",
-        signal: controller.signal,
-        headers: {
-          "user-agent": userAgent,
-          accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
-          "accept-language": "en",
+      response = await send(
+        normalised.url,
+        {
+          method: "GET",
+          signal: controller.signal,
+          headers: {
+            "user-agent": userAgent,
+            accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
+            "accept-language": "en",
+          },
         },
-      });
+        // This hop's own approved address, from this hop's own check.
+        verdict.pin,
+      );
     } catch (error) {
       return { ok: false, finalUrl: normalised.url, redirectChain, state: classifyNetworkError(error) };
     } finally {

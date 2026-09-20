@@ -264,6 +264,31 @@ operator POST /api/crawls → running → completed        (frontier drained)
 `partial` is a real result, not a failure. Execution happens inside the
 operator's request; nothing runs detached and there is no schedule.
 
+### Pinned connections
+
+A check that a hostname resolves somewhere safe is worthless on its own,
+because the name is resolved again when the socket opens — a hostile resolver
+answers the check with a public address and the connection with a private one.
+The global `fetch` offers no way to say which address a request may use, so
+`src/lib/crawl/pinned-request.ts` sends through `node:http`/`node:https` with a
+custom `lookup` (`pinnedLookup`). That option is handed to `net.connect`, so it
+*replaces* address resolution: the socket goes to the one address the guard
+approved and the system resolver is never consulted for that request.
+
+The hostname is deliberately left alone. `host` and `servername` stay the name
+from the URL, so the `Host` header, TLS SNI, and certificate hostname
+verification all still work against the name — only the address lookup is
+replaced. `rejectUnauthorized` keeps its default, there is no custom
+`checkServerIdentity`, and `servername` is never an address. Connection pooling
+is off (`agent: false`), because the default agent keys sockets by host and
+port and a reused socket could outlive the pin that opened it.
+
+The pin is re-checked against the address policy twice: once before the request
+is built and once inside the lookup callback. Node's bundled `undici` would
+also work through a custom dispatcher, but no builtin module exposes it, so
+using it would mean taking a dependency for something the platform already
+does.
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`
@@ -271,10 +296,11 @@ operator's request; nothing runs detached and there is no schedule.
   authorise its subdomains.
 - **The target is never request input.** The body carries a project id; the
   host comes from that project's stored `domain`.
-- **Address guard on every hop.** Redirects are followed manually so that each
-  one is re-resolved and re-checked; loopback, RFC1918, CGNAT, link-local
-  (including the `169.254.169.254` metadata endpoint), IPv6 ULA/link-local, and
-  their IPv4-mapped spellings are all refused. Only `http`/`https`, only ports
+- **Address guard on every hop, and the approved address is what gets dialled.**
+  Redirects are followed manually so each hop is re-resolved, re-checked and
+  re-pinned on its own; loopback, RFC1918, CGNAT, link-local (including the
+  `169.254.169.254` metadata endpoint), IPv6 ULA/link-local, and their
+  IPv4-mapped spellings are all refused. Only `http`/`https`, only ports
   80/443, no credentials in URLs.
 - **Same-site.** Fetching is confined to the project's host and its
   subdomains, on a label boundary (`evil-example.com` does not match
@@ -349,15 +375,11 @@ Nothing has been deployed.
 
 ## Known limitations
 
-- **The crawler is not cleared for real external crawling.** A DNS-rebinding
-  gap is open: `src/lib/crawl/network-guard.ts` resolves a hostname and
-  approves its addresses, then hands the URL to `fetch`, which resolves it
-  again. A hostile resolver can answer the check with a public address and the
-  connection with a private one. Closing it needs the socket pinned to the
-  approved address, which needs a custom dispatcher and a direct `undici`
-  dependency. Until then the host allow-list is the mitigation, and this
-  crawler must only ever be pointed at hosts the operator controls. It has
-  never been run against a real website.
+- **The crawler has still never been run against a real website**, and no
+  migration has been applied. The DNS-rebinding gap that previously blocked
+  this is closed (see *Pinned connections* above), but "the address policy is
+  now enforceable" is not the same as "this has been exercised against a live
+  origin".
 - A crawl runs inside the operator's request, so a crashed or timed-out request
   leaves its row `running` with no `finished_at`. There is no recovery sweep
   (that needs the scheduler this milestone deliberately omits); a reader should
