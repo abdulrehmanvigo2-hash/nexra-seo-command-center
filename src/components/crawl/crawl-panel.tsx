@@ -13,8 +13,16 @@ import {
   startRefusal,
   type CrawlRunState,
 } from "@/lib/crawl/panel-state";
+import {
+  COLUMNS,
+  GROUP_HEADING,
+  PROVENANCE_NOTE,
+  groupPages,
+  pageRow,
+  type PageRow,
+} from "@/lib/crawl/pages-view";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
-import type { Crawl } from "@/types/crawl";
+import type { Crawl, CrawlPage } from "@/types/crawl";
 
 /**
  * The operator control for the real crawler.
@@ -38,6 +46,22 @@ type Load =
   /** The deployment does not persist crawls, so there is nothing to show. */
   | { readonly status: "unavailable" }
   | { readonly status: "failed"; readonly message: string };
+
+/**
+ * The pages one crawl recorded, read from the crawl-detail endpoint.
+ *
+ * Separate from the crawl row's own load: the summary is worth showing even
+ * when the page list cannot be read, and a failure here must not make a
+ * finished crawl look like it did not happen.
+ */
+type PagesLoad =
+  | { readonly status: "idle" }
+  | { readonly status: "loading" }
+  | { readonly status: "loaded"; readonly pages: readonly CrawlPage[] }
+  | { readonly status: "failed" };
+
+/** The server caps this at 1,000; a crawl's own page budget caps it at 500. */
+const PAGE_LIMIT = 500;
 
 function listFailure(httpStatus: number): string {
   if (httpStatus === 401) return "Your session has ended. Reload the page to sign in again.";
@@ -64,6 +88,7 @@ export function CrawlPanel({
    * ref is written immediately and refuses the second.
    */
   const inFlight = useRef(false);
+  const [pages, setPages] = useState<PagesLoad>({ status: "idle" });
 
   const readLatest = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -140,6 +165,37 @@ export function CrawlPanel({
 
   const running = run.status === "running";
   const shown = run.status === "finished" ? run.crawl : load.status === "loaded" ? load.latest : null;
+  const shownId = shown?.id ?? null;
+
+  /**
+   * The pages of whichever crawl is on screen. Read through the existing
+   * crawl-detail endpoint — this panel adds no route and no query of its own.
+   */
+  useEffect(() => {
+    if (shownId === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing state that belongs to a crawl that is no longer shown
+      setPages({ status: "idle" });
+      return;
+    }
+    const controller = new AbortController();
+    setPages({ status: "loading" });
+
+    fetch(`/api/crawls/${encodeURIComponent(shownId)}?pages=${PAGE_LIMIT}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return setPages({ status: "failed" });
+        const body = (await response.json()) as { pages: CrawlPage[] };
+        setPages({ status: "loaded", pages: body.pages });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setPages({ status: "failed" });
+      });
+
+    return () => controller.abort();
+  }, [shownId]);
 
   return (
     <Panel>
@@ -238,9 +294,107 @@ export function CrawlPanel({
                 </div>
               ))}
             </dl>
+
+            {pages.status === "loading" && <Skeleton className="h-20 w-full" />}
+
+            {pages.status === "failed" && (
+              <p className="text-sm text-fg-muted" role="status">
+                The recorded pages could not be read. The crawl itself is unaffected.
+              </p>
+            )}
+
+            {pages.status === "loaded" && <CrawlPages pages={pages.pages} />}
           </div>
         )}
       </PanelBody>
     </Panel>
+  );
+}
+
+/**
+ * What the crawl recorded, one row per URL.
+ *
+ * Grouped rather than sorted, because the groups are the finding: a URL that
+ * was fetched, a URL that answered with something else, and a URL nobody
+ * looked at are three different states, and a single ranked table would let
+ * the third pass for the first.
+ */
+function CrawlPages({ pages }: { pages: readonly CrawlPage[] }) {
+  const groups = groupPages(pages);
+
+  return (
+    <div className="space-y-4 border-t border-border pt-4">
+      {(["fetched", "notFetched", "notReached"] as const).map((key) => {
+        const group = groups[key];
+        if (group.length === 0) return null;
+        return (
+          <PageGroup
+            key={key}
+            title={`${GROUP_HEADING[key].title} (${group.length})`}
+            note={GROUP_HEADING[key].note}
+            rows={group.map(pageRow)}
+          />
+        );
+      })}
+
+      <p className="text-xs text-fg-subtle">{PROVENANCE_NOTE}</p>
+    </div>
+  );
+}
+
+function PageGroup({
+  title,
+  note,
+  rows,
+}: {
+  title: string;
+  note: string;
+  rows: readonly PageRow[];
+}) {
+  return (
+    <section className="space-y-1.5">
+      <h4 className="text-xs font-medium text-fg">{title}</h4>
+      <p className="text-xs text-fg-subtle">{note}</p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[46rem] border-collapse text-left">
+          <thead>
+            <tr className="border-b border-border">
+              <th scope="col" className="py-1.5 pr-3 text-[10.5px] font-medium tracking-[0.05em] text-fg-subtle uppercase">
+                Path
+              </th>
+              {COLUMNS.map((column) => (
+                <th
+                  key={column.key}
+                  scope="col"
+                  title={"title" in column ? column.title : undefined}
+                  className="py-1.5 pr-3 text-[10.5px] font-medium tracking-[0.05em] text-fg-subtle uppercase"
+                >
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className="border-b border-border/60 last:border-0">
+                <th scope="row" className="max-w-[18rem] truncate py-1.5 pr-3 text-[12px] font-normal text-fg" title={row.url}>
+                  {row.path}
+                </th>
+                {row.cells.map((entry) => (
+                  <td
+                    key={entry.key}
+                    title={entry.cell.title}
+                    className="py-1.5 pr-3 text-[12px] text-fg-muted"
+                  >
+                    {entry.cell.text}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
