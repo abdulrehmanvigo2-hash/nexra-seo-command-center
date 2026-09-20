@@ -15,6 +15,7 @@ import { TechnicalSnapshot } from "@/components/dashboard/technical-snapshot";
 import { SectionHeader } from "@/components/ui/section-header";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { CURRENT_USER } from "@/lib/mock/workspace";
+import { CrawlPanel } from "@/components/crawl/crawl-panel";
 import { ProjectCompetitors, type PendingCompetitor } from "@/components/projects/project-competitors";
 import { ProjectDetailHeader } from "@/components/projects/project-detail-header";
 import { ProjectIssues } from "@/components/projects/project-issues";
@@ -291,11 +292,19 @@ export function ProjectWorkspace({
         )}
 
         {tab === "technical" && (
-          <TechnicalSnapshot
-            snapshot={detail.technical}
-            referenceIso={detail.generatedAt}
-            projectId={detail.project.id}
-          />
+          <div className="space-y-5">
+            <TechnicalSnapshot
+              snapshot={detail.technical}
+              referenceIso={detail.generatedAt}
+              projectId={detail.project.id}
+            />
+            {/*
+              The crawler sits below the snapshot and is labelled as observed
+              data, because the snapshot above it is modelled. Mapping one onto
+              the other is a separate feature and has not been done.
+            */}
+            <CrawlPanel projectId={detail.project.id} domain={detail.project.domain} />
+          </div>
         )}
 
         {tab === "competitors" && (
