@@ -3,10 +3,13 @@ import { readFile } from "node:fs/promises";
 import { describe, test } from "node:test";
 import type { AgentRun, AgentRunStatus } from "../../types/agent-run.ts";
 import type { Crawl } from "../../types/crawl.ts";
+import type { SearchConsoleReport } from "../../types/search-console.ts";
 import {
   CRAWL_REVIEWS,
   REVIEW_AGENT_ID,
   REVIEW_TASK_TYPE,
+  SEARCH_QUERY_REVIEW,
+  searchQueryReviewRequest,
   RUN_STATUS,
   executability,
   executeOutcome,
@@ -89,7 +92,7 @@ describe("the request payload", () => {
   test("the crawl id comes from the crawl, never from anywhere else", () => {
     const other: Crawl = { ...CRAWL, id: "22222222-0000-4000-8000-000000000002" };
     const result = reviewRequest("nexra-agency", other);
-    assert.equal(result.ok && result.payload.input.crawlId, other.id);
+    assert.deepEqual(result.ok && result.payload.input, { crawlId: other.id });
   });
 
   test("a completed crawl is reviewable, as is one that stopped on its budget", () => {
@@ -148,6 +151,78 @@ describe("the on-page review request", () => {
     // And the default still names the Technical SEO crawl review.
     assert.match(queueRefusal(422, { error: "task-not-allowed" }), /The Technical SEO agent is not allowed/);
     assert.match(queueRefusal(422, { error: "unknown-task-type" }), /does not know the crawl-review task/);
+  });
+});
+
+describe("the search query review request", () => {
+  const REPORT: Extract<SearchConsoleReport, { state: "connected" }> = {
+    projectId: "nexra-agency",
+    source: "search-console",
+    state: "connected",
+    property: "sc-domain:nexraagency.com",
+    window: { rangeId: "30d", startDate: "2026-08-19", endDate: "2026-09-17", days: 30 },
+    previousWindow: null,
+    totals: { clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+    previousTotals: null,
+    queries: [{ key: "nexra agency", clicks: 10, impressions: 100, ctr: 0.1, position: 5 }],
+    pages: [],
+    partial: ["comparison-beyond-retention"],
+    fetchedAt: "2026-09-20T12:00:00.000Z",
+    stale: false,
+  };
+
+  test("names the Keyword & Search Intent agent, the search-query task, and the window — nothing else", () => {
+    const result = searchQueryReviewRequest("nexra-agency", REPORT, "30d");
+    assert.deepEqual(result, {
+      ok: true,
+      payload: {
+        projectId: "nexra-agency",
+        agentId: "keyword-intent",
+        taskType: "search-query-review",
+        input: { range: "30d" },
+      },
+    });
+  });
+
+  test("the spec matches what the server allows, and promises no changes", () => {
+    assert.equal(SEARCH_QUERY_REVIEW.agentId, "keyword-intent");
+    assert.equal(SEARCH_QUERY_REVIEW.taskType, "search-query-review");
+    assert.ok(SEARCH_QUERY_REVIEW.action.startsWith("Analyze with "));
+    assert.match(SEARCH_QUERY_REVIEW.summary, /^Queues a read-only review/);
+    assert.match(SEARCH_QUERY_REVIEW.summary, /changes nothing/);
+  });
+
+  test("is refused, with a reason, for everything the server would refuse", () => {
+    const base = { projectId: "nexra-agency", source: "search-console" } as const;
+    const refusals: [string | null, SearchConsoleReport | null, RegExp][] = [
+      [null, REPORT, /Choose a single project/],
+      ["nexra-agency", null, /has not loaded yet/],
+      ["nexra-agency", { ...base, state: "not-connected", reason: "no-property" }, /not connected/],
+      ["nexra-agency", { ...base, state: "unavailable", reason: "timeout" }, /not connected/],
+      ["nexra-agency", { ...REPORT, queries: [], partial: ["queries-unavailable"] }, /did not return the top queries/],
+      ["nexra-agency", { ...REPORT, queries: [] }, /reported no queries/],
+    ];
+    for (const [projectId, report, why] of refusals) {
+      const result = searchQueryReviewRequest(projectId, report, "30d");
+      assert.equal(result.ok, false);
+      assert.match(result.ok ? "" : result.why, why);
+    }
+  });
+
+  test("a server refusal names this agent and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, SEARCH_QUERY_REVIEW), /The Keyword & Search Intent agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, SEARCH_QUERY_REVIEW), /does not know the search-query-review task/);
+  });
+
+  test("a grounded result says what it was grounded in", () => {
+    const grounded: AgentRun = {
+      ...RUN,
+      status: "completed",
+      resultSummary: "x",
+      resultMetadata: { simulated: false, grounded: true },
+    };
+    assert.match(outputProvenance(grounded, SEARCH_QUERY_REVIEW.groundedIn)?.text ?? "", /grounded in this project's Search Console report/);
+    assert.match(outputProvenance(grounded)?.text ?? "", /grounded in this crawl's recorded pages/);
   });
 });
 
@@ -239,7 +314,7 @@ describe("what produced the output", () => {
 
   test("an ungrounded model answer is not allowed to look grounded", () => {
     const provenance = outputProvenance(completed({ simulated: false, grounded: false }));
-    assert.match(provenance?.text ?? "", /not grounded in any crawl data/i);
+    assert.match(provenance?.text ?? "", /not grounded in any recorded evidence/i);
     assert.equal(provenance?.tone, "warning");
   });
 

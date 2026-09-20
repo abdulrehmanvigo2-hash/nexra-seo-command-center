@@ -16,6 +16,7 @@ import { selectProjectDataSource } from "@/lib/projects/data-source";
 import { projectRepository } from "@/lib/projects/repository";
 import { appRateLimiter } from "@/lib/security/app-rate-limit";
 import type { AsyncRateLimiter } from "@/lib/security/shared-rate-limit";
+import { getSearchConsoleReport, searchConsoleProvider } from "@/lib/search-console";
 import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supabase/server";
 
 /**
@@ -61,7 +62,16 @@ function configuredExecutor(): { executor: AgentExecutor; timeoutMs: number } {
     // The evidence a task may see is read here, from this product's own
     // records, and decided by the task type's declaration
     // (`@/lib/agent-runs/task-grounding`) — never by the executor.
-    executor: createAiExecutor(provider, createTaskGrounding(crawlService())),
+    executor: createAiExecutor(
+      provider,
+      createTaskGrounding({
+        crawls: crawlService(),
+        // The same read the Search Console panel makes, through the same
+        // cached provider: a run reads what the screen shows, nothing more.
+        searchConsole: (projectId, rangeId) =>
+          getSearchConsoleReport(searchConsoleProvider(), projectId, rangeId),
+      }),
+    ),
     timeoutMs: AI_TIMEOUT_MS,
   };
 }

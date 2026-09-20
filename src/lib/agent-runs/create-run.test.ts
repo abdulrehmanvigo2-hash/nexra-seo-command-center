@@ -325,3 +325,93 @@ describe("what is refused before anything is written", () => {
     assert.equal(failure?.reason, "invalid");
   });
 });
+
+describe("queueing a search query review", () => {
+  const SEARCH_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "keyword-intent",
+    taskType: "search-query-review",
+    input: { range: "30d" },
+  };
+
+  test("creates one queued run for the Keyword & Search Intent agent, carrying only the range", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, SEARCH_REQUEST);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "keyword-intent");
+    assert.equal(result.run.taskType, "search-query-review");
+    assert.deepEqual(result.run.input, { range: "30d" });
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("the same window twice returns the first run; a different window is a different run", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+
+    const first = await runtime.createRun(OPERATOR, SEARCH_REQUEST);
+    const again = await runtime.createRun(OPERATOR, SEARCH_REQUEST);
+    const other = await runtime.createRun(OPERATOR, { ...SEARCH_REQUEST, input: { range: "7d" } });
+
+    assert.ok(first.ok && again.ok && other.ok);
+    if (!first.ok || !again.ok || !other.ok) return;
+    assert.equal(again.duplicate, true);
+    assert.equal(again.run.id, first.run.id);
+    assert.equal(other.duplicate, false);
+    assert.notEqual(other.run.id, first.run.id);
+    assert.equal(inserts(), 2);
+  });
+
+  test("is found under the Keyword & Search Intent agent, and not under the crawl agents", async () => {
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const created = await runtime.createRun(OPERATOR, SEARCH_REQUEST);
+    assert.ok(created.ok);
+    if (!created.ok) return;
+
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "keyword-intent", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(created.run.id));
+    for (const agentId of ["technical-seo", "on-page-seo"] as const) {
+      const theirs = await runtime.listRuns({ projectId: PROJECT.id, agentId, limit: 25, offset: 0 });
+      assert.ok(theirs.ok && theirs.runs.length === 0, agentId);
+    }
+  });
+
+  test("is refused before anything is written for a bad range, an extra field, or the wrong agent", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...SEARCH_REQUEST, input: { range: "90d" } }, "invalid"],
+      [{ ...SEARCH_REQUEST, input: {} }, "invalid"],
+      [{ ...SEARCH_REQUEST, input: { range: "30d", seedKeywords: ["seo"] } }, "invalid"],
+      [{ ...SEARCH_REQUEST, input: { range: "30d", property: "sc-domain:other.example" } }, "invalid"],
+      [{ ...SEARCH_REQUEST, agentId: "technical-seo" }, "task-not-allowed"],
+      [{ ...SEARCH_REQUEST, agentId: "on-page-seo" }, "task-not-allowed"],
+      [{ ...SEARCH_REQUEST, agentId: "seo-director" }, "task-not-allowed"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason);
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+
+  test("keyword-research is unchanged: the same agent, seed keywords, still queued", async () => {
+    const { store } = memoryStore();
+    const result = await service(store, forbiddenExecutor().executor).createRun(OPERATOR, {
+      projectId: PROJECT.id,
+      agentId: "keyword-intent",
+      taskType: "keyword-research",
+      input: { seedKeywords: ["seo agency"] },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.ok && result.run.taskType, "keyword-research");
+  });
+});
