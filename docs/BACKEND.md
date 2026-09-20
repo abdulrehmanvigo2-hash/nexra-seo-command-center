@@ -185,6 +185,69 @@ input) are refused before a run exists. Cancelled runs are never retried. The
 list lives in both `agent_run_schedule_retries` (SQL) and
 `src/lib/agent-runs/retry-policy.ts`; change them together.
 
+### What one run can cost
+
+Read this before setting `NEXRA_AGENT_EXECUTOR=ai`. Everything below is the
+behaviour of the code as it stands, not a plan.
+
+**Application retries.** A run gets `max_attempts` attempts including the
+first — `DEFAULT_MAX_ATTEMPTS = 3` (`lifecycle.ts`). `willRetryAutomatically`
+additionally requires `autoRetryCount < max_attempts - 1`, so the queue job
+re-queues a failing run at most twice. **Three attempts is the ceiling for one
+run**, with backoff of 2, 4, 8 … minutes, capped at 30.
+
+**Provider retries: none.** `createAnthropicProvider` constructs the SDK client
+with `maxRetries: 0` (`providers/anthropic.ts`). The SDK's own default is 2,
+which would silently triple the calls an attempt makes; it is overridden so
+that retrying is the runtime's job, where each attempt is recorded and backed
+off. A single attempt therefore makes **at most one** request to the provider.
+
+**Failures that can lead to another paid call.** Each of these fails an attempt
+with a retryable code, so the run may be re-queued and call the provider again:
+
+| Code | Happens |
+|---|---|
+| `provider-unavailable` | network failure, 408, 409, 429, 5xx — classified in `providers/anthropic.ts` |
+| `timeout` | the attempt exceeded the executor timeout (120 s for `ai`) |
+| `lease-expired` | the worker died mid-attempt; recovery closes it, and the attempt was already counted |
+| `execution-failed` | anything the executor could not carry out, **including a refused grounding** |
+
+The worst case for one run is therefore **three provider requests**, each
+billed if it reached the model.
+
+**Failures that cannot cost anything.** These all occur before
+`provider.generate` is reached, or are terminal:
+
+- Everything in the terminal column above. `rejected-output` is the notable
+  one: the call was already made and billed, but the run will not be retried.
+- A refused grounding. `ai-executor.ts` awaits `readGrounding(task)` and throws
+  on `!evidence.ok` **before** `provider.generate`, so an unreviewable,
+  cross-project, missing or still-running crawl costs nothing. Proven by
+  `src/lib/crawl/grounding.test.ts` — *"a refused grounding stops the attempt
+  instead of asking the model anyway"* and *"a failed crawl reaches no
+  provider, through the real grounding reader"*, both asserting the provider
+  was never called.
+- `provider-not-configured`, `policy-blocked`, `project-missing`, and a task
+  type or agent record that cannot be resolved.
+
+**Grounding refusal is retryable, and that is a known imprecision.** A refusal
+surfaces as `execution-failed` because the executor's error codes are fixed by
+the run table's constraint and none of them means "this evidence will never be
+readable". A cross-project crawl id will therefore be retried twice before
+going terminal. Those retries cost nothing — the refusal precedes the model
+call — but the imprecision is real, and narrowing it needs a migration.
+
+**Concurrency cannot double-spend.** `store.claim` is atomic and takes a lease:
+of Run Now, the 05:30 cron, and a second tab, exactly one claims the attempt
+and the rest are told the run is already running (409). `createRun` matches an
+identical request to the run already queued rather than making a second one.
+The per-operator in-flight sets and the Postgres-backed limiters sit on top.
+
+**Therefore: enable the AI executor only with spend monitoring in place.** One
+click is normally one billed request, but a run that keeps failing retryably
+can reach three, and nothing in this codebase caps spend per day, per project,
+or per operator. That control has to come from the provider account.
+
 ### Executor and provider boundary
 
 `NEXRA_AGENT_EXECUTOR` selects the executor.
@@ -197,8 +260,12 @@ list lives in both `agent_run_schedule_retries` (SQL) and
   the agent registry, the task type's fixed instructions, the project's name and
   domain, and the validated input passed as labelled data. The model has no
   tools or live data and is told so. The answer is screened like any executor
-  output; stored metadata is provider, model, token counts, `grounded: false`.
-  Raw provider responses are not stored. Provider failures map to
+  output; stored metadata is provider, model, token counts, and `grounded`.
+  `grounded` is `true` only when evidence this product recorded was actually
+  loaded and put in the prompt — today that is the `crawl-review` task, whose
+  metadata also carries an `evidence` object naming the crawl and its page
+  counts. Every other task records `grounded: false`. Raw provider responses
+  are not stored. Provider failures map to
   `provider-unavailable` or `provider-rejected`; provider text is dropped.
 
 No AI provider key is configured in this environment. The provider was verified
