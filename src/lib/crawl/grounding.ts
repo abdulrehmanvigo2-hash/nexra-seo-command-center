@@ -21,8 +21,14 @@
  * URLs are a client's own text and may say anything at all; they are labelled
  * as observations of a third-party site, and the executor's system prompt
  * tells the model to treat them as data. This module never carries operator
- * free text, because the task input it serves carries none: the only input a
- * crawl review takes is a crawl id.
+ * free text, because the task inputs it serves carry none: the only input a
+ * crawl review or an on-page review takes is a crawl id.
+ *
+ * Two agents read the same block. The Technical SEO agent's `crawl-review`
+ * and the On-Page SEO agent's `on-page-review` are given identical evidence
+ * and differ only in what they are asked to make of it. One serialisation, one
+ * ownership check, one byte ceiling: a second copy would drift from the first
+ * exactly where the rules matter.
  */
 
 import { groupPages } from "@/lib/crawl/pages-view";
@@ -187,8 +193,15 @@ function describePage(page: CrawlPage): string {
     `  Depth from start URL (this crawl): ${num(page.depth, "the page was never reached")}`,
     `  Redirect hops: ${page.redirectHops}${page.finalUrl && page.finalUrl !== page.url ? ` (final URL ${page.finalUrl})` : ""}`,
     `  Title: ${page.title === null ? NOT_ESTABLISHED : JSON.stringify(page.title)} (length ${num(page.titleLength, "no title was read")})`,
+    // The description and first h1 are quoted as JSON strings for the same
+    // reason schema types are: they are the site's own words, and a bare line
+    // of them could read as prose or instruction. Their lines are added beside
+    // the counts that were always here, not folded into them, so what the
+    // Technical SEO agent has been reading is unchanged.
+    `  Meta description: ${page.metaDescription === null ? `${NOT_ESTABLISHED} (the page declares none)` : JSON.stringify(page.metaDescription)}`,
     `  Meta description length: ${num(page.metaDescriptionLength, "the page declares none")}`,
     `  H1 count: ${num(page.h1Count, "no h1 was read")}`,
+    `  First h1: ${page.firstH1 === null ? `${NOT_ESTABLISHED} (no h1 was read)` : JSON.stringify(page.firstH1)}`,
     `  Canonical: ${
       page.canonicalIsSelf === null
         ? "none declared by the page"
@@ -406,4 +419,25 @@ export const CRAWL_REVIEW_INSTRUCTIONS = [
   "Do not state or estimate search volume, rankings, traffic, indexation status, or Core Web Vitals; none of it is in the evidence and none of it is knowable from a crawl.",
   "Do not describe the crawl as a full site audit or state site-wide totals. Say plainly that this covers only the pages listed.",
   "End with one line naming the single most useful thing to check or measure next.",
+].join(" ");
+
+/**
+ * What the On-Page SEO agent is asked to produce from the same crawl.
+ *
+ * Same evidence, same OBSERVED / INFERENCE / RECOMMENDATION discipline, a
+ * different question: not whether the pages can be crawled, but whether each
+ * one says what it is about. The agent is told twice that it cannot change a
+ * page — once here and once by the executor — because "rewrite the title" is
+ * the natural shape of its advice, and advice is all it may be.
+ */
+export const ON_PAGE_REVIEW_INSTRUCTIONS = [
+  "Review the on-page elements of the crawled pages supplied with this task: title and its length, meta description and its length, h1 count and the first h1, the canonical declaration, structured-data types, internal links in and out as counted within this crawl, crawl depth, and sitemap presence.",
+  "Structure every finding as: OBSERVED (what the evidence literally states, with the exact URL or URLs it comes from), then INFERENCE (what you conclude from it, and how confident you are), then RECOMMENDATION (one concrete change for a person to make).",
+  "Use only the supplied evidence. Every finding must cite at least one crawled URL. Only the pages listed as fetched and read were examined; do not describe any other page.",
+  "Where a reading is marked 'not established', say it is unknown and say what would establish it. Never treat it as a pass, a failure, a zero, or a no.",
+  "URLs listed as discovered but not reached were NOT audited. You may say they exist and were not examined. Do not describe their titles, headings, or issues.",
+  "You cannot edit, publish, or change any page. Every recommendation is a proposed change for an operator to review and apply; do not describe it as done.",
+  "Do not state or estimate search volume, rankings, click-through, traffic, indexation status, or Core Web Vitals; none of it is in the evidence.",
+  "Do not describe this as a site-wide review or state site-wide totals. Say plainly that this covers only the pages listed. Internal link counts are within this crawl only and cannot show that a page is orphaned.",
+  "End with one line naming the single page whose on-page elements most need attention, and why.",
 ].join(" ");

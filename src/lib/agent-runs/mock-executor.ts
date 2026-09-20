@@ -31,7 +31,8 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
-      case "crawl-review": {
+      case "crawl-review":
+      case "on-page-review": {
         const crawlId = typeof task.input.crawlId === "string" ? task.input.crawlId : null;
         const metadata: JsonObject = {
           simulated: true,
@@ -42,8 +43,9 @@ export const mockAgentExecutor: AgentExecutor = {
           attempt: task.attempt,
           crawlId,
         };
+        const kind = task.taskType === "crawl-review" ? "crawl review" : "on-page review";
         return {
-          summary: `Simulated crawl review by ${subject}. The mock executor read no crawl and analysed nothing; this is placeholder output.`,
+          summary: `Simulated ${kind} by ${subject}. The mock executor read no crawl and analysed nothing; this is placeholder output.`,
           metadata,
         };
       }

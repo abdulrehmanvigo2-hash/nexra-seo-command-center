@@ -22,6 +22,7 @@ import {
   type PageRow,
 } from "@/lib/crawl/pages-view";
 import {
+  CRAWL_REVIEWS,
   RUN_STATUS,
   executability,
   executeOutcome,
@@ -31,6 +32,7 @@ import {
   queuedNote,
   reconciledNote,
   reviewRequest,
+  type CrawlReviewSpec,
   type QueueState,
   type Tone,
 } from "@/lib/crawl/review-request";
@@ -103,12 +105,6 @@ export function CrawlPanel({
    */
   const inFlight = useRef(false);
   const [pages, setPages] = useState<PagesLoad>({ status: "idle" });
-  const [review, setReview] = useState<QueueState>({ status: "idle" });
-  /** Same reasoning as `inFlight`: a ref refuses the second click of a pair. */
-  const queueing = useRef(false);
-  const [executing, setExecuting] = useState(false);
-  const runningNow = useRef(false);
-  const [executeNote, setExecuteNote] = useState<{ text: string; tone: Tone } | null>(null);
 
   const readLatest = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -217,113 +213,8 @@ export function CrawlPanel({
     return () => controller.abort();
   }, [shownId]);
 
-  // A review belongs to one crawl. Showing another crawl's run beside this
-  // one's pages would attribute findings to the wrong evidence.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing state that belongs to a different crawl
-    setReview({ status: "idle" });
-    setExecuteNote(null);
-  }, [shownId]);
-
-  const reviewable = reviewRequest(projectId, shown);
-
-  /**
-   * Queues the Technical SEO agent to review this crawl.
-   *
-   * It queues and stops there. The run is executed later by the scheduled
-   * worker, through the same service an operator's own request would use —
-   * nothing here executes an agent, and the button never claims it did.
-   */
-  const queueReview = async () => {
-    if (queueing.current || !reviewable.ok) return;
-    queueing.current = true;
-    setReview({ status: "queuing" });
-
-    try {
-      const response = await fetch("/api/agent-runs", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(reviewable.payload),
-        cache: "no-store",
-      });
-      const body: unknown = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setReview({ status: "refused", message: queueRefusal(response.status, body) });
-        return;
-      }
-
-      const parsed = body as { run?: AgentRun; duplicate?: boolean } | null;
-      setReview(
-        parsed?.run
-          ? { status: "queued", run: parsed.run, duplicate: parsed.duplicate === true }
-          : { status: "refused", message: "The server accepted the request but returned no run." },
-      );
-    } catch {
-      setReview({
-        status: "refused",
-        message: "The request did not complete. Refresh before asking again — it may have been queued.",
-      });
-    } finally {
-      queueing.current = false;
-    }
-  };
-
-  /**
-   * Runs the queued review now, instead of waiting for the scheduled worker.
-   *
-   * The request names the run on screen — `/api/agent-runs/<id>` with
-   * `{action:"execute"}` — so the attempt it claims is provably this one. The
-   * deployment-wide `run-next` worker action is deliberately not used: it
-   * claims the oldest queued run anywhere, which could belong to another
-   * project entirely.
-   *
-   * Whatever the POST answers, the run is read back afterwards and the panel
-   * shows the persisted state. An HTTP 200 says the request was accepted, not
-   * that anything was analysed, and a 409 means something else claimed the run
-   * first — which is the lease working, not a failure.
-   */
-  const runNow = async () => {
-    const current = review.status === "queued" ? review.run : null;
-    if (runningNow.current || current === null || !executability(current).ok) return;
-    runningNow.current = true;
-    setExecuting(true);
-    setExecuteNote(null);
-
-    const runId = current.id;
-    let outcome;
-    try {
-      const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "execute" }),
-        cache: "no-store",
-      });
-      const body: unknown = await response.json().catch(() => null);
-      outcome = executeOutcome(response.status, body);
-    } catch {
-      // The attempt may or may not have started. The read below decides.
-      outcome = executeOutcome(0, null);
-    }
-
-    // Always reconcile, including after a success: the POST body is not the
-    // authority on what was stored.
-    let persisted: AgentRun | null = null;
-    try {
-      const read = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
-      if (read.ok) {
-        const body = (await read.json()) as { run?: AgentRun };
-        persisted = body.run ?? null;
-      }
-    } catch {
-      persisted = null;
-    }
-
-    if (persisted) setReview({ status: "queued", run: persisted, duplicate: false });
-    setExecuteNote(reconciledNote(outcome, persisted));
-    runningNow.current = false;
-    setExecuting(false);
-  };
+  const technical = useCrawlReview(projectId, shown, CRAWL_REVIEWS["crawl-review"]);
+  const onPage = useCrawlReview(projectId, shown, CRAWL_REVIEWS["on-page-review"]);
 
   return (
     <Panel>
@@ -423,15 +314,8 @@ export function CrawlPanel({
               ))}
             </dl>
 
-            <CrawlReview
-              state={review}
-              blockedWhy={reviewable.ok ? null : reviewable.why}
-              busy={review.status === "queuing"}
-              onQueue={queueReview}
-              executing={executing}
-              executeNote={executeNote}
-              onRunNow={runNow}
-            />
+            <CrawlReview review={CRAWL_REVIEWS["crawl-review"]} {...technical} />
+            <CrawlReview review={CRAWL_REVIEWS["on-page-review"]} {...onPage} />
 
             {pages.status === "loading" && <Skeleton className="h-20 w-full" />}
 
@@ -450,15 +334,157 @@ export function CrawlPanel({
 }
 
 /**
- * The Technical SEO agent's review of this crawl.
+ * One agent's review of the crawl on screen: its queue state, and the two
+ * requests an operator can make about it.
  *
- * Queueing is all this does. The run is carried out later by the scheduled
- * worker, through the agent-run service an operator's own request would use,
- * so there is one execution path and the browser is not on it. Until a run
- * finishes there is nothing to read, and the wording says so rather than
- * showing a tick for work that has not started.
+ * Owned per review, so the Technical SEO and On-Page SEO controls each hold
+ * their own run and cannot show one agent's result under the other's heading.
+ * Everything below is the same for both: the crawl decides whether a review
+ * can be queued, the server decides whether it is, and the persisted run —
+ * re-read after every request — decides what is shown.
+ */
+function useCrawlReview(projectId: string, crawl: Crawl | null, review: CrawlReviewSpec) {
+  const [state, setState] = useState<QueueState>({ status: "idle" });
+  /** A ref refuses the second click of a pair before React has re-rendered. */
+  const queueing = useRef(false);
+  const [executing, setExecuting] = useState(false);
+  const runningNow = useRef(false);
+  const [executeNote, setExecuteNote] = useState<{ text: string; tone: Tone } | null>(null);
+
+  const crawlId = crawl?.id ?? null;
+
+  // A review belongs to one crawl. Showing another crawl's run beside this
+  // one's pages would attribute findings to the wrong evidence.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing state that belongs to a different crawl
+    setState({ status: "idle" });
+    setExecuteNote(null);
+  }, [crawlId]);
+
+  const reviewable = reviewRequest(projectId, crawl, review);
+
+  /**
+   * Queues the agent to review this crawl.
+   *
+   * It queues and stops there. The run is executed later by the scheduled
+   * worker or by Run Now below, through the same service an operator's own
+   * request would use — nothing here executes an agent, and the button never
+   * claims it did. A matching run already queued or running comes back as a
+   * duplicate rather than as a second run.
+   */
+  const queue = async () => {
+    if (queueing.current || !reviewable.ok) return;
+    queueing.current = true;
+    setState({ status: "queuing" });
+
+    try {
+      const response = await fetch("/api/agent-runs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(reviewable.payload),
+        cache: "no-store",
+      });
+      const body: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setState({ status: "refused", message: queueRefusal(response.status, body, review) });
+        return;
+      }
+
+      const parsed = body as { run?: AgentRun; duplicate?: boolean } | null;
+      setState(
+        parsed?.run
+          ? { status: "queued", run: parsed.run, duplicate: parsed.duplicate === true }
+          : { status: "refused", message: "The server accepted the request but returned no run." },
+      );
+    } catch {
+      setState({
+        status: "refused",
+        message: "The request did not complete. Refresh before asking again — it may have been queued.",
+      });
+    } finally {
+      queueing.current = false;
+    }
+  };
+
+  /**
+   * Runs the queued review now, instead of waiting for the scheduled worker.
+   *
+   * The request names the run on screen — `/api/agent-runs/<id>` with
+   * `{action:"execute"}` — so the attempt it claims is provably this one. The
+   * deployment-wide `run-next` worker action is deliberately not used: it
+   * claims the oldest queued run anywhere, which could belong to another
+   * project entirely.
+   *
+   * Whatever the POST answers, the run is read back afterwards and the panel
+   * shows the persisted state. An HTTP 200 says the request was accepted, not
+   * that anything was analysed, and a 409 means something else claimed the run
+   * first — which is the lease working, not a failure.
+   */
+  const runNow = async () => {
+    const current = state.status === "queued" ? state.run : null;
+    if (runningNow.current || current === null || !executability(current).ok) return;
+    runningNow.current = true;
+    setExecuting(true);
+    setExecuteNote(null);
+
+    const runId = current.id;
+    let outcome;
+    try {
+      const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "execute" }),
+        cache: "no-store",
+      });
+      const body: unknown = await response.json().catch(() => null);
+      outcome = executeOutcome(response.status, body);
+    } catch {
+      // The attempt may or may not have started. The read below decides.
+      outcome = executeOutcome(0, null);
+    }
+
+    // Always reconcile, including after a success: the POST body is not the
+    // authority on what was stored.
+    let persisted: AgentRun | null = null;
+    try {
+      const read = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
+      if (read.ok) {
+        const body = (await read.json()) as { run?: AgentRun };
+        persisted = body.run ?? null;
+      }
+    } catch {
+      persisted = null;
+    }
+
+    if (persisted) setState({ status: "queued", run: persisted, duplicate: false });
+    setExecuteNote(reconciledNote(outcome, persisted));
+    runningNow.current = false;
+    setExecuting(false);
+  };
+
+  return {
+    state,
+    blockedWhy: reviewable.ok ? null : reviewable.why,
+    busy: state.status === "queuing",
+    onQueue: queue,
+    executing,
+    executeNote,
+    onRunNow: runNow,
+  };
+}
+
+/**
+ * One agent's review of this crawl.
+ *
+ * Queueing is all the first button does. The run is carried out later by the
+ * scheduled worker or by Run Now, through the agent-run service an operator's
+ * own request would use, so there is one execution path and the browser is
+ * not on it. Until a run finishes there is nothing to read, and the wording
+ * says so rather than showing a tick for work that has not started.
  */
 function CrawlReview({
+  review,
   state,
   blockedWhy,
   busy,
@@ -467,6 +493,7 @@ function CrawlReview({
   executeNote,
   onRunNow,
 }: {
+  review: CrawlReviewSpec;
   state: QueueState;
   /** Why the control is unavailable, or null when it can be used. */
   blockedWhy: string | null;
@@ -486,11 +513,8 @@ function CrawlReview({
     <section className="space-y-2 border-t border-border pt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="text-xs font-medium text-fg">Technical SEO agent</h4>
-          <p className="text-xs text-fg-subtle">
-            Queues a read-only review of the pages above. The agent reads this crawl&apos;s
-            recorded readings; it changes nothing and fetches nothing.
-          </p>
+          <h4 className="text-xs font-medium text-fg">{review.agentName} agent</h4>
+          <p className="text-xs text-fg-subtle">{review.summary}</p>
         </div>
         <Button
           variant="secondary"
@@ -500,7 +524,7 @@ function CrawlReview({
           title={blockedWhy ?? undefined}
           aria-busy={busy}
         >
-          {busy ? "Queueing…" : "Analyze with Technical SEO Agent"}
+          {busy ? "Queueing…" : review.action}
         </Button>
       </div>
 

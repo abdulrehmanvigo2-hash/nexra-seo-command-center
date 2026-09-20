@@ -1,5 +1,5 @@
 import type { ActionPolicy } from "@/lib/agent-runs/action-policy";
-import { CRAWL_REVIEW_INSTRUCTIONS } from "@/lib/crawl/grounding";
+import { CRAWL_REVIEW_INSTRUCTIONS, ON_PAGE_REVIEW_INSTRUCTIONS } from "@/lib/crawl/grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import type { AgentId } from "@/types/agent";
 import type { AgentTaskType, JsonObject } from "@/types/agent-run";
@@ -32,6 +32,15 @@ export type TaskTypeDefinition = {
   /** The agents allowed to run it, or every agent. */
   readonly agents: readonly AgentId[] | "any";
   readonly policy: ActionPolicy;
+  /**
+   * What this product's own records the task is grounded in, or none.
+   *
+   * The runtime reads the evidence, not the executor, and it decides which
+   * reader to use from this field rather than from the task's name — so a
+   * second task over the same records is one declaration here, not a second
+   * reader. `none` tasks reach the model with the validated input alone.
+   */
+  readonly evidence: "none" | "crawl";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -75,6 +84,7 @@ const projectReview: TaskTypeDefinition = {
   description: "Review the project from this agent's discipline and summarise what it finds.",
   agents: "any",
   policy: "read-only",
+  evidence: "none",
   instructions:
     "Review the project from your discipline. Give the three to five most important observations or risks, each with one concrete recommended next step. You have no live data about the site: say where a conclusion depends on data you would need to check, and do not invent metrics.",
   parseInput(input): TaskInputResult {
@@ -96,6 +106,7 @@ const keywordResearch: TaskTypeDefinition = {
   description: "Expand seed keywords into candidates with search intent.",
   agents: ["keyword-intent"],
   policy: "read-only",
+  evidence: "none",
   instructions:
     "Expand the seed keywords into up to fifteen candidate keywords. For each give the likely search intent (informational, commercial, transactional, or navigational) and a one-line rationale. You have no search-volume data: do not state volumes or difficulty scores.",
   parseInput(input): TaskInputResult {
@@ -124,13 +135,28 @@ const keywordResearch: TaskTypeDefinition = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * The one input a crawl-grounded task takes: a crawl id and nothing else.
+ *
+ * Shared by every task that reads a crawl, so the rule that no caller can
+ * present text of their own as something this product observed is written
+ * once. The observations come from the stored crawl record, read server-side
+ * and checked against the run's own project.
+ */
+function parseCrawlIdInput(input: unknown): TaskInputResult {
+  const object = objectWithOnly(input, ["crawlId"]);
+  if (!object.ok) return object;
+  const crawlId = object.value.crawlId;
+  if (typeof crawlId !== "string" || !UUID.test(crawlId)) {
+    return { ok: false, error: "crawlId must be the id of a crawl this project has run." };
+  }
+  return { ok: true, value: { crawlId: crawlId.toLowerCase() } };
+}
+
+/**
  * Review one crawl this product already ran.
  *
- * The input names a crawl and nothing else. The observations come from the
- * stored crawl record, read server-side and checked against the run's own
- * project, so no caller can present text of their own as something this
- * product observed. Read-only, like every task here: it reports on a crawl
- * that already happened and starts nothing.
+ * Read-only, like every task here: it reports on a crawl that already
+ * happened and starts nothing.
  */
 const crawlReview: TaskTypeDefinition = {
   id: "crawl-review",
@@ -138,19 +164,36 @@ const crawlReview: TaskTypeDefinition = {
   description: "Review the observed pages of one completed crawl.",
   agents: ["technical-seo"],
   policy: "read-only",
+  evidence: "crawl",
   instructions: CRAWL_REVIEW_INSTRUCTIONS,
-  parseInput(input): TaskInputResult {
-    const object = objectWithOnly(input, ["crawlId"]);
-    if (!object.ok) return object;
-    const crawlId = object.value.crawlId;
-    if (typeof crawlId !== "string" || !UUID.test(crawlId)) {
-      return { ok: false, error: "crawlId must be the id of a crawl this project has run." };
-    }
-    return { ok: true, value: { crawlId: crawlId.toLowerCase() } };
-  },
+  parseInput: parseCrawlIdInput,
 };
 
-export const TASK_TYPES: readonly TaskTypeDefinition[] = [projectReview, keywordResearch, crawlReview];
+/**
+ * Review the on-page elements of one crawl's pages.
+ *
+ * The same evidence as `crawl-review`, read by the On-Page SEO agent with a
+ * different question. It takes the same single input, is bounded to the same
+ * pages, and like every task here changes nothing: what comes back is a
+ * proposed change for a person to apply, never an applied one.
+ */
+const onPageReview: TaskTypeDefinition = {
+  id: "on-page-review",
+  label: "On-page review",
+  description: "Review titles, descriptions, headings, canonicals and links of one completed crawl's pages.",
+  agents: ["on-page-seo"],
+  policy: "read-only",
+  evidence: "crawl",
+  instructions: ON_PAGE_REVIEW_INSTRUCTIONS,
+  parseInput: parseCrawlIdInput,
+};
+
+export const TASK_TYPES: readonly TaskTypeDefinition[] = [
+  projectReview,
+  keywordResearch,
+  crawlReview,
+  onPageReview,
+];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {
   return TASK_TYPES.find((definition) => definition.id === id);

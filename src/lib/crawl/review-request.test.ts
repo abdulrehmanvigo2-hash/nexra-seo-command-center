@@ -4,6 +4,7 @@ import { describe, test } from "node:test";
 import type { AgentRun, AgentRunStatus } from "../../types/agent-run.ts";
 import type { Crawl } from "../../types/crawl.ts";
 import {
+  CRAWL_REVIEWS,
   REVIEW_AGENT_ID,
   REVIEW_TASK_TYPE,
   RUN_STATUS,
@@ -95,6 +96,58 @@ describe("the request payload", () => {
     for (const status of ["completed", "partial"] as const) {
       assert.equal(reviewRequest("nexra-agency", { ...CRAWL, status }).ok, true);
     }
+  });
+});
+
+describe("the on-page review request", () => {
+  const onPage = CRAWL_REVIEWS["on-page-review"];
+
+  test("names the On-Page SEO agent and the on-page task, over the same crawl", () => {
+    const result = reviewRequest("nexra-agency", CRAWL, onPage);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.ok && result.payload, {
+      projectId: "nexra-agency",
+      agentId: "on-page-seo",
+      taskType: "on-page-review",
+      input: { crawlId: CRAWL.id },
+    });
+  });
+
+  test("without a review named, the request is still the Technical SEO crawl review", () => {
+    const result = reviewRequest("nexra-agency", CRAWL);
+    assert.equal(result.ok && result.payload.agentId, REVIEW_AGENT_ID);
+    assert.equal(result.ok && result.payload.taskType, REVIEW_TASK_TYPE);
+  });
+
+  test("the two reviews name different agents and tasks, and the same input shape", () => {
+    const technical = CRAWL_REVIEWS["crawl-review"];
+    assert.notEqual(onPage.agentId, technical.agentId);
+    assert.notEqual(onPage.taskType, technical.taskType);
+    assert.equal(onPage.taskType, "on-page-review");
+    assert.equal(onPage.agentId, "on-page-seo");
+    for (const spec of [technical, onPage]) {
+      assert.ok(spec.action.startsWith("Analyze with "), spec.action);
+      assert.match(spec.summary, /^Queues a read-only review/);
+    }
+  });
+
+  test("it is refused for the same crawls the crawl review is refused for", () => {
+    assert.equal(reviewRequest("nexra-agency", null, onPage).ok, false);
+    assert.equal(reviewRequest("nexra-agency", { ...CRAWL, status: "running", finishedAt: null }, onPage).ok, false);
+    assert.equal(reviewRequest("nexra-agency", { ...CRAWL, status: "failed" }, onPage).ok, false);
+    assert.equal(reviewRequest("", CRAWL, onPage).ok, false);
+  });
+
+  test("the on-page control promises no edits", () => {
+    assert.match(onPage.summary, /edits and publishes nothing/);
+  });
+
+  test("a server refusal names the agent and task that were asked for", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, onPage), /The On-Page SEO agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, onPage), /does not know the on-page-review task/);
+    // And the default still names the Technical SEO crawl review.
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }), /The Technical SEO agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }), /does not know the crawl-review task/);
   });
 });
 

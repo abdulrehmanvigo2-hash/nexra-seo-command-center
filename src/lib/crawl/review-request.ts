@@ -1,5 +1,5 @@
 /**
- * Asking the Technical SEO agent to review a crawl, as plain data.
+ * Asking an agent to review a crawl, as plain data.
  *
  * The panel around this owns a button and some markup. Everything that could
  * misrepresent what happened lives here: whether a crawl is reviewable at
@@ -10,19 +10,57 @@
  * schedule, so a run sits in `queued` until it is picked up, and a panel that
  * showed a tick the moment the request returned would be lying about work
  * that has not started.
+ *
+ * Two reviews read one crawl: the Technical SEO agent's `crawl-review` and the
+ * On-Page SEO agent's `on-page-review`. They are the same request shape with
+ * a different agent and task, so one set of rules serves both, and the pair
+ * of ids that names each review lives in `CRAWL_REVIEWS` and nowhere else.
  */
 
 import type { AgentRun, AgentRunStatus } from "@/types/agent-run";
 import type { Crawl } from "@/types/crawl";
 
-/** The only agent this task is allowed to run on. Mirrors the task type. */
+/** The only agent the crawl review is allowed to run on. Mirrors the task type. */
 export const REVIEW_AGENT_ID = "technical-seo";
 export const REVIEW_TASK_TYPE = "crawl-review";
 
+export type CrawlReviewKind = typeof REVIEW_TASK_TYPE | "on-page-review";
+
+/** One review an operator can queue over a crawl: which agent, which task, and how the control reads. */
+export type CrawlReviewSpec = {
+  readonly taskType: CrawlReviewKind;
+  readonly agentId: typeof REVIEW_AGENT_ID | "on-page-seo";
+  /** The agent's display name, as the registry has it. */
+  readonly agentName: string;
+  /** The button label. Says "analyze", and the note beside it says "queues". */
+  readonly action: string;
+  /** What the review reads, in one sentence, for the section under the button. */
+  readonly summary: string;
+};
+
+export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, CrawlReviewSpec>> = {
+  "crawl-review": {
+    taskType: REVIEW_TASK_TYPE,
+    agentId: REVIEW_AGENT_ID,
+    agentName: "Technical SEO",
+    action: "Analyze with Technical SEO Agent",
+    summary:
+      "Queues a read-only review of the pages above. The agent reads this crawl's recorded readings; it changes nothing and fetches nothing.",
+  },
+  "on-page-review": {
+    taskType: "on-page-review",
+    agentId: "on-page-seo",
+    agentName: "On-Page SEO",
+    action: "Analyze with On-Page SEO Agent",
+    summary:
+      "Queues a read-only review of the titles, descriptions, headings, canonicals and links recorded above. Proposes changes for you to apply; it edits and publishes nothing.",
+  },
+};
+
 export type ReviewPayload = {
   readonly projectId: string;
-  readonly agentId: typeof REVIEW_AGENT_ID;
-  readonly taskType: typeof REVIEW_TASK_TYPE;
+  readonly agentId: CrawlReviewSpec["agentId"];
+  readonly taskType: CrawlReviewKind;
   readonly input: { readonly crawlId: string };
 };
 
@@ -40,7 +78,11 @@ export type Queueability =
  */
 const REVIEWABLE: readonly Crawl["status"][] = ["completed", "partial"];
 
-export function reviewRequest(projectId: string, crawl: Crawl | null): Queueability {
+export function reviewRequest(
+  projectId: string,
+  crawl: Crawl | null,
+  review: CrawlReviewSpec = CRAWL_REVIEWS[REVIEW_TASK_TYPE],
+): Queueability {
   if (!projectId) return { ok: false, why: "No project is selected." };
   if (crawl === null) return { ok: false, why: "Run a crawl first: there is nothing to review." };
   if (crawl.status === "running") {
@@ -55,8 +97,8 @@ export function reviewRequest(projectId: string, crawl: Crawl | null): Queueabil
     ok: true,
     payload: {
       projectId,
-      agentId: REVIEW_AGENT_ID,
-      taskType: REVIEW_TASK_TYPE,
+      agentId: review.agentId,
+      taskType: review.taskType,
       input: { crawlId: crawl.id },
     },
   };
@@ -153,7 +195,11 @@ export function outputProvenance(run: AgentRun): { readonly text: string; readon
  * Every one of these is a decision, not a fault to click through, so the
  * wording says what it means rather than apologising.
  */
-export function queueRefusal(httpStatus: number, body: unknown): string {
+export function queueRefusal(
+  httpStatus: number,
+  body: unknown,
+  review: CrawlReviewSpec = CRAWL_REVIEWS[REVIEW_TASK_TYPE],
+): string {
   const error = (body as { error?: unknown; message?: unknown } | null)?.error;
 
   if (error === "approval-required") {
@@ -163,10 +209,10 @@ export function queueRefusal(httpStatus: number, body: unknown): string {
       : "This task needs a person to approve each action, and there is no approval workflow yet.";
   }
   if (error === "task-not-allowed") {
-    return "The Technical SEO agent is not allowed to run this task. That is a server rule, not a temporary problem.";
+    return `The ${review.agentName} agent is not allowed to run this task. That is a server rule, not a temporary problem.`;
   }
   if (error === "unknown-task-type") {
-    return "This deployment does not know the crawl-review task. It may be running an older build.";
+    return `This deployment does not know the ${review.taskType} task. It may be running an older build.`;
   }
   if (error === "unknown-project" || error === "unknown-agent") {
     return "The project or agent named in the request does not exist on this server.";
