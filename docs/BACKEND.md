@@ -305,9 +305,29 @@ does.
 - **Same-site.** Fetching is confined to the project's host and its
   subdomains, on a label boundary (`evil-example.com` does not match
   `example.com`). External links are recorded, never fetched.
-- **Bounded.** 10 s per request, 60 s per crawl, 50 pages, depth 3, 3 requests
-  in flight, 2 MB per response (streamed and abandoned past the cap), 10
-  redirect hops, 300 links per page. `Crawl-delay` is honoured up to 5 s.
+- **Bounded.** 10 s per request, 60 s per crawl, 2 MB per response (streamed
+  and abandoned past the cap), 10 redirect hops, 300 links per page.
+  `Crawl-delay` is honoured up to 5 s. Pages, depth and concurrency are
+  configurable within fixed ceilings:
+
+  | Variable | Default | Range | Stored on the crawl row |
+  |---|---|---|---|
+  | `CRAWL_MAX_PAGES` | 50 | 1–500 | yes (`max_pages`) |
+  | `CRAWL_MAX_DEPTH` | 3 | 0–10 | yes (`max_depth`) |
+  | `CRAWL_CONCURRENCY` | 3 | 1–5 | no |
+
+  The defaults are the values that shipped, so setting none of them changes
+  nothing. A value that will not parse as a plain decimal integer, or that
+  falls outside its range, throws `CrawlConfigurationError` and the crawl
+  service is never constructed — a misconfigured server refuses to crawl
+  rather than crawling with limits nobody chose. The depth ceiling of 10 is
+  the same bound `crawl_pages.depth` declares, so no configurable depth can
+  produce a row the table rejects.
+
+  Concurrency is not stored on the crawl row, and that is deliberate: the
+  budget records what a crawl was *allowed to observe*, which a reader of the
+  record needs in order to tell a five-page crawl from a five-page site. How
+  quickly we asked is a property of the run, not of the readings it produced.
 - **robots.txt is obeyed, and an unreadable one is not permission.** A file
   that could not be fetched leaves `robots_state = 'unavailable'` and every
   page's `robots_txt_allowed` null.

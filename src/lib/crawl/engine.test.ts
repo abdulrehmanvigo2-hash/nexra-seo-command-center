@@ -459,3 +459,103 @@ describe("per-hop pinning", () => {
     assert.equal(refused.title, null);
   });
 });
+
+describe("concurrency", () => {
+  test("concurrency 1 never has two requests in flight at once", async () => {
+    // What the first controlled crawl relies on: one request at a time
+    // against a client's server.
+    let inFlight = 0;
+    let peak = 0;
+
+    const routes: Record<string, Route> = {
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": {
+        body: Array.from({ length: 6 }, (_, index) => `<a href="/p${index}">p</a>`).join(""),
+      },
+    };
+    for (let index = 0; index < 6; index += 1) {
+      routes[`https://example.com/p${index}`] = { body: "<h1>p</h1>" };
+    }
+
+    const watched: Fetch = async (input, init, pin) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resume) => setTimeout(resume, 1));
+      try {
+        return await siteFetch(routes)(input, init, pin);
+      } finally {
+        inFlight -= 1;
+      }
+    };
+
+    await crawl(routes, { fetch: watched, concurrency: 1 });
+    assert.equal(peak, 1, "one request at a time means one request at a time");
+  });
+
+  test("a higher concurrency does overlap, so the setting is doing something", async () => {
+    let inFlight = 0;
+    let peak = 0;
+
+    const routes: Record<string, Route> = {
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": {
+        body: Array.from({ length: 6 }, (_, index) => `<a href="/p${index}">p</a>`).join(""),
+      },
+    };
+    for (let index = 0; index < 6; index += 1) {
+      routes[`https://example.com/p${index}`] = { body: "<h1>p</h1>" };
+    }
+
+    const watched: Fetch = async (input, init, pin) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resume) => setTimeout(resume, 1));
+      try {
+        return await siteFetch(routes)(input, init, pin);
+      } finally {
+        inFlight -= 1;
+      }
+    };
+
+    await crawl(routes, { fetch: watched, concurrency: 3 });
+    assert.ok(peak > 1, "concurrency 3 must actually overlap requests");
+    assert.ok(peak <= 3, "and must not exceed what was asked for");
+  });
+
+  test("depth 1 follows the start page's links and goes no further", async () => {
+    const result = await crawl(
+      {
+        "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+        "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+        "https://example.com/": { body: `<a href="/one">1</a>` },
+        "https://example.com/one": { body: `<a href="/two">2</a>` },
+        "https://example.com/two": { body: "<h1>2</h1>" },
+      },
+      { budget: { ...BUDGET, maxDepth: 1 } },
+    );
+
+    assert.equal(page(result.pages, "https://example.com/").depth, 0);
+    assert.equal(page(result.pages, "https://example.com/one").depth, 1);
+    assert.ok(
+      !result.pages.some((entry) => entry.url === "https://example.com/two"),
+      "depth 1 must not reach a page two links from the start",
+    );
+  });
+
+  test("depth 0 fetches the start URL and follows nothing", async () => {
+    const result = await crawl(
+      {
+        "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+        "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+        "https://example.com/": { body: `<a href="/one">1</a>` },
+        "https://example.com/one": { body: "<h1>1</h1>" },
+      },
+      { budget: { ...BUDGET, maxDepth: 0 } },
+    );
+
+    assert.equal(result.pages.length, 1);
+    assert.equal(page(result.pages, "https://example.com/").depth, 0);
+  });
+});

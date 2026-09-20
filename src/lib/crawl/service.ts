@@ -110,6 +110,7 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
           hostScope,
           userAgent: config.userAgent,
           budget: config.budget,
+          concurrency: config.concurrency,
           ...engineOverrides,
         });
 

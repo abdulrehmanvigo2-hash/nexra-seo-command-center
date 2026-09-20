@@ -28,6 +28,7 @@ const CONFIG: CrawlConfig = {
   allowedHosts: ["nexraagency.com"],
   userAgent: DEFAULT_USER_AGENT,
   budget: { maxPages: 5, maxDepth: 1, maxDurationMs: 60_000 },
+  concurrency: 1,
 };
 
 const OPERATOR = "00000000-0000-4000-8000-00000000aaaa";
@@ -262,6 +263,40 @@ describe("startCrawl — gates", () => {
 
     await service.startCrawl("nexra-agency", OPERATOR);
     assert.deepEqual(budget, { maxPages: 5, maxDepth: 1, maxDurationMs: 60_000 });
+  });
+
+  test("the configured concurrency reaches the engine", async () => {
+    // A setting that is read but never passed on is worse than no setting:
+    // the operator believes the crawl is limited and it is not.
+    let concurrency: unknown = null;
+    const service = createCrawlService({
+      store: recordingStore(),
+      projects: projectsWith(PROJECT),
+      config: { ...CONFIG, concurrency: 1 },
+      engine: async (options) => {
+        concurrency = options.concurrency;
+        return engineReturning({})();
+      },
+    });
+
+    await service.startCrawl("nexra-agency", OPERATOR);
+    assert.equal(concurrency, 1);
+  });
+
+  test("the budget the crawl is recorded under is the one it ran with", async () => {
+    // The row carries the limits, so a reader can tell a five-page crawl from
+    // a site with five pages.
+    const store = recordingStore();
+    const service = createCrawlService({
+      store,
+      projects: projectsWith(PROJECT),
+      config: CONFIG,
+      engine: engineReturning({}),
+    });
+
+    const result = await service.startCrawl("nexra-agency", OPERATOR);
+    assert.ok(result.ok);
+    assert.deepEqual(result.crawl.budget, { maxPages: 5, maxDepth: 1, maxDurationMs: 60_000 });
   });
 });
 
