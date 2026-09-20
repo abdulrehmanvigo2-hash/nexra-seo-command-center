@@ -74,9 +74,13 @@ partial, and stale states. Verified for `nexra-agency`
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Two task types exist, both read-only: `project-review` (any agent) and
-`keyword-research` (Keyword & Search Intent). Input is parsed strictly per task
-type, bounded, and screened for credentials; unknown fields are refused.
+project. Four task types exist, all read-only: `project-review` (any agent),
+`keyword-research` (Keyword & Search Intent), `crawl-review` (Technical SEO) and
+`on-page-review` (On-Page SEO). The last two take one input, a crawl id, and are
+grounded in the same recorded crawl (see below). Input is parsed strictly per
+task type, bounded, and screened for credentials; unknown fields are refused.
+Adding a task type needs no migration: the run table checks the id's format,
+not a list.
 
 Lifecycle, enforced in Postgres:
 
@@ -262,9 +266,13 @@ or per operator. That control has to come from the provider account.
   tools or live data and is told so. The answer is screened like any executor
   output; stored metadata is provider, model, token counts, and `grounded`.
   `grounded` is `true` only when evidence this product recorded was actually
-  loaded and put in the prompt — today that is the `crawl-review` task, whose
-  metadata also carries an `evidence` object naming the crawl and its page
-  counts. Every other task records `grounded: false`. Raw provider responses
+  loaded and put in the prompt — today the two tasks whose type declares
+  `evidence: "crawl"`, `crawl-review` and `on-page-review`, whose metadata
+  also carries an `evidence` object naming the crawl and its page counts. The
+  runtime picks the reader from that declaration
+  (`src/lib/agent-runs/task-grounding.ts`), so both read one serialisation of
+  the crawl (`src/lib/crawl/grounding.ts`) through one ownership check and one
+  byte ceiling. Every other task records `grounded: false`. Raw provider responses
   are not stored. Provider failures map to
   `provider-unavailable` or `provider-rejected`; provider text is dropped.
 

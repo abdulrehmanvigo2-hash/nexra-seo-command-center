@@ -1,8 +1,7 @@
 import "server-only";
 
-import { createAiExecutor, type GroundingReader } from "@/lib/agent-runs/ai-executor";
+import { createAiExecutor } from "@/lib/agent-runs/ai-executor";
 import { crawlService } from "@/lib/crawl";
-import { readCrawlGrounding } from "@/lib/crawl/grounding";
 import { unavailableAgentRunStore } from "@/lib/agent-runs/contract";
 import type { AgentExecutor } from "@/lib/agent-runs/executor";
 import { mockAgentExecutor } from "@/lib/agent-runs/mock-executor";
@@ -11,6 +10,7 @@ import { readAiProviderConfig, selectExecutor } from "@/lib/agent-runs/providers
 import { createAgentRunService, type AgentRunService } from "@/lib/agent-runs/service";
 import type { AgentRunsDatabase } from "@/lib/agent-runs/supabase/schema";
 import { createSupabaseAgentRunStore } from "@/lib/agent-runs/supabase/store";
+import { createTaskGrounding } from "@/lib/agent-runs/task-grounding";
 import { logEvent } from "@/lib/observability/log";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
 import { projectRepository } from "@/lib/projects/repository";
@@ -57,35 +57,14 @@ function configuredExecutor(): { executor: AgentExecutor; timeoutMs: number } {
     model: config.model,
     timeoutMs: AI_TIMEOUT_MS - 5_000,
   });
-  return { executor: createAiExecutor(provider, taskGrounding), timeoutMs: AI_TIMEOUT_MS };
-}
-
-/**
- * The evidence a task is allowed to see, read here rather than by the
- * executor, which reaches no system of its own.
- *
- * Only `crawl-review` is grounded today, and only from this product's own
- * crawl records. The run's project decides which crawls are readable: the
- * crawl id in the input is checked against it, so naming another project's
- * crawl is refused rather than answered.
- */
-const taskGrounding: GroundingReader = async (task) => {
-  if (task.taskType !== "crawl-review") return { ok: true, grounding: null };
-
-  const crawlId = task.input.crawlId;
-  if (typeof crawlId !== "string") return { ok: false, reason: "crawl-id-missing" };
-
-  const result = await readCrawlGrounding(crawlService(), {
-    crawlId,
-    projectId: task.project.id,
-  });
-  if (!result.ok) return { ok: false, reason: result.reason };
-
   return {
-    ok: true,
-    grounding: { text: result.grounding.text, summary: { ...result.grounding.summary } },
+    // The evidence a task may see is read here, from this product's own
+    // records, and decided by the task type's declaration
+    // (`@/lib/agent-runs/task-grounding`) — never by the executor.
+    executor: createAiExecutor(provider, createTaskGrounding(crawlService())),
+    timeoutMs: AI_TIMEOUT_MS,
   };
-};
+}
 
 function storesInSupabase(): boolean {
   return selectProjectDataSource(process.env) === "supabase";
