@@ -55,6 +55,19 @@ const START_FAILURE_MESSAGE: Readonly<Record<string, string>> = {
   "start-unsafe": "The start URL resolved to an address this crawler refuses to connect to.",
 };
 
+/**
+ * What a crawl that threw is recorded as.
+ *
+ * A fixed code and a fixed message, like every other stored failure: an
+ * exception's text can carry an internal hostname, a connection string, or a
+ * fragment of someone's page, and none of that belongs in a durable record.
+ * The server log gets the real error; the row gets this.
+ */
+const UNEXPECTED_FAILURE = {
+  code: "crawl-failed",
+  message: "The crawl stopped unexpectedly. The server log names the failure.",
+} as const;
+
 export function createCrawlService(options: CrawlServiceOptions): CrawlService {
   const { store, projects, config, engine = runCrawl, engineOverrides = {} } = options;
 
@@ -90,18 +103,44 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
       const crawl = inserted.crawl;
       logEvent("info", "crawl.started", { crawlId: crawl.id, projectId, host: hostScope });
 
-      const result = await engine({
-        startUrl,
-        hostScope,
-        userAgent: config.userAgent,
-        budget: config.budget,
-        ...engineOverrides,
-      });
+      let result;
+      try {
+        result = await engine({
+          startUrl,
+          hostScope,
+          userAgent: config.userAgent,
+          budget: config.budget,
+          ...engineOverrides,
+        });
 
-      // Pages first: a crawl row that says "completed, 40 pages" with no pages
-      // behind it would be a lie the reader cannot detect.
-      await store.savePages(crawl.id, result.pages);
-      await store.saveLinks(crawl.id, result.links);
+        // Pages first: a crawl row that says "completed, 40 pages" with no
+        // pages behind it would be a lie the reader cannot detect.
+        await store.savePages(crawl.id, result.pages);
+        await store.saveLinks(crawl.id, result.links);
+      } catch (error) {
+        // The row was written before any of this ran, so an exception here
+        // would otherwise leave it `running` for ever — a crawl that never
+        // finishes and that nothing will ever come back to close, because
+        // there is no scheduler and no recovery sweep. Close it now, while we
+        // still know it failed.
+        logEvent("error", "crawl.failed", {
+          crawlId: crawl.id,
+          projectId,
+          errorCode: UNEXPECTED_FAILURE.code,
+          reason: error instanceof Error ? error.name : "unknown",
+        });
+        await store.finish(crawl.id, {
+          status: "failed",
+          stopReason: "error",
+          robotsState: "unavailable",
+          sitemapState: "unavailable",
+          pagesDiscovered: 0,
+          pagesFetched: 0,
+          pagesFailed: 0,
+          error: { ...UNEXPECTED_FAILURE },
+        });
+        return { ok: false, failure: { reason: "unavailable" } };
+      }
 
       const status: Exclude<CrawlStatus, "running"> =
         result.startFailure !== null
@@ -140,7 +179,11 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
       if (result.startFailure !== null) {
         return { ok: false, failure: { reason: result.startFailure } };
       }
-      return { ok: true, crawl: finished ?? crawl };
+      // `finish` is conditional on the crawl still running, so a null means
+      // something else closed it first. Re-read rather than handing back the
+      // `running` row we opened with, which would report a finished crawl as
+      // still in flight.
+      return { ok: true, crawl: finished ?? (await store.getById(crawl.id)) ?? crawl };
     },
 
     async getCrawl(id, pageLimit = DEFAULT_PAGE_LIMIT) {

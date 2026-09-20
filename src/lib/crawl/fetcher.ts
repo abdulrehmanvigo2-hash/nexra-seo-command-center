@@ -30,6 +30,14 @@ export const MAX_BODY_BYTES = 2_097_152;
 /** How many redirects one URL may take before the chain is abandoned. */
 export const MAX_REDIRECT_HOPS = 10;
 
+/**
+ * Bound on the stored content type.
+ *
+ * A header is whatever the origin sends, and the column that holds it has a
+ * declared limit; an unbounded one would fail the insert of the whole crawl.
+ */
+const MAX_CONTENT_TYPE = 200;
+
 /** Media types a page fetch will read a body for. */
 export const HTML_TYPES: readonly string[] = ["text/html", "application/xhtml+xml"];
 
@@ -234,8 +242,10 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
       continue;
     }
 
-    const contentType = response.headers.get("content-type");
-    const mediaType = (contentType ?? "").split(";")[0].trim().toLowerCase();
+    const rawContentType = response.headers.get("content-type");
+    const contentType =
+      rawContentType === null ? null : rawContentType.slice(0, MAX_CONTENT_TYPE);
+    const mediaType = (rawContentType ?? "").split(";")[0].trim().toLowerCase();
     // A response with no content-type at all is read when the caller accepts
     // text, since robots.txt is commonly served without one.
     const readable =

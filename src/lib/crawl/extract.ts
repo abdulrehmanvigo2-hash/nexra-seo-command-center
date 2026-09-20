@@ -35,6 +35,18 @@ const MAX_TITLE = 1_000;
 const MAX_META_DESCRIPTION = 2_000;
 const MAX_ROBOTS_META = 200;
 
+/**
+ * Bounds on values copied straight off an attribute.
+ *
+ * A page can put anything in an `href` or a `rel`, and these are stored in
+ * columns with declared limits. Clamping here rather than at the store means
+ * one over-long attribute on one page cannot fail the insert of the whole
+ * crawl — and the clamp is visible where the reading is taken, so it is not
+ * mistaken for the page's own value later.
+ */
+const MAX_HREF = 2_048;
+const MAX_REL = 200;
+
 export type ExtractedLink = {
   readonly href: string;
   readonly rel: string | null;
@@ -108,6 +120,9 @@ function collectSchemaTypes(value: unknown, into: Set<string>, depth = 0): void 
     if (type.trim() !== "") into.add(type.trim());
   } else if (Array.isArray(type)) {
     for (const entry of type) {
+      // Checked per entry, not once per payload: an `@type` array can carry
+      // more values than the column holds on its own.
+      if (into.size >= MAX_SCHEMA_TYPES) break;
       if (typeof entry === "string" && entry.trim() !== "") into.add(entry.trim());
     }
   }
@@ -138,9 +153,11 @@ export function extractDocument(html: string): ExtractedDocument {
           // The first title wins, as it does in a browser.
           title ??= clamp(textOf(element), MAX_TITLE);
           break;
-        case "base":
-          baseHref ??= attribute(element, "href");
+        case "base": {
+          const href = attribute(element, "href");
+          if (href !== null) baseHref ??= clamp(href, MAX_HREF);
           break;
+        }
         case "meta": {
           const name = attribute(element, "name")?.toLowerCase() ?? "";
           const content = attribute(element, "content");
@@ -159,7 +176,8 @@ export function extractDocument(html: string): ExtractedDocument {
         case "link": {
           const rel = attribute(element, "rel")?.toLowerCase() ?? "";
           if (rel.split(/\s+/).includes("canonical")) {
-            canonicalHref ??= attribute(element, "href");
+            const href = attribute(element, "href");
+            if (href !== null) canonicalHref ??= clamp(href, MAX_HREF);
           }
           break;
         }
@@ -170,7 +188,11 @@ export function extractDocument(html: string): ExtractedDocument {
         case "a": {
           const href = attribute(element, "href");
           if (href !== null && href.trim() !== "" && links.length < MAX_LINKS_PER_PAGE) {
-            links.push({ href: href.trim(), rel: attribute(element, "rel") });
+            const rel = attribute(element, "rel");
+            links.push({
+              href: clamp(href.trim(), MAX_HREF),
+              rel: rel === null ? null : clamp(rel, MAX_REL),
+            });
           }
           break;
         }

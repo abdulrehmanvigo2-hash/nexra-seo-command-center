@@ -10,7 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "db:seed:generate": "node scripts/generate-projects-seed.mjs",
     "db:seed:check": "node scripts/generate-projects-seed.mjs --check",
-    "test": "node --test \"src/lib/crawl/**/*.test.ts\""
+    "test": "node --import ./src/lib/crawl/test-support/register.ts --test \"src/lib/crawl/**/*.test.ts\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.126.0",

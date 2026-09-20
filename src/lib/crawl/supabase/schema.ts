@@ -184,6 +184,21 @@ const FETCH_STATES: readonly CrawlFetchState[] = [
   "budget-skipped",
 ];
 
+/**
+ * Trims a value to the column's declared width.
+ *
+ * Defence in depth, not the primary bound: the extractor already clamps what
+ * it reads, and the URL policy already refuses an over-long URL. This is the
+ * last gate before the insert, and its job is that no row this module emits
+ * can be rejected by the table — because a single over-long attribute on a
+ * single page would otherwise fail the whole crawl's batch insert, losing
+ * every other page with it.
+ */
+function bounded(value: string | null, limit: number): string | null {
+  if (value === null) return null;
+  return value.length > limit ? value.slice(0, limit) : value;
+}
+
 function oneOf<T extends string>(allowed: readonly T[], value: string, field: string): T {
   const found = allowed.find((entry) => entry === value);
   if (found === undefined) {
@@ -291,26 +306,26 @@ export function pageToInsert(
 ): CrawlPageInsert {
   return {
     crawl_id: crawlId,
-    url: page.url,
-    final_url: page.finalUrl,
+    url: bounded(page.url, 2048) ?? page.url,
+    final_url: bounded(page.finalUrl, 2048),
     fetch_state: page.fetchState,
     http_status: page.httpStatus,
     redirect_hops: page.redirectHops,
-    redirect_chain: [...page.redirectChain],
-    content_type: page.contentType,
+    redirect_chain: [...page.redirectChain].slice(0, 10),
+    content_type: bounded(page.contentType, 200),
     content_bytes: page.contentBytes,
-    robots_meta: page.robotsMeta,
+    robots_meta: bounded(page.robotsMeta, 200),
     robots_txt_allowed: page.robotsTxtAllowed,
-    canonical_href: page.canonicalHref,
-    canonical_resolved: page.canonicalResolved,
+    canonical_href: bounded(page.canonicalHref, 2048),
+    canonical_resolved: bounded(page.canonicalResolved, 2048),
     canonical_is_self: page.canonicalIsSelf,
-    title: page.title,
+    title: bounded(page.title, 1000),
     title_length: page.titleLength,
-    meta_description: page.metaDescription,
+    meta_description: bounded(page.metaDescription, 2000),
     meta_description_length: page.metaDescriptionLength,
     h1_count: page.h1Count,
-    first_h1: page.firstH1,
-    schema_types: [...page.schemaTypes],
+    first_h1: bounded(page.firstH1, 1000),
+    schema_types: [...page.schemaTypes].slice(0, 50),
     schema_blocks: page.schemaBlocks,
     schema_parse_failed: page.schemaParseFailed,
     in_sitemap: page.inSitemap,
@@ -328,9 +343,9 @@ export function linkToInsert(
 ): CrawlLinkInsert {
   return {
     crawl_id: crawlId,
-    from_url: link.fromUrl,
-    to_url: link.toUrl,
-    rel: link.rel,
+    from_url: bounded(link.fromUrl, 2048) ?? link.fromUrl,
+    to_url: bounded(link.toUrl, 2048) ?? link.toUrl,
+    rel: bounded(link.rel, 200),
     is_internal: link.isInternal,
   };
 }
