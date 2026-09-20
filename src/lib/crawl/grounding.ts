@@ -61,8 +61,25 @@ export type CrawlGroundingRefusal =
   | "crawl-not-found"
   /** The crawl belongs to a different project than the run does. */
   | "crawl-not-in-project"
-  /** The crawl never finished, so its readings are incomplete. */
-  | "crawl-unfinished";
+  /** Still running: its readings are still arriving. */
+  | "crawl-unfinished"
+  /** It finished, but not in a state whose readings are worth reviewing. */
+  | "crawl-not-reviewable";
+
+/**
+ * The crawl states whose readings may be reviewed.
+ *
+ * `completed` and `partial` are the two real results — a crawl that stopped on
+ * its budget observed everything it reports. A `failed` or `cancelled` crawl
+ * holds whatever rows happened to be written before it stopped: a fragment
+ * nobody decided to keep, which is not the same as a short crawl.
+ *
+ * The panel refuses these states too, but the panel is not the gate. A run can
+ * be queued by any operator posting to the API directly, and a crawl can fail
+ * *after* its review was queued — so the check that matters is this one, made
+ * against the persisted status at the moment the evidence is read.
+ */
+const REVIEWABLE_STATUSES: readonly Crawl["status"][] = ["completed", "partial"];
 
 /**
  * How many pages are described in full.
@@ -133,7 +150,12 @@ export async function readCrawlGrounding(
   if (detail.crawl.projectId !== request.projectId) {
     return { ok: false, reason: "crawl-not-in-project" };
   }
+  // Checked before anything is formatted: a refusal must not carry a line of
+  // the site's own text back with it.
   if (detail.crawl.status === "running") return { ok: false, reason: "crawl-unfinished" };
+  if (!REVIEWABLE_STATUSES.includes(detail.crawl.status)) {
+    return { ok: false, reason: "crawl-not-reviewable" };
+  }
 
   return { ok: true, grounding: formatCrawlGrounding(detail.crawl, detail.pages) };
 }

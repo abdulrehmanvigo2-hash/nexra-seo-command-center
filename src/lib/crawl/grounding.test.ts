@@ -145,6 +145,72 @@ describe("crawl ownership", () => {
   });
 });
 
+describe("only a crawl worth reviewing is read", () => {
+  const groundingFor = (status: Crawl["status"]) => {
+    const crawl: Crawl = {
+      ...CRAWL,
+      status,
+      stopReason: status === "running" ? null : status === "partial" ? "page-budget" : "completed",
+      finishedAt: status === "running" ? null : CRAWL.finishedAt,
+    };
+    return readCrawlGrounding(readerFor(crawl), { crawlId: crawl.id, projectId: "nexra-agency" });
+  };
+
+  test("a completed crawl is read", async () => {
+    const result = await groundingFor("completed");
+    assert.equal(result.ok, true);
+    assert.equal(result.ok && result.grounding.summary.crawlId, CRAWL.id);
+  });
+
+  test("a crawl that stopped on its budget is read — partial is a real result", async () => {
+    const result = await groundingFor("partial");
+    assert.equal(result.ok, true);
+    assert.ok(result.ok && result.grounding.text.length > 0);
+  });
+
+  test("a failed crawl is refused", async () => {
+    const result = await groundingFor("failed");
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false && result.reason, "crawl-not-reviewable");
+  });
+
+  test("a cancelled crawl is refused", async () => {
+    const result = await groundingFor("cancelled");
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false && result.reason, "crawl-not-reviewable");
+  });
+
+  test("a running crawl keeps its own, more specific reason", async () => {
+    const result = await groundingFor("running");
+    assert.equal(result.ok === false && result.reason, "crawl-unfinished");
+  });
+
+  test("no refusal carries a line of the site's own text back with it", async () => {
+    // The pages fixture is full of nexraagency.com URLs and a page title. A
+    // refusal that had formatted first would leak them into whatever logs it.
+    for (const status of ["running", "failed", "cancelled"] as const) {
+      const result = await groundingFor(status);
+      assert.equal(result.ok, false);
+      const serialised = JSON.stringify(result);
+      assert.doesNotMatch(serialised, /nexraagency\.com/);
+      assert.doesNotMatch(serialised, /Services/);
+      assert.equal(Object.keys(result).sort().join(","), "ok,reason");
+    }
+  });
+
+  test("ownership is still checked, whatever the status", async () => {
+    for (const status of ["completed", "partial", "failed", "cancelled"] as const) {
+      const crawl: Crawl = { ...CRAWL, status };
+      const result = await readCrawlGrounding(readerFor(crawl), {
+        crawlId: crawl.id,
+        projectId: "halcyon-fintech",
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.ok === false && result.reason, "crawl-not-in-project");
+    }
+  });
+});
+
 describe("the evidence block", () => {
   const { text, summary } = formatCrawlGrounding(CRAWL, PAGES);
 
@@ -322,6 +388,24 @@ describe("the executor receives the evidence", () => {
     assert.match(seen.system ?? "", /no access to analytics, rankings, crawl data/);
     assert.doesNotMatch(seen.prompt ?? "", /Evidence recorded by this product/);
     assert.equal(output.metadata?.grounded, false);
+  });
+
+  test("a failed crawl reaches no provider, through the real grounding reader", async () => {
+    const failed: Crawl = { ...CRAWL, status: "failed", stopReason: "error" };
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, async (running) => {
+      const result = await readCrawlGrounding(readerFor(failed), {
+        crawlId: String(running.input.crawlId),
+        projectId: running.project.id,
+      });
+      return result.ok
+        ? { ok: true, grounding: { text: result.grounding.text, summary: {} } }
+        : { ok: false, reason: result.reason };
+    });
+
+    await assert.rejects(() => executor.execute(task, new AbortController().signal));
+    assert.equal(seen.prompt, undefined, "the provider was called for an unreviewable crawl");
+    assert.equal(seen.system, undefined);
   });
 
   test("a refused grounding stops the attempt instead of asking the model anyway", async () => {
