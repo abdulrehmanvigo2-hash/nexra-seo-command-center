@@ -43,7 +43,12 @@ export type CrawlGrounding = {
     readonly pagesFetched: number;
     readonly pagesNotReached: number;
     readonly pagesIncluded: number;
+    /** Pages left out because only `MAX_DESCRIBED_PAGES` are ever described. */
     readonly truncated: boolean;
+    /** Pages left out because the byte ceiling was reached. A different fact. */
+    readonly truncatedByBytes: boolean;
+    /** Size of the evidence actually produced, in UTF-8 bytes. */
+    readonly bytes: number;
   };
 };
 
@@ -67,6 +72,40 @@ export type CrawlGroundingRefusal =
  * crawl.
  */
 export const MAX_DESCRIBED_PAGES = 50;
+
+/**
+ * The hard ceiling on the whole evidence block, in UTF-8 bytes.
+ *
+ * Characters would be the wrong unit. Every length limit the crawler applies —
+ * a 1,000-character title, a 2,048-character URL — counts UTF-16 code units,
+ * and a single one of those can weigh three or four bytes once encoded. A
+ * page written in a non-Latin script therefore passes every per-field check
+ * and still produces several times the payload a Latin page would. Counting
+ * encoded bytes is the only measure that bounds what actually leaves this
+ * process.
+ *
+ * 120 KB is roughly 30,000 tokens. A realistic fifty-page block runs about
+ * 35 KB, so this leaves real crawls untouched while capping the worst case:
+ * fifty pages of maximum-length URLs, titles and canonicals would otherwise
+ * reach some 700 KB, and an operator may raise the page budget to 500.
+ */
+export const MAX_EVIDENCE_BYTES = 120_000;
+
+/**
+ * Room set aside for the notice that says what was left out.
+ *
+ * Reserved before any page is described, so website-controlled text can never
+ * occupy the space the disclosure needs. The notice is counts and fixed
+ * wording; this is many times its real size.
+ */
+const TRUNCATION_NOTICE_RESERVE = 1_024;
+
+const encoder = new TextEncoder();
+
+/** UTF-8 length, which is what the ceiling counts. */
+export function byteLength(text: string): number {
+  return encoder.encode(text).length;
+}
 
 /** Written wherever a reading was not established. */
 const NOT_ESTABLISHED = "not established";
@@ -143,7 +182,12 @@ function describePage(page: CrawlPage): string {
         ? "a JSON-LD block was present and would not parse"
         : page.schemaBlocks === 0
           ? "no JSON-LD block found"
-          : `${page.schemaBlocks} JSON-LD block(s)${page.schemaTypes.length > 0 ? `, types: ${page.schemaTypes.join(", ")}` : ""}`
+          : `${page.schemaBlocks} JSON-LD block(s)${
+              // Quoted as a JSON array: the values are written by the crawled
+              // site, and a bare list of them could read as prose. The
+              // extractor already flattens each one to a single bounded line.
+              page.schemaTypes.length > 0 ? `, types: ${JSON.stringify(page.schemaTypes)}` : ""
+            }`
     }`,
     `  Internal links out seen in THIS CRAWL: ${page.internalLinksOut}`,
     `  Internal links in seen in THIS CRAWL: ${page.internalLinksIn}`,
@@ -154,52 +198,101 @@ function describePage(page: CrawlPage): string {
 /** Serialises a finished crawl and its pages into the evidence block. */
 export function formatCrawlGrounding(crawl: Crawl, pages: readonly CrawlPage[]): CrawlGrounding {
   const groups = groupPages(pages);
-  const described = groups.fetched.slice(0, MAX_DESCRIBED_PAGES);
-  const truncated = groups.fetched.length > described.length;
+  const capped = groups.fetched.slice(0, MAX_DESCRIBED_PAGES);
+  const truncated = groups.fetched.length > capped.length;
 
-  const sections: string[] = [crawlHeader(crawl)];
+  /**
+   * Fixed costs, taken out of the budget before any page is considered.
+   *
+   * The header says what the crawl was, the limits note says what it cannot
+   * support, and the reserve holds the disclosure. All three are this
+   * product's own words. Subtracting them first is what stops a page's own
+   * text from crowding out the sentence that says pages were dropped.
+   */
+  const header = crawlHeader(crawl);
+  const fixed = byteLength(header) + byteLength(LIMITS_NOTE) + TRUNCATION_NOTICE_RESERVE;
+  let remaining = MAX_EVIDENCE_BYTES - fixed;
 
-  sections.push(
+  /** Two newlines join every section; charge for them as sections are added. */
+  const SEPARATOR_BYTES = 2;
+
+  /** Adds `text` if its bytes fit, and reports whether it did. */
+  const fits = (text: string): boolean => {
+    const cost = byteLength(text) + SEPARATOR_BYTES;
+    if (cost > remaining) return false;
+    remaining -= cost;
+    return true;
+  };
+
+  const described: CrawlPage[] = [];
+  const pageBlocks: string[] = [];
+  for (const page of capped) {
+    const block = describePage(page);
+    if (!fits(block)) break;
+    described.push(page);
+    pageBlocks.push(block);
+  }
+  // Pages the byte ceiling removed, as distinct from those the page cap did.
+  const droppedForBytes = capped.length - described.length;
+
+  const sections: string[] = [
+    header,
     [
-      `PAGES FETCHED AND READ (${groups.fetched.length}${truncated ? `, ${described.length} described below` : ""})`,
-      described.map(describePage).join("\n"),
+      `PAGES FETCHED AND READ (${groups.fetched.length}${
+        described.length < groups.fetched.length ? `, ${described.length} described below` : ""
+      })`,
+      pageBlocks.join("\n"),
     ].join("\n"),
-  );
+  ];
 
-  if (truncated) {
-    sections.push(
-      `Only the first ${described.length} fetched pages are described. The rest were fetched but are not listed here, so do not describe this listing as the whole crawl.`,
-    );
-  }
-
+  /**
+   * The other two lists compete for whatever is left, in the order they are
+   * worth reading. Each is all-or-nothing: half a list of URLs with no count
+   * beside it would be the silent drop this whole function exists to avoid.
+   */
+  let notFetchedOmitted = groups.notFetched.length;
   if (groups.notFetched.length > 0) {
-    sections.push(
-      [
-        `URLS THAT RETURNED SOMETHING OTHER THAN A READ PAGE (${groups.notFetched.length})`,
-        groups.notFetched
-          .map(
-            (page) =>
-              `- ${page.url} — outcome: ${page.fetchState}${page.httpStatus === null ? "" : `, HTTP ${page.httpStatus}`}`,
-          )
-          .join("\n"),
-      ].join("\n"),
-    );
+    const block = [
+      `URLS THAT RETURNED SOMETHING OTHER THAN A READ PAGE (${groups.notFetched.length})`,
+      groups.notFetched
+        .map(
+          (page) =>
+            `- ${page.url} — outcome: ${page.fetchState}${page.httpStatus === null ? "" : `, HTTP ${page.httpStatus}`}`,
+        )
+        .join("\n"),
+    ].join("\n");
+    if (fits(block)) {
+      sections.push(block);
+      notFetchedOmitted = 0;
+    }
   }
 
+  let notReachedOmitted = groups.notReached.length;
   if (groups.notReached.length > 0) {
-    sections.push(
-      [
-        `URLS DISCOVERED BUT NOT REACHED — NOT AUDITED (${groups.notReached.length})`,
-        "These were found and never fetched, because the crawl ran out of budget. Nothing is known about their contents. Do not describe them as healthy, as having no issues, or as audited.",
-        groups.notReached.map((page) => `- ${page.url}`).join("\n"),
-      ].join("\n"),
-    );
+    const block = [
+      `URLS DISCOVERED BUT NOT REACHED — NOT AUDITED (${groups.notReached.length})`,
+      "These were found and never fetched, because the crawl ran out of budget. Nothing is known about their contents. Do not describe them as healthy, as having no issues, or as audited.",
+      groups.notReached.map((page) => `- ${page.url}`).join("\n"),
+    ].join("\n");
+    if (fits(block)) {
+      sections.push(block);
+      notReachedOmitted = 0;
+    }
   }
+
+  const notice = omissionNotice({
+    pageCapOmitted: groups.fetched.length - capped.length,
+    byteOmitted: droppedForBytes,
+    notFetchedOmitted,
+    notReachedOmitted,
+  });
+  if (notice !== null) sections.push(notice);
 
   sections.push(LIMITS_NOTE);
 
+  const text = sections.join("\n\n");
   return {
-    text: sections.join("\n\n"),
+    text,
     summary: {
       crawlId: crawl.id,
       hostScope: crawl.hostScope,
@@ -207,8 +300,55 @@ export function formatCrawlGrounding(crawl: Crawl, pages: readonly CrawlPage[]):
       pagesNotReached: groups.notReached.length,
       pagesIncluded: described.length,
       truncated,
+      truncatedByBytes: droppedForBytes > 0 || notFetchedOmitted > 0 || notReachedOmitted > 0,
+      bytes: byteLength(text),
     },
   };
+}
+
+/**
+ * What was left out, and why — or null when nothing was.
+ *
+ * Kept as one paragraph so the model reads the omissions together rather than
+ * meeting them one section at a time. The two causes are named separately: a
+ * page cap is a decision this product made about every crawl, and a byte
+ * ceiling is one it made about this one.
+ */
+function omissionNotice(omitted: {
+  readonly pageCapOmitted: number;
+  readonly byteOmitted: number;
+  readonly notFetchedOmitted: number;
+  readonly notReachedOmitted: number;
+}): string | null {
+  const lines: string[] = [];
+
+  if (omitted.pageCapOmitted > 0) {
+    lines.push(
+      `- ${omitted.pageCapOmitted} fetched page(s) are not described: only the first ${MAX_DESCRIBED_PAGES} ever are.`,
+    );
+  }
+  if (omitted.byteOmitted > 0) {
+    lines.push(
+      `- ${omitted.byteOmitted} further fetched page(s) are not described: the evidence reached its size limit.`,
+    );
+  }
+  if (omitted.notFetchedOmitted > 0) {
+    lines.push(
+      `- The list of ${omitted.notFetchedOmitted} URL(s) that returned something other than a read page was omitted for size. They exist and were not examined here.`,
+    );
+  }
+  if (omitted.notReachedOmitted > 0) {
+    lines.push(
+      `- The list of ${omitted.notReachedOmitted} URL(s) discovered but never fetched was omitted for size. They exist, were never fetched, and were not audited.`,
+    );
+  }
+  if (lines.length === 0) return null;
+
+  return [
+    "OMITTED FROM THIS EVIDENCE",
+    ...lines,
+    "This listing is therefore incomplete. Do not describe it as the whole crawl, and do not treat anything omitted as absent, healthy, or free of issues.",
+  ].join("\n");
 }
 
 /**

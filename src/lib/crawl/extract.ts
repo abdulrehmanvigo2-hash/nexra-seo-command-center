@@ -31,6 +31,18 @@ export const MAX_LINKS_PER_PAGE = 300;
 /** How many JSON-LD `@type` values are kept for one document. */
 export const MAX_SCHEMA_TYPES = 50;
 
+/**
+ * How long one JSON-LD `@type` value may be.
+ *
+ * A real type is a schema.org name — `Organization`, `BreadcrumbList` — and
+ * 128 characters is generous for one. The bound exists because this value is
+ * website-controlled text that ends up in an agent's prompt: without it, a
+ * page could put an unbounded amount of its own writing there, fifty times
+ * over. `MAX_TITLE` and `MAX_META_DESCRIPTION` are larger because those fields
+ * are genuinely prose; a type name is an identifier.
+ */
+export const MAX_SCHEMA_TYPE_LENGTH = 128;
+
 const MAX_TITLE = 1_000;
 const MAX_META_DESCRIPTION = 2_000;
 const MAX_ROBOTS_META = 200;
@@ -100,6 +112,23 @@ function clamp(value: string, limit: number): string {
 }
 
 /**
+ * Stores one `@type`, flattened and bounded.
+ *
+ * The collapse is the security-relevant half. Everything else extracted from a
+ * document — the title, the meta description, the robots directive — is run
+ * through the same `\s+ → " "` before it is stored, so no website-controlled
+ * string can carry a line break out of the page. `@type` was the one that was
+ * not, and a value is later joined into the evidence an agent reads: a newline
+ * there could forge a heading or an instruction line in what is supposed to be
+ * a list of observations. Collapsing first and clamping second means a long
+ * value cannot smuggle a break past the length limit either.
+ */
+function addSchemaType(value: string, into: Set<string>): void {
+  const flattened = clamp(value.replace(/\s+/g, " ").trim(), MAX_SCHEMA_TYPE_LENGTH).trim();
+  if (flattened !== "") into.add(flattened);
+}
+
+/**
  * Collects the `@type` values out of one JSON-LD payload.
  *
  * A payload may be an object, an array of them, or a `@graph` holding a list,
@@ -117,13 +146,13 @@ function collectSchemaTypes(value: unknown, into: Set<string>, depth = 0): void 
   const record = value as Record<string, unknown>;
   const type = record["@type"];
   if (typeof type === "string") {
-    if (type.trim() !== "") into.add(type.trim());
+    addSchemaType(type, into);
   } else if (Array.isArray(type)) {
     for (const entry of type) {
       // Checked per entry, not once per payload: an `@type` array can carry
       // more values than the column holds on its own.
       if (into.size >= MAX_SCHEMA_TYPES) break;
-      if (typeof entry === "string" && entry.trim() !== "") into.add(entry.trim());
+      if (typeof entry === "string") addSchemaType(entry, into);
     }
   }
   const graph = record["@graph"];
