@@ -6,6 +6,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // Test files import their subject with an explicit .ts extension, which is
+    // what Node's test runner needs to resolve them. Permitted because nothing
+    // here is emitted.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

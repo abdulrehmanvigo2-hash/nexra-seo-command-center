@@ -35,6 +35,15 @@ const FIELDS = [
   "reason",
   "status",
   "route",
+  // Crawl foundation. A crawl's own text — page titles, URLs beyond the host,
+  // response bodies — has no field here and so cannot reach a log line.
+  "crawlId",
+  "host",
+  "depth",
+  "fetched",
+  "discovered",
+  "stopReason",
+  "fetchState",
 ] as const;
 
 export type LogField = (typeof FIELDS)[number];

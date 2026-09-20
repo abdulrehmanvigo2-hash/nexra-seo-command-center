@@ -22,12 +22,15 @@ Vercel Cron ── /api/worker/* ── agent runtime worker ── executor (mo
 | Sign-in | `src/lib/auth`, `src/proxy.ts` | Supabase Auth |
 | Search Console | `src/lib/search-console`, `/api/search-console/report` | Google API (read-only) |
 | Agent runtime | `src/lib/agent-runs`, `/api/agent-runs/*`, `/api/worker/*` | `public.agent_runs`, `public.agent_run_attempts` |
+| Crawl foundation | `src/lib/crawl`, `/api/crawls/*` | `public.crawls`, `public.crawl_pages`, `public.crawl_links` |
 | Shared rate limits | `src/lib/security/shared-rate-limit.ts` | `public.rate_limit_windows` |
 | Logs | `src/lib/observability/log.ts` | stdout (JSON lines) |
 
 Everything else on screen — rankings, content, technical, competitor, backlink,
 AI-visibility, and reporting figures — is still modelled fixture data, labelled
-as such. Nothing measures it yet.
+as such. Nothing measures it yet. **The crawl foundation does not change that:**
+it stores what it observes and nothing reads it, so every Technical SEO screen
+is still fixture data and still says so.
 
 ## Supabase
 
@@ -222,6 +225,70 @@ simulated or model-generated, fixed error message, next retry time, and
 expandable attempts. 25 runs per page with "Load older runs"
 (`GET /api/agent-runs?…&offset=n`, offset ≤ 1,000).
 
+## Crawl foundation
+
+An operator asks for a crawl of a stored project; the engine walks that
+project's own host inside fixed budgets and records what each URL returned.
+Read-only with respect to the client's site: `GET` requests only, no forms
+submitted, no state changed anywhere but our own tables.
+
+**Nothing reads this data yet.** The Technical SEO screens are unchanged and
+still render fixtures. Connecting the two is a separate feature.
+
+### What it observes, derives, and refuses to guess
+
+| Observed | Derived | Never stored |
+|---|---|---|
+| final URL, HTTP status, redirect chain, robots meta, canonical href, title, meta description, H1, JSON-LD types, sitemap membership | crawl depth, internal link counts (within the crawl), canonical-is-self, length fields, robots.txt verdict | Google indexation, Core Web Vitals |
+
+There is no column for indexation or vitals in any of the three tables. A
+crawler cannot observe either — a 200 means the page answered us, not that
+anyone indexed it — and Search Console remains the authority for what it
+measures. A `null` anywhere in these tables means *unknown*, never false or
+zero: `in_sitemap` stays null when no sitemap could be read, and a URL that a
+budget left unvisited is recorded as `budget-skipped` rather than omitted, so
+"we did not look" is never mistaken for "there is nothing there".
+
+Internal link counts are within one crawl only. A bounded crawl cannot
+establish that a page has no inbound links anywhere, so **orphan status is not
+derived and must not be** from this data.
+
+### Lifecycle
+
+```
+operator POST /api/crawls → running → completed        (frontier drained)
+                                    → partial          (page or time budget)
+                                    → failed           (start URL unusable)
+```
+
+`partial` is a real result, not a failure. Execution happens inside the
+operator's request; nothing runs detached and there is no schedule.
+
+### Safety boundaries
+
+- **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`
+  must name the project's host, matched exactly. A parent domain does not
+  authorise its subdomains.
+- **The target is never request input.** The body carries a project id; the
+  host comes from that project's stored `domain`.
+- **Address guard on every hop.** Redirects are followed manually so that each
+  one is re-resolved and re-checked; loopback, RFC1918, CGNAT, link-local
+  (including the `169.254.169.254` metadata endpoint), IPv6 ULA/link-local, and
+  their IPv4-mapped spellings are all refused. Only `http`/`https`, only ports
+  80/443, no credentials in URLs.
+- **Same-site.** Fetching is confined to the project's host and its
+  subdomains, on a label boundary (`evil-example.com` does not match
+  `example.com`). External links are recorded, never fetched.
+- **Bounded.** 10 s per request, 60 s per crawl, 50 pages, depth 3, 3 requests
+  in flight, 2 MB per response (streamed and abandoned past the cap), 10
+  redirect hops, 300 links per page. `Crawl-delay` is honoured up to 5 s.
+- **robots.txt is obeyed, and an unreadable one is not permission.** A file
+  that could not be fetched leaves `robots_state = 'unavailable'` and every
+  page's `robots_txt_allowed` null.
+- **Operators only**, same-origin for the write, 10 crawls per operator per 10
+  minutes shared through Postgres, one at a time per operator.
+- **No new secret.** The crawl variables are policy, not credentials.
+
 ## Security model
 
 - Secrets are server-only environment variables; none has a `NEXT_PUBLIC_` name,
@@ -281,6 +348,25 @@ All server-only. `.env.example` has placeholders.
 Nothing has been deployed.
 
 ## Known limitations
+
+- **The crawler is not cleared for real external crawling.** A DNS-rebinding
+  gap is open: `src/lib/crawl/network-guard.ts` resolves a hostname and
+  approves its addresses, then hands the URL to `fetch`, which resolves it
+  again. A hostile resolver can answer the check with a public address and the
+  connection with a private one. Closing it needs the socket pinned to the
+  approved address, which needs a custom dispatcher and a direct `undici`
+  dependency. Until then the host allow-list is the mitigation, and this
+  crawler must only ever be pointed at hosts the operator controls. It has
+  never been run against a real website.
+- A crawl runs inside the operator's request, so a crashed or timed-out request
+  leaves its row `running` with no `finished_at`. There is no recovery sweep
+  (that needs the scheduler this milestone deliberately omits); a reader should
+  treat a `running` crawl older than its `max_duration_ms` as abandoned.
+- A sitemap is read only when the origin serves it as XML, plain text, or HTML.
+  One served as something else is recorded as `unavailable`, which leaves
+  sitemap membership unknown rather than false.
+- Nothing reads crawl data yet: the Technical SEO screens are entirely fixture
+  data.
 
 - Execution runs inside a request or a cron invocation, not a long-lived
   worker: one invocation handles at most 5 runs, so sustained backlogs drain at
