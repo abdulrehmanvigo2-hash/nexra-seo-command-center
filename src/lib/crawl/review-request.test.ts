@@ -6,14 +6,18 @@ import type { Crawl } from "../../types/crawl.ts";
 import type { SearchConsoleReport } from "../../types/search-console.ts";
 import {
   CRAWL_REVIEWS,
+  PRIORITY_REVIEW,
   REVIEW_AGENT_ID,
   REVIEW_TASK_TYPE,
   SEARCH_QUERY_REVIEW,
   searchQueryReviewRequest,
   RUN_STATUS,
+  evidenceDescription,
   executability,
   executeOutcome,
+  handoffRequest,
   hasResult,
+  offersHandoff,
   outputProvenance,
   queueRefusal,
   queuedNote,
@@ -462,5 +466,181 @@ describe("no secret reaches the browser", () => {
     // The deployment-wide worker endpoint is deliberately not used here: it
     // claims the oldest queued run anywhere, not the one on screen.
     assert.doesNotMatch(source, /run-next|agent-runs\/worker/);
+  });
+});
+
+describe("the SEO Director hand-off request", () => {
+  /** A completed, grounded, model-executed crawl review: the one thing the Director may read. */
+  const COMPLETED: AgentRun = {
+    ...RUN,
+    status: "completed",
+    executor: "ai",
+    attemptCount: 1,
+    resultSummary: "OBSERVED: /services declares no meta description.",
+    resultMetadata: {
+      simulated: false,
+      grounded: true,
+      evidence: { crawlId: CRAWL.id, hostScope: "nexraagency.com", pagesFetched: 5, pagesIncluded: 5, pagesNotReached: 2 },
+      taskType: "crawl-review",
+      attempt: 1,
+      provider: "anthropic",
+      model: "claude-opus-5",
+    },
+    startedAt: "2026-09-20T11:04:00.000Z",
+    finishedAt: "2026-09-20T11:05:00.000Z",
+  };
+
+  test("names the SEO Director, the priority task, and the source run — nothing else", () => {
+    const result = handoffRequest("nexra-agency", COMPLETED);
+    assert.deepEqual(result, {
+      ok: true,
+      payload: {
+        projectId: "nexra-agency",
+        agentId: "seo-director",
+        taskType: "priority-review",
+        input: { sourceRunId: COMPLETED.id },
+      },
+    });
+  });
+
+  test("the spec matches what the server allows, and promises no assignment and no change", () => {
+    assert.equal(PRIORITY_REVIEW.agentId, "seo-director");
+    assert.equal(PRIORITY_REVIEW.taskType, "priority-review");
+    assert.equal(PRIORITY_REVIEW.action, "Hand off to SEO Director");
+    assert.match(PRIORITY_REVIEW.summary, /^Queues a read-only priority review/);
+    assert.match(PRIORITY_REVIEW.summary, /not the crawl or report behind it/);
+    assert.match(PRIORITY_REVIEW.summary, /assigns nothing and changes nothing/);
+  });
+
+  test("is accepted for every hand-off task type, on the same project", () => {
+    for (const taskType of ["crawl-review", "on-page-review", "search-query-review"] as const) {
+      assert.equal(handoffRequest("nexra-agency", { ...COMPLETED, taskType }).ok, true, taskType);
+    }
+  });
+
+  test("is refused, with the runtime's own reason in the operator's words, for everything the server would refuse", () => {
+    const refusals: [string | null, AgentRun | null, RegExp][] = [
+      [null, COMPLETED, /No project is selected/],
+      ["nexra-agency", null, /Complete a review first/],
+      ["other-client", COMPLETED, /belongs to a different project/],
+      ["nexra-agency", { ...COMPLETED, taskType: "project-review" }, /crawl reviews, on-page reviews and search query reviews only/],
+      ["nexra-agency", { ...COMPLETED, taskType: "priority-review" }, /crawl reviews, on-page reviews and search query reviews only/],
+      ["nexra-agency", { ...COMPLETED, status: "queued", resultSummary: null }, /has not finished/],
+      ["nexra-agency", { ...COMPLETED, status: "running", resultSummary: null }, /has not finished/],
+      ["nexra-agency", { ...COMPLETED, status: "failed", resultSummary: null }, /did not complete/],
+      ["nexra-agency", { ...COMPLETED, status: "cancelled", resultSummary: null }, /did not complete/],
+      ["nexra-agency", { ...COMPLETED, resultSummary: null }, /stored no result/],
+      ["nexra-agency", { ...COMPLETED, executor: "mock", resultMetadata: { simulated: true, grounded: false } }, /Simulated output cannot be handed off/],
+      ["nexra-agency", { ...COMPLETED, resultMetadata: { simulated: false, grounded: false } }, /not grounded in recorded evidence/],
+      ["nexra-agency", { ...COMPLETED, resultMetadata: null }, /not grounded in recorded evidence/],
+    ];
+    for (const [projectId, source, why] of refusals) {
+      const result = handoffRequest(projectId, source);
+      assert.equal(result.ok, false, why.source);
+      assert.match(result.ok ? "" : result.why, why);
+    }
+  });
+
+  test("no refusal is phrased as a fault, and none quotes the review", () => {
+    for (const source of [
+      { ...COMPLETED, executor: "mock" as const },
+      { ...COMPLETED, resultMetadata: { simulated: false, grounded: false } },
+      { ...COMPLETED, taskType: "keyword-research" as const },
+    ]) {
+      const result = handoffRequest("nexra-agency", source);
+      assert.equal(result.ok, false);
+      const why = result.ok ? "" : result.why;
+      assert.doesNotMatch(why, /error|failed to|try again/i);
+      assert.doesNotMatch(why, /meta description/);
+    }
+  });
+
+  test("the control is offered under a completed specialist review only", () => {
+    assert.equal(offersHandoff(COMPLETED), true);
+    assert.equal(offersHandoff({ ...COMPLETED, taskType: "search-query-review" }), true);
+    // Offered — and then refused with a reason — for a simulated one, so the
+    // operator is told why rather than shown nothing.
+    assert.equal(offersHandoff({ ...COMPLETED, executor: "mock" }), true);
+    assert.equal(offersHandoff({ ...COMPLETED, status: "queued" }), false);
+    assert.equal(offersHandoff({ ...COMPLETED, status: "failed" }), false);
+    assert.equal(offersHandoff({ ...COMPLETED, taskType: "priority-review", agentId: "seo-director" }), false);
+    assert.equal(offersHandoff({ ...COMPLETED, taskType: "project-review" }), false);
+  });
+
+  test("a server refusal names the Director and the task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, PRIORITY_REVIEW), /The SEO Director agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, PRIORITY_REVIEW), /does not know the priority-review task/);
+  });
+});
+
+describe("provenance keeps the three layers apart", () => {
+  const completed = (metadata: AgentRun["resultMetadata"]): AgentRun => ({
+    ...RUN,
+    status: "completed",
+    executor: "ai",
+    resultSummary: "output",
+    resultMetadata: metadata,
+  });
+
+  test("a Director result names the upstream agent and run, what that agent read, and calls both layers advice", () => {
+    const director = completed({
+      simulated: false,
+      grounded: true,
+      evidence: {
+        source: "agent-run",
+        runId: "11111111-0000-4000-8000-000000000001",
+        agentId: "technical-seo",
+        taskType: "crawl-review",
+        upstreamEvidence: { crawlId: CRAWL.id, hostScope: "nexraagency.com", pagesFetched: 5, pagesIncluded: 5, pagesNotReached: 2 },
+      },
+    });
+    const provenance = outputProvenance(director, PRIORITY_REVIEW.groundedIn);
+    assert.match(provenance?.text ?? "", /^Model output by the SEO Director, prioritising the Technical SEO agent's completed review \(run 11111111-0000-4000-8000-000000000001\)/);
+    assert.match(provenance?.text ?? "", /That review was itself model-generated over a crawl this product recorded/);
+    assert.match(provenance?.text ?? "", /which the Director did not see/);
+    assert.match(provenance?.text ?? "", /Two layers of advice, not measurement\.$/);
+    assert.doesNotMatch(provenance?.text ?? "", /simulated/i);
+    // The generic wording the caller passed is not what is shown: the evidence decides.
+    assert.doesNotMatch(provenance?.text ?? "", /one upstream agent's completed review/);
+  });
+
+  test("a Director result over a Search Console review says so", () => {
+    const director = completed({
+      simulated: false,
+      grounded: true,
+      evidence: {
+        source: "agent-run",
+        runId: "11111111-0000-4000-8000-000000000002",
+        agentId: "keyword-intent",
+        taskType: "search-query-review",
+        upstreamEvidence: { source: "search-console", property: "sc-domain:nexraagency.com", startDate: "2026-08-19", endDate: "2026-09-17", queriesIncluded: 25 },
+      },
+    });
+    const provenance = outputProvenance(director);
+    assert.match(provenance?.text ?? "", /prioritising the Keyword & Search Intent agent's completed review/);
+    assert.match(provenance?.text ?? "", /a Google Search Console report this product read for property "sc-domain:nexraagency.com"/);
+  });
+
+  test("a simulated Director result is still labelled simulated, before anything else", () => {
+    const provenance = outputProvenance(completed({ simulated: true, grounded: false, sourceRunId: "x" }), PRIORITY_REVIEW.groundedIn);
+    assert.match(provenance?.text ?? "", /^Simulated/);
+    assert.equal(provenance?.tone, "warning");
+  });
+
+  test("without an explicit description, a grounded run is described by the evidence it recorded", () => {
+    const crawl = completed({ simulated: false, grounded: true, evidence: { crawlId: CRAWL.id, hostScope: "nexraagency.com" } });
+    assert.match(outputProvenance(crawl)?.text ?? "", /grounded in this product's recorded crawl\. Advice, not measurement\./);
+
+    const search = completed({
+      simulated: false,
+      grounded: true,
+      evidence: { source: "search-console", property: "sc-domain:nexraagency.com", startDate: "2026-08-19", endDate: "2026-09-17" },
+    });
+    assert.match(outputProvenance(search)?.text ?? "", /grounded in this project's Search Console report for sc-domain:nexraagency.com, 2026-08-19 to 2026-09-17\./);
+    assert.equal(evidenceDescription({ evidence: { source: "search-console" } }), "this project's Search Console report");
+    assert.equal(evidenceDescription({ evidence: { source: "agent-run" } }), null);
+    assert.equal(evidenceDescription({}), null);
+    // And no run with recorded evidence is ever described as having none.
+    assert.doesNotMatch(outputProvenance(search)?.text ?? "", /without live site data|not grounded/);
   });
 });

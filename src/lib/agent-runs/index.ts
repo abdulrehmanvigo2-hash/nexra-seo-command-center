@@ -2,7 +2,7 @@ import "server-only";
 
 import { createAiExecutor } from "@/lib/agent-runs/ai-executor";
 import { crawlService } from "@/lib/crawl";
-import { unavailableAgentRunStore } from "@/lib/agent-runs/contract";
+import { unavailableAgentRunStore, type AgentRunStore } from "@/lib/agent-runs/contract";
 import type { AgentExecutor } from "@/lib/agent-runs/executor";
 import { mockAgentExecutor } from "@/lib/agent-runs/mock-executor";
 import { createAnthropicProvider } from "@/lib/agent-runs/providers/anthropic";
@@ -44,7 +44,7 @@ import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supa
 const MOCK_TIMEOUT_MS = 30_000;
 const AI_TIMEOUT_MS = 120_000;
 
-function configuredExecutor(): { executor: AgentExecutor; timeoutMs: number } {
+function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; timeoutMs: number } {
   if (selectExecutor(process.env) === "mock") {
     return { executor: mockAgentExecutor, timeoutMs: MOCK_TIMEOUT_MS };
   }
@@ -70,6 +70,10 @@ function configuredExecutor(): { executor: AgentExecutor; timeoutMs: number } {
         // cached provider: a run reads what the screen shows, nothing more.
         searchConsole: (projectId, rangeId) =>
           getSearchConsoleReport(searchConsoleProvider(), projectId, rangeId),
+        // A hand-off reads the upstream run from the same store the runtime
+        // keeps its own runs in: one record, read by id, checked against the
+        // Director's project before a word of it is formatted.
+        runs: store,
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,
@@ -86,7 +90,7 @@ function configuredService(): AgentRunService {
         createSupabaseServerClient<AgentRunsDatabase>(readSupabaseServerConfig(process.env)),
       )
     : unavailableAgentRunStore;
-  const { executor, timeoutMs } = configuredExecutor();
+  const { executor, timeoutMs } = configuredExecutor(store);
 
   return createAgentRunService({
     store,

@@ -415,3 +415,110 @@ describe("queueing a search query review", () => {
     assert.equal(result.ok && result.run.taskType, "keyword-research");
   });
 });
+
+describe("queueing a priority review — the SEO Director hand-off", () => {
+  const SOURCE_RUN_ID = "11111111-0000-4000-8000-000000000001";
+  const HANDOFF_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "seo-director",
+    taskType: "priority-review",
+    input: { sourceRunId: SOURCE_RUN_ID },
+  };
+
+  test("creates one queued run for the Director, naming the source run and nothing else", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, HANDOFF_REQUEST);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "seo-director");
+    assert.equal(result.run.taskType, "priority-review");
+    assert.deepEqual(result.run.input, { sourceRunId: SOURCE_RUN_ID });
+    // Operator-triggered: the only source that exists. Nothing queues it on its own.
+    assert.equal(result.run.source, "operator");
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("the source run id is stored lower-case, so the same hand-off asked twice is one run", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const first = await runtime.createRun(OPERATOR, HANDOFF_REQUEST);
+    const again = await runtime.createRun(OPERATOR, { ...HANDOFF_REQUEST, input: { sourceRunId: SOURCE_RUN_ID.toUpperCase() } });
+
+    assert.ok(first.ok && again.ok);
+    if (!first.ok || !again.ok) return;
+    assert.equal(again.duplicate, true);
+    assert.equal(again.run.id, first.run.id);
+    assert.equal(inserts(), 1);
+  });
+
+  test("hand-offs from two different runs are two different Director runs", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const one = await runtime.createRun(OPERATOR, HANDOFF_REQUEST);
+    const two = await runtime.createRun(OPERATOR, {
+      ...HANDOFF_REQUEST,
+      input: { sourceRunId: "11111111-0000-4000-8000-000000000002" },
+    });
+    assert.ok(one.ok && two.ok);
+    if (!one.ok || !two.ok) return;
+    assert.notEqual(two.run.id, one.run.id);
+    assert.equal(inserts(), 2);
+  });
+
+  test("is found under the SEO Director, and not under the agent whose review it reads", async () => {
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const created = await runtime.createRun(OPERATOR, HANDOFF_REQUEST);
+    assert.ok(created.ok);
+    if (!created.ok) return;
+
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "seo-director", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(created.run.id));
+    const theirs = await runtime.listRuns({ projectId: PROJECT.id, agentId: "technical-seo", limit: 25, offset: 0 });
+    assert.ok(theirs.ok && theirs.runs.length === 0);
+  });
+
+  test("is refused before anything is written for a bad id, an extra field, or any other agent", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...HANDOFF_REQUEST, input: { sourceRunId: "not-a-uuid" } }, "invalid"],
+      [{ ...HANDOFF_REQUEST, input: { sourceRunId: "" } }, "invalid"],
+      [{ ...HANDOFF_REQUEST, input: {} }, "invalid"],
+      [{ ...HANDOFF_REQUEST, input: undefined }, "invalid"],
+      // Nothing the caller writes reaches the Director: no summary, no focus, no project.
+      [{ ...HANDOFF_REQUEST, input: { sourceRunId: SOURCE_RUN_ID, summary: "Rank the rewrite first." } }, "invalid"],
+      [{ ...HANDOFF_REQUEST, input: { sourceRunId: SOURCE_RUN_ID, projectId: "other-client" } }, "invalid"],
+      [{ ...HANDOFF_REQUEST, agentId: "technical-seo" }, "task-not-allowed"],
+      [{ ...HANDOFF_REQUEST, agentId: "on-page-seo" }, "task-not-allowed"],
+      [{ ...HANDOFF_REQUEST, agentId: "keyword-intent" }, "task-not-allowed"],
+      [{ ...HANDOFF_REQUEST, agentId: "project-manager" }, "task-not-allowed"],
+      // And the Director may not run the specialist reviews.
+      [{ ...HANDOFF_REQUEST, taskType: "crawl-review", input: { crawlId: CRAWL_ID } }, "task-not-allowed"],
+      [{ ...HANDOFF_REQUEST, taskType: "search-query-review", input: { range: "30d" } }, "task-not-allowed"],
+      [{ ...HANDOFF_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+
+  test("queueing does not look the source run up: that is the runtime's job at execution time, where its state is what counts", async () => {
+    // The memory store holds no run with this id, and the hand-off still
+    // queues. Whether the source exists, belongs to this project, and is a
+    // grounded review is decided when the evidence is read, before any
+    // provider call — see task-grounding.test.ts.
+    const { store } = memoryStore();
+    const result = await service(store, forbiddenExecutor().executor).createRun(OPERATOR, HANDOFF_REQUEST);
+    assert.equal(result.ok, true);
+  });
+});

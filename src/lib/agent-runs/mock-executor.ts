@@ -65,6 +65,22 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "priority-review": {
+        const sourceRunId = typeof task.input.sourceRunId === "string" ? task.input.sourceRunId : null;
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no upstream run. `grounded: false`, as for
+          // every simulated result: it looked at nothing and ranked nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+          sourceRunId,
+        };
+        return {
+          summary: `Simulated priority review by ${subject}. The mock executor read no upstream review and ranked nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

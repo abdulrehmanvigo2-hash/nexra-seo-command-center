@@ -310,8 +310,8 @@ export function CrawlPanel({
               ))}
             </dl>
 
-            <QueuedReview review={CRAWL_REVIEWS["crawl-review"]} {...technical} />
-            <QueuedReview review={CRAWL_REVIEWS["on-page-review"]} {...onPage} />
+            <QueuedReview review={CRAWL_REVIEWS["crawl-review"]} projectId={projectId} {...technical} />
+            <QueuedReview review={CRAWL_REVIEWS["on-page-review"]} projectId={projectId} {...onPage} />
 
             {pages.status === "loading" && <Skeleton className="h-20 w-full" />}
 

@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  PRIORITY_REVIEW,
   RUN_STATUS,
   executability,
   executeOutcome,
+  handoffRequest,
   hasResult,
+  offersHandoff,
   outputProvenance,
   queueRefusal,
   queuedNote,
@@ -188,6 +191,8 @@ export function QueuedReview({
   executing,
   executeNote,
   onRunNow,
+  projectId = null,
+  nested = false,
 }: {
   review: ReviewSpec;
   state: QueueState;
@@ -199,6 +204,14 @@ export function QueuedReview({
   /** What the last execute attempt adds to the badge, or null. */
   executeNote: { text: string; tone: Tone } | null;
   onRunNow: () => void;
+  /**
+   * The project the review belongs to. With it, a completed review that the
+   * Director may read gets the hand-off control beneath its result; without
+   * it, none is offered.
+   */
+  projectId?: string | null;
+  /** Rendered under another review's result, so it indents rather than rules off. */
+  nested?: boolean;
 }) {
   const queued = state.status === "queued" ? state : null;
   const run = queued?.run ?? null;
@@ -206,7 +219,9 @@ export function QueuedReview({
   const runnable = executability(run);
 
   return (
-    <section className="space-y-2 border-t border-border pt-4">
+    <section
+      className={nested ? "space-y-2 border-l-2 border-border pl-3" : "space-y-2 border-t border-border pt-4"}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h4 className="text-xs font-medium text-fg">{review.agentName} agent</h4>
@@ -300,8 +315,26 @@ export function QueuedReview({
           <p className="text-xs text-fg-subtle">
             Full run history, including attempts, is on the Agents screen.
           </p>
+
+          {projectId !== null && offersHandoff(run) && <DirectorHandoff projectId={projectId} source={run} />}
         </div>
       )}
     </section>
   );
+}
+
+/**
+ * The hand-off from a completed specialist review to the SEO Director.
+ *
+ * The same control as every other review, with the completed run on screen as
+ * its evidence: it queues, it runs now, and it reconciles against the
+ * persisted Director run. It is offered under a review the Director may read
+ * and refuses, with the runtime's own reason, for one it may not — a
+ * simulated or ungrounded result is named as such rather than hidden. The
+ * Director's own result never offers a further hand-off: one upstream run,
+ * one prioritisation, and nothing queues on its own.
+ */
+function DirectorHandoff({ projectId, source }: { projectId: string; source: AgentRun }) {
+  const handoff = useQueuedReview(handoffRequest(projectId, source), source.id, PRIORITY_REVIEW);
+  return <QueuedReview review={PRIORITY_REVIEW} nested {...handoff} />;
 }
