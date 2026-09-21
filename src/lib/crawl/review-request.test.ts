@@ -525,8 +525,8 @@ describe("the SEO Director hand-off request", () => {
       [null, COMPLETED, /No project is selected/],
       ["nexra-agency", null, /Complete a review first/],
       ["other-client", COMPLETED, /belongs to a different project/],
-      ["nexra-agency", { ...COMPLETED, taskType: "project-review" }, /crawl reviews, on-page reviews, search query reviews and performance reviews only/],
-      ["nexra-agency", { ...COMPLETED, taskType: "priority-review" }, /crawl reviews, on-page reviews, search query reviews and performance reviews only/],
+      ["nexra-agency", { ...COMPLETED, taskType: "project-review" }, /crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/],
+      ["nexra-agency", { ...COMPLETED, taskType: "priority-review" }, /crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/],
       ["nexra-agency", { ...COMPLETED, status: "queued", resultSummary: null }, /has not finished/],
       ["nexra-agency", { ...COMPLETED, status: "running", resultSummary: null }, /has not finished/],
       ["nexra-agency", { ...COMPLETED, status: "failed", resultSummary: null }, /did not complete/],
@@ -800,6 +800,136 @@ describe("the performance review request", () => {
     const provenance = outputProvenance(director, PRIORITY_REVIEW.groundedIn);
     assert.match(provenance?.text ?? "", /prioritising the Analytics & Learning agent's completed review/);
     assert.match(provenance?.text ?? "", /a Google Search Console report this product read for property "sc-domain:nexraagency.com"/);
+    assert.match(provenance?.text ?? "", /Two layers of advice, not measurement\.$/);
+  });
+});
+
+describe("the answer-readiness review request", () => {
+  const spec = CRAWL_REVIEWS["answer-readiness-review"];
+
+  test("names the AI Visibility agent and the answer-readiness task, over the same crawl", () => {
+    const result = reviewRequest("nexra-agency", CRAWL, spec);
+    assert.deepEqual(result, {
+      ok: true,
+      payload: {
+        projectId: "nexra-agency",
+        agentId: "ai-visibility",
+        taskType: "answer-readiness-review",
+        input: { crawlId: CRAWL.id },
+      },
+    });
+  });
+
+  test("the three crawl reviews name different agents and tasks, and the same input shape", () => {
+    const kinds = ["crawl-review", "on-page-review", "answer-readiness-review"] as const;
+    assert.equal(new Set(kinds.map((kind) => CRAWL_REVIEWS[kind].agentId)).size, 3);
+    assert.equal(new Set(kinds.map((kind) => CRAWL_REVIEWS[kind].taskType)).size, 3);
+    const inputs = kinds.map((kind) => {
+      const result = reviewRequest("nexra-agency", CRAWL, CRAWL_REVIEWS[kind]);
+      return result.ok ? result.payload.input : null;
+    });
+    assert.deepEqual(inputs, [{ crawlId: CRAWL.id }, { crawlId: CRAWL.id }, { crawlId: CRAWL.id }]);
+  });
+
+  test("the spec matches what the server allows, says what it will not claim, and promises no changes", () => {
+    assert.equal(spec.agentId, "ai-visibility");
+    assert.equal(spec.taskType, "answer-readiness-review");
+    assert.equal(spec.agentName, "AI Visibility / AEO");
+    assert.ok(spec.action.startsWith("Analyze with "));
+    assert.match(spec.summary, /^Queues a read-only answer-readiness review/);
+    assert.match(spec.summary, /not AI crawler access, citations or visibility, which no crawl can observe/);
+    assert.match(spec.summary, /changes nothing/);
+    assert.equal(spec.groundedIn, CRAWL_REVIEWS["crawl-review"].groundedIn);
+  });
+
+  test("it is refused for the same crawls the other two are refused for", () => {
+    for (const crawl of [
+      null,
+      { ...CRAWL, status: "running" as const, finishedAt: null },
+      { ...CRAWL, status: "failed" as const },
+      { ...CRAWL, status: "cancelled" as const },
+    ]) {
+      const result = reviewRequest("nexra-agency", crawl, spec);
+      assert.equal(result.ok, false);
+    }
+    assert.equal(reviewRequest("", CRAWL, spec).ok, false);
+  });
+
+  test("a server refusal names this agent and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, spec), /The AI Visibility \/ AEO agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, spec), /does not know the answer-readiness-review task/);
+  });
+
+  test("a completed grounded answer-readiness review can be handed to the Director, and is refused for the same reasons as any other", () => {
+    const completed: AgentRun = {
+      ...RUN,
+      agentId: "ai-visibility",
+      taskType: "answer-readiness-review",
+      status: "completed",
+      executor: "ai",
+      resultSummary: "OBSERVED: one JSON-LD block.",
+      resultMetadata: {
+        simulated: false,
+        grounded: true,
+        evidence: { crawlId: CRAWL.id, hostScope: "nexraagency.com", pagesFetched: 5, pagesIncluded: 5, pagesNotReached: 2 },
+      },
+      finishedAt: "2026-09-20T11:05:00.000Z",
+    };
+    assert.equal(offersHandoff(completed), true);
+    assert.deepEqual(handoffRequest("nexra-agency", completed), {
+      ok: true,
+      payload: { projectId: "nexra-agency", agentId: "seo-director", taskType: "priority-review", input: { sourceRunId: completed.id } },
+    });
+
+    const refusals: [AgentRun, RegExp][] = [
+      [{ ...completed, projectId: "other-client" }, /belongs to a different project/],
+      [{ ...completed, status: "queued", resultSummary: null }, /has not finished/],
+      [{ ...completed, status: "running", resultSummary: null }, /has not finished/],
+      [{ ...completed, status: "failed", resultSummary: null }, /did not complete/],
+      [{ ...completed, status: "cancelled", resultSummary: null }, /did not complete/],
+      [{ ...completed, executor: "mock", resultMetadata: { simulated: true, grounded: false } }, /Simulated output cannot be handed off/],
+      [{ ...completed, resultMetadata: { simulated: false, grounded: false } }, /not grounded in recorded evidence/],
+    ];
+    for (const [source, why] of refusals) {
+      const result = handoffRequest("nexra-agency", source);
+      assert.equal(result.ok, false, why.source);
+      assert.match(result.ok ? "" : result.why, why);
+    }
+    assert.equal(offersHandoff({ ...completed, status: "queued" }), false);
+  });
+
+  test("provenance keeps the layers apart: crawl is recorded, the review is advice, the Director's queue is advice on advice", () => {
+    const review: AgentRun = {
+      ...RUN,
+      agentId: "ai-visibility",
+      taskType: "answer-readiness-review",
+      status: "completed",
+      executor: "ai",
+      resultSummary: "x",
+      resultMetadata: { simulated: false, grounded: true, evidence: { crawlId: CRAWL.id, hostScope: "nexraagency.com" } },
+    };
+    assert.match(outputProvenance(review, spec.groundedIn)?.text ?? "", /grounded in this crawl's recorded pages\. Advice, not measurement\./);
+    assert.match(outputProvenance(review)?.text ?? "", /grounded in this product's recorded crawl\. Advice, not measurement\./);
+
+    const director: AgentRun = {
+      ...review,
+      agentId: "seo-director",
+      taskType: "priority-review",
+      resultMetadata: {
+        simulated: false,
+        grounded: true,
+        evidence: {
+          source: "agent-run",
+          runId: review.id,
+          agentId: "ai-visibility",
+          taskType: "answer-readiness-review",
+          upstreamEvidence: review.resultMetadata?.evidence ?? null,
+        },
+      },
+    };
+    const provenance = outputProvenance(director, PRIORITY_REVIEW.groundedIn);
+    assert.match(provenance?.text ?? "", /prioritising the AI Visibility agent's completed review/);
+    assert.match(provenance?.text ?? "", /model-generated over a crawl this product recorded/);
     assert.match(provenance?.text ?? "", /Two layers of advice, not measurement\.$/);
   });
 });

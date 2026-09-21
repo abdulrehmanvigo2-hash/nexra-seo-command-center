@@ -211,6 +211,11 @@ export function CrawlPanel({
     shownId,
     CRAWL_REVIEWS["on-page-review"],
   );
+  const answerReadiness = useQueuedReview(
+    reviewRequest(projectId, shown, CRAWL_REVIEWS["answer-readiness-review"]),
+    shownId,
+    CRAWL_REVIEWS["answer-readiness-review"],
+  );
 
   return (
     <Panel>
@@ -312,6 +317,11 @@ export function CrawlPanel({
 
             <QueuedReview review={CRAWL_REVIEWS["crawl-review"]} projectId={projectId} {...technical} />
             <QueuedReview review={CRAWL_REVIEWS["on-page-review"]} projectId={projectId} {...onPage} />
+            <QueuedReview
+              review={CRAWL_REVIEWS["answer-readiness-review"]}
+              projectId={projectId}
+              {...answerReadiness}
+            />
 
             {pages.status === "loading" && <Skeleton className="h-20 w-full" />}
 

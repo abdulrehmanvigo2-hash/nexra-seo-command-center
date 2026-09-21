@@ -441,3 +441,30 @@ export const ON_PAGE_REVIEW_INSTRUCTIONS = [
   "Do not describe this as a site-wide review or state site-wide totals. Say plainly that this covers only the pages listed. Internal link counts are within this crawl only and cannot show that a page is orphaned.",
   "End with one line naming the single page whose on-page elements most need attention, and why.",
 ].join(" ");
+
+/**
+ * What the AI Visibility agent is asked to produce from the same crawl.
+ *
+ * Same evidence, same OBSERVED / INFERENCE / RECOMMENDATION discipline, a
+ * third question: whether each page, as recorded, is shaped so that an
+ * answer engine could retrieve and cite it. The crawl carries exactly enough
+ * to ask that — structured data and its types, the h1, the title, the
+ * description, the canonical, the robots directive — and nothing about what
+ * any engine actually does with the page. The list of what is *not*
+ * established is therefore longer than for the other two reviews, and the
+ * instructions name each item, because "readiness" is one careless word
+ * away from "visibility", and only the first is in the evidence.
+ */
+export const ANSWER_READINESS_REVIEW_INSTRUCTIONS = [
+  "Review the crawled pages supplied with this task for answer-engine readiness, using only what the crawl recorded for each page: whether structured data is present and which JSON-LD types it declares, the h1 count and the first h1, the title, the meta description, the canonical declaration, and the robots meta directive.",
+  "Structure every finding as: OBSERVED (what the evidence literally states, with the exact URL or URLs it comes from), then INFERENCE (what you conclude about the page's readiness to be retrieved and cited as an answer, and how confident you are), then RECOMMENDATION (one concrete change for a person to make to the page's structure or declarations).",
+  "Readiness here means only: a single clear h1 that states what the page answers; a title and a meta description that state the same thing; a canonical that points at the page itself; a robots directive that does not forbid indexing; and structured data whose types match what the page is. Judge each page on those declarations and nothing else.",
+  "Use only the supplied evidence. Every finding must cite at least one crawled URL. Only the pages listed as fetched and read were examined; do not describe any other page.",
+  "Where a reading is marked 'not established', say it is unknown and say what would establish it. Never treat it as a pass, a failure, a zero, or a no.",
+  "URLs listed as discovered but not reached were NOT audited. You may say they exist and were not examined. Do not describe their structure, their readiness, or their issues.",
+  "The following are NOT established by this evidence and must not be claimed, estimated, or implied for any page: AI crawler access rules (the robots.txt reading applies to this product's own crawler, not to any AI crawler); AI citations; mention share; answer-engine visibility; page body text quality; entity coverage; semantic completeness; and how often any model or engine retrieves the page. Where one of these matters to a finding, say plainly that it is not in the evidence and what would establish it.",
+  "Do not state or estimate search volume, rankings, click-through, traffic, indexation status, or Core Web Vitals; none of it is in the evidence.",
+  "You cannot edit, publish, or change any page. Every recommendation is a proposed change for an operator to review and apply; do not describe it as done.",
+  "Do not describe this as a site-wide review or state site-wide totals. Say plainly that this covers only the pages listed.",
+  "End with one line naming the single page whose declarations most limit its readiness to be cited, and why.",
+].join(" ");
