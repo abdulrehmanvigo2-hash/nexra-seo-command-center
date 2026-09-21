@@ -140,7 +140,13 @@ describe("same-project acceptance", () => {
       const result = await read({ ...UPSTREAM, taskType });
       assert.equal(result.ok, true, taskType);
     }
-    const disallowed: readonly AgentTaskType[] = ["project-review", "keyword-research", "priority-review", "intake-review"];
+    const disallowed: readonly AgentTaskType[] = [
+      "project-review",
+      "keyword-research",
+      "priority-review",
+      "intake-review",
+      "competitor-comparison-review",
+    ];
     for (const taskType of disallowed) {
       const result = await read({ ...UPSTREAM, taskType });
       assert.deepEqual(result, { ok: false, reason: "source-task-not-allowed" }, taskType);

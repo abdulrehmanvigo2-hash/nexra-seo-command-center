@@ -243,10 +243,30 @@ function describePage(page: CrawlPage): string {
   ].join("\n");
 }
 
+/**
+ * How much of one crawl a block may hold.
+ *
+ * The defaults are the product's ceilings, and every existing reader uses
+ * them unchanged. A reader that puts two crawls side by side in one prompt
+ * hands in smaller ones, so each side is bounded on its own and the pair
+ * stays within the same order of size as one block — the cap is stated in
+ * the block's own omission notice, whatever it is.
+ */
+export type CrawlGroundingLimits = {
+  readonly maxPages: number;
+  readonly maxBytes: number;
+};
+
+const DEFAULT_LIMITS: CrawlGroundingLimits = { maxPages: MAX_DESCRIBED_PAGES, maxBytes: MAX_EVIDENCE_BYTES };
+
 /** Serialises a finished crawl and its pages into the evidence block. */
-export function formatCrawlGrounding(crawl: Crawl, pages: readonly CrawlPage[]): CrawlGrounding {
+export function formatCrawlGrounding(
+  crawl: Crawl,
+  pages: readonly CrawlPage[],
+  limits: CrawlGroundingLimits = DEFAULT_LIMITS,
+): CrawlGrounding {
   const groups = groupPages(pages);
-  const capped = groups.fetched.slice(0, MAX_DESCRIBED_PAGES);
+  const capped = groups.fetched.slice(0, limits.maxPages);
   const truncated = groups.fetched.length > capped.length;
 
   /**
@@ -259,7 +279,7 @@ export function formatCrawlGrounding(crawl: Crawl, pages: readonly CrawlPage[]):
    */
   const header = crawlHeader(crawl);
   const fixed = byteLength(header) + byteLength(LIMITS_NOTE) + TRUNCATION_NOTICE_RESERVE;
-  let remaining = MAX_EVIDENCE_BYTES - fixed;
+  let remaining = limits.maxBytes - fixed;
 
   /** Two newlines join every section; charge for them as sections are added. */
   const SEPARATOR_BYTES = 2;
@@ -329,6 +349,7 @@ export function formatCrawlGrounding(crawl: Crawl, pages: readonly CrawlPage[]):
   }
 
   const notice = omissionNotice({
+    pageCap: limits.maxPages,
     pageCapOmitted: groups.fetched.length - capped.length,
     byteOmitted: droppedForBytes,
     notFetchedOmitted,
@@ -363,6 +384,8 @@ export function formatCrawlGrounding(crawl: Crawl, pages: readonly CrawlPage[]):
  * ceiling is one it made about this one.
  */
 function omissionNotice(omitted: {
+  /** The page cap this block was formatted under, so the notice states the true one. */
+  readonly pageCap: number;
   readonly pageCapOmitted: number;
   readonly byteOmitted: number;
   readonly notFetchedOmitted: number;
@@ -372,7 +395,7 @@ function omissionNotice(omitted: {
 
   if (omitted.pageCapOmitted > 0) {
     lines.push(
-      `- ${omitted.pageCapOmitted} fetched page(s) are not described: only the first ${MAX_DESCRIBED_PAGES} ever are.`,
+      `- ${omitted.pageCapOmitted} fetched page(s) are not described: only the first ${omitted.pageCap} ever are.`,
     );
   }
   if (omitted.byteOmitted > 0) {

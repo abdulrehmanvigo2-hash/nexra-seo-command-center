@@ -5,8 +5,10 @@ import type { AgentRun, AgentRunStatus } from "../../types/agent-run.ts";
 import type { Crawl } from "../../types/crawl.ts";
 import type { SearchConsoleReport } from "../../types/search-console.ts";
 import {
+  COMPETITOR_COMPARISON_REVIEW,
   CRAWL_REVIEWS,
   INTAKE_REVIEW,
+  competitorComparisonRequest,
   PERFORMANCE_REVIEW,
   PRIORITY_REVIEW,
   REVIEW_AGENT_ID,
@@ -1233,6 +1235,210 @@ describe("the intake review request", () => {
     assert.equal(latestReviewRun([completedIntake()], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
     assert.equal(latestReviewRun([completedIntake()], PERFORMANCE_REVIEW, { range: "30d" }), null);
     assert.equal(latestReviewRun([completedIntake()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
+    assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
+  });
+});
+
+describe("the competitor comparison request", () => {
+  const RIVAL_CRAWL: Crawl = {
+    ...CRAWL,
+    id: "8f1c0d2e-0000-4000-8000-000000000009",
+    startUrl: "https://rival.example/",
+    hostScope: "rival.example",
+  };
+  const RECORDED = ["rival.example", "https://Other.Example/"];
+  const base = {
+    projectId: "nexra-agency",
+    projectDomain: "nexraagency.com",
+    competitorDomain: "rival.example",
+    recorded: RECORDED,
+    projectCrawl: CRAWL as Crawl | null | undefined,
+    competitorCrawl: RIVAL_CRAWL as Crawl | null | undefined,
+  };
+
+  const completedComparison = (overrides: Partial<AgentRun> = {}): AgentRun => ({
+    ...RUN,
+    id: "11111111-0000-4000-8000-000000000040",
+    agentId: "market-intelligence",
+    taskType: "competitor-comparison-review",
+    input: { competitorDomain: "rival.example" },
+    status: "completed",
+    executor: "ai",
+    attemptCount: 1,
+    resultSummary: "PROJECT SITE OBSERVATIONS\nhttps://nexraagency.com/services declares one h1.",
+    resultMetadata: {
+      simulated: false,
+      grounded: true,
+      evidence: {
+        source: "competitor-comparison",
+        projectId: "nexra-agency",
+        projectHost: "nexraagency.com",
+        projectCrawlId: CRAWL.id,
+        competitorHost: "rival.example",
+        competitorCrawlId: RIVAL_CRAWL.id,
+      },
+    },
+    createdAt: "2026-09-21T10:05:00.000Z",
+    updatedAt: "2026-09-21T10:06:00.000Z",
+    startedAt: "2026-09-21T10:05:00.000Z",
+    finishedAt: "2026-09-21T10:06:00.000Z",
+    ...overrides,
+  });
+
+  test("names the Market & Competitor Intelligence agent and the comparison task, with the canonical host and nothing else", () => {
+    assert.deepEqual(competitorComparisonRequest(base), {
+      ok: true,
+      payload: {
+        projectId: "nexra-agency",
+        agentId: "market-intelligence",
+        taskType: "competitor-comparison-review",
+        input: { competitorDomain: "rival.example" },
+      },
+    });
+    // A recorded entry with a scheme still resolves to its host; the request never carries the scheme.
+    const other = competitorComparisonRequest({ ...base, competitorDomain: "other.example", competitorCrawl: { ...RIVAL_CRAWL, hostScope: "other.example" } });
+    assert.ok(other.ok);
+    assert.deepEqual(other.ok ? other.payload.input : null, { competitorDomain: "other.example" });
+  });
+
+  test("is refused, with the crawler's own wording, for no project, an unrecorded domain, the project's own site, a URL, or an address", () => {
+    assert.deepEqual(competitorComparisonRequest({ ...base, projectId: null }), { ok: false, why: "No project is selected." });
+    const cases: [string, RegExp][] = [
+      ["unrecorded.example", /not one of the competitor domains recorded for this project/i],
+      ["nexraagency.com", /project's own site/i],
+      ["www.nexraagency.com", /project's own site/i],
+      ["https://rival.example/", /not a plain hostname/],
+      ["10.0.0.5", /not a plain hostname/],
+    ];
+    for (const [competitorDomain, why] of cases) {
+      const result = competitorComparisonRequest({ ...base, competitorDomain });
+      assert.equal(result.ok, false, competitorDomain);
+      assert.match(result.ok ? "" : result.why, why, competitorDomain);
+    }
+  });
+
+  test("is refused while either side's crawl is unknown, missing, running, failed or cancelled — each with a reason that names the side", () => {
+    const sides: [keyof typeof base, string][] = [
+      ["competitorCrawl", "competitor"],
+      ["projectCrawl", "project"],
+    ];
+    for (const [side, name] of sides) {
+      const crawl = side === "competitorCrawl" ? RIVAL_CRAWL : CRAWL;
+      const unknown = competitorComparisonRequest({ ...base, [side]: undefined });
+      assert.equal(unknown.ok, false);
+      assert.match(unknown.ok ? "" : unknown.why, /has not loaded yet/);
+      assert.match(unknown.ok ? "" : unknown.why, new RegExp(name, "i"));
+
+      const missing = competitorComparisonRequest({ ...base, [side]: null });
+      assert.equal(missing.ok, false);
+      assert.match(missing.ok ? "" : missing.why, /Crawl this (competitor's|project's own) site first/);
+      assert.match(missing.ok ? "" : missing.why, new RegExp(name, "i"));
+
+      const running = competitorComparisonRequest({ ...base, [side]: { ...crawl, status: "running", finishedAt: null } });
+      assert.equal(running.ok, false);
+      assert.match(running.ok ? "" : running.why, /still running/);
+
+      const failed = competitorComparisonRequest({ ...base, [side]: { ...crawl, status: "failed" } });
+      assert.equal(failed.ok, false);
+      assert.match(failed.ok ? "" : failed.why, /failed/);
+
+      const cancelled = competitorComparisonRequest({ ...base, [side]: { ...crawl, status: "cancelled" } });
+      assert.equal(cancelled.ok, false);
+      assert.match(cancelled.ok ? "" : cancelled.why, /cancelled/);
+    }
+    // Partial is a real result on either side.
+    assert.equal(competitorComparisonRequest({ ...base, competitorCrawl: { ...RIVAL_CRAWL, status: "partial" }, projectCrawl: { ...CRAWL, status: "completed" } }).ok, true);
+    assert.equal(competitorComparisonRequest({ ...base, competitorCrawl: { ...RIVAL_CRAWL, status: "completed" }, projectCrawl: { ...CRAWL, status: "partial" } }).ok, true);
+  });
+
+  test("the spec matches what the server allows, calls the competitor side declarations only, and promises no changes", () => {
+    assert.equal(COMPETITOR_COMPARISON_REVIEW.agentId, "market-intelligence");
+    assert.equal(COMPETITOR_COMPARISON_REVIEW.taskType, "competitor-comparison-review");
+    assert.equal(COMPETITOR_COMPARISON_REVIEW.agentName, "Market & Competitor Intelligence");
+    assert.equal(COMPETITOR_COMPARISON_REVIEW.action, "Analyze competitor with Market Intelligence Agent");
+    assert.match(COMPETITOR_COMPARISON_REVIEW.summary, /^Queues a read-only comparison/);
+    assert.match(COMPETITOR_COMPARISON_REVIEW.summary, /page declarations both crawls recorded/);
+    assert.match(COMPETITOR_COMPARISON_REVIEW.summary, /nothing about either site's traffic, rankings, links or performance/);
+    assert.match(COMPETITOR_COMPARISON_REVIEW.summary, /fetches nothing and changes nothing/);
+    assert.match(COMPETITOR_COMPARISON_REVIEW.groundedIn, /page declarations only/);
+    assert.doesNotMatch(COMPETITOR_COMPARISON_REVIEW.summary, /succe|analysed|complete|market share|share of voice/i);
+  });
+
+  test("a server refusal names this agent and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, COMPETITOR_COMPARISON_REVIEW), /The Market & Competitor Intelligence agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, COMPETITOR_COMPARISON_REVIEW), /does not know the competitor-comparison-review task/);
+  });
+
+  test("a grounded comparison result is described by the two crawls it read, names the competitor, and is still advice", () => {
+    const provenance = outputProvenance(completedComparison(), COMPETITOR_COMPARISON_REVIEW.groundedIn);
+    assert.equal(
+      provenance?.text,
+      "Model output, grounded in this project's recorded site crawl and this competitor's recorded crawl (page declarations only). Advice, not measurement.",
+    );
+    assert.equal(provenance?.tone, "neutral");
+    // Run History, which passes no description, reads the competitor's host from the evidence.
+    assert.equal(
+      outputProvenance(completedComparison())?.text,
+      "Model output, grounded in this project's recorded site crawl and the recorded crawl of rival.example (page declarations only). Advice, not measurement.",
+    );
+    assert.equal(
+      evidenceDescription({ evidence: { source: "competitor-comparison", competitorHost: "rival.example" } }),
+      "this project's recorded site crawl and the recorded crawl of rival.example (page declarations only)",
+    );
+    assert.equal(evidenceDescription({ evidence: { source: "competitor-comparison" } }), COMPETITOR_COMPARISON_REVIEW.groundedIn);
+    // Never the single-crawl wording: two crawls were read, and one of them is a rival's.
+    assert.doesNotMatch(outputProvenance(completedComparison())?.text ?? "", /this crawl's recorded pages|this product's recorded crawl\./);
+  });
+
+  test("a simulated comparison result is labelled simulated, before anything else", () => {
+    const mock = completedComparison({ executor: "mock", resultMetadata: { simulated: true, grounded: false } });
+    assert.match(outputProvenance(mock, COMPETITOR_COMPARISON_REVIEW.groundedIn)?.text ?? "", /^Simulated/);
+    assert.equal(outputProvenance(mock)?.tone, "warning");
+  });
+
+  test("a completed comparison never offers the Director hand-off, and the server's reader would refuse it", () => {
+    const completed = completedComparison();
+    assert.equal(offersHandoff(completed), false);
+    const refusal = handoffRequest("nexra-agency", completed);
+    assert.equal(refusal.ok, false);
+    assert.match(refusal.ok ? "" : refusal.why, /takes hand-offs from crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/);
+    for (const status of ["queued", "running", "failed", "cancelled"] as AgentRunStatus[]) {
+      assert.equal(offersHandoff(completedComparison({ status })), false);
+    }
+  });
+
+  test("is restored from run history by project and competitor host: the newest comparison of this competitor, never another's", async () => {
+    const older = completedComparison({ id: "11111111-0000-4000-8000-000000000041", createdAt: "2026-09-21T09:00:00.000Z" });
+    const newest = completedComparison({ id: "11111111-0000-4000-8000-000000000042", createdAt: "2026-09-21T11:00:00.000Z", status: "queued", executor: null, resultSummary: null, resultMetadata: null });
+    const otherCompetitor = completedComparison({ id: "11111111-0000-4000-8000-000000000043", input: { competitorDomain: "other.example" }, createdAt: "2026-09-21T12:00:00.000Z" });
+    const otherAgent = completedComparison({ id: "11111111-0000-4000-8000-000000000044", agentId: "project-manager", taskType: "intake-review", input: {}, createdAt: "2026-09-21T12:00:00.000Z" });
+    const extraField = completedComparison({ id: "11111111-0000-4000-8000-000000000045", input: { competitorDomain: "rival.example", crawlId: CRAWL.id }, createdAt: "2026-09-21T12:00:00.000Z" });
+
+    const input = { competitorDomain: "rival.example" };
+    assert.equal(latestReviewRun([older, otherCompetitor, newest, otherAgent, extraField], COMPETITOR_COMPARISON_REVIEW, input)?.id, newest.id);
+    assert.equal(latestReviewRun([otherCompetitor, otherAgent, extraField], COMPETITOR_COMPARISON_REVIEW, input), null);
+    assert.equal(latestReviewRun([older, otherCompetitor], COMPETITOR_COMPARISON_REVIEW, { competitorDomain: "other.example" })?.id, otherCompetitor.id);
+
+    const calls: string[] = [];
+    const fetchList = async (url: string, init: { cache: "no-store"; signal?: AbortSignal }) => {
+      calls.push(url);
+      assert.equal(init.cache, "no-store");
+      return { ok: true, json: async () => ({ runs: [older, otherCompetitor, newest] }) };
+    };
+    const restored = await restoreReviewRun("nexra-agency", COMPETITOR_COMPARISON_REVIEW, input, fetchList);
+    assert.equal(restored?.id, newest.id);
+    assert.deepEqual(calls, [`/api/agent-runs?project=nexra-agency&agent=market-intelligence&limit=${RESTORE_LIST_LIMIT}`]);
+    const completed = await restoreReviewRun("nexra-agency", COMPETITOR_COMPARISON_REVIEW, input, async () => ({ ok: true, json: async () => ({ runs: [older] }) }));
+    assert.ok(completed && hasResult(completed));
+    assert.equal(offersHandoff(completed!), false);
+  });
+
+  test("the seven existing reviews are untouched by the comparison's presence", () => {
+    assert.equal(reviewRequest("nexra-agency", CRAWL).ok, true);
+    assert.equal(latestReviewRun([completedComparison()], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+    assert.equal(latestReviewRun([completedComparison()], INTAKE_REVIEW, {}), null);
+    assert.equal(latestReviewRun([completedComparison()], PERFORMANCE_REVIEW, { range: "30d" }), null);
+    assert.equal(latestReviewRun([completedComparison()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
     assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
   });
 });

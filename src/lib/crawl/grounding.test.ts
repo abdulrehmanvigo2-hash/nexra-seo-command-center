@@ -309,6 +309,31 @@ describe("the evidence block", () => {
     assert.match(text, /Sitemap: not established — could not be read/);
   });
 
+  test("a caller-supplied limit bounds the block to that many pages and bytes, and the notice states the cap it used", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      ...FETCHED,
+      id: `p${i}`,
+      url: `https://nexraagency.com/p${i}`,
+    }));
+    const limited = formatCrawlGrounding(CRAWL, many, { maxPages: 25, maxBytes: 60_000 });
+    assert.equal(limited.summary.pagesIncluded, 25);
+    assert.equal(limited.summary.truncated, true);
+    assert.match(limited.text, /5 fetched page\(s\) are not described: only the first 25 ever are\./);
+    assert.ok(byteLength(limited.text) <= 60_000);
+
+    const tight = formatCrawlGrounding(CRAWL, many, { maxPages: 25, maxBytes: 6_000 });
+    assert.ok(byteLength(tight.text) <= 6_000);
+    assert.ok(tight.summary.pagesIncluded < 25);
+    assert.equal(tight.summary.truncatedByBytes, true);
+    assert.match(tight.text, /the evidence reached its size limit/);
+
+    // Without a limit, the defaults are exactly what they always were.
+    const unlimited = formatCrawlGrounding(CRAWL, many);
+    assert.equal(unlimited.summary.pagesIncluded, 30);
+    assert.equal(unlimited.summary.truncated, false);
+    assert.equal(unlimited.text, formatCrawlGrounding(CRAWL, many, { maxPages: MAX_DESCRIBED_PAGES, maxBytes: MAX_EVIDENCE_BYTES }).text);
+  });
+
   test("a long crawl is truncated and says so", () => {
     const many = Array.from({ length: MAX_DESCRIBED_PAGES + 10 }, (_, i) => ({
       ...FETCHED,

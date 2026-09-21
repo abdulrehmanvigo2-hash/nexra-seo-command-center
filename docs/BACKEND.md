@@ -88,20 +88,25 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Nine task types exist, all read-only: `project-review` (any agent),
+project. Ten task types exist, all read-only: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
 `search-query-review` (Keyword & Search Intent, from Search Console),
 `performance-review` (Analytics & Learning, from Search Console),
-`priority-review` (SEO Director, from one other agent's completed review) and
-`intake-review` (Project Manager, from the project's own stored record). The
+`priority-review` (SEO Director, from one other agent's completed review),
+`intake-review` (Project Manager, from the project's own stored record) and
+`competitor-comparison-review` (Market & Competitor Intelligence, from the
+project's own recorded crawl and one recorded competitor's crawl). The
 three crawl reviews take one input, a crawl id, and are grounded in the same
 recorded crawl; the two Search Console reviews take one input, a range id, and
 are grounded in the project's own Search Console report; the priority review
 takes one input, a run id, and is grounded in that run's stored output (see
 *Agent hand-off* below); the intake review takes no input at all and is
-grounded in the run's own project record (see *Project intake review* below).
+grounded in the run's own project record (see *Project intake review* below);
+the competitor comparison takes one input, a competitor's bare hostname, and
+is grounded in two crawls the server finds (see *Competitor comparison
+review* below).
 Input is parsed strictly per task type, bounded, and screened for credentials;
 unknown fields are refused. Adding a task type needs no migration: the run
 table checks the id's format, not a list.
@@ -361,7 +366,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself and `intake-review` are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review` and `competitor-comparison-review` are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
@@ -437,6 +442,68 @@ The stored evidence summary carries counts, states and flags only. A
 completed intake review is never a hand-off source: the record is the
 agency's own entries, not a finding about the site for the Director to rank,
 and both the reader and the panel refuse it as `source-task-not-allowed`.
+
+### Competitor comparison review
+
+`competitor-comparison-review` is the first task that reads a competitor
+crawl. The Market & Competitor Intelligence agent is given two crawls this
+product recorded — the newest of the project's own site and the newest of one
+competitor the project's stored record lists — and is asked for a comparison
+in five fixed sections: PROJECT SITE OBSERVATIONS, COMPETITOR SITE
+OBSERVATIONS, DIFFERENCES OBSERVED, INFERENCES (at most three, each opening
+with the word `INFERENCE:`), and RECOMMENDED NEXT OPERATOR ACTION (one change
+to the project's own site for a person to consider, or one thing to check).
+The instructions name what neither crawl can establish and must not be
+claimed for either site — traffic, rankings, keyword positions, backlinks,
+authority, revenue, conversions, share of voice, market share, citation
+share, AI visibility, brand strength, page body quality, content depth — ask
+the agent to state in one line that both sides are partial samples, bound the
+answer to 1,500 characters, and end it on a fixed closing sentence. It
+fetches, publishes, assigns and changes nothing.
+
+The input is one field, `competitorDomain`, parsed at queue time as a bare
+hostname by the crawler's own rule (a URL, path, port, address, bare word or
+over-long name is refused before anything is stored; unknown fields are
+refused). Which crawls are compared is decided on the server at execution
+time by the reader (`src/lib/crawl/comparison-grounding.ts`), in order: the
+run's own project record (`project-not-found`); the domain against that
+record's stored competitor list, by the same rule that authorises a
+competitor crawl (`competitor-invalid`, `competitor-not-recorded`,
+`competitor-is-project-site`, `no-domain`); the project's newest own-site
+crawl, listed by the project's exact host (`project-crawl-missing`,
+`project-crawl-unfinished` for a running crawl, `project-crawl-not-reviewable`
+for a failed or cancelled one); then the competitor's newest crawl, listed by
+the competitor's exact host, with the same three refusals for its side.
+`partial` is a real result on either side. The newest crawl of each side is
+the one the panels show, and if it is not reviewable the task is refused
+rather than falling back to an older one. Each crawl is then read back with
+its pages and checked again — same project, expected host, still reviewable —
+before it is formatted (`crawl-not-readable` otherwise). No caller names a
+crawl id, and no refusal carries a line of either site's text.
+
+Each side is the block the three crawl reviews read, produced by the same
+formatter under a per-side limit of 25 described pages and 60,000 UTF-8
+bytes, with its own omission notice and limits note; the pair is wrapped in
+a header naming which host is the project's and which the competitor's,
+delimited `PROJECT SITE EVIDENCE` / `COMPETITOR SITE EVIDENCE` blocks, and a
+comparison limits note saying that a difference between two small samples is
+not a difference between the sites and that the competitor side is what a
+rival's public pages declared to this crawler, not the competitor's
+performance. The stored evidence summary carries `source:
+"competitor-comparison"`, the project host, crawl id, status, pages fetched
+and pages included for each side, truncation flags and the byte size — never
+page text. The evidence is named to the model as "competitor comparison
+evidence", distinct from the single-crawl wording.
+
+The control is on the unmeasured project workspace, under each recorded
+competitor in the competitor crawl panel: the shared queue-then-Run Now
+control, keyed by the competitor's host, disabled with a reason while either
+side's newest crawl is unknown, missing, running, failed or cancelled, and
+restored after a page load from the Market & Competitor Intelligence agent's
+newest run whose input names that host. Nothing queues it automatically. A
+completed comparison is not a hand-off source: the Director's reader and the
+panel refuse it as `source-task-not-allowed`, and offering it would need one
+`UPSTREAM_TASK_TYPES` entry plus a matching upstream-evidence description.
 
 ### Action policy
 
@@ -517,11 +584,14 @@ now also refuses `crawl-not-project-site` — a crawl the project made of
 another host — for `crawl-review`, `on-page-review` and
 `answer-readiness-review`, comparing the crawl's host scope with the run's own
 project domain after the ownership check and before any page is described.
-No agent task reads a competitor crawl in this milestone, and none is offered
-on one. The competitor crawl panel on the unmeasured project workspace offers
-the recorded domains only, one explicit control per domain, and describes a
-recorded crawl as the pages a rival's site returned, never as a measurement of
-the rival.
+One agent task reads a competitor crawl: the Market & Competitor
+Intelligence agent's `competitor-comparison-review` (see *Competitor
+comparison review* above), which reads it beside the project's own newest
+crawl and never alone. The competitor crawl panel on the unmeasured project
+workspace offers the recorded domains only, one explicit crawl control per
+domain, one explicit comparison control per domain beneath it, and describes
+a recorded crawl as the pages a rival's site returned, never as a measurement
+of the rival.
 
 ### What it observes, derives, and refuses to guess
 
@@ -750,11 +820,17 @@ it. The deployment plan was not verifiable from this repository.
   sitemap membership unknown rather than false.
 - Only the crawl panels and the three crawl-grounded agent tasks read crawl
   data: the Technical SEO screens are entirely fixture data.
-- A competitor crawl is evidence collected, not reviewed: no task reads it
-  yet, and the Market & Competitor Intelligence agent remains fixture-only.
-  On the measured, fixture-backed workspace the competitors tab is still
-  session-only; the persisted editor is on the unmeasured workspace, where
-  every intake-created project renders.
+- A competitor crawl is read by one task, the comparison review, and only
+  beside the project's own newest crawl; the Market & Competitor Intelligence
+  agent's other screens remain fixture-only. The comparison control checks
+  the project's own newest crawl once, when the panel loads: an own-site
+  crawl run afterwards on the same page is not seen until the page is
+  reloaded. A grounding refusal fails the attempt as `execution-failed`
+  with the fixed message every reader's refusal carries; the reason is not
+  stored on the run. On the measured, fixture-backed workspace the
+  competitors tab is still session-only; the persisted editor and the
+  comparison control are on the unmeasured workspace, where every
+  intake-created project renders.
 
 - Execution runs inside a request or a cron invocation, not a long-lived
   worker: one invocation handles at most 5 runs, so sustained backlogs drain at

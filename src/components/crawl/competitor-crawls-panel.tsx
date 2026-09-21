@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -14,6 +15,7 @@ import {
   offeredCompetitorHosts,
 } from "@/lib/crawl/competitor-request";
 import { canStart, type CrawlRunState } from "@/lib/crawl/panel-state";
+import { COMPETITOR_COMPARISON_REVIEW, competitorComparisonRequest } from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { Crawl } from "@/types/crawl";
 
@@ -21,13 +23,18 @@ import type { Crawl } from "@/types/crawl";
  * The competitor sites an operator may crawl for this project, one row per
  * domain the agency recorded at intake.
  *
- * Evidence collection only. Each row reads its newest recorded crawl after
- * hydration through the existing crawl list endpoint, filtered to that host,
- * and offers one explicitly labelled control that fetches that host and
- * nothing else. Nothing here crawls on its own, crawls every domain at once,
- * schedules anything, or offers a review: a recorded competitor crawl is what
- * a rival's public pages returned to this crawler, and the panel says so
- * rather than calling it a finding.
+ * Evidence collection, and one review of it. Each row reads its newest
+ * recorded crawl after hydration through the existing crawl list endpoint,
+ * filtered to that host, and offers one explicitly labelled control that
+ * fetches that host and nothing else. Beneath a reviewable crawl it offers
+ * the Market & Competitor Intelligence agent's comparison of that crawl with
+ * the project's own newest site crawl — the shared queue-then-run control
+ * every other review uses, keyed by this competitor's host, which restores
+ * its newest persisted run after a page load. Nothing here crawls on its
+ * own, crawls every domain at once, schedules anything, or queues a review
+ * on its own: a recorded competitor crawl is what a rival's public pages
+ * returned to this crawler, and the panel says so rather than calling it a
+ * finding.
  *
  * The domain list is the server's — read from the stored project on the
  * server and handed in as a prop — never the fixture competitor dashboard and
@@ -61,12 +68,33 @@ export function CompetitorCrawlsPanel({
 }) {
   const hosts = offeredCompetitorHosts(projectDomain, competitorDomains);
 
+  /**
+   * The project's own newest site crawl — the other side of every
+   * comparison. Read once for the panel, after hydration, through the same
+   * own-site listing the crawl panel reads; `undefined` until it answers, and
+   * again if it cannot, so no comparison is offered on a side nobody has seen.
+   */
+  const [projectCrawl, setProjectCrawl] = useState<Crawl | null | undefined>(undefined);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/crawls?project=${encodeURIComponent(projectId)}&limit=1`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as { crawls?: Crawl[] };
+        setProjectCrawl(body.crawls?.[0] ?? null);
+      })
+      .catch(() => {
+        /* Left unknown: the control says the project's crawl history has not loaded. */
+      });
+    return () => controller.abort();
+  }, [projectId]);
+
   return (
     <Panel>
       <PanelHeader
         eyebrow="Observed data"
         title="Competitor site crawls"
-        description="Fetches one recorded competitor's public pages directly, within the same page, depth and time budgets, robots rules and network guards as the project's own crawl. Each crawl is started by you, for one domain, and records what that site returned — nothing about how the competitor performs."
+        description="Fetches one recorded competitor's public pages directly, within the same page, depth and time budgets, robots rules and network guards as the project's own crawl. Each crawl is started by you, for one domain, and records what that site returned — nothing about how the competitor performs. A recorded crawl can then be compared with the project's own newest site crawl by the Market & Competitor Intelligence agent, as page declarations only."
       />
 
       {hosts.length === 0 ? (
@@ -85,6 +113,7 @@ export function CompetitorCrawlsPanel({
               projectDomain={projectDomain}
               host={host}
               recorded={competitorDomains}
+              projectCrawl={projectCrawl}
             />
           ))}
         </ul>
@@ -95,7 +124,9 @@ export function CompetitorCrawlsPanel({
           Only domains recorded at intake are offered. The server checks the domain against the stored record and its
           allow-list before any request is made.
         </span>
-        <span>No agent reads these crawls yet.</span>
+        <span>
+          The comparison reads what both crawls recorded; it measures neither site, and nothing queues it on its own.
+        </span>
       </PanelFooter>
     </Panel>
   );
@@ -106,11 +137,14 @@ function CompetitorRow({
   projectDomain,
   host,
   recorded,
+  projectCrawl,
 }: {
   projectId: string;
   projectDomain: string;
   host: string;
   recorded: readonly string[];
+  /** The project's newest own-site crawl, null when none, undefined while unknown. */
+  projectCrawl: Crawl | null | undefined;
 }) {
   const [latest, setLatest] = useState<Latest>({ status: "loading" });
   const [run, setRun] = useState<CrawlRunState>({ status: "idle" });
@@ -187,6 +221,26 @@ function CompetitorRow({
   const shown = run.status === "finished" ? run.crawl : latest.status === "loaded" ? latest.crawl : null;
   const described = shown ? describeCompetitorCrawl(shown) : null;
 
+  /**
+   * The comparison belongs to this competitor: its run is keyed by the host,
+   * so a page load restores this competitor's newest comparison and never
+   * another's. While this row's crawl history is still loading, the crawl is
+   * unknown rather than absent, and the control says so.
+   */
+  const comparison = useQueuedReview(
+    competitorComparisonRequest({
+      projectId,
+      projectDomain,
+      competitorDomain: host,
+      recorded,
+      projectCrawl,
+      competitorCrawl: latest.status === "loading" || latest.status === "failed" ? undefined : shown,
+    }),
+    host,
+    COMPETITOR_COMPARISON_REVIEW,
+    projectId,
+  );
+
   return (
     <li className="space-y-2 px-4 py-3 sm:px-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -250,6 +304,10 @@ function CompetitorRow({
         </div>
       ) : (
         <p className="text-xs text-fg-subtle">No crawl of this competitor has been recorded.</p>
+      )}
+
+      {latest.status !== "unavailable" && (
+        <QueuedReview review={COMPETITOR_COMPARISON_REVIEW} projectId={projectId} {...comparison} />
       )}
     </li>
   );

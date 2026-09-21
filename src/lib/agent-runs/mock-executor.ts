@@ -103,6 +103,22 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "competitor-comparison-review": {
+        const competitorDomain = typeof task.input.competitorDomain === "string" ? task.input.competitorDomain : null;
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads neither crawl. `grounded: false`, as for
+          // every simulated result: it looked at nothing and compared nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+          competitorDomain,
+        };
+        return {
+          summary: `Simulated competitor comparison review by ${subject}. The mock executor read no crawl of either site and compared nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

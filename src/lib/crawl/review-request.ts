@@ -23,6 +23,7 @@ import {
   isUpstreamTaskType,
   type RunGroundingRefusal,
 } from "@/lib/agent-runs/run-grounding";
+import { resolveCompetitorTarget, type CompetitorTargetRefusal } from "@/lib/crawl/competitor-target";
 import { AGENT_NAMES } from "@/lib/mock/agents/registry";
 import type { AgentRun, AgentRunStatus, JsonObject } from "@/types/agent-run";
 import type { Crawl } from "@/types/crawl";
@@ -35,7 +36,12 @@ export const REVIEW_TASK_TYPE = "crawl-review";
 
 export type CrawlReviewKind = typeof REVIEW_TASK_TYPE | "on-page-review" | "answer-readiness-review";
 export type SearchConsoleReviewKind = "search-query-review" | "performance-review";
-export type ReviewTaskType = CrawlReviewKind | SearchConsoleReviewKind | "priority-review" | "intake-review";
+export type ReviewTaskType =
+  | CrawlReviewKind
+  | SearchConsoleReviewKind
+  | "priority-review"
+  | "intake-review"
+  | "competitor-comparison-review";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
@@ -47,7 +53,8 @@ export type ReviewSpec = {
     | "keyword-intent"
     | "analytics-learning"
     | "seo-director"
-    | "project-manager";
+    | "project-manager"
+    | "market-intelligence";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
@@ -172,6 +179,29 @@ export const INTAKE_REVIEW: ReviewSpec = {
   groundedIn: "this project's stored record and evidence inventory",
 };
 
+/**
+ * The Market & Competitor Intelligence agent's comparison of the project's
+ * site with one recorded competitor's site.
+ *
+ * The request carries the competitor's hostname and nothing else. Which
+ * crawls are compared is decided on the server at execution time: the newest
+ * recorded crawl of the project's own site and the newest recorded crawl of
+ * that competitor, after the domain is matched against the project's stored
+ * record. The competitor's side is what its public pages declared to this
+ * product's crawler, and the wording never calls it more than that. It is
+ * not a hand-off source in this milestone: the runtime does not accept it as
+ * one, and the control follows the runtime.
+ */
+export const COMPETITOR_COMPARISON_REVIEW: ReviewSpec = {
+  taskType: "competitor-comparison-review",
+  agentId: "market-intelligence",
+  agentName: "Market & Competitor Intelligence",
+  action: "Analyze competitor with Market Intelligence Agent",
+  summary:
+    "Queues a read-only comparison of this project's newest recorded site crawl with this competitor's newest recorded crawl. The agent reads the page declarations both crawls recorded — titles, descriptions, headings, canonicals, structured data — and nothing about either site's traffic, rankings, links or performance. It proposes one next step for you; it fetches nothing and changes nothing.",
+  groundedIn: "this project's recorded site crawl and this competitor's recorded crawl (page declarations only)",
+};
+
 export type ReviewPayload = {
   readonly projectId: string;
   readonly agentId: ReviewSpec["agentId"];
@@ -180,6 +210,8 @@ export type ReviewPayload = {
     | { readonly crawlId: string }
     | { readonly range: RangeId }
     | { readonly sourceRunId: string }
+    /** The comparison names a recorded competitor's hostname; the crawls are found on the server. */
+    | { readonly competitorDomain: string }
     /** The intake review names nothing: the project is the run's own. */
     | Record<string, never>;
 };
@@ -331,6 +363,96 @@ export function intakeReviewRequest(projectId: string | null): Queueability {
   };
 }
 
+/**
+ * Whether the competitor on screen can be compared with the project's site,
+ * and the body that would ask for it.
+ *
+ * Offered only when the domain is one the project's stored record lists and
+ * not the project's own site (the server's rule, applied here so the control
+ * explains itself), and when each side's newest recorded crawl is one the
+ * server's reader would accept: present, finished, and not failed or
+ * cancelled. A side whose newest crawl is not yet known — the list has not
+ * loaded — is not offered either, because a control that cannot say what it
+ * would compare should not be clickable. The server remains the gate: it
+ * re-reads the record and both crawls at execution time.
+ */
+export function competitorComparisonRequest(request: {
+  readonly projectId: string | null;
+  readonly projectDomain: string;
+  readonly competitorDomain: string;
+  /** The competitor domains recorded for the project, as the server stores them. */
+  readonly recorded: readonly string[];
+  /** The project's newest own-site crawl; null when none is recorded; undefined while not loaded. */
+  readonly projectCrawl: Crawl | null | undefined;
+  /** The competitor's newest recorded crawl; null when none is recorded; undefined while not loaded. */
+  readonly competitorCrawl: Crawl | null | undefined;
+}): Queueability {
+  if (!request.projectId) return { ok: false, why: "No project is selected." };
+
+  const target = resolveCompetitorTarget({
+    competitorDomain: request.competitorDomain,
+    projectDomain: request.projectDomain,
+    recordedCompetitorDomains: request.recorded,
+  });
+  if (!target.ok) return { ok: false, why: COMPARISON_TARGET_REFUSAL[target.reason] };
+
+  const competitor = comparableSide(request.competitorCrawl, {
+    unknown: "This competitor's crawl history has not loaded yet.",
+    missing: "Crawl this competitor's site first: there is nothing to compare.",
+    running: "This competitor's newest crawl is still running. It can be compared once it finishes.",
+    failed: "This competitor's newest crawl failed, so it recorded nothing to compare.",
+    cancelled: "This competitor's newest crawl was cancelled, so it recorded nothing to compare.",
+  });
+  if (competitor !== null) return { ok: false, why: competitor };
+
+  const project = comparableSide(request.projectCrawl, {
+    unknown: "This project's crawl history has not loaded yet.",
+    missing: "Crawl this project's own site first: there is nothing to compare the competitor with.",
+    running: "This project's newest site crawl is still running. The comparison can be queued once it finishes.",
+    failed: "This project's newest site crawl failed, so there is nothing to compare the competitor with.",
+    cancelled: "This project's newest site crawl was cancelled, so there is nothing to compare the competitor with.",
+  });
+  if (project !== null) return { ok: false, why: project };
+
+  return {
+    ok: true,
+    payload: {
+      projectId: request.projectId,
+      agentId: COMPETITOR_COMPARISON_REVIEW.agentId,
+      taskType: COMPETITOR_COMPARISON_REVIEW.taskType,
+      input: { competitorDomain: target.host },
+    },
+  };
+}
+
+/**
+ * Why a domain cannot be compared at all, in the operator's terms.
+ *
+ * The crawler's own reasons (`resolveCompetitorTarget`), worded for a
+ * comparison rather than a crawl: nothing here says a request was made.
+ */
+const COMPARISON_TARGET_REFUSAL: Readonly<Record<CompetitorTargetRefusal, string>> = {
+  "competitor-invalid": "This is not a plain hostname, so it cannot be compared.",
+  "competitor-not-recorded":
+    "This domain is not one of the competitor domains recorded for this project, so it cannot be compared.",
+  "competitor-is-project-site": "That domain is this project's own site, not a competitor's, so there is nothing to compare.",
+  "no-domain": "This project has no usable website domain, so no competitor can be told apart from it.",
+};
+
+/** Why one side of a comparison cannot be read, in the operator's terms, or null when it can. */
+function comparableSide(
+  crawl: Crawl | null | undefined,
+  why: { readonly unknown: string; readonly missing: string; readonly running: string; readonly failed: string; readonly cancelled: string },
+): string | null {
+  if (crawl === undefined) return why.unknown;
+  if (crawl === null) return why.missing;
+  if (crawl.status === "running") return why.running;
+  if (crawl.status === "failed") return why.failed;
+  if (crawl.status === "cancelled") return why.cancelled;
+  if (!REVIEWABLE.includes(crawl.status) || !crawl.id) return why.missing;
+  return null;
+}
+
 /** Whether a completed run is one the Director hand-off control belongs under. */
 export function offersHandoff(run: AgentRun): boolean {
   return run.status === "completed" && isUpstreamTaskType(run.taskType);
@@ -409,6 +531,12 @@ export function evidenceDescription(metadata: JsonObject): string | null {
   if (evidence === null) return null;
   if (evidence.source === "agent-run") return null;
   if (evidence.source === "project") return INTAKE_REVIEW.groundedIn;
+  if (evidence.source === "competitor-comparison") {
+    const host = typeof evidence.competitorHost === "string" ? evidence.competitorHost : null;
+    return host
+      ? `this project's recorded site crawl and the recorded crawl of ${host} (page declarations only)`
+      : COMPETITOR_COMPARISON_REVIEW.groundedIn;
+  }
   if (evidence.source === "search-console") {
     const property = typeof evidence.property === "string" ? evidence.property : null;
     const start = typeof evidence.startDate === "string" ? evidence.startDate : null;
@@ -545,9 +673,9 @@ export function queuedNote(state: {
 // ---------------------------------------------------------------------------
 
 /**
- * The input that names one review's evidence: a crawl, a window, a run, or
- * — for the intake review — nothing, because the project itself is the
- * evidence.
+ * The input that names one review's evidence: a crawl, a window, a run, a
+ * competitor's hostname, or — for the intake review — nothing, because the
+ * project itself is the evidence.
  */
 export type ReviewInput = ReviewPayload["input"];
 
