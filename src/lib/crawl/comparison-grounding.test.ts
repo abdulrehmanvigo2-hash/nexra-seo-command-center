@@ -548,15 +548,27 @@ describe("the task type", () => {
 });
 
 describe("the instructions", () => {
-  test("ask for the five fixed sections, marked inferences, one operator action, and the partial-sample statement", () => {
+  test("ask for the five fixed sections, marked inferences, one operator action, and the fixed partial-sample line", () => {
     assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /exactly five sections, headed PROJECT SITE OBSERVATIONS, COMPETITOR SITE OBSERVATIONS, DIFFERENCES OBSERVED, INFERENCES, and RECOMMENDED NEXT OPERATOR ACTION/);
     assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /each beginning with the word INFERENCE:/);
-    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /at most three/);
     assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /one concrete change to the project's own site for a person to consider, or one thing to check; you change nothing/);
-    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /Both sides are partial samples of a few pages under a fixed budget: say so in one line/);
-    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /a difference between the samples, never as a difference between the sites/);
-    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /each with the exact URL it comes from/);
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /begin with exactly this line: Both sides are partial samples of a few pages; a difference here is between the samples, never between the sites\./);
     assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /Use only the supplied evidence/);
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /pairing one project path with one competitor path or saying the pairing is not established/);
+  });
+
+  test("bound the output explicitly: pages per side, lines, words per line, and what to cut first", () => {
+    // The worker refuses summaries over 2,000 characters; the first live run
+    // of this task was refused that way. Every section now carries a bound.
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /at most three pages per side, one line per page under 8 words/);
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /Cite pages by URL path only, for example \/pricing; the heading names the host/);
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /at most three findings, each under 14 words/);
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /INFERENCES: at most three lines, each beginning with the word INFERENCE:, under 10 words/);
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /RECOMMENDED NEXT OPERATOR ACTION: one line under 15 words/);
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /Keep the whole answer under 1,500 characters/);
+    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /If the answer runs long, drop observation lines first, then inferences; never a heading, the partial-samples line, or the closing sentence/);
+    // Nothing open-ended remains: no "every page", no "each with the exact URL".
+    assert.doesNotMatch(COMPETITOR_COMPARISON_INSTRUCTIONS, /every page|each with the exact URL|all fetched pages/);
   });
 
   test("name every forbidden claim, for either site, and end on the fixed closing sentence", () => {
@@ -582,7 +594,6 @@ describe("the instructions", () => {
     assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /URLs discovered but not reached were NOT audited on either side: do not describe them/);
     assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /does not describe the competitor's business/);
     assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /Do not describe either crawl as a full site audit or state site-wide totals/);
-    assert.match(COMPETITOR_COMPARISON_INSTRUCTIONS, /Keep the whole answer under 1,500 characters/);
     assert.ok(
       COMPETITOR_COMPARISON_INSTRUCTIONS.endsWith(
         "End with exactly this sentence: Not established by these crawls: traffic, rankings, keyword positions, backlinks, authority, revenue, conversions, share of voice, market share, citations, AI visibility, brand strength, page body quality, content depth.",
@@ -595,19 +606,36 @@ describe("the instructions", () => {
     assert.equal(looksLikeSecret(COMPETITOR_COMPARISON_INSTRUCTIONS), false);
   });
 
-  test("an answer written to the instructions' bounds fits its own 1,500-character budget and the worker's ceiling", () => {
-    const answer = [
-      "PROJECT SITE OBSERVATIONS\nhttps://nexraagency.com/services: title \"Services\", one h1, description 21 chars, canonical self, JSON-LD Organization. 1 of 5 fetched pages described; 1 URL not reached.",
-      "COMPETITOR SITE OBSERVATIONS\nhttps://rival.example/pricing: title 57 chars, one h1 \"Pricing\", description 21 chars, canonical self, JSON-LD Product. 1 of 3 fetched pages described.",
-      "DIFFERENCES OBSERVED\nhttps://nexraagency.com/services declares Organization; https://rival.example/pricing declares Product. No pricing URL was reached on the project side: pairing not established.",
-      "INFERENCES\nINFERENCE: the competitor's pricing page declares a product type and the project's services page does not; medium confidence, from one page each.\nINFERENCE: both samples are a few pages each, so nothing site-wide follows; high confidence.",
-      "RECOMMENDED NEXT OPERATOR ACTION\nCheck whether the project has a pricing or services page that could declare a Service or Product type, and crawl it.",
-      "Both sides are partial samples of a few pages under a fixed budget.",
-      "Not established by these crawls: traffic, rankings, keyword positions, backlinks, authority, revenue, conversions, share of voice, market share, citations, AI visibility, brand strength, page body quality, content depth.",
-    ].join("\n\n");
-    assert.ok(answer.length <= 1_500, `${answer.length} characters`);
-    assert.ok(answer.length <= 2_000);
-    assert.equal(looksLikeSecret(answer), false);
+  test("an answer at every bound the instructions set fits under 1,500 characters with ordinary words, and under the 2,000 ceiling with long ones", () => {
+    // Three pages per side at 7 words after the path, three findings at 13,
+    // three inferences at 9 after the marker, one action at 14, the fixed
+    // partial-samples line and the fixed closing sentence: the largest
+    // answer the instructions permit. Built twice: with five-letter words,
+    // the English average, and with eight-letter words throughout, longer
+    // than any real answer averages ("declares", "canonical", "Product").
+    const atBounds = (word: string) => {
+      const words = (n: number) => Array.from({ length: n }, () => word).join(" ");
+      return [
+        `PROJECT SITE OBSERVATIONS\n/services ${words(7)}\n/about-us ${words(7)}\n/contact ${words(7)}`,
+        `COMPETITOR SITE OBSERVATIONS\n/pricing ${words(7)}\n/features ${words(7)}\n/blog ${words(7)}`,
+        `DIFFERENCES OBSERVED\nBoth sides are partial samples of a few pages; a difference here is between the samples, never between the sites.\n/services vs /pricing ${words(13)}\n/about-us vs /features ${words(13)}\n/contact vs /blog ${words(13)}`,
+        `INFERENCES\nINFERENCE: ${words(9)}\nINFERENCE: ${words(9)}\nINFERENCE: ${words(9)}`,
+        `RECOMMENDED NEXT OPERATOR ACTION\n${words(14)}`,
+        "Not established by these crawls: traffic, rankings, keyword positions, backlinks, authority, revenue, conversions, share of voice, market share, citations, AI visibility, brand strength, page body quality, content depth.",
+      ].join("\n\n");
+    };
+    const ordinary = atBounds("title");
+    assert.ok(ordinary.length < 1_500, `${ordinary.length} characters with five-letter words`);
+    const long = atBounds("declares");
+    assert.ok(long.length < 2_000, `${long.length} characters with eight-letter words`);
+    assert.ok(long.length <= 1_800, `${long.length} characters leaves too little margin under the ceiling`);
+    for (const answer of [ordinary, long]) {
+      assert.equal(looksLikeSecret(answer), false);
+      for (const heading of ["PROJECT SITE OBSERVATIONS", "COMPETITOR SITE OBSERVATIONS", "DIFFERENCES OBSERVED", "INFERENCES", "RECOMMENDED NEXT OPERATOR ACTION"]) {
+        assert.ok(answer.includes(`${heading}\n`), heading);
+      }
+      assert.ok(answer.includes("Both sides are partial samples of a few pages; a difference here is between the samples, never between the sites."));
+    }
   });
 });
 

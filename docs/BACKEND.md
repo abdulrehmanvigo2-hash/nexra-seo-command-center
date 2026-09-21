@@ -456,10 +456,22 @@ to the project's own site for a person to consider, or one thing to check).
 The instructions name what neither crawl can establish and must not be
 claimed for either site — traffic, rankings, keyword positions, backlinks,
 authority, revenue, conversions, share of voice, market share, citation
-share, AI visibility, brand strength, page body quality, content depth — ask
-the agent to state in one line that both sides are partial samples, bound the
-answer to 1,500 characters, and end it on a fixed closing sentence. It
-fetches, publishes, assigns and changes nothing.
+share, AI visibility, brand strength, page body quality, content depth — open
+DIFFERENCES OBSERVED with a fixed line saying both sides are partial samples
+and a difference is between the samples, and end on a fixed closing sentence.
+It fetches, publishes, assigns and changes nothing.
+
+Every section is bounded, because the worker refuses any summary over 2,000
+characters as `rejected-output` and the first live run of this task was
+refused that way: at most three pages per side, one line each under 8 words,
+cited by URL path only (the section heading names the host); at most three
+findings under 14 words; at most three inferences under 10 words; one action
+under 15 words; the whole under 1,500 characters, with observation lines
+dropped first if it runs long and the headings, the partial-samples line and
+the closing sentence never dropped. An answer at every bound stays under
+1,500 characters with ordinary words and under the ceiling with long ones.
+The screen, the ceiling and the credential patterns are unchanged; only this
+task's instructions were bounded, as the answer-readiness review's were.
 
 The input is one field, `competitorDomain`, parsed at queue time as a bare
 hostname by the crawler's own rule (a URL, path, port, address, bare word or

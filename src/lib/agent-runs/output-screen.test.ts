@@ -3,7 +3,9 @@ import { describe, test } from "node:test";
 import type { AgentRun, AgentRunAttempt, JsonObject } from "../../types/agent-run.ts";
 import type { ProjectRecord } from "../../types/project.ts";
 import type { AgentRunStore, AttemptLease, AttemptResult, ClaimRequest } from "./contract.ts";
+import { createAiExecutor } from "./ai-executor.ts";
 import type { AgentExecutor, ExecutionOutput } from "./executor.ts";
+import { createTaskGrounding, type TaskGroundingReaders } from "./task-grounding.ts";
 import { createAgentRunWorker } from "./worker.ts";
 
 /**
@@ -273,5 +275,235 @@ describe("the worker's output screen, driven through a real attempt", () => {
     const withBell = `${READINESS_ANSWER}\u0007`;
     const refused = await runOnce({ summary: withBell, metadata: GROUNDED_METADATA });
     assert.equal(refused.run.error?.code, "rejected-output");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The competitor comparison review, through the same screen
+// ---------------------------------------------------------------------------
+
+/**
+ * The first live competitor comparison was refused as `rejected-output`. As
+ * with the answer-readiness review before it, the refused text is never
+ * stored, so the failure class is reproduced here: an answer in the
+ * pre-bound shape — five pages per side, each cited by full URL, three
+ * sections of comparison — through the real worker, beside an answer at
+ * every bound the corrected instructions set. The screen itself is
+ * untouched: the same ceiling, the same credential patterns, the same
+ * metadata rules, for every task.
+ */
+
+const COMPARISON_METADATA: JsonObject = {
+  simulated: false,
+  grounded: true,
+  evidence: {
+    source: "competitor-comparison",
+    projectId: PROJECT.id,
+    projectHost: "nexraagency.com",
+    projectCrawlId: CRAWL_ID,
+    projectCrawlStatus: "partial",
+    projectPagesFetched: 5,
+    projectPagesIncluded: 5,
+    projectTruncated: false,
+    competitorHost: "2vautomation.example",
+    competitorCrawlId: "8f1c0d2e-0000-4000-8000-000000000009",
+    competitorCrawlStatus: "partial",
+    competitorPagesFetched: 5,
+    competitorPagesIncluded: 5,
+    competitorTruncated: false,
+    bytes: 14_200,
+  },
+  taskType: "competitor-comparison-review",
+  attempt: 1,
+  provider: "anthropic",
+  model: "test-model",
+  inputTokens: 6_000,
+  outputTokens: 900,
+};
+
+const CLOSING =
+  "Not established by these crawls: traffic, rankings, keyword positions, backlinks, authority, revenue, conversions, share of voice, market share, citations, AI visibility, brand strength, page body quality, content depth.";
+
+/** An answer of the shape the bounded comparison instructions demand. */
+const COMPARISON_ANSWER = [
+  "PROJECT SITE OBSERVATIONS\n/ title \"Nexra Agency\", one h1, self canonical, Organization JSON-LD.\n/services title \"Services\", one h1, no description, no JSON-LD.\n/contact title \"Contact\", one h1, self canonical, no JSON-LD.",
+  "COMPETITOR SITE OBSERVATIONS\n/ title 62 chars, one h1, self canonical, Organization and WebSite JSON-LD.\n/pricing title \"Pricing\", one h1, description 140 chars, Product JSON-LD.\n/blog title \"Blog\", two h1s, no description, no JSON-LD.",
+  "DIFFERENCES OBSERVED\nBoth sides are partial samples of a few pages; a difference here is between the samples, never between the sites.\n/services declares no description or JSON-LD; /pricing declares both.\n/ declares Organization only; competitor / adds WebSite.\n/contact pairing with a competitor page is not established.",
+  "INFERENCES\nINFERENCE: the competitor's sampled pages declare more structured data; medium confidence.\nINFERENCE: the project's services page states less about itself; medium confidence.\nINFERENCE: two h1s on /blog is the competitor's issue, not the project's; high confidence.",
+  "RECOMMENDED NEXT OPERATOR ACTION\nConsider a meta description and a Service JSON-LD type for /services, then re-crawl.",
+  CLOSING,
+].join("\n\n");
+
+async function runComparison(output: ExecutionOutput) {
+  const { store, finishes, current } = memoryStore(
+    queuedRun({ agentId: "market-intelligence", taskType: "competitor-comparison-review", input: { competitorDomain: "2vautomation.example" } }),
+  );
+  const stub = answering(output);
+  const worker = createAgentRunWorker({
+    store,
+    executor: stub.executor,
+    projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+    timeoutMs: 5_000,
+  });
+  const outcome = await worker.executeRun(RUN_ID);
+  return { outcome, finishes, run: current(), executorCalls: stub.calls() };
+}
+
+describe("the competitor comparison review through the worker's output screen", () => {
+  test("a bounded five-section comparison is kept, with its two-crawl metadata, and sits under 1,500 characters", async () => {
+    assert.ok(COMPARISON_ANSWER.length < 1_500, `${COMPARISON_ANSWER.length} characters`);
+    const { outcome, finishes, run, executorCalls } = await runComparison({ summary: COMPARISON_ANSWER, metadata: COMPARISON_METADATA });
+
+    assert.equal(outcome.status, "executed");
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "completed");
+    assert.equal(run.status, "completed");
+    assert.equal(run.resultSummary, COMPARISON_ANSWER);
+    assert.deepEqual(run.resultMetadata, COMPARISON_METADATA);
+    for (const heading of ["PROJECT SITE OBSERVATIONS", "COMPETITOR SITE OBSERVATIONS", "DIFFERENCES OBSERVED", "INFERENCES", "RECOMMENDED NEXT OPERATOR ACTION"]) {
+      assert.ok(run.resultSummary?.includes(`${heading}\n`), heading);
+    }
+    assert.ok(run.resultSummary?.endsWith(CLOSING));
+  });
+
+  test("the failure class seen live: a comparison in the pre-bound shape runs over 2,000 characters and is refused after one executor call", async () => {
+    // Five fetched pages per side, each cited by full URL with its
+    // declarations, then three sections of comparison — what the first
+    // instructions invited over two five-page crawls.
+    const page = (host: string, path: string) =>
+      `https://${host}${path}: title 48 characters, one h1, meta description 150 characters, canonical points at this page, no robots directive, 1 JSON-LD block (Organization), allowed by robots.txt, sitemap not established.`;
+    const paths = ["/", "/services", "/about", "/contact", "/blog"];
+    const overlong = [
+      `PROJECT SITE OBSERVATIONS\n${paths.map((path) => page("nexraagency.com", path)).join("\n")}`,
+      `COMPETITOR SITE OBSERVATIONS\n${paths.map((path) => page("2vautomation.example", path)).join("\n")}`,
+      "DIFFERENCES OBSERVED\nhttps://nexraagency.com/services declares Organization; https://2vautomation.example/services declares Organization and Service. Both sides are partial samples of a few pages under a fixed budget.",
+      "INFERENCES\nINFERENCE: the competitor's sampled service page declares a more specific type; medium confidence.",
+      "RECOMMENDED NEXT OPERATOR ACTION\nConsider a Service type on /services.",
+      CLOSING,
+    ].join("\n\n");
+    assert.ok(overlong.length > 2_000, `fixture is only ${overlong.length} characters`);
+
+    const { finishes, run, executorCalls } = await runComparison({ summary: overlong, metadata: COMPARISON_METADATA });
+
+    assert.equal(executorCalls, 1, "the worker asked the executor more than once");
+    assert.equal(finishes.length, 1);
+    assert.equal(finishes[0]?.outcome, "failed");
+    assert.equal(run.status, "failed");
+    assert.equal(run.error?.code, "rejected-output");
+    assert.match(run.error?.message ?? "", /too large or looked like it contained a credential/);
+    assert.equal(run.resultSummary, null);
+    assert.equal(run.resultMetadata, null);
+  });
+
+  test("the ceiling is unchanged for this task: 2,000 characters is kept and 2,001 is refused", async () => {
+    const padded = `${COMPARISON_ANSWER}\n${"x".repeat(2_000 - COMPARISON_ANSWER.length - 1)}`;
+    assert.equal(padded.length, 2_000);
+    assert.equal((await runComparison({ summary: padded, metadata: COMPARISON_METADATA })).run.status, "completed");
+    const refused = await runComparison({ summary: `${padded}x`, metadata: COMPARISON_METADATA });
+    assert.equal(refused.run.status, "failed");
+    assert.equal(refused.run.error?.code, "rejected-output");
+  });
+
+  test("credential-shaped comparison output is still refused", async () => {
+    const leaks = [
+      `${COMPARISON_ANSWER}\nAlso seen on /pricing: sk-abcdefghijklmnopqrstuvwxyz0123456789`,
+      `${COMPARISON_ANSWER}\nToken: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U`,
+      `${COMPARISON_ANSWER}\napi_key: 0123456789abcdef`,
+    ];
+    for (const summary of leaks) {
+      const { run, executorCalls } = await runComparison({ summary, metadata: COMPARISON_METADATA });
+      assert.equal(executorCalls, 1);
+      assert.equal(run.status, "failed");
+      assert.equal(run.error?.code, "rejected-output");
+      assert.equal(run.resultSummary, null);
+    }
+  });
+
+  test("the comparison's own evidence summary is storable metadata: no key or value trips the screen", async () => {
+    // Fifteen evidence keys, two hosts, two crawl ids, counts and flags —
+    // what the AI executor records for this task — pass the metadata check
+    // unchanged, so metadata was not what refused the live run.
+    const { run } = await runComparison({ summary: COMPARISON_ANSWER, metadata: COMPARISON_METADATA });
+    assert.equal(run.status, "completed");
+    assert.deepEqual(run.resultMetadata, COMPARISON_METADATA);
+  });
+
+  test("when the comparison's grounding is refused, the real AI executor reaches no provider and the run fails before any output exists", async () => {
+    let providerCalls = 0;
+    const provider = {
+      id: "anthropic" as const,
+      model: "test-model",
+      async generate() {
+        providerCalls += 1;
+        return { text: COMPARISON_ANSWER, model: "test-model", inputTokens: 1, outputTokens: 1 };
+      },
+    };
+    const notHere = (what: string) => () => Promise.reject(new Error(`${what} must not be read`));
+    const readers: TaskGroundingReaders = {
+      crawls: { getCrawl: notHere("a crawl") },
+      searchConsole: notHere("Search Console"),
+      runs: { getById: notHere("a run") },
+      projects: {
+        getProjectById: notHere("the project record"),
+        getProjectIntake: notHere("the intake"),
+        listCrawls: notHere("crawls"),
+        searchConsole: notHere("Search Console"),
+        listRuns: notHere("runs"),
+      },
+      comparison: {
+        getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null),
+        // The stored record lists no competitor: the domain is refused.
+        getProjectIntake: async () => ({ competitorDomains: [], intakeNotes: "" }),
+        listProjectCrawls: notHere("own-site crawls"),
+        listCompetitorCrawls: notHere("competitor crawls"),
+        crawls: { getCrawl: notHere("a crawl") },
+      },
+    };
+    const { store, finishes, current } = memoryStore(
+      queuedRun({ agentId: "market-intelligence", taskType: "competitor-comparison-review", input: { competitorDomain: "2vautomation.example" } }),
+    );
+    const worker = createAgentRunWorker({
+      store,
+      executor: createAiExecutor(provider, createTaskGrounding(readers)),
+      projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+      timeoutMs: 5_000,
+    });
+    await worker.executeRun(RUN_ID);
+
+    assert.equal(providerCalls, 0, "the provider was called for a refused grounding");
+    assert.equal(finishes[0]?.outcome, "failed");
+    assert.equal(current().status, "failed");
+    assert.equal(current().error?.code, "execution-failed");
+    assert.notEqual(current().error?.code, "rejected-output");
+    assert.equal(current().resultSummary, null);
+  });
+
+  test("the other reviews' behaviour is unchanged by the comparison: the same screen keeps a short answer and refuses an overlong one for each", async () => {
+    const cases: [AgentRun["agentId"], AgentRun["taskType"], JsonObject][] = [
+      ["technical-seo", "crawl-review", { crawlId: CRAWL_ID }],
+      ["on-page-seo", "on-page-review", { crawlId: CRAWL_ID }],
+      ["ai-visibility", "answer-readiness-review", { crawlId: CRAWL_ID }],
+      ["analytics-learning", "performance-review", { range: "30d" }],
+      ["project-manager", "intake-review", {}],
+      ["seo-director", "priority-review", { sourceRunId: "11111111-0000-4000-8000-000000000001" }],
+    ];
+    for (const [agentId, taskType, input] of cases) {
+      const drive = async (summary: string) => {
+        const { store, current } = memoryStore(queuedRun({ agentId, taskType, input }));
+        const stub = answering({ summary, metadata: { ...GROUNDED_METADATA, taskType } });
+        const worker = createAgentRunWorker({
+          store,
+          executor: stub.executor,
+          projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+          timeoutMs: 5_000,
+        });
+        await worker.executeRun(RUN_ID);
+        return current();
+      };
+      assert.equal((await drive("OBSERVED: fine. INFERENCE: fine. RECOMMENDATION: none.")).status, "completed", taskType);
+      const refused = await drive("x".repeat(2_001));
+      assert.equal(refused.status, "failed", taskType);
+      assert.equal(refused.error?.code, "rejected-output", taskType);
+    }
   });
 });
