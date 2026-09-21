@@ -15,8 +15,10 @@ import {
   queueRefusal,
   queuedNote,
   reconciledNote,
+  restoreReviewRun,
   type Queueability,
   type QueueState,
+  type ReviewInput,
   type ReviewSpec,
   type Tone,
 } from "@/lib/crawl/review-request";
@@ -46,7 +48,17 @@ import type { AgentRun } from "@/types/agent-run";
  * review belongs to; when it changes, the run shown is dropped, because a
  * finding beside the wrong evidence is a lie.
  */
-export function useQueuedReview(request: Queueability, resetKey: string | null, review: ReviewSpec) {
+export function useQueuedReview(
+  request: Queueability,
+  resetKey: string | null,
+  review: ReviewSpec,
+  /**
+   * The project the review belongs to. With it, the control reads the
+   * persisted runs after the page loads and restores this review's newest run
+   * over the evidence on screen; without it, nothing is restored.
+   */
+  projectId: string | null = null,
+) {
   const [state, setState] = useState<QueueState>({ status: "idle" });
   /** A ref refuses the second click of a pair before React has re-rendered. */
   const queueing = useRef(false);
@@ -54,11 +66,35 @@ export function useQueuedReview(request: Queueability, resetKey: string | null, 
   const runningNow = useRef(false);
   const [executeNote, setExecuteNote] = useState<{ text: string; tone: Tone } | null>(null);
 
+  /**
+   * The evidence the request names, as a stable key. The request object is
+   * rebuilt every render, so the effect below keys on this string instead and
+   * reads the input back from it; it changes only when the evidence does,
+   * which is exactly when a restored run would belong to something else.
+   */
+  const inputKey = request.ok ? JSON.stringify(request.payload.input) : null;
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing state that belongs to different evidence
     setState({ status: "idle" });
     setExecuteNote(null);
-  }, [resetKey]);
+
+    // Restore this review's newest persisted run over the evidence on screen.
+    // A read only: it GETs the list the Run History panel reads and never
+    // queues or executes. Anything that goes wrong leaves the control idle.
+    if (projectId === null || resetKey === null || inputKey === null) return;
+    const input = JSON.parse(inputKey) as ReviewInput;
+    const controller = new AbortController();
+    void restoreReviewRun(projectId, review, input, fetch, controller.signal).then((run) => {
+      if (controller.signal.aborted || run === null) return;
+      // Only fill an idle control: an operator who queued before the read
+      // came back is looking at that run, not this one.
+      setState((existing) =>
+        existing.status === "idle" ? { status: "queued", run, duplicate: false, restored: true } : existing,
+      );
+    });
+    return () => controller.abort();
+  }, [resetKey, projectId, review, inputKey]);
 
   const reviewable = request;
 
@@ -261,7 +297,7 @@ export function QueuedReview({
               {RUN_STATUS[run.status].label}
             </Badge>
             <span className="text-xs text-fg-subtle">
-              {queuedNote({ run, duplicate: queued.duplicate })}
+              {queuedNote({ run, duplicate: queued.duplicate, restored: queued.restored })}
             </span>
           </div>
 
@@ -335,6 +371,6 @@ export function QueuedReview({
  * one prioritisation, and nothing queues on its own.
  */
 function DirectorHandoff({ projectId, source }: { projectId: string; source: AgentRun }) {
-  const handoff = useQueuedReview(handoffRequest(projectId, source), source.id, PRIORITY_REVIEW);
+  const handoff = useQueuedReview(handoffRequest(projectId, source), source.id, PRIORITY_REVIEW, projectId);
   return <QueuedReview review={PRIORITY_REVIEW} nested {...handoff} />;
 }

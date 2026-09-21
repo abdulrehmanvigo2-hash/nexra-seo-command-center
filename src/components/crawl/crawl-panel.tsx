@@ -205,16 +205,19 @@ export function CrawlPanel({
     reviewRequest(projectId, shown, CRAWL_REVIEWS["crawl-review"]),
     shownId,
     CRAWL_REVIEWS["crawl-review"],
+    projectId,
   );
   const onPage = useQueuedReview(
     reviewRequest(projectId, shown, CRAWL_REVIEWS["on-page-review"]),
     shownId,
     CRAWL_REVIEWS["on-page-review"],
+    projectId,
   );
   const answerReadiness = useQueuedReview(
     reviewRequest(projectId, shown, CRAWL_REVIEWS["answer-readiness-review"]),
     shownId,
     CRAWL_REVIEWS["answer-readiness-review"],
+    projectId,
   );
 
   return (

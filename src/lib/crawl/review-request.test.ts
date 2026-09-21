@@ -19,6 +19,10 @@ import {
   executeOutcome,
   handoffRequest,
   hasResult,
+  latestReviewRun,
+  restoreReviewRun,
+  reviewRunsUrl,
+  RESTORE_LIST_LIMIT,
   offersHandoff,
   outputProvenance,
   queueRefusal,
@@ -931,5 +935,186 @@ describe("the answer-readiness review request", () => {
     assert.match(provenance?.text ?? "", /prioritising the AI Visibility agent's completed review/);
     assert.match(provenance?.text ?? "", /model-generated over a crawl this product recorded/);
     assert.match(provenance?.text ?? "", /Two layers of advice, not measurement\.$/);
+  });
+});
+
+describe("restoring a review's run after the page loads", () => {
+  const at = (minute: number) => `2026-09-21T10:${String(minute).padStart(2, "0")}:00.000Z`;
+  const completedCrawlReview = (id: string, minute: number, overrides: Partial<AgentRun> = {}): AgentRun => ({
+    ...RUN,
+    id,
+    status: "completed",
+    executor: "ai",
+    attemptCount: 1,
+    resultSummary: "OBSERVED: https://nexraagency.com/ returned 200.",
+    resultMetadata: { simulated: false, grounded: true, evidence: { crawlId: CRAWL.id, hostScope: "nexraagency.com" } },
+    createdAt: at(minute),
+    updatedAt: at(minute + 1),
+    startedAt: at(minute),
+    finishedAt: at(minute + 1),
+    ...overrides,
+  });
+  const OTHER_CRAWL = "8f1c0d2e-0000-4000-8000-000000000002";
+
+  describe("the pure pick", () => {
+    test("returns the newest run of this agent and task over this crawl, whatever order the list arrived in", () => {
+      const older = completedCrawlReview("11111111-0000-4000-8000-000000000010", 1);
+      const newest = completedCrawlReview("11111111-0000-4000-8000-000000000011", 9);
+      const middle = completedCrawlReview("11111111-0000-4000-8000-000000000012", 5);
+      assert.equal(latestReviewRun([older, newest, middle], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id })?.id, newest.id);
+      assert.equal(latestReviewRun([middle, older, newest], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id })?.id, newest.id);
+    });
+
+    test("ignores another agent's run over the same crawl", () => {
+      const onPage = completedCrawlReview("11111111-0000-4000-8000-000000000013", 9, { agentId: "on-page-seo", taskType: "on-page-review" });
+      assert.equal(latestReviewRun([onPage], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+      assert.equal(latestReviewRun([onPage], CRAWL_REVIEWS["on-page-review"], { crawlId: CRAWL.id })?.id, onPage.id);
+    });
+
+    test("ignores the same agent's run of another task", () => {
+      const generic = completedCrawlReview("11111111-0000-4000-8000-000000000014", 9, { taskType: "project-review", input: {} });
+      assert.equal(latestReviewRun([generic], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+    });
+
+    test("ignores a review of another crawl, and an input with anything extra", () => {
+      const other = completedCrawlReview("11111111-0000-4000-8000-000000000015", 9, { input: { crawlId: OTHER_CRAWL } });
+      const extra = completedCrawlReview("11111111-0000-4000-8000-000000000016", 9, { input: { crawlId: CRAWL.id, focus: "x" } });
+      assert.equal(latestReviewRun([other, extra], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+    });
+
+    test("ignores a Search Console review of another window, and finds the right one", () => {
+      const thirty = completedCrawlReview("11111111-0000-4000-8000-000000000017", 3, { agentId: "keyword-intent", taskType: "search-query-review", input: { range: "30d" } });
+      const seven = completedCrawlReview("11111111-0000-4000-8000-000000000018", 9, { agentId: "keyword-intent", taskType: "search-query-review", input: { range: "7d" } });
+      const performance = completedCrawlReview("11111111-0000-4000-8000-000000000019", 9, { agentId: "analytics-learning", taskType: "performance-review", input: { range: "30d" } });
+      assert.equal(latestReviewRun([thirty, seven, performance], SEARCH_QUERY_REVIEW, { range: "30d" })?.id, thirty.id);
+      assert.equal(latestReviewRun([thirty, seven, performance], SEARCH_QUERY_REVIEW, { range: "3m" }), null);
+      assert.equal(latestReviewRun([thirty, seven, performance], PERFORMANCE_REVIEW, { range: "30d" })?.id, performance.id);
+    });
+
+    test("returns null when nothing matches or the list is empty", () => {
+      assert.equal(latestReviewRun([], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+      assert.equal(latestReviewRun([RUN], CRAWL_REVIEWS["on-page-review"], { crawlId: CRAWL.id }), null);
+    });
+
+    test("a queued or failed run is restored too — the state is shown, and a fresh queue stays possible", () => {
+      const failed = completedCrawlReview("11111111-0000-4000-8000-000000000020", 9, {
+        status: "failed",
+        resultSummary: null,
+        resultMetadata: null,
+        error: { code: "rejected-output", message: "refused" },
+      });
+      const picked = latestReviewRun([failed], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id });
+      assert.equal(picked?.id, failed.id);
+      assert.equal(hasResult(failed), false);
+      // The queue control is decided by the crawl, not by the restored run: a
+      // failed run leaves the button enabled, as it always has.
+      assert.equal(reviewRequest("nexra-agency", CRAWL).ok, true);
+      assert.equal(executability(failed).ok, false);
+      assert.equal(executability({ ...failed, status: "queued", error: null }).ok, true);
+    });
+  });
+
+  describe("the read", () => {
+    /** A fetch that records every call and answers as told. */
+    function listFetch(answer: { ok?: boolean; body?: unknown; throws?: boolean }) {
+      const calls: { url: string; init: { cache: "no-store"; signal?: AbortSignal } }[] = [];
+      const fetchList = async (url: string, init: { cache: "no-store"; signal?: AbortSignal }) => {
+        calls.push({ url, init });
+        if (answer.throws) throw new TypeError("network down");
+        return { ok: answer.ok ?? true, json: async () => answer.body };
+      };
+      return { calls, fetchList };
+    }
+
+    test("asks the existing list endpoint for this project and agent, and nothing else — one GET, no POST", async () => {
+      const url = reviewRunsUrl("nexra-agency", CRAWL_REVIEWS["answer-readiness-review"]);
+      assert.equal(url, `/api/agent-runs?project=nexra-agency&agent=ai-visibility&limit=${RESTORE_LIST_LIMIT}`);
+      assert.equal(RESTORE_LIST_LIMIT, 25);
+
+      const { calls, fetchList } = listFetch({ body: { runs: [] } });
+      await restoreReviewRun("nexra-agency", CRAWL_REVIEWS["answer-readiness-review"], { crawlId: CRAWL.id }, fetchList);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]?.url, url);
+      assert.equal(calls[0]?.init.cache, "no-store");
+      // A read has no method and no body: nothing here can queue or execute.
+      assert.equal("method" in (calls[0]?.init ?? {}), false);
+      assert.equal("body" in (calls[0]?.init ?? {}), false);
+    });
+
+    test("a completed crawl review is restored, and it carries everything the control and the hand-off need", async () => {
+      const completed = completedCrawlReview("11111111-0000-4000-8000-000000000021", 9, { agentId: "ai-visibility", taskType: "answer-readiness-review" });
+      const { fetchList } = listFetch({ body: { runs: [RUN, completed] } });
+      const run = await restoreReviewRun("nexra-agency", CRAWL_REVIEWS["answer-readiness-review"], { crawlId: CRAWL.id }, fetchList);
+
+      assert.equal(run?.id, completed.id);
+      assert.ok(run && hasResult(run));
+      assert.match(outputProvenance(run!, CRAWL_REVIEWS["answer-readiness-review"].groundedIn)?.text ?? "", /grounded in this crawl's recorded pages/);
+      // The restored run is the same persisted record, so the Director hand-off
+      // is decided exactly as it was in the page that ran it.
+      assert.equal(offersHandoff(run!), true);
+      assert.deepEqual(handoffRequest("nexra-agency", run!), {
+        ok: true,
+        payload: { projectId: "nexra-agency", agentId: "seo-director", taskType: "priority-review", input: { sourceRunId: completed.id } },
+      });
+    });
+
+    test("a completed Search Console review is restored for its window only", async () => {
+      const performance = completedCrawlReview("11111111-0000-4000-8000-000000000022", 9, {
+        agentId: "analytics-learning",
+        taskType: "performance-review",
+        input: { range: "30d" },
+        resultMetadata: { simulated: false, grounded: true, evidence: { source: "search-console", property: "sc-domain:nexraagency.com", startDate: "2026-08-19", endDate: "2026-09-17" } },
+      });
+      const { fetchList } = listFetch({ body: { runs: [performance] } });
+      assert.equal((await restoreReviewRun("nexra-agency", PERFORMANCE_REVIEW, { range: "30d" }, fetchList))?.id, performance.id);
+      assert.equal(await restoreReviewRun("nexra-agency", PERFORMANCE_REVIEW, { range: "7d" }, fetchList), null);
+    });
+
+    test("a restored mock run is shown as simulated and still cannot be handed off", async () => {
+      const mock = completedCrawlReview("11111111-0000-4000-8000-000000000023", 9, {
+        executor: "mock",
+        resultMetadata: { simulated: true, grounded: false },
+      });
+      const { fetchList } = listFetch({ body: { runs: [mock] } });
+      const run = await restoreReviewRun("nexra-agency", CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }, fetchList);
+      assert.equal(run?.id, mock.id);
+      assert.match(outputProvenance(run!)?.text ?? "", /^Simulated/);
+      assert.equal(handoffRequest("nexra-agency", run!).ok, false);
+    });
+
+    test("an empty list, a refused request, a malformed body, a network failure, and an abort all leave the control idle", async () => {
+      const review = CRAWL_REVIEWS["crawl-review"];
+      const input = { crawlId: CRAWL.id };
+      assert.equal(await restoreReviewRun("nexra-agency", review, input, listFetch({ body: { runs: [] } }).fetchList), null);
+      assert.equal(await restoreReviewRun("nexra-agency", review, input, listFetch({ ok: false, body: { error: "unauthorized" } }).fetchList), null);
+      assert.equal(await restoreReviewRun("nexra-agency", review, input, listFetch({ body: { error: "unavailable" } }).fetchList), null);
+      assert.equal(await restoreReviewRun("nexra-agency", review, input, listFetch({ body: null }).fetchList), null);
+      assert.equal(await restoreReviewRun("nexra-agency", review, input, listFetch({ throws: true }).fetchList), null);
+
+      const controller = new AbortController();
+      controller.abort();
+      const aborted = async (_url: string, init: { signal?: AbortSignal }) => {
+        if (init.signal?.aborted) throw new DOMException("aborted", "AbortError");
+        return { ok: true, json: async () => ({ runs: [] }) };
+      };
+      assert.equal(await restoreReviewRun("nexra-agency", review, input, aborted, controller.signal), null);
+    });
+
+    test("each evidence key is its own lookup: the same list answers differently for two crawls", async () => {
+      const mine = completedCrawlReview("11111111-0000-4000-8000-000000000024", 9);
+      const theirs = completedCrawlReview("11111111-0000-4000-8000-000000000025", 9, { input: { crawlId: OTHER_CRAWL } });
+      const { calls, fetchList } = listFetch({ body: { runs: [mine, theirs] } });
+      assert.equal((await restoreReviewRun("nexra-agency", CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }, fetchList))?.id, mine.id);
+      assert.equal((await restoreReviewRun("nexra-agency", CRAWL_REVIEWS["crawl-review"], { crawlId: OTHER_CRAWL }, fetchList))?.id, theirs.id);
+      assert.equal(calls.length, 2);
+    });
+
+    test("the restored note says where the run came from, and the queued and duplicate notes are unchanged", () => {
+      const completed = completedCrawlReview("11111111-0000-4000-8000-000000000026", 9);
+      assert.equal(queuedNote({ run: completed, duplicate: false, restored: true }), "Restored from run history.");
+      assert.match(queuedNote({ run: { ...completed, status: "queued" }, duplicate: false, restored: true }), /^Restored from run history\. Waiting to be claimed; nothing has been analysed yet\.$/);
+      assert.match(queuedNote({ run: RUN, duplicate: false }), /^Queued\. The scheduled worker picks runs up; nothing has been analysed yet\.$/);
+      assert.match(queuedNote({ run: RUN, duplicate: true }), /already queued; showing that run/);
+    });
   });
 });

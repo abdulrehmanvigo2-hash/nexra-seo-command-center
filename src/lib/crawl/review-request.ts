@@ -298,8 +298,12 @@ export type QueueState =
   | { readonly status: "idle" }
   /** The POST is in flight. Nothing has been queued yet. */
   | { readonly status: "queuing" }
-  /** A run exists. `duplicate` means this request matched one already queued. */
-  | { readonly status: "queued"; readonly run: AgentRun; readonly duplicate: boolean }
+  /**
+   * A run exists. `duplicate` means this request matched one already queued;
+   * `restored` means it was read back from the persisted runs after the page
+   * loaded rather than queued in this page.
+   */
+  | { readonly status: "queued"; readonly run: AgentRun; readonly duplicate: boolean; readonly restored?: boolean }
   | { readonly status: "refused"; readonly message: string };
 
 /**
@@ -469,13 +473,107 @@ export function queueRefusal(
  * the run already queued rather than making a second one, and an operator who
  * is not told that will click again.
  */
-export function queuedNote(state: { readonly run: AgentRun; readonly duplicate: boolean }): string {
+export function queuedNote(state: {
+  readonly run: AgentRun;
+  readonly duplicate: boolean;
+  readonly restored?: boolean;
+}): string {
   if (state.duplicate) {
     return "This review was already queued; showing that run rather than starting a second one.";
+  }
+  if (state.restored) {
+    return state.run.status === "queued"
+      ? "Restored from run history. Waiting to be claimed; nothing has been analysed yet."
+      : "Restored from run history.";
   }
   return state.run.status === "queued"
     ? "Queued. The scheduled worker picks runs up; nothing has been analysed yet."
     : "Queued.";
+}
+
+// ---------------------------------------------------------------------------
+// Restoring a review's run after the page loads
+// ---------------------------------------------------------------------------
+
+/**
+ * The input that names one review's evidence: a crawl, a window, or a run.
+ */
+export type ReviewInput = ReviewPayload["input"];
+
+/** True when a stored run's input names exactly this evidence and nothing else. */
+function sameInput(stored: JsonObject, input: ReviewInput): boolean {
+  const wanted = input as Readonly<Record<string, string>>;
+  const keys = Object.keys(wanted);
+  return Object.keys(stored).length === keys.length && keys.every((key) => stored[key] === wanted[key]);
+}
+
+/**
+ * The newest persisted run of this review over this evidence, or null.
+ *
+ * A run is the same review only when the agent, the task and the whole input
+ * match: a crawl review of another crawl, an on-page review of this crawl, or
+ * a search query review of another window is somebody else's run. Newest by
+ * creation time, whatever order the list arrived in.
+ */
+export function latestReviewRun(
+  runs: readonly AgentRun[],
+  review: ReviewSpec,
+  input: ReviewInput,
+): AgentRun | null {
+  let latest: AgentRun | null = null;
+  for (const run of runs) {
+    if (run.agentId !== review.agentId || run.taskType !== review.taskType) continue;
+    if (!sameInput(run.input, input)) continue;
+    if (latest === null || run.createdAt > latest.createdAt) latest = run;
+  }
+  return latest;
+}
+
+/** How many of the agent's newest runs on the project are read back. */
+export const RESTORE_LIST_LIMIT = 25;
+
+/** The existing list endpoint, filtered to this project and this review's agent. */
+export function reviewRunsUrl(projectId: string, review: ReviewSpec): string {
+  const params = new URLSearchParams({
+    project: projectId,
+    agent: review.agentId,
+    limit: String(RESTORE_LIST_LIMIT),
+  });
+  return `/api/agent-runs?${params.toString()}`;
+}
+
+/** The part of `fetch` this needs, so a test can hand in a fake. */
+export type ListFetch = (
+  url: string,
+  init: { readonly cache: "no-store"; readonly signal?: AbortSignal },
+) => Promise<{ readonly ok: boolean; json(): Promise<unknown> }>;
+
+/**
+ * Reads the persisted runs and picks this review's newest, or null.
+ *
+ * A read, never a write: it only ever GETs the list endpoint, so restoring a
+ * control after a page load can neither queue nor execute anything. Every
+ * failure — a refused request, a bad body, a lost connection, an abort — is
+ * answered with null, which leaves the control exactly as it was before this
+ * existed: idle, with its queue button.
+ */
+export async function restoreReviewRun(
+  projectId: string,
+  review: ReviewSpec,
+  input: ReviewInput,
+  fetchList: ListFetch,
+  signal?: AbortSignal,
+): Promise<AgentRun | null> {
+  try {
+    const response = await fetchList(reviewRunsUrl(projectId, review), { cache: "no-store", signal });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { runs?: unknown } | null;
+    const runs = body?.runs;
+    if (!Array.isArray(runs)) return null;
+    return latestReviewRun(runs as AgentRun[], review, input);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
