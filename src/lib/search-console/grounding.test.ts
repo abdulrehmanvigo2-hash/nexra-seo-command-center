@@ -6,6 +6,7 @@ import type { SearchConsoleReport, SearchPerformanceRow } from "../../types/sear
 import {
   MAX_QUERIES_DESCRIBED,
   MAX_QUERY_LENGTH,
+  PERFORMANCE_REVIEW_INSTRUCTIONS,
   SEARCH_CONSOLE_LIMITS_NOTE,
   SEARCH_CONSOLE_SOURCE,
   SEARCH_QUERY_REVIEW_INSTRUCTIONS,
@@ -291,5 +292,69 @@ describe("the task type", () => {
     assert.equal(SEARCH_CONSOLE_SOURCE.label, "Search Console evidence");
     assert.match(SEARCH_CONSOLE_SOURCE.description, /Google Search Console reported/);
     assert.match(SEARCH_CONSOLE_SOURCE.quotes, /search queries people typed/);
+  });
+});
+
+describe("the performance review task type", () => {
+  const definition = getTaskType("performance-review");
+
+  test("belongs to the Analytics & Learning agent alone and declares Search Console evidence", () => {
+    assert.ok(definition, "performance-review is not registered");
+    assert.equal(definition?.evidence, "search-console");
+    assert.equal(definition?.policy, "read-only");
+    assert.deepEqual(definition?.agents, ["analytics-learning"]);
+    assert.equal(definition && agentMayRun(definition, "analytics-learning"), true);
+    for (const agentId of ["keyword-intent", "seo-director", "technical-seo", "on-page-seo"] as const) {
+      assert.equal(definition && agentMayRun(definition, agentId), false, agentId);
+    }
+  });
+
+  test("takes the same single input as the search query review: a range, and nothing else", () => {
+    const search = getTaskType("search-query-review");
+    for (const range of ["7d", "30d"] as RangeId[]) {
+      assert.deepEqual(definition?.parseInput({ range }), search?.parseInput({ range }));
+    }
+    for (const bad of [
+      {},
+      { range: "90d" },
+      { range: "30d", seedKeywords: ["seo"] },
+      { range: "30d", property: "sc-domain:other.example" },
+      { range: "30d", sourceRunId: "11111111-0000-4000-8000-000000000001" },
+      null,
+      "30d",
+    ]) {
+      assert.equal(definition?.parseInput(bad).ok, false, `accepted ${JSON.stringify(bad)}`);
+    }
+  });
+
+  test("its instructions demand measurement, citation, two-window comparison without cause, bounded scope, and no changes", () => {
+    assert.equal(definition?.instructions, PERFORMANCE_REVIEW_INSTRUCTIONS);
+    for (const phrase of [
+      "as a measurement",
+      "OBSERVED",
+      "INFERENCE",
+      "RECOMMENDATION",
+      "as differences between two windows",
+      "Do not call a difference a trend, and do not assert a cause",
+      "window totals include queries that are not listed",
+      "must cite at least one stated total or one listed query",
+      "never treat it as a pass, a failure, a zero, or a no",
+      "Do not state or estimate search volume, keyword difficulty",
+      "conversions, revenue",
+      "the single measurement a person should take before the next cycle",
+      "You cannot change anything",
+    ]) {
+      assert.ok(PERFORMANCE_REVIEW_INSTRUCTIONS.includes(phrase), `missing: ${phrase}`);
+    }
+    // Intent classification is the Keyword agent's question, not this one.
+    assert.equal(PERFORMANCE_REVIEW_INSTRUCTIONS.includes("informational, commercial, transactional, or navigational"), false);
+    assert.notEqual(PERFORMANCE_REVIEW_INSTRUCTIONS, SEARCH_QUERY_REVIEW_INSTRUCTIONS);
+  });
+
+  test("the search query review and the crawl tasks are untouched by it", () => {
+    assert.equal(getTaskType("search-query-review")?.instructions, SEARCH_QUERY_REVIEW_INSTRUCTIONS);
+    assert.deepEqual(getTaskType("search-query-review")?.agents, ["keyword-intent"]);
+    assert.equal(getTaskType("crawl-review")?.evidence, "crawl");
+    assert.equal(getTaskType("on-page-review")?.evidence, "crawl");
   });
 });

@@ -49,7 +49,8 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
-      case "search-query-review": {
+      case "search-query-review":
+      case "performance-review": {
         const range = typeof task.input.range === "string" ? task.input.range : null;
         const metadata: JsonObject = {
           simulated: true,
@@ -60,8 +61,9 @@ export const mockAgentExecutor: AgentExecutor = {
           attempt: task.attempt,
           range,
         };
+        const kind = task.taskType === "search-query-review" ? "search query review" : "performance review";
         return {
-          summary: `Simulated search query review by ${subject}. The mock executor read no Search Console data and analysed nothing; this is placeholder output.`,
+          summary: `Simulated ${kind} by ${subject}. The mock executor read no Search Console data and analysed nothing; this is placeholder output.`,
           metadata,
         };
       }

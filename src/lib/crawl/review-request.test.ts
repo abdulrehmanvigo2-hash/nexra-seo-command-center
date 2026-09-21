@@ -6,12 +6,14 @@ import type { Crawl } from "../../types/crawl.ts";
 import type { SearchConsoleReport } from "../../types/search-console.ts";
 import {
   CRAWL_REVIEWS,
+  PERFORMANCE_REVIEW,
   PRIORITY_REVIEW,
   REVIEW_AGENT_ID,
   REVIEW_TASK_TYPE,
   SEARCH_QUERY_REVIEW,
   searchQueryReviewRequest,
   RUN_STATUS,
+  SEARCH_CONSOLE_REVIEWS,
   evidenceDescription,
   executability,
   executeOutcome,
@@ -523,8 +525,8 @@ describe("the SEO Director hand-off request", () => {
       [null, COMPLETED, /No project is selected/],
       ["nexra-agency", null, /Complete a review first/],
       ["other-client", COMPLETED, /belongs to a different project/],
-      ["nexra-agency", { ...COMPLETED, taskType: "project-review" }, /crawl reviews, on-page reviews and search query reviews only/],
-      ["nexra-agency", { ...COMPLETED, taskType: "priority-review" }, /crawl reviews, on-page reviews and search query reviews only/],
+      ["nexra-agency", { ...COMPLETED, taskType: "project-review" }, /crawl reviews, on-page reviews, search query reviews and performance reviews only/],
+      ["nexra-agency", { ...COMPLETED, taskType: "priority-review" }, /crawl reviews, on-page reviews, search query reviews and performance reviews only/],
       ["nexra-agency", { ...COMPLETED, status: "queued", resultSummary: null }, /has not finished/],
       ["nexra-agency", { ...COMPLETED, status: "running", resultSummary: null }, /has not finished/],
       ["nexra-agency", { ...COMPLETED, status: "failed", resultSummary: null }, /did not complete/],
@@ -642,5 +644,162 @@ describe("provenance keeps the three layers apart", () => {
     assert.equal(evidenceDescription({}), null);
     // And no run with recorded evidence is ever described as having none.
     assert.doesNotMatch(outputProvenance(search)?.text ?? "", /without live site data|not grounded/);
+  });
+});
+
+describe("the performance review request", () => {
+  const REPORT: Extract<SearchConsoleReport, { state: "connected" }> = {
+    projectId: "nexra-agency",
+    source: "search-console",
+    state: "connected",
+    property: "sc-domain:nexraagency.com",
+    window: { rangeId: "30d", startDate: "2026-08-19", endDate: "2026-09-17", days: 30 },
+    previousWindow: null,
+    totals: { clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+    previousTotals: null,
+    queries: [{ key: "nexra agency", clicks: 10, impressions: 100, ctr: 0.1, position: 5 }],
+    pages: [],
+    partial: ["comparison-beyond-retention"],
+    fetchedAt: "2026-09-20T12:00:00.000Z",
+    stale: false,
+  };
+
+  test("names the Analytics & Learning agent, the performance task, and the window — nothing else", () => {
+    const result = searchQueryReviewRequest("nexra-agency", REPORT, "30d", PERFORMANCE_REVIEW);
+    assert.deepEqual(result, {
+      ok: true,
+      payload: {
+        projectId: "nexra-agency",
+        agentId: "analytics-learning",
+        taskType: "performance-review",
+        input: { range: "30d" },
+      },
+    });
+  });
+
+  test("without a review named, the request is still the Keyword agent's search query review", () => {
+    const result = searchQueryReviewRequest("nexra-agency", REPORT, "30d");
+    assert.equal(result.ok && result.payload.agentId, "keyword-intent");
+    assert.equal(result.ok && result.payload.taskType, "search-query-review");
+  });
+
+  test("the two Search Console reviews name different agents and tasks, and the same input shape", () => {
+    assert.equal(SEARCH_CONSOLE_REVIEWS["search-query-review"], SEARCH_QUERY_REVIEW);
+    assert.equal(SEARCH_CONSOLE_REVIEWS["performance-review"], PERFORMANCE_REVIEW);
+    assert.notEqual(PERFORMANCE_REVIEW.agentId, SEARCH_QUERY_REVIEW.agentId);
+    assert.notEqual(PERFORMANCE_REVIEW.taskType, SEARCH_QUERY_REVIEW.taskType);
+    const a = searchQueryReviewRequest("nexra-agency", REPORT, "7d", PERFORMANCE_REVIEW);
+    const b = searchQueryReviewRequest("nexra-agency", REPORT, "7d", SEARCH_QUERY_REVIEW);
+    assert.deepEqual(a.ok && a.payload.input, b.ok && b.payload.input);
+  });
+
+  test("the spec matches what the server allows, and promises a measurement and no changes", () => {
+    assert.equal(PERFORMANCE_REVIEW.agentId, "analytics-learning");
+    assert.equal(PERFORMANCE_REVIEW.taskType, "performance-review");
+    assert.ok(PERFORMANCE_REVIEW.action.startsWith("Analyze with "));
+    assert.match(PERFORMANCE_REVIEW.summary, /^Queues a read-only performance review/);
+    assert.match(PERFORMANCE_REVIEW.summary, /as a measurement/);
+    assert.match(PERFORMANCE_REVIEW.summary, /changes nothing/);
+    assert.equal(PERFORMANCE_REVIEW.groundedIn, SEARCH_QUERY_REVIEW.groundedIn);
+  });
+
+  test("is refused, with a reason, for everything the server would refuse", () => {
+    const base = { projectId: "nexra-agency", source: "search-console" } as const;
+    const refusals: [string | null, SearchConsoleReport | null, RegExp][] = [
+      [null, REPORT, /Choose a single project/],
+      ["nexra-agency", null, /has not loaded yet/],
+      ["nexra-agency", { ...base, state: "not-connected", reason: "no-property" }, /not connected/],
+      ["nexra-agency", { ...REPORT, queries: [], partial: ["queries-unavailable"] }, /did not return the top queries/],
+      ["nexra-agency", { ...REPORT, queries: [] }, /reported no queries/],
+    ];
+    for (const [projectId, report, why] of refusals) {
+      const result = searchQueryReviewRequest(projectId, report, "30d", PERFORMANCE_REVIEW);
+      assert.equal(result.ok, false);
+      assert.match(result.ok ? "" : result.why, why);
+    }
+  });
+
+  test("a server refusal names this agent and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, PERFORMANCE_REVIEW), /The Analytics & Learning agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, PERFORMANCE_REVIEW), /does not know the performance-review task/);
+  });
+
+  test("a completed grounded performance review can be handed to the Director, and is refused for the same reasons as any other", () => {
+    const completed: AgentRun = {
+      ...RUN,
+      agentId: "analytics-learning",
+      taskType: "performance-review",
+      input: { range: "30d" },
+      status: "completed",
+      executor: "ai",
+      resultSummary: "OBSERVED: clicks 10.",
+      resultMetadata: {
+        simulated: false,
+        grounded: true,
+        evidence: { source: "search-console", property: "sc-domain:nexraagency.com", startDate: "2026-08-19", endDate: "2026-09-17", queriesIncluded: 1 },
+      },
+      finishedAt: "2026-09-20T11:05:00.000Z",
+    };
+    assert.equal(offersHandoff(completed), true);
+    const accepted = handoffRequest("nexra-agency", completed);
+    assert.deepEqual(accepted, {
+      ok: true,
+      payload: { projectId: "nexra-agency", agentId: "seo-director", taskType: "priority-review", input: { sourceRunId: completed.id } },
+    });
+
+    const refusals: [AgentRun, RegExp][] = [
+      [{ ...completed, projectId: "other-client" }, /belongs to a different project/],
+      [{ ...completed, status: "queued", resultSummary: null }, /has not finished/],
+      [{ ...completed, status: "failed", resultSummary: null }, /did not complete/],
+      [{ ...completed, executor: "mock", resultMetadata: { simulated: true, grounded: false } }, /Simulated output cannot be handed off/],
+      [{ ...completed, resultMetadata: { simulated: false, grounded: false } }, /not grounded in recorded evidence/],
+    ];
+    for (const [source, why] of refusals) {
+      const result = handoffRequest("nexra-agency", source);
+      assert.equal(result.ok, false, why.source);
+      assert.match(result.ok ? "" : result.why, why);
+    }
+    // The wording that lists the allowed sources now names this one.
+    const disallowed = handoffRequest("nexra-agency", { ...completed, taskType: "project-review" });
+    assert.match(disallowed.ok ? "" : disallowed.why, /search query reviews and performance reviews only/);
+  });
+
+  test("provenance for a performance review names the report, and a Director run over it names the agent", () => {
+    const performance: AgentRun = {
+      ...RUN,
+      agentId: "analytics-learning",
+      taskType: "performance-review",
+      status: "completed",
+      executor: "ai",
+      resultSummary: "x",
+      resultMetadata: {
+        simulated: false,
+        grounded: true,
+        evidence: { source: "search-console", property: "sc-domain:nexraagency.com", startDate: "2026-08-19", endDate: "2026-09-17" },
+      },
+    };
+    assert.match(outputProvenance(performance, PERFORMANCE_REVIEW.groundedIn)?.text ?? "", /grounded in this project's Search Console report\. Advice, not measurement\./);
+    assert.match(outputProvenance(performance)?.text ?? "", /grounded in this project's Search Console report for sc-domain:nexraagency.com, 2026-08-19 to 2026-09-17\./);
+
+    const director: AgentRun = {
+      ...performance,
+      agentId: "seo-director",
+      taskType: "priority-review",
+      resultMetadata: {
+        simulated: false,
+        grounded: true,
+        evidence: {
+          source: "agent-run",
+          runId: performance.id,
+          agentId: "analytics-learning",
+          taskType: "performance-review",
+          upstreamEvidence: performance.resultMetadata?.evidence ?? null,
+        },
+      },
+    };
+    const provenance = outputProvenance(director, PRIORITY_REVIEW.groundedIn);
+    assert.match(provenance?.text ?? "", /prioritising the Analytics & Learning agent's completed review/);
+    assert.match(provenance?.text ?? "", /a Google Search Console report this product read for property "sc-domain:nexraagency.com"/);
+    assert.match(provenance?.text ?? "", /Two layers of advice, not measurement\.$/);
   });
 });

@@ -48,13 +48,16 @@ export type AgentRunReader = {
  * review written over something this product recorded. The two ungrounded
  * tasks are not here: an opinion with nothing behind it is not a finding to
  * prioritise. Nor is `priority-review` itself: a Director run over a Director
- * run would be advice about advice about advice, and this milestone is
- * bounded to one hand-off, from one specialist review, to one prioritisation.
+ * run would be advice about advice about advice, and the hand-off is bounded
+ * to one specialist review feeding one prioritisation. The Analytics &
+ * Learning agent's `performance-review` is here because it is the stage that
+ * closes the loop: measurement handed back to the Director.
  */
 export const UPSTREAM_TASK_TYPES: readonly AgentTaskType[] = [
   "crawl-review",
   "on-page-review",
   "search-query-review",
+  "performance-review",
 ];
 
 export function isUpstreamTaskType(taskType: unknown): taskType is AgentTaskType {

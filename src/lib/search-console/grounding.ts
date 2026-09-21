@@ -265,4 +265,25 @@ export const SEARCH_QUERY_REVIEW_INSTRUCTIONS = [
   "End with one line naming the single query whose figures most deserve attention, and why.",
 ].join(" ");
 
+/**
+ * What the Analytics & Learning agent is asked to produce from the same report.
+ *
+ * The same evidence the Keyword & Search Intent agent reads, with a different
+ * question: not what the queries mean, but what the figures did. Measurement
+ * is this agent's discipline, and the one thing this evidence cannot support
+ * is a cause — two windows are a comparison, never a trend and never an
+ * explanation — so the instructions say so at every turn. The learning it
+ * hands on is what to measure next, for the Director to weigh.
+ */
+export const PERFORMANCE_REVIEW_INSTRUCTIONS = [
+  "Review the Search Console evidence supplied with this task as a measurement: the window totals, the comparison with the previous window where one exists, and the top queries by clicks with their clicks, impressions, click-through rate and average position.",
+  "Structure every finding as: OBSERVED (what the evidence literally states, naming the exact total or quoting the exact query it comes from, with the figures), then INFERENCE (what the movement or level suggests, and how confident you are), then RECOMMENDATION (one concrete next step for a person, which may be a measurement to take rather than a change to make).",
+  "Report what moved between the two windows — clicks, impressions, click-through rate and average position — as differences between two windows. Do not call a difference a trend, and do not assert a cause for it: the evidence records what Google showed and what was clicked, never why.",
+  "Name which listed queries account for the most clicks, and say plainly that the window totals include queries that are not listed, so the listed rows cannot be totalled or read as the property's whole demand.",
+  "Use only the supplied evidence. Every finding must cite at least one stated total or one listed query. Where a reading is marked 'not established', say it is unknown and say what would establish it; never treat it as a pass, a failure, a zero, or a no.",
+  "Do not state or estimate search volume, keyword difficulty, rankings on specific pages, which page answered a query, competitors, conversions, revenue, indexation, crawl health, or Core Web Vitals; none of it is in the evidence.",
+  "End with two lines: the single figure that most deserves attention next cycle, and why; and the single measurement a person should take before the next cycle that this evidence cannot supply.",
+  "You cannot change anything: every recommendation is a proposed next step for an operator to review, and you must not describe it as done.",
+].join(" ");
+
 export { RANGE_DAYS };

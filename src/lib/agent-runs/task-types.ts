@@ -3,7 +3,10 @@ import { CRAWL_REVIEW_INSTRUCTIONS, ON_PAGE_REVIEW_INSTRUCTIONS } from "@/lib/cr
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { isRangeId } from "@/lib/search-console/date-windows";
-import { SEARCH_QUERY_REVIEW_INSTRUCTIONS } from "@/lib/search-console/grounding";
+import {
+  PERFORMANCE_REVIEW_INSTRUCTIONS,
+  SEARCH_QUERY_REVIEW_INSTRUCTIONS,
+} from "@/lib/search-console/grounding";
 import type { AgentId } from "@/types/agent";
 import type { AgentTaskType, JsonObject } from "@/types/agent-run";
 
@@ -195,6 +198,24 @@ const onPageReview: TaskTypeDefinition = {
 };
 
 /**
+ * The one input a Search Console-grounded task takes: a range id and nothing
+ * else.
+ *
+ * Shared by every task that reads the report, as `parseCrawlIdInput` is by
+ * the crawl tasks, so the rule that no caller can name a property or a query
+ * is written once.
+ */
+function parseRangeInput(input: unknown): TaskInputResult {
+  const object = objectWithOnly(input, ["range"]);
+  if (!object.ok) return object;
+  const range = object.value.range;
+  if (!isRangeId(range)) {
+    return { ok: false, error: "range must be one of the reporting windows the product offers." };
+  }
+  return { ok: true, value: { range } };
+}
+
+/**
  * Review one Search Console window for the run's own project.
  *
  * The input names a range and nothing else. Which property is read follows
@@ -211,15 +232,26 @@ const searchQueryReview: TaskTypeDefinition = {
   policy: "read-only",
   evidence: "search-console",
   instructions: SEARCH_QUERY_REVIEW_INSTRUCTIONS,
-  parseInput(input): TaskInputResult {
-    const object = objectWithOnly(input, ["range"]);
-    if (!object.ok) return object;
-    const range = object.value.range;
-    if (!isRangeId(range)) {
-      return { ok: false, error: "range must be one of the reporting windows the product offers." };
-    }
-    return { ok: true, value: { range } };
-  },
+  parseInput: parseRangeInput,
+};
+
+/**
+ * Review one Search Console window as a measurement.
+ *
+ * The same evidence as `search-query-review`, read by the Analytics &
+ * Learning agent with a different question: what the figures did between two
+ * windows, and what to measure next. It takes the same single input, is
+ * bounded to the same report, and like every task here changes nothing.
+ */
+const performanceReview: TaskTypeDefinition = {
+  id: "performance-review",
+  label: "Performance review",
+  description: "Review what the totals and top queries Search Console reported did over one window.",
+  agents: ["analytics-learning"],
+  policy: "read-only",
+  evidence: "search-console",
+  instructions: PERFORMANCE_REVIEW_INSTRUCTIONS,
+  parseInput: parseRangeInput,
 };
 
 /**
@@ -260,6 +292,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   crawlReview,
   onPageReview,
   searchQueryReview,
+  performanceReview,
   priorityReview,
 ];
 

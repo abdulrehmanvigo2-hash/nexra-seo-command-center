@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
-import { SEARCH_QUERY_REVIEW, searchQueryReviewRequest } from "@/lib/crawl/review-request";
+import { PERFORMANCE_REVIEW, SEARCH_QUERY_REVIEW, searchQueryReviewRequest } from "@/lib/crawl/review-request";
 import { formatFullDate, formatNumber, formatPercent } from "@/lib/format";
 import {
   PARTIAL_COPY,
@@ -127,6 +127,17 @@ export function SearchConsolePanel({
     SEARCH_QUERY_REVIEW,
   );
 
+  /**
+   * The Analytics & Learning agent's review of the same window, as a
+   * measurement. Its own run, dropped on the same change of project or window,
+   * so one agent's result is never shown under the other's heading.
+   */
+  const performance = useQueuedReview(
+    searchQueryReviewRequest(projectId, report, rangeId, PERFORMANCE_REVIEW),
+    projectId ? `${projectId}:${rangeId}` : null,
+    PERFORMANCE_REVIEW,
+  );
+
   return (
     <Panel aria-busy={load?.status === "loading" || undefined}>
       <PanelHeader
@@ -182,10 +193,11 @@ export function SearchConsolePanel({
       )}
 
       {/* Offered where the queries are the subject — beside the summary and
-          the query list, not the page list, which this review does not read. */}
+          the query list, not the page list, which neither review reads. */}
       {projectId && view !== "pages" && load?.status === "loaded" && (
-        <div className="px-4 pb-4 sm:px-5">
+        <div className="space-y-4 px-4 pb-4 sm:px-5">
           <QueuedReview review={SEARCH_QUERY_REVIEW} projectId={projectId} {...review} />
+          <QueuedReview review={PERFORMANCE_REVIEW} projectId={projectId} {...performance} />
         </div>
       )}
 

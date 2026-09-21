@@ -129,7 +129,12 @@ describe("same-project acceptance", () => {
   });
 
   test("every hand-off task type is accepted, and only those", async () => {
-    assert.deepEqual([...UPSTREAM_TASK_TYPES], ["crawl-review", "on-page-review", "search-query-review"]);
+    assert.deepEqual([...UPSTREAM_TASK_TYPES], [
+      "crawl-review",
+      "on-page-review",
+      "search-query-review",
+      "performance-review",
+    ]);
     for (const taskType of UPSTREAM_TASK_TYPES) {
       const result = await read({ ...UPSTREAM, taskType });
       assert.equal(result.ok, true, taskType);
@@ -382,5 +387,44 @@ describe("the Director's instructions", () => {
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /You change nothing and assign nothing/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /must not describe any item as scheduled, assigned, or done/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /End with one line naming the single first action/);
+  });
+});
+
+describe("the Analytics & Learning performance review as an upstream", () => {
+  const performance: AgentRun = {
+    ...UPSTREAM,
+    id: "11111111-0000-4000-8000-000000000002",
+    agentId: "analytics-learning",
+    taskType: "performance-review",
+    input: { range: "30d" },
+    resultSummary: "OBSERVED: clicks 120 against 100 in the previous window.\nINFERENCE: more clicks at a similar position; medium confidence.\nRECOMMENDATION: measure the same window next cycle.",
+    resultMetadata: { ...UPSTREAM.resultMetadata, evidence: SEARCH_CONSOLE_EVIDENCE, taskType: "performance-review" },
+  };
+
+  test("a completed, grounded, model-executed performance review on the same project is read", async () => {
+    const result = await read(performance, PROJECT, performance.id);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.grounding.summary.agentId, "analytics-learning");
+    assert.equal(result.grounding.summary.taskType, "performance-review");
+    assert.deepEqual(result.grounding.summary.upstreamEvidence, SEARCH_CONSOLE_EVIDENCE);
+    assert.match(result.grounding.text, /Written by: the Analytics & Learning agent \(analytics-learning\)/);
+    assert.match(result.grounding.text, /That agent was given: a Google Search Console report this product read/);
+    assert.equal(handoffRefusal(performance), null);
+  });
+
+  test("it is refused for exactly the reasons every other upstream is", async () => {
+    assert.deepEqual(await read({ ...performance, projectId: OTHER_PROJECT }, PROJECT, performance.id), { ok: false, reason: "source-run-not-in-project" });
+    assert.deepEqual(await read({ ...performance, status: "queued", resultSummary: null, resultMetadata: null }, PROJECT, performance.id), { ok: false, reason: "source-run-unfinished" });
+    assert.deepEqual(await read({ ...performance, status: "failed", resultSummary: null, resultMetadata: null }, PROJECT, performance.id), { ok: false, reason: "source-run-not-completed" });
+    assert.deepEqual(await read({ ...performance, executor: "mock", resultMetadata: { simulated: true, grounded: false } }, PROJECT, performance.id), { ok: false, reason: "source-run-simulated" });
+    assert.deepEqual(await read({ ...performance, resultMetadata: { simulated: false, grounded: false } }, PROJECT, performance.id), { ok: false, reason: "source-run-not-grounded" });
+    assert.deepEqual(await read(null, PROJECT, performance.id), { ok: false, reason: "source-run-not-found" });
+  });
+
+  test("the ungrounded tasks and the Director's own task are still never sources", async () => {
+    for (const taskType of ["project-review", "keyword-research", "priority-review"] as const) {
+      assert.deepEqual(await read({ ...performance, taskType }, PROJECT, performance.id), { ok: false, reason: "source-task-not-allowed" }, taskType);
+    }
   });
 });

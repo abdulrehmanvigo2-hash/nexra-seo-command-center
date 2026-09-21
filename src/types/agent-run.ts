@@ -33,6 +33,7 @@ export type AgentTaskType =
   | "crawl-review"
   | "on-page-review"
   | "search-query-review"
+  | "performance-review"
   | "priority-review";
 
 export type JsonValue =
