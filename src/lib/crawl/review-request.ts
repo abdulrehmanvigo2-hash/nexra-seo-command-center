@@ -33,7 +33,7 @@ import type { SearchConsoleReport } from "@/types/search-console";
 export const REVIEW_AGENT_ID = "technical-seo";
 export const REVIEW_TASK_TYPE = "crawl-review";
 
-export type CrawlReviewKind = typeof REVIEW_TASK_TYPE | "on-page-review";
+export type CrawlReviewKind = typeof REVIEW_TASK_TYPE | "on-page-review" | "answer-readiness-review";
 export type SearchConsoleReviewKind = "search-query-review" | "performance-review";
 export type ReviewTaskType = CrawlReviewKind | SearchConsoleReviewKind | "priority-review";
 
@@ -43,6 +43,7 @@ export type ReviewSpec = {
   readonly agentId:
     | typeof REVIEW_AGENT_ID
     | "on-page-seo"
+    | "ai-visibility"
     | "keyword-intent"
     | "analytics-learning"
     | "seo-director";
@@ -73,6 +74,15 @@ export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, ReviewSpec>> = {
     action: "Analyze with On-Page SEO Agent",
     summary:
       "Queues a read-only review of the titles, descriptions, headings, canonicals and links recorded above. Proposes changes for you to apply; it edits and publishes nothing.",
+    groundedIn: "this crawl's recorded pages",
+  },
+  "answer-readiness-review": {
+    taskType: "answer-readiness-review",
+    agentId: "ai-visibility",
+    agentName: "AI Visibility / AEO",
+    action: "Analyze with AI Visibility Agent",
+    summary:
+      "Queues a read-only answer-readiness review of the structured data, headings, titles, descriptions, canonicals and robots directives recorded above. It judges page declarations only — not AI crawler access, citations or visibility, which no crawl can observe — and changes nothing.",
     groundedIn: "this crawl's recorded pages",
   },
 };
@@ -235,7 +245,7 @@ const HANDOFF_REFUSAL: Readonly<Record<RunGroundingRefusal, string>> = {
   "source-run-not-found": "That run no longer exists on the server.",
   "source-run-not-in-project": "That run belongs to a different project, so the Director cannot read it here.",
   "source-task-not-allowed":
-    "The SEO Director takes hand-offs from crawl reviews, on-page reviews, search query reviews and performance reviews only.",
+    "The SEO Director takes hand-offs from crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only.",
   "source-run-unfinished": "This review has not finished, so there is nothing to hand off yet.",
   "source-run-not-completed": "This review did not complete, so it has no result to hand off.",
   "source-run-no-result": "This review stored no result, so there is nothing to hand off.",

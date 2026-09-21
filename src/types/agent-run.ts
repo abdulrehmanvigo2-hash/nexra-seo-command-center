@@ -32,6 +32,7 @@ export type AgentTaskType =
   | "keyword-research"
   | "crawl-review"
   | "on-page-review"
+  | "answer-readiness-review"
   | "search-query-review"
   | "performance-review"
   | "priority-review";

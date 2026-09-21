@@ -56,6 +56,7 @@ export type AgentRunReader = {
 export const UPSTREAM_TASK_TYPES: readonly AgentTaskType[] = [
   "crawl-review",
   "on-page-review",
+  "answer-readiness-review",
   "search-query-review",
   "performance-review",
 ];

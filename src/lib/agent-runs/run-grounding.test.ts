@@ -132,6 +132,7 @@ describe("same-project acceptance", () => {
     assert.deepEqual([...UPSTREAM_TASK_TYPES], [
       "crawl-review",
       "on-page-review",
+      "answer-readiness-review",
       "search-query-review",
       "performance-review",
     ]);
@@ -425,6 +426,47 @@ describe("the Analytics & Learning performance review as an upstream", () => {
   test("the ungrounded tasks and the Director's own task are still never sources", async () => {
     for (const taskType of ["project-review", "keyword-research", "priority-review"] as const) {
       assert.deepEqual(await read({ ...performance, taskType }, PROJECT, performance.id), { ok: false, reason: "source-task-not-allowed" }, taskType);
+    }
+  });
+});
+
+describe("the AI Visibility answer-readiness review as an upstream", () => {
+  const readiness: AgentRun = {
+    ...UPSTREAM,
+    id: "11111111-0000-4000-8000-000000000003",
+    agentId: "ai-visibility",
+    taskType: "answer-readiness-review",
+    resultSummary: "OBSERVED: https://nexraagency.com/services declares one JSON-LD block of type Organization.\nINFERENCE: the page is typed as an organisation, not as a service; medium confidence.\nRECOMMENDATION: add a Service type for a person to review.",
+    resultMetadata: { ...UPSTREAM.resultMetadata, taskType: "answer-readiness-review" },
+  };
+
+  test("a completed, grounded, model-executed review on the same project is read, over the crawl it was given", async () => {
+    const result = await read(readiness, PROJECT, readiness.id);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.grounding.summary.agentId, "ai-visibility");
+    assert.equal(result.grounding.summary.taskType, "answer-readiness-review");
+    assert.deepEqual(result.grounding.summary.upstreamEvidence, CRAWL_EVIDENCE);
+    assert.match(result.grounding.text, /Written by: the AI Visibility agent \(ai-visibility\)/);
+    assert.match(result.grounding.text, /That agent was given: a crawl this product recorded/);
+    assert.equal(handoffRefusal(readiness), null);
+  });
+
+  test("it is refused for exactly the reasons every other upstream is, and the project comes first", async () => {
+    assert.deepEqual(await read({ ...readiness, projectId: OTHER_PROJECT, executor: "mock" }, PROJECT, readiness.id), { ok: false, reason: "source-run-not-in-project" });
+    assert.deepEqual(await read({ ...readiness, status: "queued", resultSummary: null, resultMetadata: null }, PROJECT, readiness.id), { ok: false, reason: "source-run-unfinished" });
+    assert.deepEqual(await read({ ...readiness, status: "running", resultSummary: null, resultMetadata: null }, PROJECT, readiness.id), { ok: false, reason: "source-run-unfinished" });
+    assert.deepEqual(await read({ ...readiness, status: "failed", resultSummary: null, resultMetadata: null }, PROJECT, readiness.id), { ok: false, reason: "source-run-not-completed" });
+    assert.deepEqual(await read({ ...readiness, status: "cancelled", resultSummary: null, resultMetadata: null }, PROJECT, readiness.id), { ok: false, reason: "source-run-not-completed" });
+    assert.deepEqual(await read({ ...readiness, resultSummary: "" }, PROJECT, readiness.id), { ok: false, reason: "source-run-no-result" });
+    assert.deepEqual(await read({ ...readiness, executor: "mock", resultMetadata: { simulated: true, grounded: false } }, PROJECT, readiness.id), { ok: false, reason: "source-run-simulated" });
+    assert.deepEqual(await read({ ...readiness, resultMetadata: { simulated: false, grounded: false } }, PROJECT, readiness.id), { ok: false, reason: "source-run-not-grounded" });
+    assert.deepEqual(await read(null, PROJECT, readiness.id), { ok: false, reason: "source-run-not-found" });
+  });
+
+  test("the ungrounded tasks and the Director's own task are still never sources", async () => {
+    for (const taskType of ["project-review", "keyword-research", "priority-review"] as const) {
+      assert.deepEqual(await read({ ...readiness, taskType }, PROJECT, readiness.id), { ok: false, reason: "source-task-not-allowed" }, taskType);
     }
   });
 });

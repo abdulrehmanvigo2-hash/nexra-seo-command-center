@@ -1,5 +1,9 @@
 import type { ActionPolicy } from "@/lib/agent-runs/action-policy";
-import { CRAWL_REVIEW_INSTRUCTIONS, ON_PAGE_REVIEW_INSTRUCTIONS } from "@/lib/crawl/grounding";
+import {
+  ANSWER_READINESS_REVIEW_INSTRUCTIONS,
+  CRAWL_REVIEW_INSTRUCTIONS,
+  ON_PAGE_REVIEW_INSTRUCTIONS,
+} from "@/lib/crawl/grounding";
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { isRangeId } from "@/lib/search-console/date-windows";
@@ -198,6 +202,29 @@ const onPageReview: TaskTypeDefinition = {
 };
 
 /**
+ * Review the answer-engine readiness of one crawl's pages.
+ *
+ * The same evidence as `crawl-review` and `on-page-review`, read by the AI
+ * Visibility agent with a third question: whether each page's recorded
+ * declarations — structured data, h1, title, description, canonical, robots
+ * directive — are shaped for an answer engine to retrieve and cite. It takes
+ * the same single input, is bounded to the same pages, and like every task
+ * here changes nothing. What no crawl can observe about AI engines is named
+ * in its instructions as not established.
+ */
+const answerReadinessReview: TaskTypeDefinition = {
+  id: "answer-readiness-review",
+  label: "Answer-readiness review",
+  description:
+    "Review whether one completed crawl's pages are structured to be retrieved and cited by answer engines.",
+  agents: ["ai-visibility"],
+  policy: "read-only",
+  evidence: "crawl",
+  instructions: ANSWER_READINESS_REVIEW_INSTRUCTIONS,
+  parseInput: parseCrawlIdInput,
+};
+
+/**
  * The one input a Search Console-grounded task takes: a range id and nothing
  * else.
  *
@@ -291,6 +318,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   keywordResearch,
   crawlReview,
   onPageReview,
+  answerReadinessReview,
   searchQueryReview,
   performanceReview,
   priorityReview,

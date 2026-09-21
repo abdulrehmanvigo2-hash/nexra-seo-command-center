@@ -88,13 +88,14 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Seven task types exist, all read-only: `project-review` (any agent),
+project. Eight task types exist, all read-only: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
+`answer-readiness-review` (AI Visibility),
 `search-query-review` (Keyword & Search Intent, from Search Console),
 `performance-review` (Analytics & Learning, from Search Console) and
 `priority-review` (SEO Director, from one other agent's completed review). The
-two crawl reviews take one input, a crawl id, and are grounded in the same
+three crawl reviews take one input, a crawl id, and are grounded in the same
 recorded crawl; the two Search Console reviews take one input, a range id, and
 are grounded in the project's own Search Console report; the priority review
 takes one input, a run id, and is grounded in that run's stored output (see
@@ -293,7 +294,7 @@ or per operator. That control has to come from the provider account.
   output; stored metadata is provider, model, token counts, and `grounded`.
   `grounded` is `true` only when a record this product holds was actually
   loaded and put in the prompt — the tasks whose type declares
-  `evidence: "crawl"` (`crawl-review`, `on-page-review`),
+  `evidence: "crawl"` (`crawl-review`, `on-page-review`, `answer-readiness-review`),
   `evidence: "search-console"` (`search-query-review`, `performance-review`) or
   `evidence: "agent-run"` (`priority-review`). Their metadata also carries an
   `evidence` object saying which record: the crawl and its page counts; the
@@ -328,6 +329,16 @@ the hand-off control under a completed review on the crawl and Search Console
 panels; nothing queues it automatically, no run records a parent, and the
 `source` column still permits `operator` only.
 
+The AI Visibility agent's `answer-readiness-review` reads the crawl with a
+third question — whether each page's recorded declarations (structured data
+and its types, h1, title, description, canonical, robots directive) are shaped
+for an answer engine to retrieve and cite. Its instructions name what no crawl
+can observe and forbid claiming it: AI crawler access rules (the robots.txt
+reading is this product's own crawler's), citations, mention share,
+answer-engine visibility, body text quality, entity coverage, semantic
+completeness, and retrieval frequency. It is queued from the crawl panel
+beside the Technical SEO and On-Page reviews, over the same crawl.
+
 The Analytics & Learning agent's `performance-review` is a hand-off source
 because it is the stage that closes the loop: a measurement of one window,
 handed back to the Director to weigh. It is queued from the Search Console
@@ -342,7 +353,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `search-query-review` or `performance-review` — the ungrounded tasks and `priority-review` itself are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks and `priority-review` itself are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
@@ -400,8 +411,9 @@ project's own host inside fixed budgets and records what each URL returned.
 Read-only with respect to the client's site: `GET` requests only, no forms
 submitted, no state changed anywhere but our own tables.
 
-**Two agent tasks read this data** — `crawl-review` and `on-page-review`, both
-through one serialisation with one ownership check — and the crawl panel on
+**Three agent tasks read this data** — `crawl-review`, `on-page-review` and
+`answer-readiness-review`, all through one serialisation with one ownership
+check — and the crawl panel on
 the project workspace lists the recorded pages. The Technical SEO screens are
 unchanged and still render fixtures. Connecting those is a separate feature.
 

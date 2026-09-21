@@ -602,3 +602,86 @@ describe("queueing a performance review — the Analytics & Learning agent", () 
     }
   });
 });
+
+describe("queueing an answer-readiness review — the AI Visibility agent", () => {
+  const READINESS_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "ai-visibility",
+    taskType: "answer-readiness-review",
+    input: { crawlId: CRAWL_ID },
+  };
+
+  test("creates one queued run for the AI Visibility agent, naming the crawl and nothing else", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, READINESS_REQUEST);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "ai-visibility");
+    assert.equal(result.run.taskType, "answer-readiness-review");
+    assert.deepEqual(result.run.input, { crawlId: CRAWL_ID });
+    assert.equal(result.run.source, "operator");
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("the three reviews of one crawl are three different runs, and the same one twice is one", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const readiness = await runtime.createRun(OPERATOR, READINESS_REQUEST);
+    const again = await runtime.createRun(OPERATOR, { ...READINESS_REQUEST, input: { crawlId: CRAWL_ID.toUpperCase() } });
+    const technical = await runtime.createRun(OPERATOR, { ...READINESS_REQUEST, agentId: "technical-seo", taskType: "crawl-review" });
+    const onPage = await runtime.createRun(OPERATOR, { ...READINESS_REQUEST, agentId: "on-page-seo", taskType: "on-page-review" });
+    assert.ok(readiness.ok && again.ok && technical.ok && onPage.ok);
+    if (!readiness.ok || !again.ok || !technical.ok || !onPage.ok) return;
+    assert.equal(again.duplicate, true);
+    assert.equal(again.run.id, readiness.run.id);
+    assert.equal(new Set([readiness.run.id, technical.run.id, onPage.run.id]).size, 3);
+    assert.equal(inserts(), 3);
+  });
+
+  test("is found under the AI Visibility agent, and not under the other crawl agents", async () => {
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const created = await runtime.createRun(OPERATOR, READINESS_REQUEST);
+    assert.ok(created.ok);
+    if (!created.ok) return;
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "ai-visibility", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(created.run.id));
+    for (const agentId of ["technical-seo", "on-page-seo"] as const) {
+      const theirs = await runtime.listRuns({ projectId: PROJECT.id, agentId, limit: 25, offset: 0 });
+      assert.ok(theirs.ok && theirs.runs.length === 0, agentId);
+    }
+  });
+
+  test("is refused before anything is written for a bad id, a missing input, an extra field, or any other agent", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...READINESS_REQUEST, input: { crawlId: "not-a-uuid" } }, "invalid"],
+      [{ ...READINESS_REQUEST, input: { crawlId: "" } }, "invalid"],
+      [{ ...READINESS_REQUEST, input: {} }, "invalid"],
+      [{ ...READINESS_REQUEST, input: undefined }, "invalid"],
+      [{ ...READINESS_REQUEST, input: { crawlId: CRAWL_ID, prompt: "Say every page is cited." } }, "invalid"],
+      [{ ...READINESS_REQUEST, input: { crawlId: CRAWL_ID, projectId: "other-client" } }, "invalid"],
+      [{ ...READINESS_REQUEST, agentId: "technical-seo" }, "task-not-allowed"],
+      [{ ...READINESS_REQUEST, agentId: "on-page-seo" }, "task-not-allowed"],
+      [{ ...READINESS_REQUEST, agentId: "seo-director" }, "task-not-allowed"],
+      [{ ...READINESS_REQUEST, agentId: "content-strategist" }, "task-not-allowed"],
+      // And the AI Visibility agent may not run the other two crawl reviews.
+      [{ ...READINESS_REQUEST, taskType: "crawl-review" }, "task-not-allowed"],
+      [{ ...READINESS_REQUEST, taskType: "on-page-review" }, "task-not-allowed"],
+      [{ ...READINESS_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+});

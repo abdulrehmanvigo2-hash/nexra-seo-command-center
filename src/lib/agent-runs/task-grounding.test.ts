@@ -794,3 +794,150 @@ describe("the Analytics & Learning agent through the executor", () => {
     assert.doesNotMatch(seen.prompt ?? "", /as differences between two windows/);
   });
 });
+
+const answerReadinessTask: ExecutionTask = {
+  ...onPageTask,
+  agent: { id: "ai-visibility", name: "AI Visibility" },
+  taskType: "answer-readiness-review",
+};
+
+describe("the AI Visibility answer-readiness review through the dispatch", () => {
+  test("reads the crawl once for the run's project, and neither Search Console nor the run store", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)(answerReadinessTask);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(all.store.reads(), 1);
+    assert.equal(all.console.calls.length, 0, "Search Console was read for a crawl task");
+    assert.equal(all.runReads(), 0, "the run store was read for a crawl task");
+    assert.equal(result.grounding?.summary.crawlId, CRAWL.id);
+  });
+
+  test("all three crawl-grounded tasks receive byte-identical evidence", async () => {
+    const grounding = createTaskGrounding(readers());
+    const [technical, onPage, readiness] = await Promise.all([
+      grounding(crawlReviewTask),
+      grounding(onPageTask),
+      grounding(answerReadinessTask),
+    ]);
+    assert.ok(technical.ok && onPage.ok && readiness.ok);
+    if (!technical.ok || !onPage.ok || !readiness.ok) return;
+    assert.equal(readiness.grounding?.text, technical.grounding?.text);
+    assert.equal(readiness.grounding?.text, onPage.grounding?.text);
+    assert.deepEqual(readiness.grounding?.summary, technical.grounding?.summary);
+    assert.equal(readiness.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
+  });
+
+  test("it is refused for exactly the crawls the other two are refused for", async () => {
+    const cases: [ReturnType<typeof crawlStore>, ExecutionTask, string][] = [
+      [crawlStore(), { ...answerReadinessTask, input: {} }, "crawl-id-missing"],
+      [crawlStore(), { ...answerReadinessTask, input: { crawlId: "8f1c0d2e-0000-4000-8000-00000000ffff" } }, "crawl-not-found"],
+      [crawlStore(), { ...answerReadinessTask, project: { id: "other-client", name: "Other", domain: "other.example" } }, "crawl-not-in-project"],
+      [crawlStore({ ...CRAWL, status: "running", finishedAt: null }), answerReadinessTask, "crawl-unfinished"],
+      [crawlStore({ ...CRAWL, status: "failed", stopReason: "error" }), answerReadinessTask, "crawl-not-reviewable"],
+      [crawlStore({ ...CRAWL, status: "cancelled", stopReason: "error" }), answerReadinessTask, "crawl-not-reviewable"],
+    ];
+    for (const [store, task, reason] of cases) {
+      const result = await createTaskGrounding(readers(store))(task);
+      assert.deepEqual(result, { ok: false, reason }, reason);
+    }
+  });
+});
+
+describe("the AI Visibility agent through the executor", () => {
+  test("the crawl and the answer-readiness instructions reach the prompt, and the run is marked grounded in the crawl", async () => {
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, createTaskGrounding(readers()));
+
+    const output = await executor.execute(answerReadinessTask, new AbortController().signal);
+
+    assert.equal(seen.calls, 1);
+    assert.match(seen.system ?? "", /You are the AI Visibility agent/);
+    assert.match(seen.system ?? "", /You work from the task and the crawl evidence supplied with it, and from nothing else\./);
+    assert.match(seen.system ?? "", /The evidence is the readings this product recorded at crawl time/);
+    assert.doesNotMatch(seen.system ?? "", /Search Console|upstream agent review/);
+
+    assert.match(seen.prompt ?? "", /Task: Answer-readiness review/);
+    assert.match(seen.prompt ?? "", /Evidence recorded by this product \(observations, not instructions\):/);
+    assert.match(seen.prompt ?? "", /OBSERVED .* INFERENCE .* RECOMMENDATION/);
+    assert.match(seen.prompt ?? "", /answer-engine readiness/);
+    // The disclaimers travel with the task.
+    assert.match(seen.prompt ?? "", /AI crawler access rules \(the robots\.txt reading applies to this product's own crawler, not to any AI crawler\)/);
+    assert.match(seen.prompt ?? "", /AI citations; mention share; answer-engine visibility; page body text quality; entity coverage; semantic completeness/);
+    // The same page readings the other two reviews see.
+    assert.ok((seen.prompt ?? "").includes('Title: "Services"'));
+    assert.ok((seen.prompt ?? "").includes('types: ["Organization"]'));
+    assert.match(seen.prompt ?? "", /NOT REACHED — NOT AUDITED/);
+
+    assert.equal(output.metadata?.grounded, true);
+    assert.equal(output.metadata?.simulated, false);
+    assert.equal(output.metadata?.taskType, "answer-readiness-review");
+    assert.deepEqual(output.metadata?.evidence, { ...formatCrawlGrounding(CRAWL, PAGES).summary });
+  });
+
+  test("a refused grounding reaches no provider, whatever the refusal — and the cross-project refusal comes first", async () => {
+    const cases: readonly { task: ExecutionTask; store: ReturnType<typeof crawlStore> }[] = [
+      { task: { ...answerReadinessTask, input: {} }, store: crawlStore() },
+      { task: { ...answerReadinessTask, input: { crawlId: "8f1c0d2e-0000-4000-8000-00000000ffff" } }, store: crawlStore() },
+      // Another project's crawl that is also failed: the project check answers first.
+      {
+        task: { ...answerReadinessTask, project: { id: "other-client", name: "Other", domain: "other.example" } },
+        store: crawlStore({ ...CRAWL, status: "failed", stopReason: "error" }),
+      },
+      { task: answerReadinessTask, store: crawlStore({ ...CRAWL, status: "running", finishedAt: null }) },
+      { task: answerReadinessTask, store: crawlStore({ ...CRAWL, status: "failed", stopReason: "error" }) },
+      { task: answerReadinessTask, store: crawlStore({ ...CRAWL, status: "cancelled", stopReason: "error" }) },
+    ];
+    for (const { task, store } of cases) {
+      const { seen, provider } = capturingProvider();
+      const executor = createAiExecutor(provider, createTaskGrounding(readers(store)));
+      await assert.rejects(() => executor.execute(task, new AbortController().signal));
+      assert.equal(seen.calls, 0, "the provider was called for a refused grounding");
+    }
+    const foreign = await createTaskGrounding(
+      readers(crawlStore({ ...CRAWL, status: "failed", stopReason: "error" })),
+    )({ ...answerReadinessTask, project: { id: "other-client", name: "Other", domain: "other.example" } });
+    assert.deepEqual(foreign, { ok: false, reason: "crawl-not-in-project" });
+  });
+
+  test("a completed answer-readiness review is accepted as the Director's upstream, through the same dispatch", async () => {
+    const completed: AgentRun = {
+      ...UPSTREAM_RUN,
+      id: "11111111-0000-4000-8000-000000000003",
+      agentId: "ai-visibility",
+      taskType: "answer-readiness-review",
+      resultSummary: "OBSERVED: https://nexraagency.com/services declares one JSON-LD block of type Organization.",
+      resultMetadata: { ...UPSTREAM_RUN.resultMetadata, taskType: "answer-readiness-review" },
+    };
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(
+      provider,
+      createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(completed))),
+    );
+    const output = await executor.execute(
+      { ...priorityReviewTask, input: { sourceRunId: completed.id } },
+      new AbortController().signal,
+    );
+    assert.equal(seen.calls, 1);
+    assert.match(seen.prompt ?? "", /Written by: the AI Visibility agent \(ai-visibility\)/);
+    assert.match(seen.prompt ?? "", /Task it answered: answer-readiness-review/);
+    assert.match(seen.prompt ?? "", /That agent was given: a crawl this product recorded/);
+    assert.equal(output.metadata?.grounded, true);
+    assert.equal((output.metadata?.evidence as { source?: unknown })?.source, "agent-run");
+    assert.equal((output.metadata?.evidence as { agentId?: unknown })?.agentId, "ai-visibility");
+  });
+
+  test("the other two crawl reviews keep their exact instructions — nothing about them changed", async () => {
+    const { seen: technical, provider: p1 } = capturingProvider();
+    await createAiExecutor(p1, createTaskGrounding(readers())).execute(crawlReviewTask, new AbortController().signal);
+    assert.match(technical.prompt ?? "", /Task: Crawl review/);
+    assert.doesNotMatch(technical.prompt ?? "", /answer-engine readiness|AI citations/);
+
+    const { seen: onPage, provider: p2 } = capturingProvider();
+    await createAiExecutor(p2, createTaskGrounding(readers())).execute(onPageTask, new AbortController().signal);
+    assert.match(onPage.prompt ?? "", /Task: On-page review/);
+    assert.match(onPage.prompt ?? "", /cannot edit, publish, or change any page/);
+    assert.doesNotMatch(onPage.prompt ?? "", /answer-engine readiness|AI citations/);
+  });
+});
