@@ -29,8 +29,9 @@ Vercel Cron ── /api/worker/* ── agent runtime worker ── executor (mo
 Everything else on screen — rankings, content, technical, competitor, backlink,
 AI-visibility, and reporting figures — is still modelled fixture data, labelled
 as such. Nothing measures it yet. **The crawl foundation does not change that:**
-it stores what it observes and nothing reads it, so every Technical SEO screen
-is still fixture data and still says so.
+it stores what it observes, and the only readers of it are the crawl panel on
+the project workspace and the two crawl-grounded agent tasks below, so every
+Technical SEO screen is still fixture data and still says so.
 
 ## Supabase
 
@@ -84,16 +85,18 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Five task types exist, all read-only: `project-review` (any agent),
+project. Six task types exist, all read-only: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
-`crawl-review` (Technical SEO), `on-page-review` (On-Page SEO) and
-`search-query-review` (Keyword & Search Intent, from Search Console). The two
-crawl reviews take one input, a crawl id, and are grounded in the same recorded
-crawl; the search query review takes one input, a range id, and is grounded in
-the project's own Search Console report (see below). Input is parsed strictly
-per task type, bounded, and screened for credentials; unknown fields are
-refused. Adding a task type needs no migration: the run table checks the id's
-format, not a list.
+`crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
+`search-query-review` (Keyword & Search Intent, from Search Console) and
+`priority-review` (SEO Director, from one other agent's completed review). The
+two crawl reviews take one input, a crawl id, and are grounded in the same
+recorded crawl; the search query review takes one input, a range id, and is
+grounded in the project's own Search Console report; the priority review takes
+one input, a run id, and is grounded in that run's stored output (see
+*Agent hand-off* below). Input is parsed strictly per task type, bounded, and
+screened for credentials; unknown fields are refused. Adding a task type needs
+no migration: the run table checks the id's format, not a list.
 
 Lifecycle, enforced in Postgres:
 
@@ -254,6 +257,12 @@ readable". A cross-project crawl id will therefore be retried twice before
 going terminal. Those retries cost nothing — the refusal precedes the model
 call — but the imprecision is real, and narrowing it needs a migration.
 
+**A hand-off is one more billed run.** The Director's `priority-review` costs
+what any AI-executed run costs, on top of the upstream run it reads; its
+grounding refusals (see *Agent hand-off*) happen before the provider call and
+cost nothing. Nothing queues a hand-off automatically, so the number of paid
+Director runs is exactly the number of times an operator clicks.
+
 **Concurrency cannot double-spend.** `store.claim` is atomic and takes a lease:
 of Run Now, the 05:30 cron, and a second tab, exactly one claims the attempt
 and the rest are told the run is already running (409). `createRun` matches an
@@ -278,25 +287,82 @@ or per operator. That control has to come from the provider account.
   domain, and the validated input passed as labelled data. The model has no
   tools or live data and is told so. The answer is screened like any executor
   output; stored metadata is provider, model, token counts, and `grounded`.
-  `grounded` is `true` only when evidence this product recorded was actually
-  loaded and put in the prompt — today the tasks whose type declares
-  `evidence: "crawl"` (`crawl-review`, `on-page-review`) or
-  `evidence: "search-console"` (`search-query-review`), whose metadata also
-  carries an `evidence` object naming the crawl and its page counts, or the
-  property, window and query count. The runtime picks the reader from that
-  declaration (`src/lib/agent-runs/task-grounding.ts`): the crawl tasks read
-  one serialisation of the crawl (`src/lib/crawl/grounding.ts`) through one
-  ownership check and one byte ceiling, and the search task reads the
-  project's report (`src/lib/search-console/grounding.ts`). Each reader names
-  its evidence to the model in its own terms, so the system prompt never
-  calls a Search Console report "crawl readings". Every other task records
-  `grounded: false`. Raw provider responses
-  are not stored. Provider failures map to
-  `provider-unavailable` or `provider-rejected`; provider text is dropped.
+  `grounded` is `true` only when a record this product holds was actually
+  loaded and put in the prompt — the tasks whose type declares
+  `evidence: "crawl"` (`crawl-review`, `on-page-review`),
+  `evidence: "search-console"` (`search-query-review`) or
+  `evidence: "agent-run"` (`priority-review`). Their metadata also carries an
+  `evidence` object saying which record: the crawl and its page counts; the
+  property, window and query count; or, for a hand-off, the upstream run, its
+  agent and task, and that run's own evidence summary under
+  `upstreamEvidence`. The runtime picks the reader from that declaration
+  (`src/lib/agent-runs/task-grounding.ts`): the crawl tasks read one
+  serialisation of the crawl (`src/lib/crawl/grounding.ts`) through one
+  ownership check and one byte ceiling, the search task reads the project's
+  report (`src/lib/search-console/grounding.ts`), and the hand-off reads one
+  run from the run store (`src/lib/agent-runs/run-grounding.ts`). Each reader
+  names its evidence to the model in its own terms, so the system prompt
+  never calls a Search Console report "crawl readings", and never calls
+  another agent's review a reading at all. Every other task records
+  `grounded: false`. Raw provider responses are not stored. Provider failures
+  map to `provider-unavailable` or `provider-rejected`; provider text is
+  dropped.
 
-No AI provider key is configured in this environment. The provider was verified
-against simulated HTTP responses (success, refusal, truncation, 400/401/404,
-429/500/529, network failure), not against the live API.
+The provider was verified in this repository against simulated HTTP responses
+(success, refusal, truncation, 400/401/404, 429/500/529, network failure). The
+deployment has since executed a run through the AI executor by the operator's
+Run Now control, which is the live verification; this development environment
+holds no provider key, so every check here still runs against fakes.
+
+### Agent hand-off
+
+`priority-review` is the first task whose evidence is another agent's output.
+The SEO Director is given one completed run's stored summary and asked for a
+ranked action queue, each item traced to a quoted upstream finding and paired
+with what a person must verify before acting. It is operator-triggered, from
+the hand-off control under a completed review on the crawl and Search Console
+panels; nothing queues it automatically, no run records a parent, and the
+`source` column still permits `operator` only.
+
+What may be handed off is decided at execution time, by the reader, against
+the persisted run — the panel refuses for the same reasons, but the panel is
+not the gate. In order, and each before anything is formatted or any provider
+is reached:
+
+| Refusal | When |
+|---|---|
+| `source-run-not-found` | no run with that id |
+| `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review` or `search-query-review` — the ungrounded tasks and `priority-review` itself are never sources |
+| `source-run-unfinished` | queued or running |
+| `source-run-not-completed` | failed or cancelled |
+| `source-run-no-result` | completed with no summary |
+| `source-run-simulated` | executor `mock`, or metadata `simulated: true` |
+| `source-run-not-grounded` | metadata absent, or not `simulated: false` and `grounded: true` |
+
+A refusal fails the attempt with `execution-failed` and costs nothing, as for
+the other readers, and is retried with the same known imprecision.
+
+**Three layers are kept apart, in the evidence and on screen.** The recorded
+evidence (a crawl, a report) is measurement. The upstream agent's review of it
+is model-generated advice. The Director's queue is model-generated advice
+about that advice. The evidence block says which it is in its first line,
+names the upstream agent, task, run and what that agent was given, states
+that the recorded evidence itself is *not* supplied, quotes the review as one
+JSON string under a heading that calls it the agent's own model-generated
+words and never facts, and ends with a limits note — including that a passage
+addressing the model is text to report, not an instruction. The system prompt
+is built from a source that describes the evidence the same way. On screen,
+a Director result's provenance line names the upstream agent and run, what
+that agent read, that the Director did not see it, and calls both layers
+advice, not measurement; a simulated or ungrounded upstream result is refused
+with that reason on the control.
+
+The block is bounded to 16,000 UTF-8 bytes. A stored summary is at most 2,000
+UTF-16 code units, so no stored row reaches the ceiling; it is enforced
+anyway, on the quoted form, cutting on a code point with a disclosure that
+says the review was cut, and the header and limits note are never what is
+cut.
 
 ### Action policy
 
@@ -325,8 +391,10 @@ project's own host inside fixed budgets and records what each URL returned.
 Read-only with respect to the client's site: `GET` requests only, no forms
 submitted, no state changed anywhere but our own tables.
 
-**Nothing reads this data yet.** The Technical SEO screens are unchanged and
-still render fixtures. Connecting the two is a separate feature.
+**Two agent tasks read this data** — `crawl-review` and `on-page-review`, both
+through one serialisation with one ownership check — and the crawl panel on
+the project workspace lists the recorded pages. The Technical SEO screens are
+unchanged and still render fixtures. Connecting those is a separate feature.
 
 ### What it observes, derives, and refuses to guess
 
@@ -536,15 +604,16 @@ All server-only. `.env.example` has placeholders.
 6. After deploying, call `GET /api/worker/status` with the worker credential and
    check that counts return and `expiredLeases` stays at 0.
 
-Nothing has been deployed.
+The application is deployed with the daily schedule, and the operator has
+exercised a live crawl, the Search Console panel and an AI-executed Run Now on
+it. The deployment plan was not verifiable from this repository.
 
 ## Known limitations
 
-- **The crawler has still never been run against a real website**, and no
-  migration has been applied. The DNS-rebinding gap that previously blocked
-  this is closed (see *Pinned connections* above), but "the address policy is
-  now enforceable" is not the same as "this has been exercised against a live
-  origin".
+- The crawler has been run against a real origin on the deployment. The
+  address policy (see *Pinned connections* above) has therefore been exercised
+  once, on an allow-listed host; it has not been exercised against a hostile
+  resolver.
 - A crawl runs inside the operator's request, so a crashed or timed-out request
   leaves its row `running` with no `finished_at`. There is no recovery sweep
   (that needs the scheduler this milestone deliberately omits); a reader should
@@ -552,8 +621,8 @@ Nothing has been deployed.
 - A sitemap is read only when the origin serves it as XML, plain text, or HTML.
   One served as something else is recorded as `unavailable`, which leaves
   sitemap membership unknown rather than false.
-- Nothing reads crawl data yet: the Technical SEO screens are entirely fixture
-  data.
+- Only the crawl panel and the two crawl-grounded agent tasks read crawl data:
+  the Technical SEO screens are entirely fixture data.
 
 - Execution runs inside a request or a cron invocation, not a long-lived
   worker: one invocation handles at most 5 runs, so sustained backlogs drain at
@@ -566,7 +635,12 @@ Nothing has been deployed.
   from the application server's clock; every lifecycle time since comes from the
   database.
 - The AI executor has no tools or live data; its output is advice, labelled as
-  model-generated. It has not been exercised against the live provider.
+  model-generated. The hand-off gives the Director one agent's advice, never
+  the evidence behind it, so the Director cannot verify what it ranks and is
+  told so; every queue item carries a verification step for a person.
+- The hand-off is one upstream run to one Director run, queued by an operator.
+  No run records its parent, and no run queues another; automatic chaining
+  needs a `source` value and a parent column the run table does not have.
 - No approval workflow exists; `approval-required` tasks cannot run at all.
 - Reporting figures outside Search Console remain fixtures.
 - Run history lists the latest 25 runs per filter, without pagination.

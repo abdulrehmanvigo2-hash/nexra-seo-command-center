@@ -1,5 +1,6 @@
 import type { ActionPolicy } from "@/lib/agent-runs/action-policy";
 import { CRAWL_REVIEW_INSTRUCTIONS, ON_PAGE_REVIEW_INSTRUCTIONS } from "@/lib/crawl/grounding";
+import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { isRangeId } from "@/lib/search-console/date-windows";
 import { SEARCH_QUERY_REVIEW_INSTRUCTIONS } from "@/lib/search-console/grounding";
@@ -41,8 +42,11 @@ export type TaskTypeDefinition = {
    * reader to use from this field rather than from the task's name — so a
    * second task over the same records is one declaration here, not a second
    * reader. `none` tasks reach the model with the validated input alone.
+   * `agent-run` tasks are given one other agent's completed, grounded review
+   * — model-generated advice, labelled as such, never the recorded evidence
+   * it was written over.
    */
-  readonly evidence: "none" | "crawl" | "search-console";
+  readonly evidence: "none" | "crawl" | "search-console" | "agent-run";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -218,12 +222,45 @@ const searchQueryReview: TaskTypeDefinition = {
   },
 };
 
+/**
+ * The SEO Director's priority review of one other agent's completed review.
+ *
+ * The first hand-off between agents. The input names one run and nothing
+ * else; which run may be read is decided on the server, at execution time,
+ * against the Director's own project and against the rules in
+ * `@/lib/agent-runs/run-grounding` — completed, executed by a model, grounded
+ * in recorded evidence, and of a task whose output may be handed off. The
+ * Director never re-reads that evidence: it ranks the actions the upstream
+ * review supports, each traced to the finding it comes from. Read-only, like
+ * every task here: it proposes an order, assigns nothing, and changes nothing.
+ * Operator-triggered only; nothing queues it automatically.
+ */
+const priorityReview: TaskTypeDefinition = {
+  id: "priority-review",
+  label: "Priority review",
+  description: "Rank the actions one completed agent review supports into a queue for this project.",
+  agents: ["seo-director"],
+  policy: "read-only",
+  evidence: "agent-run",
+  instructions: PRIORITY_REVIEW_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, ["sourceRunId"]);
+    if (!object.ok) return object;
+    const sourceRunId = object.value.sourceRunId;
+    if (typeof sourceRunId !== "string" || !UUID.test(sourceRunId)) {
+      return { ok: false, error: "sourceRunId must be the id of a completed run on this project." };
+    }
+    return { ok: true, value: { sourceRunId: sourceRunId.toLowerCase() } };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
   crawlReview,
   onPageReview,
   searchQueryReview,
+  priorityReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

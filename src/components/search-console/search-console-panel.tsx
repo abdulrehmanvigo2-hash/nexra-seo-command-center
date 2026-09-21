@@ -185,7 +185,7 @@ export function SearchConsolePanel({
           the query list, not the page list, which this review does not read. */}
       {projectId && view !== "pages" && load?.status === "loaded" && (
         <div className="px-4 pb-4 sm:px-5">
-          <QueuedReview review={SEARCH_QUERY_REVIEW} {...review} />
+          <QueuedReview review={SEARCH_QUERY_REVIEW} projectId={projectId} {...review} />
         </div>
       )}
 

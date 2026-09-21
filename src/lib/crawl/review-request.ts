@@ -17,7 +17,14 @@
  * of ids that names each review lives in `CRAWL_REVIEWS` and nowhere else.
  */
 
-import type { AgentRun, AgentRunStatus } from "@/types/agent-run";
+import {
+  describeUpstreamEvidence,
+  handoffRefusal,
+  isUpstreamTaskType,
+  type RunGroundingRefusal,
+} from "@/lib/agent-runs/run-grounding";
+import { AGENT_NAMES } from "@/lib/mock/agents/registry";
+import type { AgentRun, AgentRunStatus, JsonObject } from "@/types/agent-run";
 import type { Crawl } from "@/types/crawl";
 import type { RangeId } from "@/types/dashboard";
 import type { SearchConsoleReport } from "@/types/search-console";
@@ -27,12 +34,12 @@ export const REVIEW_AGENT_ID = "technical-seo";
 export const REVIEW_TASK_TYPE = "crawl-review";
 
 export type CrawlReviewKind = typeof REVIEW_TASK_TYPE | "on-page-review";
-export type ReviewTaskType = CrawlReviewKind | "search-query-review";
+export type ReviewTaskType = CrawlReviewKind | "search-query-review" | "priority-review";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
   readonly taskType: ReviewTaskType;
-  readonly agentId: typeof REVIEW_AGENT_ID | "on-page-seo" | "keyword-intent";
+  readonly agentId: typeof REVIEW_AGENT_ID | "on-page-seo" | "keyword-intent" | "seo-director";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
@@ -82,11 +89,30 @@ export const SEARCH_QUERY_REVIEW: ReviewSpec = {
   groundedIn: "this project's Search Console report",
 };
 
+/**
+ * The SEO Director's priority review of one completed agent review — the
+ * first hand-off between agents.
+ *
+ * The request carries the upstream run's id and nothing else. The Director
+ * reads that agent's written review, never the crawl or the report behind
+ * it, and the server re-checks the run's project, state and provenance at
+ * execution time. An operator queues it; nothing queues it automatically.
+ */
+export const PRIORITY_REVIEW: ReviewSpec = {
+  taskType: "priority-review",
+  agentId: "seo-director",
+  agentName: "SEO Director",
+  action: "Hand off to SEO Director",
+  summary:
+    "Queues a read-only priority review of the completed review above. The Director reads that agent's written review only — not the crawl or report behind it — and ranks the actions it supports. It assigns nothing and changes nothing.",
+  groundedIn: "one upstream agent's completed review",
+};
+
 export type ReviewPayload = {
   readonly projectId: string;
   readonly agentId: ReviewSpec["agentId"];
   readonly taskType: ReviewTaskType;
-  readonly input: { readonly crawlId: string } | { readonly range: RangeId };
+  readonly input: { readonly crawlId: string } | { readonly range: RangeId } | { readonly sourceRunId: string };
 };
 
 export type Queueability =
@@ -165,6 +191,60 @@ export function searchQueryReviewRequest(
   };
 }
 
+/**
+ * Why a run cannot be handed off, in the operator's terms.
+ *
+ * The reasons are the runtime's own (`handoffRefusal`), worded here so the
+ * control explains itself instead of being clicked and refused. None of them
+ * is phrased as a fault: each is a rule about what counts as evidence.
+ */
+const HANDOFF_REFUSAL: Readonly<Record<RunGroundingRefusal, string>> = {
+  "source-run-not-found": "That run no longer exists on the server.",
+  "source-run-not-in-project": "That run belongs to a different project, so the Director cannot read it here.",
+  "source-task-not-allowed":
+    "The SEO Director takes hand-offs from crawl reviews, on-page reviews and search query reviews only.",
+  "source-run-unfinished": "This review has not finished, so there is nothing to hand off yet.",
+  "source-run-not-completed": "This review did not complete, so it has no result to hand off.",
+  "source-run-no-result": "This review stored no result, so there is nothing to hand off.",
+  "source-run-simulated":
+    "Simulated output cannot be handed off: the mock executor analysed nothing, so there is nothing in it to prioritise.",
+  "source-run-not-grounded":
+    "This result was not grounded in recorded evidence, so the Director would be ranking advice built on nothing.",
+};
+
+/**
+ * Whether the completed review on screen can be handed to the Director, and
+ * the body that would ask for it.
+ *
+ * Offered only for a run the runtime's own reader would accept — the same
+ * project, a hand-off task, completed, executed by a model, grounded —
+ * checked here so the control explains itself. The server remains the gate:
+ * it re-reads the run at execution time.
+ */
+export function handoffRequest(projectId: string | null, source: AgentRun | null): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  if (source === null) return { ok: false, why: "Complete a review first: there is nothing to hand off." };
+  if (source.projectId !== projectId) return { ok: false, why: HANDOFF_REFUSAL["source-run-not-in-project"] };
+
+  const refusal = handoffRefusal(source);
+  if (refusal !== null) return { ok: false, why: HANDOFF_REFUSAL[refusal] };
+
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: PRIORITY_REVIEW.agentId,
+      taskType: PRIORITY_REVIEW.taskType,
+      input: { sourceRunId: source.id },
+    },
+  };
+}
+
+/** Whether a completed run is one the Director hand-off control belongs under. */
+export function offersHandoff(run: AgentRun): boolean {
+  return run.status === "completed" && isUpstreamTaskType(run.taskType);
+}
+
 // ---------------------------------------------------------------------------
 // What the panel shows
 // ---------------------------------------------------------------------------
@@ -220,6 +300,31 @@ export function hasResult(run: AgentRun): boolean {
   return run.status === "completed" && run.resultSummary !== null;
 }
 
+const isJsonObject = (value: unknown): value is JsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * What a grounded run was grounded in, read from the evidence summary its
+ * own metadata recorded — so a run executed months ago still says what it
+ * read, and a screen that lists every kind of run need not know which is
+ * which.
+ */
+export function evidenceDescription(metadata: JsonObject): string | null {
+  const evidence = isJsonObject(metadata.evidence) ? metadata.evidence : null;
+  if (evidence === null) return null;
+  if (evidence.source === "agent-run") return null;
+  if (evidence.source === "search-console") {
+    const property = typeof evidence.property === "string" ? evidence.property : null;
+    const start = typeof evidence.startDate === "string" ? evidence.startDate : null;
+    const end = typeof evidence.endDate === "string" ? evidence.endDate : null;
+    return property && start && end
+      ? `this project's Search Console report for ${property}, ${start} to ${end}`
+      : "this project's Search Console report";
+  }
+  if (typeof evidence.crawlId === "string") return "this product's recorded crawl";
+  return null;
+}
+
 /**
  * What produced the output, in the operator's terms.
  *
@@ -227,10 +332,15 @@ export function hasResult(run: AgentRun): boolean {
  * executed months ago still says what it was. A simulated result is labelled
  * on the result itself, where it cannot be missed, because the one failure
  * mode that matters here is a placeholder being read as analysis.
+ *
+ * Three layers are kept apart in the wording: evidence this product recorded
+ * or read; an agent's model-generated review of it; and, for a hand-off, the
+ * Director's model-generated prioritisation of that review. Only the first is
+ * measurement, and neither of the others is ever described as if it were.
  */
 export function outputProvenance(
   run: AgentRun,
-  groundedIn: string = CRAWL_REVIEWS[REVIEW_TASK_TYPE].groundedIn,
+  groundedIn?: string,
 ): { readonly text: string; readonly tone: Tone } | null {
   const metadata = run.resultMetadata;
   if (metadata === null) return null;
@@ -242,8 +352,24 @@ export function outputProvenance(
     };
   }
   if (metadata.grounded === true) {
+    const evidence = isJsonObject(metadata.evidence) ? metadata.evidence : null;
+    if (evidence?.source === "agent-run") {
+      const upstreamAgent =
+        typeof evidence.agentId === "string" && evidence.agentId in AGENT_NAMES
+          ? AGENT_NAMES[evidence.agentId as keyof typeof AGENT_NAMES]
+          : "upstream";
+      const upstreamRun = typeof evidence.runId === "string" ? ` (run ${evidence.runId})` : "";
+      const upstreamEvidence = isJsonObject(evidence.upstreamEvidence) ? evidence.upstreamEvidence : null;
+      return {
+        text: `Model output by the SEO Director, prioritising the ${upstreamAgent} agent's completed review${upstreamRun}. That review was itself model-generated over ${describeUpstreamEvidence(upstreamEvidence)}, which the Director did not see. Two layers of advice, not measurement.`,
+        tone: "neutral",
+      };
+    }
+    // An explicit description wins, then what the run's own evidence summary
+    // says; the crawl wording is the default this control has always had.
+    const source = groundedIn ?? evidenceDescription(metadata) ?? CRAWL_REVIEWS[REVIEW_TASK_TYPE].groundedIn;
     return {
-      text: `Model output, grounded in ${groundedIn}. Advice, not measurement.`,
+      text: `Model output, grounded in ${source}. Advice, not measurement.`,
       tone: "neutral",
     };
   }

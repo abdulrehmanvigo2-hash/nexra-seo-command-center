@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/field";
 import { Panel, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getTaskType } from "@/lib/agent-runs/task-types";
+import { outputProvenance } from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import { AGENT_NAMES, AGENT_REGISTRY } from "@/lib/mock/agents/registry";
 import type { ProjectOption } from "@/lib/projects/selection";
@@ -24,12 +25,15 @@ import type {
  *
  * Reads after hydration from `/api/agent-runs`, which confirms the operator,
  * so the prerendered page carries no run data. What it shows is exactly what
- * the API returns: status, task, timing, attempts, the screened summary, and
- * the fixed error message. Leases, worker labels, task input, and provider
- * payloads are not part of the API response and cannot appear here.
+ * the API returns: status, task, the validated input where it names another
+ * record, timing, attempts, the screened summary, and the fixed error
+ * message. Leases, worker labels, and provider payloads are not part of the
+ * API response and cannot appear here.
  *
- * Output is labelled by where it came from: the mock executor's is marked
- * simulated, the AI executor's as model-generated without live data.
+ * Output is labelled by where it came from, read from the run's own metadata
+ * (`outputProvenance`): the mock executor's is marked simulated; the AI
+ * executor's says what recorded evidence it was grounded in, or that it had
+ * none; and a Director hand-off names the upstream review it prioritised.
  */
 
 const LIST_LIMIT = 25;
@@ -74,10 +78,28 @@ function failureMessage(status: number): string {
   return "Agent runs could not be loaded.";
 }
 
+/**
+ * What produced a completed run's output, from its own metadata.
+ *
+ * The one case the metadata cannot settle is an AI run that stored none,
+ * which is described by its executor column alone and claims no evidence.
+ */
 function sourceLabel(run: AgentRun): string | null {
+  const provenance = outputProvenance(run);
+  if (provenance) return provenance.text;
   if (run.executor === "mock") return "Simulated output — the mock executor performed no analysis.";
-  if (run.executor === "ai") return "Model-generated from the task input, without live site data.";
+  if (run.executor === "ai") return "Model-generated from the task input alone; no recorded evidence was supplied.";
   return null;
+}
+
+/**
+ * The upstream run a Director hand-off was asked to prioritise, from the
+ * validated input — shown whatever state the run is in, so a queued or failed
+ * hand-off still says what it was for.
+ */
+function upstreamRunId(run: AgentRun): string | null {
+  if (run.taskType !== "priority-review") return null;
+  return typeof run.input.sourceRunId === "string" ? run.input.sourceRunId : null;
 }
 
 export function AgentRunHistory({ projects }: { projects: readonly ProjectOption[] }) {
@@ -287,6 +309,7 @@ function RunRow({
   const status = STATUS[run.status];
   const task = getTaskType(run.taskType);
   const source = run.status === "completed" ? sourceLabel(run) : null;
+  const upstream = upstreamRunId(run);
   const panelId = `run-attempts-${run.id}`;
 
   return (
@@ -320,6 +343,14 @@ function RunRow({
                 {run.autoRetryCount > 0 ? ` (${run.autoRetryCount} automatic ${run.autoRetryCount === 1 ? "retry" : "retries"})` : ""}
               </dd>
             </div>
+            {upstream && (
+              <div className="flex gap-1">
+                <dt>Hand-off from</dt>
+                <dd className="text-fg-muted" title="The completed review this priority review was asked to read. Its output is model-generated advice, not a measurement.">
+                  run {upstream}
+                </dd>
+              </div>
+            )}
           </dl>
         </div>
         <Button
