@@ -3,6 +3,7 @@ import "server-only";
 import type { CrawlStore } from "@/lib/crawl/contract";
 import type { CrawlConfig } from "@/lib/crawl/config";
 import { isHostAllowed } from "@/lib/crawl/config";
+import { resolveCompetitorTarget } from "@/lib/crawl/competitor-target";
 import { runCrawl, type EngineOptions } from "@/lib/crawl/engine";
 import { hostScopeFromDomain, startUrlForDomain } from "@/lib/crawl/url-policy";
 import { logEvent } from "@/lib/observability/log";
@@ -17,6 +18,13 @@ import type { Crawl, CrawlFailureReason, CrawlPage, CrawlStatus } from "@/types/
  * the host comes from that project's stored `domain` — so no input to this
  * service can point the crawler at a site the operator did not register. The
  * server's allow-list then has to name that host as well.
+ *
+ * A competitor crawl bends that rule only as far as it must: the caller may
+ * name a domain, but the host is accepted only when it matches one the
+ * agency recorded for the project at intake, read here from the stored
+ * record — never from the request — and the same allow-list then has to name
+ * it too. Every other gate, budget and guard is the one the project's own
+ * crawl runs under.
  */
 
 export type CrawlFailure = { readonly reason: CrawlFailureReason };
@@ -30,10 +38,27 @@ export type CrawlDetail = {
   readonly pages: readonly CrawlPage[];
 };
 
+/** A crawl of one of the project's recorded competitor domains, rather than its own site. */
+export type CompetitorCrawlTarget = {
+  readonly competitorDomain: string;
+};
+
+export type CompetitorCrawlsResult =
+  | { readonly ok: true; readonly host: string; readonly crawls: readonly Crawl[] }
+  | { readonly ok: false; readonly failure: CrawlFailure };
+
 export type CrawlService = {
-  startCrawl(projectId: string, operatorId: string): Promise<StartCrawlResult>;
+  /**
+   * Crawls the project's own site, or — with a target — one competitor domain
+   * the project recorded at intake. Both run through the same gates, budgets
+   * and guards; the target changes only which recorded host is fetched.
+   */
+  startCrawl(projectId: string, operatorId: string, target?: CompetitorCrawlTarget): Promise<StartCrawlResult>;
   getCrawl(id: string, pageLimit?: number): Promise<CrawlDetail | null>;
+  /** The project's own-site crawls only, newest first. A competitor crawl is never among them. */
   listCrawls(projectId: string, limit?: number): Promise<readonly Crawl[]>;
+  /** The crawls of one recorded competitor domain, newest first, or why the domain is refused. */
+  listCompetitorCrawls(projectId: string, competitorDomain: string, limit?: number): Promise<CompetitorCrawlsResult>;
 };
 
 export type CrawlServiceOptions = {
@@ -71,19 +96,54 @@ const UNEXPECTED_FAILURE = {
 export function createCrawlService(options: CrawlServiceOptions): CrawlService {
   const { store, projects, config, engine = runCrawl, engineOverrides = {} } = options;
 
+  /**
+   * The host a competitor crawl of this project may fetch, or a refusal.
+   *
+   * The recorded list is read from the stored project, by the project id the
+   * caller was already authorised for; nothing the caller sends is trusted
+   * beyond the domain it names, and that only as a lookup key.
+   */
+  async function competitorHost(
+    projectId: string,
+    competitorDomain: string,
+  ): Promise<{ ok: true; host: string } | { ok: false; failure: CrawlFailure }> {
+    const project = await projects.getProjectById(projectId);
+    if (project === null) return { ok: false, failure: { reason: "unknown-project" } };
+
+    const intake = await projects.getProjectIntake(projectId);
+    const target = resolveCompetitorTarget({
+      competitorDomain,
+      projectDomain: project.domain,
+      recordedCompetitorDomains: intake?.competitorDomains ?? [],
+    });
+    if (!target.ok) return { ok: false, failure: { reason: target.reason } };
+    return { ok: true, host: target.host };
+  }
+
   return {
-    async startCrawl(projectId, operatorId) {
+    async startCrawl(projectId, operatorId, target) {
       if (!store.storesCrawls) return { ok: false, failure: { reason: "unavailable" } };
       if (!config.enabled) return { ok: false, failure: { reason: "disabled" } };
 
-      const project = await projects.getProjectById(projectId);
-      if (project === null) return { ok: false, failure: { reason: "unknown-project" } };
+      let hostScope: string;
+      if (target === undefined) {
+        const project = await projects.getProjectById(projectId);
+        if (project === null) return { ok: false, failure: { reason: "unknown-project" } };
 
-      const hostScope = hostScopeFromDomain(project.domain);
-      const startUrl = startUrlForDomain(project.domain);
-      if (hostScope === null || startUrl === null) {
-        return { ok: false, failure: { reason: "no-domain" } };
+        const projectHost = hostScopeFromDomain(project.domain);
+        if (projectHost === null) return { ok: false, failure: { reason: "no-domain" } };
+        hostScope = projectHost;
+      } else {
+        // A competitor crawl: the host must be one the project recorded, and
+        // it is checked against the allow-list exactly as the project's own
+        // host is. The same engine, budget, guard and user agent follow.
+        const resolved = await competitorHost(projectId, target.competitorDomain);
+        if (!resolved.ok) return { ok: false, failure: resolved.failure };
+        hostScope = resolved.host;
       }
+
+      const startUrl = startUrlForDomain(hostScope);
+      if (startUrl === null) return { ok: false, failure: { reason: "no-domain" } };
       if (!isHostAllowed(config, hostScope)) {
         return { ok: false, failure: { reason: "host-not-allowed" } };
       }
@@ -101,6 +161,7 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
       }
 
       const crawl = inserted.crawl;
+      // The host says whose site it is; the log's field set is fixed.
       logEvent("info", "crawl.started", { crawlId: crawl.id, projectId, host: hostScope });
 
       let result;
@@ -194,7 +255,20 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
     },
 
     async listCrawls(projectId, limit = DEFAULT_CRAWL_LIST_LIMIT) {
-      return store.listByProject(projectId, limit);
+      // Own-site crawls are the ones confined to the project's own host, which
+      // is exactly the host `startCrawl` records for them. A project with no
+      // usable domain has never had one.
+      const project = await projects.getProjectById(projectId);
+      if (project === null) return [];
+      const projectHost = hostScopeFromDomain(project.domain);
+      if (projectHost === null) return [];
+      return store.listByProject(projectId, limit, projectHost);
+    },
+
+    async listCompetitorCrawls(projectId, competitorDomain, limit = DEFAULT_CRAWL_LIST_LIMIT) {
+      const resolved = await competitorHost(projectId, competitorDomain);
+      if (!resolved.ok) return { ok: false, failure: resolved.failure };
+      return { ok: true, host: resolved.host, crawls: await store.listByProject(projectId, limit, resolved.host) };
     },
   };
 }

@@ -82,7 +82,24 @@ export type CrawlFailureReason =
   /** The start URL resolved somewhere this crawler refuses to connect. */
   | "start-unsafe"
   /** Crawls are not persisted on this data source. */
-  | "unavailable";
+  | "unavailable"
+  /** The requested competitor domain is not a plain hostname. */
+  | "competitor-invalid"
+  /** The requested competitor domain is not one recorded for this project at intake. */
+  | "competitor-not-recorded"
+  /** The requested competitor domain is the project's own site, which is not a competitor. */
+  | "competitor-is-project-site";
+
+/**
+ * Whose site a recorded crawl fetched.
+ *
+ * Derived, never stored: a crawl's `hostScope` is compared with the project's
+ * stored domain (`@/lib/crawl/competitor-target`). A crawl of the project's
+ * own host, or a subdomain of it, is the project's site; any other host the
+ * project was allowed to crawl is a competitor's. The two are never listed
+ * together and never reviewed by the same agent tasks.
+ */
+export type CrawlTarget = "project-site" | "competitor-site";
 
 export type CrawlBudget = {
   readonly maxPages: number;

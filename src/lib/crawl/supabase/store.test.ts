@@ -304,6 +304,22 @@ describe("createSupabaseCrawlStore — reads", () => {
     assert.equal((await store.listByProject("nexra-agency", 2)).length, 2);
     assert.equal((await store.listByProject("another-project", 25)).length, 0);
   });
+
+  test("with a host scope, lists only the crawls confined to exactly that host", async () => {
+    const { store } = storeWith();
+    await store.insert(NEW_CRAWL);
+    await store.insert({ ...NEW_CRAWL, startUrl: "https://rival.example/", hostScope: "rival.example" });
+    await store.insert({ ...NEW_CRAWL, startUrl: "https://www.nexraagency.com/", hostScope: "www.nexraagency.com" });
+
+    const own = await store.listByProject("nexra-agency", 25, "nexraagency.com");
+    assert.deepEqual(own.map((crawl) => crawl.hostScope), ["nexraagency.com"]);
+    const rival = await store.listByProject("nexra-agency", 25, "rival.example");
+    assert.deepEqual(rival.map((crawl) => crawl.hostScope), ["rival.example"]);
+    assert.equal((await store.listByProject("nexra-agency", 25, "unrecorded.example")).length, 0);
+    assert.equal((await store.listByProject("another-project", 25, "rival.example")).length, 0);
+    // Without a host, every crawl of the project, as before.
+    assert.equal((await store.listByProject("nexra-agency", 25)).length, 3);
+  });
 });
 
 describe("isolation from the foreign crawl subsystem", () => {

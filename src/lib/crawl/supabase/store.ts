@@ -97,13 +97,10 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
       return data === null ? null : crawlRowToCrawl(data);
     },
 
-    async listByProject(projectId, limit) {
-      const { data, error } = await client
-        .from("nexra_crawls")
-        .select(CRAWL_READ_COLUMNS)
-        .eq("project_id", projectId)
-        .order("started_at", { ascending: false })
-        .limit(limit);
+    async listByProject(projectId, limit, hostScope) {
+      let query = client.from("nexra_crawls").select(CRAWL_READ_COLUMNS).eq("project_id", projectId);
+      if (hostScope !== undefined) query = query.eq("host_scope", hostScope);
+      const { data, error } = await query.order("started_at", { ascending: false }).limit(limit);
       if (error) throw new CrawlStoreError("list crawls", error);
       return data.map(crawlRowToCrawl);
     },

@@ -31,6 +31,7 @@
  * exactly where the rules matter.
  */
 
+import { isProjectSiteCrawl } from "@/lib/crawl/competitor-target";
 import { groupPages } from "@/lib/crawl/pages-view";
 import type { Crawl, CrawlPage } from "@/types/crawl";
 
@@ -67,6 +68,12 @@ export type CrawlGroundingRefusal =
   | "crawl-not-found"
   /** The crawl belongs to a different project than the run does. */
   | "crawl-not-in-project"
+  /**
+   * The crawl is the project's, but of a competitor's site, not its own. The
+   * project's own reviews describe "this crawl's recorded pages" as the
+   * project's, so a rival's pages are never handed to them.
+   */
+  | "crawl-not-project-site"
   /** Still running: its readings are still arriving. */
   | "crawl-unfinished"
   /** It finished, but not in a state whose readings are worth reviewing. */
@@ -145,16 +152,22 @@ const num = (value: number | null, why: string): string =>
  * Ownership is checked here and nowhere else: the caller supplies the project
  * the run belongs to, and a crawl recorded against any other project is
  * refused rather than described. An operator who names another client's crawl
- * id gets a refusal, not that client's site.
+ * id gets a refusal, not that client's site. The caller also supplies the
+ * project's own domain, and a crawl the project made of a competitor's site
+ * is refused next: these readers describe the project's own pages, and a
+ * rival's pages under that description would be a lie.
  */
 export async function readCrawlGrounding(
   reader: CrawlGroundingReader,
-  request: { readonly crawlId: string; readonly projectId: string },
+  request: { readonly crawlId: string; readonly projectId: string; readonly projectDomain: string },
 ): Promise<CrawlGroundingResult> {
   const detail = await reader.getCrawl(request.crawlId, MAX_DESCRIBED_PAGES * 4);
   if (detail === null) return { ok: false, reason: "crawl-not-found" };
   if (detail.crawl.projectId !== request.projectId) {
     return { ok: false, reason: "crawl-not-in-project" };
+  }
+  if (!isProjectSiteCrawl(detail.crawl, request.projectDomain)) {
+    return { ok: false, reason: "crawl-not-project-site" };
   }
   // Checked before anything is formatted: a refusal must not carry a line of
   // the site's own text back with it.

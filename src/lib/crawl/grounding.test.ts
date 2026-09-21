@@ -112,6 +112,7 @@ describe("crawl ownership", () => {
     const result = await readCrawlGrounding(readerFor(CRAWL), {
       crawlId: CRAWL.id,
       projectId: "nexra-agency",
+      projectDomain: "nexraagency.com",
     });
     assert.equal(result.ok, true);
     assert.equal(result.ok && result.grounding.summary.crawlId, CRAWL.id);
@@ -121,6 +122,7 @@ describe("crawl ownership", () => {
     const result = await readCrawlGrounding(readerFor(CRAWL), {
       crawlId: CRAWL.id,
       projectId: "halcyon-fintech",
+      projectDomain: "halcyon.example",
     });
     assert.equal(result.ok, false);
     assert.equal(result.ok === false && result.reason, "crawl-not-in-project");
@@ -132,6 +134,7 @@ describe("crawl ownership", () => {
     const result = await readCrawlGrounding(readerFor(CRAWL), {
       crawlId: "00000000-0000-4000-8000-0000000000ff",
       projectId: "nexra-agency",
+      projectDomain: "nexraagency.com",
     });
     assert.equal(result.ok, false);
     assert.equal(result.ok === false && result.reason, "crawl-not-found");
@@ -142,9 +145,52 @@ describe("crawl ownership", () => {
     const result = await readCrawlGrounding(readerFor(running), {
       crawlId: running.id,
       projectId: "nexra-agency",
+      projectDomain: "nexraagency.com",
     });
     assert.equal(result.ok, false);
     assert.equal(result.ok === false && result.reason, "crawl-unfinished");
+  });
+});
+
+describe("a competitor's crawl is never the project's own", () => {
+  const rival: Crawl = { ...CRAWL, id: "8f1c0d2e-0000-4000-8000-000000000009", startUrl: "https://rival.example/", hostScope: "rival.example" };
+
+  test("a crawl of another host, though the project's own record, is refused before a page is described", async () => {
+    const result = await readCrawlGrounding(readerFor(rival), {
+      crawlId: rival.id,
+      projectId: "nexra-agency",
+      projectDomain: "nexraagency.com",
+    });
+    assert.deepEqual(result, { ok: false, reason: "crawl-not-project-site" });
+    assert.equal(JSON.stringify(result).includes("rival.example"), false);
+    assert.equal(JSON.stringify(result).includes("Services"), false);
+  });
+
+  test("ownership is still refused first: another project's competitor crawl says nothing about either site", async () => {
+    const result = await readCrawlGrounding(readerFor(rival), {
+      crawlId: rival.id,
+      projectId: "halcyon-fintech",
+      projectDomain: "halcyon.example",
+    });
+    assert.deepEqual(result, { ok: false, reason: "crawl-not-in-project" });
+  });
+
+  test("the project's own host and its subdomains are still read; a label-boundary lookalike is not", async () => {
+    for (const host of ["nexraagency.com", "www.nexraagency.com"]) {
+      const own: Crawl = { ...CRAWL, hostScope: host };
+      const result = await readCrawlGrounding(readerFor(own), { crawlId: own.id, projectId: "nexra-agency", projectDomain: "nexraagency.com" });
+      assert.equal(result.ok, true, host);
+    }
+    for (const host of ["evil-nexraagency.com", "nexraagency.com.evil.test"]) {
+      const lookalike: Crawl = { ...CRAWL, hostScope: host };
+      const result = await readCrawlGrounding(readerFor(lookalike), { crawlId: lookalike.id, projectId: "nexra-agency", projectDomain: "nexraagency.com" });
+      assert.deepEqual(result, { ok: false, reason: "crawl-not-project-site" }, host);
+    }
+  });
+
+  test("a project with no usable domain owns no site crawl, so nothing is read for it", async () => {
+    const result = await readCrawlGrounding(readerFor(CRAWL), { crawlId: CRAWL.id, projectId: "nexra-agency", projectDomain: "not a domain" });
+    assert.deepEqual(result, { ok: false, reason: "crawl-not-project-site" });
   });
 });
 
@@ -156,7 +202,7 @@ describe("only a crawl worth reviewing is read", () => {
       stopReason: status === "running" ? null : status === "partial" ? "page-budget" : "completed",
       finishedAt: status === "running" ? null : CRAWL.finishedAt,
     };
-    return readCrawlGrounding(readerFor(crawl), { crawlId: crawl.id, projectId: "nexra-agency" });
+    return readCrawlGrounding(readerFor(crawl), { crawlId: crawl.id, projectId: "nexra-agency", projectDomain: "nexraagency.com" });
   };
 
   test("a completed crawl is read", async () => {
@@ -207,6 +253,7 @@ describe("only a crawl worth reviewing is read", () => {
       const result = await readCrawlGrounding(readerFor(crawl), {
         crawlId: crawl.id,
         projectId: "halcyon-fintech",
+        projectDomain: "halcyon.example",
       });
       assert.equal(result.ok, false);
       assert.equal(result.ok === false && result.reason, "crawl-not-in-project");
@@ -475,6 +522,7 @@ describe("the executor receives the evidence", () => {
       const result = await readCrawlGrounding(readerFor(failed), {
         crawlId: String(running.input.crawlId),
         projectId: running.project.id,
+        projectDomain: running.project.domain,
       });
       return result.ok
         ? { ok: true, grounding: { text: result.grounding.text, summary: {} } }
