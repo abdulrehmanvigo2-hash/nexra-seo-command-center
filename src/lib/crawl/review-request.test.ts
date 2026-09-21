@@ -7,8 +7,10 @@ import type { SearchConsoleReport } from "../../types/search-console.ts";
 import {
   COMPETITOR_COMPARISON_REVIEW,
   CRAWL_REVIEWS,
+  EVIDENCE_PACK_REVIEW,
   INTAKE_REVIEW,
   competitorComparisonRequest,
+  evidencePackRequest,
   PERFORMANCE_REVIEW,
   PRIORITY_REVIEW,
   REVIEW_AGENT_ID,
@@ -1439,6 +1441,148 @@ describe("the competitor comparison request", () => {
     assert.equal(latestReviewRun([completedComparison()], INTAKE_REVIEW, {}), null);
     assert.equal(latestReviewRun([completedComparison()], PERFORMANCE_REVIEW, { range: "30d" }), null);
     assert.equal(latestReviewRun([completedComparison()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
+    assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
+  });
+});
+
+describe("the evidence pack request", () => {
+  const completedPack = (overrides: Partial<AgentRun> = {}): AgentRun => ({
+    ...RUN,
+    id: "11111111-0000-4000-8000-000000000050",
+    agentId: "research-evidence",
+    taskType: "evidence-pack-review",
+    input: {},
+    status: "completed",
+    executor: "ai",
+    attemptCount: 1,
+    resultSummary: "RECORDED PAGE EVIDENCE\n/services title \"Services\", one h1.",
+    resultMetadata: {
+      simulated: false,
+      grounded: true,
+      evidence: {
+        source: "evidence-pack",
+        projectId: "nexra-agency",
+        projectHost: "nexraagency.com",
+        crawlId: CRAWL.id,
+        searchConsole: "included",
+        property: "sc-domain:nexraagency.com",
+        windowStart: "2026-08-19",
+        windowEnd: "2026-09-17",
+      },
+    },
+    createdAt: "2026-09-21T10:05:00.000Z",
+    updatedAt: "2026-09-21T10:06:00.000Z",
+    startedAt: "2026-09-21T10:05:00.000Z",
+    finishedAt: "2026-09-21T10:06:00.000Z",
+    ...overrides,
+  });
+
+  test("names the Research & Evidence agent and the pack task, with an empty input and nothing else", () => {
+    assert.deepEqual(evidencePackRequest("nexra-agency", CRAWL), {
+      ok: true,
+      payload: { projectId: "nexra-agency", agentId: "research-evidence", taskType: "evidence-pack-review", input: {} },
+    });
+    assert.equal(evidencePackRequest("nexra-agency", { ...CRAWL, status: "completed" }).ok, true);
+  });
+
+  test("is refused, with a reason, for no project and while the own-site crawl is unknown, missing, running, failed or cancelled", () => {
+    assert.deepEqual(evidencePackRequest(null, CRAWL), { ok: false, why: "No project is selected." });
+    const cases: [Crawl | null | undefined, RegExp][] = [
+      [undefined, /has not loaded yet/],
+      [null, /Run a crawl of this project's own site first/],
+      [{ ...CRAWL, status: "running", finishedAt: null }, /still running/],
+      [{ ...CRAWL, status: "failed" }, /failed, so there is no recorded page evidence to pack/],
+      [{ ...CRAWL, status: "cancelled" }, /cancelled, so there is no recorded page evidence to pack/],
+    ];
+    for (const [crawl, why] of cases) {
+      const result = evidencePackRequest("nexra-agency", crawl);
+      assert.equal(result.ok, false);
+      assert.match(result.ok ? "" : result.why, why);
+    }
+  });
+
+  test("the spec matches what the server allows, calls the result organisation of evidence, and promises no outside source", () => {
+    assert.equal(EVIDENCE_PACK_REVIEW.agentId, "research-evidence");
+    assert.equal(EVIDENCE_PACK_REVIEW.taskType, "evidence-pack-review");
+    assert.equal(EVIDENCE_PACK_REVIEW.agentName, "Research & Evidence");
+    assert.equal(EVIDENCE_PACK_REVIEW.action, "Compile evidence pack with Research & Evidence Agent");
+    assert.match(EVIDENCE_PACK_REVIEW.summary, /^Queues a read-only evidence pack/);
+    assert.match(EVIDENCE_PACK_REVIEW.summary, /each claim tagged with the record it rests on/);
+    assert.match(EVIDENCE_PACK_REVIEW.summary, /consults no outside source, invents no citation, and changes nothing/);
+    assert.match(EVIDENCE_PACK_REVIEW.groundedIn, /advice organising that evidence, not a new measurement/);
+    assert.doesNotMatch(EVIDENCE_PACK_REVIEW.summary, /succe|analysed|complete|verified|primary source/i);
+  });
+
+  test("a server refusal names this agent and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, EVIDENCE_PACK_REVIEW), /The Research & Evidence agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, EVIDENCE_PACK_REVIEW), /does not know the evidence-pack-review task/);
+  });
+
+  test("a grounded pack is described by the records it read, names the crawl and the window, and is still advice", () => {
+    const provenance = outputProvenance(completedPack(), EVIDENCE_PACK_REVIEW.groundedIn);
+    assert.equal(provenance?.text, "Model output, grounded in records this product holds for this project (advice organising that evidence, not a new measurement). Advice, not measurement.");
+    assert.equal(provenance?.tone, "neutral");
+    assert.equal(
+      outputProvenance(completedPack())?.text,
+      `Model output, grounded in records this product holds for this project: crawl ${CRAWL.id} and Search Console for sc-domain:nexraagency.com, 2026-08-19 to 2026-09-17 (advice organising that evidence, not a new measurement). Advice, not measurement.`,
+    );
+    assert.equal(
+      evidenceDescription({ evidence: { source: "evidence-pack", crawlId: CRAWL.id, searchConsole: "not-connected" } }),
+      `records this product holds for this project: crawl ${CRAWL.id} (advice organising that evidence, not a new measurement)`,
+    );
+    assert.equal(evidenceDescription({ evidence: { source: "evidence-pack" } }), EVIDENCE_PACK_REVIEW.groundedIn);
+    assert.doesNotMatch(outputProvenance(completedPack())?.text ?? "", /this crawl's recorded pages|this product's recorded crawl\./);
+  });
+
+  test("a simulated pack is labelled simulated, before anything else", () => {
+    const mock = completedPack({ executor: "mock", resultMetadata: { simulated: true, grounded: false } });
+    assert.match(outputProvenance(mock, EVIDENCE_PACK_REVIEW.groundedIn)?.text ?? "", /^Simulated/);
+    assert.equal(outputProvenance(mock)?.tone, "warning");
+  });
+
+  test("a completed pack never offers the Director hand-off, and the server's reader would refuse it", () => {
+    const completed = completedPack();
+    assert.equal(offersHandoff(completed), false);
+    const refusal = handoffRequest("nexra-agency", completed);
+    assert.equal(refusal.ok, false);
+    assert.match(refusal.ok ? "" : refusal.why, /takes hand-offs from crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/);
+    for (const status of ["queued", "running", "failed", "cancelled"] as AgentRunStatus[]) {
+      assert.equal(offersHandoff(completedPack({ status })), false);
+    }
+  });
+
+  test("is restored from run history by project alone: the newest Research & Evidence pack, whatever its state", async () => {
+    const older = completedPack({ id: "11111111-0000-4000-8000-000000000051", createdAt: "2026-09-21T09:00:00.000Z" });
+    const newest = completedPack({ id: "11111111-0000-4000-8000-000000000052", createdAt: "2026-09-21T11:00:00.000Z", status: "queued", executor: null, resultSummary: null, resultMetadata: null });
+    const otherAgent = completedPack({ id: "11111111-0000-4000-8000-000000000053", agentId: "project-manager", taskType: "intake-review", createdAt: "2026-09-21T12:00:00.000Z" });
+    const withInput = completedPack({ id: "11111111-0000-4000-8000-000000000054", input: { focus: "x" }, createdAt: "2026-09-21T12:00:00.000Z" });
+
+    assert.equal(latestReviewRun([older, otherAgent, newest, withInput], EVIDENCE_PACK_REVIEW, {})?.id, newest.id);
+    assert.equal(latestReviewRun([otherAgent, withInput], EVIDENCE_PACK_REVIEW, {}), null);
+    // And the intake review, which shares the empty input, never picks up a pack.
+    assert.equal(latestReviewRun([older, newest], INTAKE_REVIEW, {}), null);
+
+    const calls: string[] = [];
+    const fetchList = async (url: string, init: { cache: "no-store"; signal?: AbortSignal }) => {
+      calls.push(url);
+      assert.equal(init.cache, "no-store");
+      return { ok: true, json: async () => ({ runs: [older, otherAgent, newest] }) };
+    };
+    const restored = await restoreReviewRun("nexra-agency", EVIDENCE_PACK_REVIEW, {}, fetchList);
+    assert.equal(restored?.id, newest.id);
+    assert.deepEqual(calls, [`/api/agent-runs?project=nexra-agency&agent=research-evidence&limit=${RESTORE_LIST_LIMIT}`]);
+    const completed = await restoreReviewRun("nexra-agency", EVIDENCE_PACK_REVIEW, {}, async () => ({ ok: true, json: async () => ({ runs: [older] }) }));
+    assert.ok(completed && hasResult(completed));
+    assert.equal(offersHandoff(completed!), false);
+  });
+
+  test("the eight existing reviews are untouched by the pack's presence", () => {
+    assert.equal(reviewRequest("nexra-agency", CRAWL).ok, true);
+    assert.equal(latestReviewRun([completedPack()], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+    assert.equal(latestReviewRun([completedPack()], INTAKE_REVIEW, {}), null);
+    assert.equal(latestReviewRun([completedPack()], COMPETITOR_COMPARISON_REVIEW, { competitorDomain: "rival.example" }), null);
+    assert.equal(latestReviewRun([completedPack()], PERFORMANCE_REVIEW, { range: "30d" }), null);
+    assert.equal(latestReviewRun([completedPack()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
     assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
   });
 });

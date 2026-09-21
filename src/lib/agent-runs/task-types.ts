@@ -9,6 +9,7 @@ import {
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { INTAKE_REVIEW_INSTRUCTIONS } from "@/lib/projects/grounding";
+import { EVIDENCE_PACK_INSTRUCTIONS } from "@/lib/research/evidence-pack";
 import { isRangeId } from "@/lib/search-console/date-windows";
 import {
   PERFORMANCE_REVIEW_INSTRUCTIONS,
@@ -60,9 +61,20 @@ export type TaskTypeDefinition = {
    * `competitor-comparison` tasks are given two crawls this product recorded
    * — the project's own site and one recorded competitor's public site, each
    * labelled as whose it is — and the competitor's side is page declarations
-   * only, never a measurement of the competitor.
+   * only, never a measurement of the competitor. `evidence-pack` tasks are
+   * given the records this product holds for the run's own project — its
+   * newest own-site crawl, its Search Console window where connected, and
+   * which competitor crawls exist — with intake notes, earlier reviews and
+   * competitor pages excluded, and no source outside the product.
    */
-  readonly evidence: "none" | "crawl" | "search-console" | "agent-run" | "project" | "competitor-comparison";
+  readonly evidence:
+    | "none"
+    | "crawl"
+    | "search-console"
+    | "agent-run"
+    | "project"
+    | "competitor-comparison"
+    | "evidence-pack";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -388,6 +400,36 @@ const competitorComparisonReview: TaskTypeDefinition = {
   },
 };
 
+/**
+ * The Research & Evidence agent's evidence pack for the run's own project.
+ *
+ * The first task for that agent, and the first grounded in more than one
+ * kind of record at once. It takes no input at all: the project is the
+ * run's, read on the server from the persisted run, and the reader in
+ * `@/lib/research/evidence-pack` finds the newest own-site crawl, the
+ * default Search Console window and the competitor crawls on record by
+ * itself — nothing a caller names, nothing to smuggle. Read-only, like every
+ * task here: it organises what is recorded, tags each supportable claim with
+ * the record it rests on, and consults nothing outside the product.
+ * Operator-triggered only; nothing queues it automatically, and its
+ * completed run is not a hand-off source.
+ */
+const evidencePackReview: TaskTypeDefinition = {
+  id: "evidence-pack-review",
+  label: "Evidence pack",
+  description:
+    "Compile what the records this product holds for this project establish and cannot establish, each claim tagged with the record it rests on.",
+  agents: ["research-evidence"],
+  policy: "read-only",
+  evidence: "evidence-pack",
+  instructions: EVIDENCE_PACK_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, []);
+    if (!object.ok) return object;
+    return { ok: true, value: {} };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -399,6 +441,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   priorityReview,
   intakeReview,
   competitorComparisonReview,
+  evidencePackReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

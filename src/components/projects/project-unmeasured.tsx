@@ -6,6 +6,7 @@ import {
 } from "@/components/projects/project-chrome";
 import { CrawlPanel } from "@/components/crawl/crawl-panel";
 import { CompetitorDomainsSection } from "@/components/projects/competitor-domains-section";
+import { EvidencePackPanel } from "@/components/projects/evidence-pack-panel";
 import { IntakeReviewPanel } from "@/components/projects/intake-review-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
@@ -163,11 +164,20 @@ export function ProjectUnmeasured({
       <CrawlPanel projectId={project.id} domain={project.domain} />
 
       {/*
+        The Research & Evidence pack, beneath the crawl it depends on. It
+        reads the records the panels above and below this one show — the
+        newest own-site crawl, the Search Console window, which competitor
+        crawls exist — on the server, and needs only the project id here.
+      */}
+      <EvidencePackPanel projectId={project.id} />
+
+      {/*
         Competitor domains and competitor sites, beneath the project's own
         crawl and apart from it. The recorded list is read from the stored
         project on the server and edited here; only the saved list reaches
         the crawl panel, each crawl is one operator's explicit request for
-        one host, and no agent reads the result yet.
+        one host, and the comparison review is the only agent that reads
+        a competitor's pages.
       */}
       <CompetitorDomainsSection
         projectId={project.id}
