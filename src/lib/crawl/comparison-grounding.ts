@@ -337,14 +337,27 @@ export const COMPARISON_LIMITS_NOTE = [
  * establish is longer than any other task's, because "competitor" is one
  * careless word away from "market", and only page declarations are in the
  * evidence.
+ *
+ * Every section is bounded in pages, lines and words. The worker refuses any
+ * summary over 2,000 characters as `rejected-output`, and the first live run
+ * of this task was refused that way: two sites' worth of observations, each
+ * cited by full URL, plus three sections of comparison, is more than a
+ * character budget alone holds a model to. The bounds below are sized so
+ * that an answer at every one of them stays under 1,500 characters with
+ * ordinary words and under the 2,000 ceiling with long ones — the fixed
+ * lines (five headings, the partial-samples line, the closing sentence) cost
+ * about 480 on their own — and the answer is told what to cut first if it
+ * must cut. Pages are cited by path because the section heading already
+ * names the host, and a full URL twelve times is a third of the budget.
  */
 export const COMPETITOR_COMPARISON_INSTRUCTIONS = [
-  "Compare the two crawl evidence blocks supplied with this task: PROJECT SITE EVIDENCE (the project's own site) and COMPETITOR SITE EVIDENCE (a competitor's public site, page declarations only).",
-  "Answer in exactly five sections, headed PROJECT SITE OBSERVATIONS, COMPETITOR SITE OBSERVATIONS, DIFFERENCES OBSERVED, INFERENCES, and RECOMMENDED NEXT OPERATOR ACTION.",
-  "Under the first three, state only what the evidence literally records — titles, descriptions, h1s, canonicals, robots directives, structured-data types, sitemap and robots.txt readings, HTTP statuses, page counts — each with the exact URL it comes from. Under DIFFERENCES OBSERVED, name the project URL and the competitor URL each difference is between, or say the pairing is not established.",
-  "Under INFERENCES, give at most three, each beginning with the word INFERENCE: and each tied to one difference above, with your confidence. Under RECOMMENDED NEXT OPERATOR ACTION, give one concrete change to the project's own site for a person to consider, or one thing to check; you change nothing.",
-  "Use only the supplied evidence. Both sides are partial samples of a few pages under a fixed budget: say so in one line, and treat a difference between the samples as a difference between the samples, never as a difference between the sites.",
-  "A reading marked 'not established' is unknown; never treat it as a pass, a failure, a zero, or a no. URLs discovered but not reached were NOT audited on either side: do not describe them. The competitor evidence is what its public pages declared; it does not describe the competitor's business.",
+  "Compare the two evidence blocks supplied with this task: PROJECT SITE EVIDENCE (the project's own site) and COMPETITOR SITE EVIDENCE (a competitor's public site, page declarations only). Use only the supplied evidence.",
+  "Answer in exactly five sections, headed PROJECT SITE OBSERVATIONS, COMPETITOR SITE OBSERVATIONS, DIFFERENCES OBSERVED, INFERENCES, and RECOMMENDED NEXT OPERATOR ACTION. Keep the whole answer under 1,500 characters; the bounds below keep it there.",
+  "PROJECT SITE OBSERVATIONS and COMPETITOR SITE OBSERVATIONS: at most three pages per side, one line per page under 8 words, stating only what the evidence records. Cite pages by URL path only, for example /pricing; the heading names the host. URLs discovered but not reached were NOT audited on either side: do not describe them.",
+  "DIFFERENCES OBSERVED: begin with exactly this line: Both sides are partial samples of a few pages; a difference here is between the samples, never between the sites. Then at most three findings, each under 14 words, each pairing one project path with one competitor path or saying the pairing is not established.",
+  "INFERENCES: at most three lines, each beginning with the word INFERENCE:, under 10 words, tied to one difference above, with confidence.",
+  "RECOMMENDED NEXT OPERATOR ACTION: one line under 15 words: one concrete change to the project's own site for a person to consider, or one thing to check; you change nothing.",
+  "A reading marked 'not established' is unknown; never treat it as a pass, a failure, a zero, or a no. The competitor evidence is what its public pages declared; it does not describe the competitor's business.",
   "NOT established by this evidence and must not be claimed, estimated, or implied for either site: traffic, rankings, keyword positions, backlinks, authority, revenue, conversions, share of voice, market share, citation share, AI visibility, brand strength, page body quality, content depth. Do not describe either crawl as a full site audit or state site-wide totals.",
-  "Keep the whole answer under 1,500 characters. End with exactly this sentence: Not established by these crawls: traffic, rankings, keyword positions, backlinks, authority, revenue, conversions, share of voice, market share, citations, AI visibility, brand strength, page body quality, content depth.",
+  "If the answer runs long, drop observation lines first, then inferences; never a heading, the partial-samples line, or the closing sentence. End with exactly this sentence: Not established by these crawls: traffic, rankings, keyword positions, backlinks, authority, revenue, conversions, share of voice, market share, citations, AI visibility, brand strength, page body quality, content depth.",
 ].join(" ");
