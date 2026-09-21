@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createAiExecutor } from "../agent-runs/ai-executor.ts";
+import { looksLikeSecret } from "../agent-runs/safety.ts";
 import { agentMayRun, getTaskType } from "../agent-runs/task-types.ts";
 import type { Crawl, CrawlPage } from "../../types/crawl.ts";
 import {
@@ -717,5 +718,68 @@ describe("the answer-readiness task type", () => {
     assert.notEqual(ANSWER_READINESS_REVIEW_INSTRUCTIONS, ON_PAGE_REVIEW_INSTRUCTIONS);
     assert.equal(CRAWL_REVIEW_INSTRUCTIONS.includes("AI citations"), false);
     assert.equal(ON_PAGE_REVIEW_INSTRUCTIONS.includes("AI citations"), false);
+  });
+});
+
+describe("the answer-readiness instructions bound what the model emits", () => {
+  /**
+   * The worker refuses a summary over 2,000 characters, and the executor asks
+   * for under 1,500. A live run of this task was refused as rejected-output,
+   * and its instructions were the longest of the three crawl reviews with an
+   * open-ended per-finding disclaimer. The bounds below are what keeps the
+   * answer inside the screen; they are asserted so a later edit cannot quietly
+   * reopen the problem.
+   */
+  test("limits findings, pages, words per finding, and total characters, and fixes the disclaimer to one closing line", () => {
+    for (const phrase of [
+      "Give at most three findings, each about one page, and cover no more than three pages",
+      "Keep each finding under 50 words and the whole answer under 1,500 characters",
+      "Do not explain these inside findings; the closing line covers them",
+      "End with two short lines",
+      "then exactly this sentence: Not established by this crawl: AI crawler access, citations, mention share, answer-engine visibility, body text, entity coverage.",
+    ]) {
+      assert.ok(ANSWER_READINESS_REVIEW_INSTRUCTIONS.includes(phrase), `missing: ${phrase}`);
+    }
+    // The old open-ended clause that invited a disclaimer per finding is gone.
+    assert.equal(ANSWER_READINESS_REVIEW_INSTRUCTIONS.includes("Where one of these matters to a finding, say plainly"), false);
+  });
+
+  test("the instructions stay under the length that produced the refused live answer", () => {
+    // The refused run was prompted with 2,544 characters of instructions. A
+    // prompt that models verbosity invites it; this ceiling stops the text
+    // growing back past that point without a deliberate decision.
+    assert.ok(
+      ANSWER_READINESS_REVIEW_INSTRUCTIONS.length < 2_400,
+      `${ANSWER_READINESS_REVIEW_INSTRUCTIONS.length} characters of instructions`,
+    );
+  });
+
+  test("an answer written to the instructions' bounds fits its own 1,500-character budget, the worker's ceiling, and no credential pattern", () => {
+    // Three findings at the 50-word ceiling, a not-covered line, and the two
+    // closing lines: the largest answer the instructions permit.
+    const finding = (url: string) =>
+      [
+        `OBSERVED: ${url} declares one JSON-LD block typed Organization, one h1 "Services", title "Services", a 21-character description, a self-pointing canonical, no robots directive.`,
+        "INFERENCE: typed as an organisation, not the service it describes, so no declared answer type; medium confidence.",
+        "RECOMMENDATION: add a Service type and state the answer.",
+      ].join("\n");
+    const findings = [
+      finding("https://nexraagency.com/services"),
+      finding("https://nexraagency.com/about"),
+      finding("https://nexraagency.com/contact"),
+    ];
+    for (const text of findings) {
+      assert.ok(text.split(/\s+/).length <= 50, `${text.split(/\s+/).length} words in a finding`);
+    }
+    const answer = [
+      ...findings,
+      "Two further fetched pages were not covered in this answer.",
+      "https://nexraagency.com/services most limits its readiness: its only type is Organization.",
+      "Not established by this crawl: AI crawler access, citations, mention share, answer-engine visibility, body text, entity coverage.",
+    ].join("\n\n");
+    assert.ok(answer.length <= 1_500, `${answer.length} characters`);
+    assert.ok(answer.length <= 2_000);
+    assert.equal(looksLikeSecret(answer), false);
+    assert.equal(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(answer), false);
   });
 });

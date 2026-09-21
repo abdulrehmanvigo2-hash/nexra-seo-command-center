@@ -337,7 +337,12 @@ can observe and forbid claiming it: AI crawler access rules (the robots.txt
 reading is this product's own crawler's), citations, mention share,
 answer-engine visibility, body text quality, entity coverage, semantic
 completeness, and retrieval frequency. It is queued from the crawl panel
-beside the Technical SEO and On-Page reviews, over the same crawl.
+beside the Technical SEO and On-Page reviews, over the same crawl. Its
+instructions bound the answer — at most three findings on three pages, each
+under 50 words, the whole under 1,500 characters, with the unsupported items
+in one fixed closing line — because the worker refuses any summary over 2,000
+characters as `rejected-output`, and the first live run of this task was
+refused that way when its earlier, open-ended instructions produced more.
 
 The Analytics & Learning agent's `performance-review` is a hand-off source
 because it is the stage that closes the loop: a measurement of one window,
