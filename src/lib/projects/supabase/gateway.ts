@@ -9,7 +9,7 @@ import {
 } from "@/lib/projects/supabase/schema";
 
 /**
- * The four queries the Projects repository makes, and nothing else.
+ * The five queries the Projects repository makes, and nothing else.
  *
  * Kept apart from the repository so the repository's own logic — ordering, the
  * analytics join, validation, id allocation — can be exercised against an
@@ -29,6 +29,12 @@ export type ProjectTableGateway = {
   /** The intake-only columns of one row, or null when there is no such row. */
   selectIntakeById(id: string): Promise<ProjectIntakeRow | null>;
   insert(row: ProjectInsert): Promise<InsertOutcome>;
+  /**
+   * Writes one column of one row — `competitor_domains` — and returns the
+   * row's intake columns, or null when no row has that id. No other column
+   * is named in the patch, so nothing else on the row can change here.
+   */
+  updateCompetitorDomains(id: string, competitorDomains: readonly string[]): Promise<ProjectIntakeRow | null>;
 };
 
 /** A query the store could not answer. The message is for server logs only. */
@@ -81,6 +87,17 @@ export function createSupabaseProjectGateway(
         .eq("id", id)
         .maybeSingle();
       if (error) throw new ProjectStoreError("read project intake", error);
+      return data;
+    },
+
+    async updateCompetitorDomains(id, competitorDomains) {
+      const { data, error } = await client
+        .from("projects")
+        .update({ competitor_domains: [...competitorDomains] })
+        .eq("id", id)
+        .select(PROJECT_INTAKE_COLUMNS)
+        .maybeSingle();
+      if (error) throw new ProjectStoreError("update project competitors", error);
       return data;
     },
 

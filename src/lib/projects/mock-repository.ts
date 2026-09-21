@@ -45,4 +45,9 @@ export const mockProjectRepository: ProjectRepository = {
   async createProject() {
     return { ok: false, reason: "unavailable" };
   },
+
+  /** The fixtures cannot be written to, and no write is pretended. */
+  async updateProjectCompetitors() {
+    return { ok: false, reason: "unavailable" };
+  },
 };

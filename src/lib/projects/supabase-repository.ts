@@ -95,6 +95,13 @@ export function createSupabaseProjectRepository(
       return row ? projectIntakeRowToIntake(row) : null;
     },
 
+    async updateProjectCompetitors(id, competitorDomains) {
+      if (!isStorableProjectId(id)) return { ok: false, reason: "unknown-project" };
+      const row = await gateway.updateCompetitorDomains(id, competitorDomains);
+      if (row === null) return { ok: false, reason: "unknown-project" };
+      return { ok: true, competitorDomains: projectIntakeRowToIntake(row).competitorDomains };
+    },
+
     async createProject(input) {
       const parsed = parseNewProjectInput(input);
       if (!parsed.ok) return { ok: false, reason: "invalid", errors: parsed.errors };

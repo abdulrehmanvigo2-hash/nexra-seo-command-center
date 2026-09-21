@@ -37,6 +37,15 @@ export type CreateProjectResult =
   /** This store does not persist projects. */
   | { readonly ok: false; readonly reason: "unavailable" };
 
+/** How an attempt to replace a project's competitor domains ended. */
+export type UpdateCompetitorsResult =
+  /** The list as stored, canonical. */
+  | { readonly ok: true; readonly competitorDomains: readonly string[] }
+  /** No project with that id. */
+  | { readonly ok: false; readonly reason: "unknown-project" }
+  /** This store does not persist projects. */
+  | { readonly ok: false; readonly reason: "unavailable" };
+
 /** The client roster and the instant its figures describe. */
 export type ProjectRoster = {
   readonly projects: readonly ProjectListItem[];
@@ -78,6 +87,13 @@ export type ProjectRepository = {
    * screen shows these, and nothing here verifies them.
    */
   getProjectIntake(id: string): Promise<ProjectIntake | null>;
+
+  /**
+   * Replaces the competitor domains recorded for one project — that column
+   * and nothing else on the row. The list is taken as already validated
+   * (`@/lib/projects/competitor-domains`); the store does not re-check it.
+   */
+  updateProjectCompetitors(id: string, competitorDomains: readonly string[]): Promise<UpdateCompetitorsResult>;
 
   /**
    * Validates and stores a new project. Returns the stored record — not a

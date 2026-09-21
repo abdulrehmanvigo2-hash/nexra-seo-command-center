@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getOperator } from "@/lib/auth/session";
+import { applyCompetitorDomainsUpdate, type CompetitorUpdateResult } from "@/lib/projects/competitor-update";
 import { unmeasuredListItem } from "@/lib/projects/fixture-analytics";
 import type { NewProjectErrors } from "@/lib/projects/intake-rules";
 import { projectRepository } from "@/lib/projects/repository";
@@ -87,4 +88,66 @@ export async function createProjectAction(
   revalidatePath("/keywords");
 
   return { ok: true, project: unmeasuredListItem(result.project) };
+}
+
+/**
+ * Replaces the competitor domains recorded for one existing project.
+ *
+ * The second and only other path from the browser to a project write, and
+ * a narrow one: one field of one project, decided by
+ * `@/lib/projects/competitor-update` against the project's own stored
+ * record. The same rules as creation apply around it — operator confirmed
+ * with the Auth server before anything is read, the argument treated as
+ * `unknown`, one write at a time per process, and 10 per ten minutes per
+ * operator counted in Postgres. The project's page is revalidated so the
+ * crawl panel beneath the editor reads the saved list on the next render.
+ *
+ * Saving a list crawls nothing and queues nothing: a saved domain becomes a
+ * crawl the operator may ask for, subject to the server's allow-list, and
+ * no more.
+ */
+
+export type UpdateProjectCompetitorsActionResult =
+  | CompetitorUpdateResult
+  | { readonly ok: false; readonly reason: "rate-limited"; readonly retryAfterSeconds: number }
+  /** The store failed; nothing is known to have been written. */
+  | { readonly ok: false; readonly reason: "failed" };
+
+const COMPETITOR_UPDATES = { limit: 10, windowSeconds: 10 * 60 } as const;
+const competitorUpdatesInFlight = new Set<string>();
+
+export async function updateProjectCompetitorsAction(
+  request: unknown,
+): Promise<UpdateProjectCompetitorsActionResult> {
+  const operator = await getOperator();
+  if (!operator) return { ok: false, reason: "unauthorized" };
+
+  if (competitorUpdatesInFlight.has(operator.id)) {
+    return { ok: false, reason: "rate-limited", retryAfterSeconds: 1 };
+  }
+
+  competitorUpdatesInFlight.add(operator.id);
+  let result: CompetitorUpdateResult;
+  try {
+    const allowance = await appRateLimiter("projects.update-competitors", COMPETITOR_UPDATES).consume(operator.id);
+    if (!allowance.allowed) {
+      return {
+        ok: false,
+        reason: "rate-limited",
+        retryAfterSeconds: Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000)),
+      };
+    }
+    result = await applyCompetitorDomainsUpdate(request, { operator, projects: projectRepository });
+  } catch (error) {
+    console.error(
+      "updateProjectCompetitorsAction:",
+      error instanceof Error ? `${error.name}: ${error.message}` : "unknown error",
+    );
+    return { ok: false, reason: "failed" };
+  } finally {
+    competitorUpdatesInFlight.delete(operator.id);
+  }
+
+  if (result.ok) revalidatePath(`/projects/${result.projectId}`);
+  return result;
 }

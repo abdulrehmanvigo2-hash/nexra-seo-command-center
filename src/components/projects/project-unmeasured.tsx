@@ -4,8 +4,8 @@ import {
   ProjectMonogram,
   ProjectStatusBadge,
 } from "@/components/projects/project-chrome";
-import { CompetitorCrawlsPanel } from "@/components/crawl/competitor-crawls-panel";
 import { CrawlPanel } from "@/components/crawl/crawl-panel";
+import { CompetitorDomainsSection } from "@/components/projects/competitor-domains-section";
 import { IntakeReviewPanel } from "@/components/projects/intake-review-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
@@ -163,12 +163,13 @@ export function ProjectUnmeasured({
       <CrawlPanel projectId={project.id} domain={project.domain} />
 
       {/*
-        Competitor sites, beneath the project's own crawl and apart from it.
-        The domains come from the stored intake record, read on the server;
-        each crawl is one operator's explicit request for one host, and no
-        agent reads the result yet.
+        Competitor domains and competitor sites, beneath the project's own
+        crawl and apart from it. The recorded list is read from the stored
+        project on the server and edited here; only the saved list reaches
+        the crawl panel, each crawl is one operator's explicit request for
+        one host, and no agent reads the result yet.
       */}
-      <CompetitorCrawlsPanel
+      <CompetitorDomainsSection
         projectId={project.id}
         projectDomain={project.domain}
         competitorDomains={competitorDomains}
