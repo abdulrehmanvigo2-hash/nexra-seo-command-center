@@ -6,6 +6,7 @@ import {
 } from "@/components/projects/project-chrome";
 import { CrawlPanel } from "@/components/crawl/crawl-panel";
 import { CompetitorDomainsSection } from "@/components/projects/competitor-domains-section";
+import { ContentPlanPanel } from "@/components/projects/content-plan-panel";
 import { EvidencePackPanel } from "@/components/projects/evidence-pack-panel";
 import { IntakeReviewPanel } from "@/components/projects/intake-review-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
@@ -170,6 +171,13 @@ export function ProjectUnmeasured({
         crawls exist — on the server, and needs only the project id here.
       */}
       <EvidencePackPanel projectId={project.id} />
+
+      {/*
+        The Content Strategist's plan, beneath the pack it belongs beside. It
+        reads the same records through the same reader — never the pack's
+        output — and needs only the project id here.
+      */}
+      <ContentPlanPanel projectId={project.id} />
 
       {/*
         Competitor domains and competitor sites, beneath the project's own

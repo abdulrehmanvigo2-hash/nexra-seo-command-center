@@ -6,10 +6,12 @@ import type { Crawl } from "../../types/crawl.ts";
 import type { SearchConsoleReport } from "../../types/search-console.ts";
 import {
   COMPETITOR_COMPARISON_REVIEW,
+  CONTENT_PLAN_REVIEW,
   CRAWL_REVIEWS,
   EVIDENCE_PACK_REVIEW,
   INTAKE_REVIEW,
   competitorComparisonRequest,
+  contentPlanRequest,
   evidencePackRequest,
   PERFORMANCE_REVIEW,
   PRIORITY_REVIEW,
@@ -1583,6 +1585,154 @@ describe("the evidence pack request", () => {
     assert.equal(latestReviewRun([completedPack()], COMPETITOR_COMPARISON_REVIEW, { competitorDomain: "rival.example" }), null);
     assert.equal(latestReviewRun([completedPack()], PERFORMANCE_REVIEW, { range: "30d" }), null);
     assert.equal(latestReviewRun([completedPack()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
+    assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
+  });
+});
+
+describe("the content plan request", () => {
+  const completedPlan = (overrides: Partial<AgentRun> = {}): AgentRun => ({
+    ...RUN,
+    id: "11111111-0000-4000-8000-000000000060",
+    agentId: "content-strategist",
+    taskType: "content-plan-review",
+    input: {},
+    status: "completed",
+    executor: "ai",
+    attemptCount: 1,
+    resultSummary: "PAGE AND GOAL\n/services, explain what the agency does.",
+    resultMetadata: {
+      simulated: false,
+      grounded: true,
+      taskType: "content-plan-review",
+      evidence: {
+        source: "evidence-pack",
+        projectId: "nexra-agency",
+        projectHost: "nexraagency.com",
+        crawlId: CRAWL.id,
+        searchConsole: "included",
+        property: "sc-domain:nexraagency.com",
+        windowStart: "2026-08-19",
+        windowEnd: "2026-09-17",
+      },
+    },
+    createdAt: "2026-09-21T10:05:00.000Z",
+    updatedAt: "2026-09-21T10:06:00.000Z",
+    startedAt: "2026-09-21T10:05:00.000Z",
+    finishedAt: "2026-09-21T10:06:00.000Z",
+    ...overrides,
+  });
+
+  test("names the Content Strategist and the plan task, with an empty input and nothing else", () => {
+    assert.deepEqual(contentPlanRequest("nexra-agency", CRAWL), {
+      ok: true,
+      payload: { projectId: "nexra-agency", agentId: "content-strategist", taskType: "content-plan-review", input: {} },
+    });
+  });
+
+  test("is gated on the own-site crawl exactly as the pack is, with plan wording", () => {
+    assert.deepEqual(contentPlanRequest(null, CRAWL), { ok: false, why: "No project is selected." });
+    const cases: [Crawl | null | undefined, RegExp][] = [
+      [undefined, /has not loaded yet/],
+      [null, /Run a crawl of this project's own site first: a plan has nothing to rest on/],
+      [{ ...CRAWL, status: "running", finishedAt: null }, /still running/],
+      [{ ...CRAWL, status: "failed" }, /failed, so there is no recorded page evidence to plan over/],
+      [{ ...CRAWL, status: "cancelled" }, /cancelled, so there is no recorded page evidence to plan over/],
+    ];
+    for (const [crawl, why] of cases) {
+      const result = contentPlanRequest("nexra-agency", crawl);
+      assert.equal(result.ok, false);
+      assert.match(result.ok ? "" : result.why, why);
+      assert.equal(evidencePackRequest("nexra-agency", crawl).ok, false, "the pack and the plan gate alike");
+    }
+  });
+
+  test("the spec matches what the server allows, calls the result a proposal, and reads no earlier output", () => {
+    assert.equal(CONTENT_PLAN_REVIEW.agentId, "content-strategist");
+    assert.equal(CONTENT_PLAN_REVIEW.taskType, "content-plan-review");
+    assert.equal(CONTENT_PLAN_REVIEW.agentName, "Content Strategist");
+    assert.equal(CONTENT_PLAN_REVIEW.action, "Create grounded content plan with Content Strategist Agent");
+    assert.match(CONTENT_PLAN_REVIEW.summary, /^Queues a read-only plan for one page/);
+    assert.match(CONTENT_PLAN_REVIEW.summary, /every unsupported section is marked as needing evidence/);
+    assert.match(CONTENT_PLAN_REVIEW.summary, /names no volume, difficulty, ranking or competitor figure, reads no earlier agent's output, and changes nothing/);
+    assert.equal(CONTENT_PLAN_REVIEW.groundedIn, "records this product holds for this project — a proposed content plan over that evidence, not a measurement");
+    assert.doesNotMatch(CONTENT_PLAN_REVIEW.summary, /succe|analysed|complete|cluster|topical|verified/i);
+  });
+
+  test("a server refusal names this agent and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, CONTENT_PLAN_REVIEW), /The Content Strategist agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, CONTENT_PLAN_REVIEW), /does not know the content-plan-review task/);
+  });
+
+  test("a grounded plan is described as a proposal over the records it read, naming the crawl and the window, and the pack keeps its own wording", () => {
+    const provenance = outputProvenance(completedPlan(), CONTENT_PLAN_REVIEW.groundedIn);
+    assert.equal(provenance?.text, "Model output, grounded in records this product holds for this project — a proposed content plan over that evidence, not a measurement. Advice, not measurement.");
+    assert.equal(provenance?.tone, "neutral");
+    assert.equal(
+      outputProvenance(completedPlan())?.text,
+      `Model output, grounded in records this product holds for this project: crawl ${CRAWL.id} and Search Console for sc-domain:nexraagency.com, 2026-08-19 to 2026-09-17 (a proposed content plan over that evidence, not a measurement). Advice, not measurement.`,
+    );
+    assert.equal(
+      evidenceDescription({ taskType: "content-plan-review", evidence: { source: "evidence-pack" } }),
+      CONTENT_PLAN_REVIEW.groundedIn,
+    );
+    // The pack's own reading is unchanged.
+    assert.equal(
+      evidenceDescription({ taskType: "evidence-pack-review", evidence: { source: "evidence-pack", crawlId: CRAWL.id, searchConsole: "not-connected" } }),
+      `records this product holds for this project: crawl ${CRAWL.id} (advice organising that evidence, not a new measurement)`,
+    );
+    assert.equal(evidenceDescription({ evidence: { source: "evidence-pack" } }), EVIDENCE_PACK_REVIEW.groundedIn);
+  });
+
+  test("a simulated plan is labelled simulated, before anything else", () => {
+    const mock = completedPlan({ executor: "mock", resultMetadata: { simulated: true, grounded: false } });
+    assert.match(outputProvenance(mock, CONTENT_PLAN_REVIEW.groundedIn)?.text ?? "", /^Simulated/);
+    assert.equal(outputProvenance(mock)?.tone, "warning");
+  });
+
+  test("a completed plan never offers the Director hand-off, and the server's reader would refuse it", () => {
+    const completed = completedPlan();
+    assert.equal(offersHandoff(completed), false);
+    const refusal = handoffRequest("nexra-agency", completed);
+    assert.equal(refusal.ok, false);
+    assert.match(refusal.ok ? "" : refusal.why, /takes hand-offs from crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/);
+    for (const status of ["queued", "running", "failed", "cancelled"] as AgentRunStatus[]) {
+      assert.equal(offersHandoff(completedPlan({ status })), false);
+    }
+  });
+
+  test("is restored by project and agent alone, and the pack, the intake review and the plan never pick up each other's runs", async () => {
+    const older = completedPlan({ id: "11111111-0000-4000-8000-000000000061", createdAt: "2026-09-21T09:00:00.000Z" });
+    const newest = completedPlan({ id: "11111111-0000-4000-8000-000000000062", createdAt: "2026-09-21T11:00:00.000Z", status: "queued", executor: null, resultSummary: null, resultMetadata: null });
+    const pack = completedPlan({ id: "11111111-0000-4000-8000-000000000063", agentId: "research-evidence", taskType: "evidence-pack-review", createdAt: "2026-09-21T12:00:00.000Z" });
+    const intake = completedPlan({ id: "11111111-0000-4000-8000-000000000064", agentId: "project-manager", taskType: "intake-review", createdAt: "2026-09-21T12:00:00.000Z" });
+
+    assert.equal(latestReviewRun([older, pack, newest, intake], CONTENT_PLAN_REVIEW, {})?.id, newest.id);
+    assert.equal(latestReviewRun([pack, intake], CONTENT_PLAN_REVIEW, {}), null);
+    assert.equal(latestReviewRun([older, newest, intake], EVIDENCE_PACK_REVIEW, {}), null);
+    assert.equal(latestReviewRun([older, newest, pack], INTAKE_REVIEW, {}), null);
+
+    const calls: string[] = [];
+    const fetchList = async (url: string, init: { cache: "no-store"; signal?: AbortSignal }) => {
+      calls.push(url);
+      assert.equal(init.cache, "no-store");
+      return { ok: true, json: async () => ({ runs: [older, pack, newest] }) };
+    };
+    const restored = await restoreReviewRun("nexra-agency", CONTENT_PLAN_REVIEW, {}, fetchList);
+    assert.equal(restored?.id, newest.id);
+    assert.deepEqual(calls, [`/api/agent-runs?project=nexra-agency&agent=content-strategist&limit=${RESTORE_LIST_LIMIT}`]);
+    const completed = await restoreReviewRun("nexra-agency", CONTENT_PLAN_REVIEW, {}, async () => ({ ok: true, json: async () => ({ runs: [older] }) }));
+    assert.ok(completed && hasResult(completed));
+    assert.equal(offersHandoff(completed!), false);
+  });
+
+  test("the nine existing reviews are untouched by the plan's presence", () => {
+    assert.equal(reviewRequest("nexra-agency", CRAWL).ok, true);
+    assert.equal(evidencePackRequest("nexra-agency", CRAWL).ok, true);
+    assert.equal(latestReviewRun([completedPlan()], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+    assert.equal(latestReviewRun([completedPlan()], EVIDENCE_PACK_REVIEW, {}), null);
+    assert.equal(latestReviewRun([completedPlan()], INTAKE_REVIEW, {}), null);
+    assert.equal(latestReviewRun([completedPlan()], COMPETITOR_COMPARISON_REVIEW, { competitorDomain: "rival.example" }), null);
+    assert.equal(latestReviewRun([completedPlan()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
     assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
   });
 });

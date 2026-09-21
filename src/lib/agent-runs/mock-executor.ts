@@ -133,6 +133,20 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "content-plan-review": {
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no record. `grounded: false`, as for
+          // every simulated result: it looked at nothing and planned nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+        };
+        return {
+          summary: `Simulated content plan by ${subject}. The mock executor read no crawl, no Search Console report and no competitor record, and planned nothing; this is placeholder output, not a grounded plan.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

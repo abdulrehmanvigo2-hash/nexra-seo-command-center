@@ -966,3 +966,87 @@ describe("queueing an evidence pack — the Research & Evidence agent", () => {
     }
   });
 });
+
+describe("queueing a content plan — the Content Strategist", () => {
+  const PLAN_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "content-strategist",
+    taskType: "content-plan-review",
+    input: {},
+  };
+
+  test("creates one queued run for the Content Strategist with an empty input, and touches no executor", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, PLAN_REQUEST);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "content-strategist");
+    assert.equal(result.run.taskType, "content-plan-review");
+    assert.deepEqual(result.run.input, {});
+    assert.equal(result.run.projectId, PROJECT.id);
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("an absent input is the same request as an empty one, and asking twice returns the first run", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const first = await runtime.createRun(OPERATOR, PLAN_REQUEST);
+    const second = await runtime.createRun(OPERATOR, { ...PLAN_REQUEST, input: undefined });
+    assert.ok(first.ok && second.ok);
+    if (!first.ok || !second.ok) return;
+    assert.equal(second.duplicate, true);
+    assert.equal(second.run.id, first.run.id);
+    assert.equal(inserts(), 1);
+  });
+
+  test("a pack and a plan on the same project are two runs, found under their own agents", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const pack = await runtime.createRun(OPERATOR, { ...PLAN_REQUEST, agentId: "research-evidence", taskType: "evidence-pack-review" });
+    const plan = await runtime.createRun(OPERATOR, PLAN_REQUEST);
+    assert.ok(pack.ok && plan.ok);
+    if (!pack.ok || !plan.ok) return;
+    assert.equal(plan.duplicate, false);
+    assert.notEqual(plan.run.id, pack.run.id);
+    assert.equal(inserts(), 2);
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "content-strategist", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.length === 1 && mine.runs[0]?.id === plan.run.id);
+  });
+
+  test("is refused before anything is written for any input field, a string, array or number input, any other agent, or an unknown project", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...PLAN_REQUEST, input: { projectId: "other-client" } }, "invalid"],
+      [{ ...PLAN_REQUEST, input: { crawlId: CRAWL_ID } }, "invalid"],
+      [{ ...PLAN_REQUEST, input: { sourceRunId: CRAWL_ID } }, "invalid"],
+      [{ ...PLAN_REQUEST, input: { keyword: "seo agency" } }, "invalid"],
+      [{ ...PLAN_REQUEST, input: { focus: "plan the pricing page" } }, "invalid"],
+      [{ ...PLAN_REQUEST, input: "nexra-agency" }, "invalid"],
+      [{ ...PLAN_REQUEST, input: ["nexra-agency"] }, "invalid"],
+      [{ ...PLAN_REQUEST, input: 42 }, "invalid"],
+      [{ ...PLAN_REQUEST, agentId: "seo-director" }, "task-not-allowed"],
+      [{ ...PLAN_REQUEST, agentId: "research-evidence" }, "task-not-allowed"],
+      [{ ...PLAN_REQUEST, agentId: "writer" }, "task-not-allowed"],
+      [{ ...PLAN_REQUEST, agentId: "keyword-intent" }, "task-not-allowed"],
+      [{ ...PLAN_REQUEST, agentId: "project-manager" }, "task-not-allowed"],
+      [{ ...PLAN_REQUEST, agentId: "market-intelligence" }, "task-not-allowed"],
+      // And the Content Strategist may not run any other agent's review.
+      [{ ...PLAN_REQUEST, taskType: "evidence-pack-review", input: {} }, "task-not-allowed"],
+      [{ ...PLAN_REQUEST, taskType: "crawl-review", input: { crawlId: CRAWL_ID } }, "task-not-allowed"],
+      [{ ...PLAN_REQUEST, taskType: "priority-review", input: { sourceRunId: CRAWL_ID } }, "task-not-allowed"],
+      [{ ...PLAN_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+});

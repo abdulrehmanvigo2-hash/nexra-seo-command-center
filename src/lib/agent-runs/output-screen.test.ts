@@ -699,3 +699,102 @@ describe("the Research & Evidence pack through the worker's output screen", () =
     assert.equal(current().resultSummary, null);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The Content Strategist plan, through the same screen
+// ---------------------------------------------------------------------------
+
+const PLAN_METADATA: JsonObject = { ...PACK_METADATA, taskType: "content-plan-review" };
+
+const PLAN_CLOSING =
+  "This plan is a proposal over records this product holds; it names no volume, difficulty, ranking, traffic, backlink, authority, conversion or market figure, and every draft claim must carry a record tag.";
+
+/** An answer of the shape the content plan instructions demand. */
+const PLAN_ANSWER = [
+  "PAGE AND GOAL\n/services, to state what the agency does for a first-time visitor.",
+  "INTENT AND QUERY\nINFERENCE: navigational, from the brand query \"nexra agency\" [search console 2026-08-19 to 2026-09-17]",
+  "TITLE AND H1 DIRECTION\nThe page title is \"Services\" with one h1. [crawl /services]\nINFERENCE: name the service and the client outcome in the title.",
+  "OUTLINE\nWhat the agency does, in one paragraph [crawl /services]\nThe brand query this page should answer [search console 2026-08-19 to 2026-09-17]\nHow an engagement runs [needs evidence]\nWho the agency has worked with [needs evidence]",
+  "INTERNAL LINKS AND SCHEMA\nLink from / and /contact to /services. [crawl /]\nDeclare a Service type beside Organization. [crawl /]",
+  "CLAIMS NOT PERMITTED\nAny client result, figure or comparison; no record holds one.\nAny ranking beyond the recorded average position.\nFactual claims in the draft come only from the Research & Evidence pack's supported list.",
+  "NEXT OPERATOR ACTION\nCompile or refresh the evidence pack.",
+  PLAN_CLOSING,
+].join("\n\n");
+
+async function runPlan(output: ExecutionOutput) {
+  const { store, finishes, current } = memoryStore(queuedRun({ agentId: "content-strategist", taskType: "content-plan-review", input: {} }));
+  const stub = answering(output);
+  const worker = createAgentRunWorker({
+    store,
+    executor: stub.executor,
+    projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+    timeoutMs: 5_000,
+  });
+  const outcome = await worker.executeRun(RUN_ID);
+  return { outcome, finishes, run: current(), executorCalls: stub.calls() };
+}
+
+describe("the Content Strategist plan through the worker's output screen", () => {
+  test("a bounded seven-section plan is kept, with the pack's record metadata, and sits under 1,500 characters", async () => {
+    assert.ok(PLAN_ANSWER.length < 1_500, `${PLAN_ANSWER.length} characters`);
+    const { outcome, finishes, run, executorCalls } = await runPlan({ summary: PLAN_ANSWER, metadata: PLAN_METADATA });
+    assert.equal(outcome.status, "executed");
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "completed");
+    assert.equal(run.status, "completed");
+    assert.equal(run.resultSummary, PLAN_ANSWER);
+    assert.deepEqual(run.resultMetadata, PLAN_METADATA);
+    for (const heading of ["PAGE AND GOAL", "INTENT AND QUERY", "TITLE AND H1 DIRECTION", "OUTLINE", "INTERNAL LINKS AND SCHEMA", "CLAIMS NOT PERMITTED", "NEXT OPERATOR ACTION"]) {
+      assert.ok(run.resultSummary?.includes(`${heading}\n`), heading);
+    }
+    assert.ok(run.resultSummary?.endsWith(PLAN_CLOSING));
+    assert.match(run.resultSummary ?? "", /INTENT AND QUERY\nINFERENCE: /);
+    const outline = run.resultSummary?.split("OUTLINE\n")[1]?.split("\n\n")[0]?.split("\n") ?? [];
+    assert.equal(outline.length, 4);
+    for (const line of outline) assert.match(line, /\[(crawl \/\S*|search console [^\]]+|needs evidence)\]$/);
+    assert.ok(run.resultSummary?.includes("Factual claims in the draft come only from the Research & Evidence pack's supported list."));
+  });
+
+  test("an unbounded plan — a full brief with entities, questions and secondary keywords — runs over 2,000 characters and is refused after one executor call", async () => {
+    const overlong = [
+      "PAGE AND GOAL\n/services, a complete guide to the agency's services, positioned against the comparison hub and the resource library, for a first-time visitor evaluating agencies.",
+      "INTENT AND QUERY\nINFERENCE: commercial investigation, from \"nexra agency\" and the wider cluster of agency-selection queries [search console 2026-08-19 to 2026-09-17]",
+      "TITLE AND H1 DIRECTION\nSEO Services for Lead Generation: Strategy, Content and Technical, by Nexra Agency [crawl /services]\nINFERENCE: lead with the outcome, then the service list, then the proof.",
+      `OUTLINE\n${Array.from({ length: 12 }, (_, i) => `Section ${i + 1}: a detailed treatment of one service line, its process, deliverables and timeline [needs evidence]`).join("\n")}`,
+      "INTERNAL LINKS AND SCHEMA\nLink from every resource page to /services with descriptive anchors [crawl /]\nDeclare Service, Organization, FAQPage and BreadcrumbList types [crawl /]",
+      "CLAIMS NOT PERMITTED\nAny client result, figure or comparison; no record holds one.\nFactual claims in the draft come only from the Research & Evidence pack's supported list.",
+      "NEXT OPERATOR ACTION\nCompile or refresh the evidence pack.",
+      PLAN_CLOSING,
+    ].join("\n\n");
+    assert.ok(overlong.length > 2_000, `fixture is only ${overlong.length} characters`);
+    const { finishes, run, executorCalls } = await runPlan({ summary: overlong, metadata: PLAN_METADATA });
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "failed");
+    assert.equal(run.status, "failed");
+    assert.equal(run.error?.code, "rejected-output");
+    assert.equal(run.resultSummary, null);
+  });
+
+  test("the ceiling is unchanged for this task: 2,000 characters is kept and 2,001 is refused", async () => {
+    const padded = `${PLAN_ANSWER}\n${"x".repeat(2_000 - PLAN_ANSWER.length - 1)}`;
+    assert.equal(padded.length, 2_000);
+    assert.equal((await runPlan({ summary: padded, metadata: PLAN_METADATA })).run.status, "completed");
+    const refused = await runPlan({ summary: `${padded}x`, metadata: PLAN_METADATA });
+    assert.equal(refused.run.status, "failed");
+    assert.equal(refused.run.error?.code, "rejected-output");
+  });
+
+  test("credential-shaped plan output is still refused", async () => {
+    for (const summary of [
+      `${PLAN_ANSWER}\nAlso recorded on /contact: sk-abcdefghijklmnopqrstuvwxyz0123456789`,
+      `${PLAN_ANSWER}\nToken: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U`,
+      `${PLAN_ANSWER}\napi_key: 0123456789abcdef`,
+    ]) {
+      const { run, executorCalls } = await runPlan({ summary, metadata: PLAN_METADATA });
+      assert.equal(executorCalls, 1);
+      assert.equal(run.status, "failed");
+      assert.equal(run.error?.code, "rejected-output");
+      assert.equal(run.resultSummary, null);
+    }
+  });
+});
