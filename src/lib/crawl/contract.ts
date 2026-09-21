@@ -45,7 +45,12 @@ export type CrawlStore = {
   insert(crawl: NewCrawl): Promise<InsertCrawlOutcome>;
   finish(id: string, completion: CrawlCompletion): Promise<Crawl | null>;
   getById(id: string): Promise<Crawl | null>;
-  listByProject(projectId: string, limit: number): Promise<readonly Crawl[]>;
+  /**
+   * Newest first. With `hostScope`, only crawls confined to exactly that host —
+   * which is how the project's own crawls and a competitor's are kept apart,
+   * since the service records each with its exact host.
+   */
+  listByProject(projectId: string, limit: number, hostScope?: string): Promise<readonly Crawl[]>;
 
   /** Pages and links are written in bounded batches, never one row per call. */
   savePages(crawlId: string, pages: readonly Omit<CrawlPage, "id" | "crawlId">[]): Promise<void>;

@@ -4,6 +4,7 @@ import {
   ProjectMonogram,
   ProjectStatusBadge,
 } from "@/components/projects/project-chrome";
+import { CompetitorCrawlsPanel } from "@/components/crawl/competitor-crawls-panel";
 import { CrawlPanel } from "@/components/crawl/crawl-panel";
 import { IntakeReviewPanel } from "@/components/projects/intake-review-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
@@ -32,7 +33,14 @@ import type { ProjectRecord } from "@/types/project";
  * than inside it: observed clicks are not a health score, and nothing below
  * borrows a number from it.
  */
-export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
+export function ProjectUnmeasured({
+  project,
+  competitorDomains,
+}: {
+  project: ProjectRecord;
+  /** The competitor domains recorded at intake, read on the server; empty when none. */
+  competitorDomains: readonly string[];
+}) {
   const facts: { icon: IconName; label: string; value: string }[] = [
     { icon: "briefcase", label: "Client", value: project.client },
     { icon: "layers", label: "Industry", value: project.industry },
@@ -153,6 +161,18 @@ export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
         reporting data is required, and none is invented by rendering it.
       */}
       <CrawlPanel projectId={project.id} domain={project.domain} />
+
+      {/*
+        Competitor sites, beneath the project's own crawl and apart from it.
+        The domains come from the stored intake record, read on the server;
+        each crawl is one operator's explicit request for one host, and no
+        agent reads the result yet.
+      */}
+      <CompetitorCrawlsPanel
+        projectId={project.id}
+        projectDomain={project.domain}
+        competitorDomains={competitorDomains}
+      />
 
       <Panel>
         <EmptyState

@@ -471,6 +471,41 @@ check — and the crawl panel on
 the project workspace lists the recorded pages. The Technical SEO screens are
 unchanged and still render fixtures. Connecting those is a separate feature.
 
+### Competitor site crawls
+
+An operator may also crawl one competitor domain the agency recorded for the
+project at intake (`projects.competitor_domains`). The request names the
+domain (`POST /api/crawls { projectId, competitorDomain }`); the service
+reads the project's stored intake list by the project id, reduces each entry
+to its host, and accepts the request only when the requested bare hostname
+matches one of them exactly. Refused before the allow-list and before any
+outbound request, each with a fixed reason: a URL, path, port, address or
+bare word (`competitor-invalid`); a domain the project never recorded, or
+another project's (`competitor-not-recorded`); the project's own host, a
+subdomain of it, or a parent of it (`competitor-is-project-site`). The host
+must then pass `CRAWL_ALLOWED_HOSTS`, `CRAWL_ENABLED`, and every guard, budget,
+robots rule, user agent and rate limit the project's own crawl runs under.
+Nothing about the crawler's fetching changed; only which recorded host it may
+be pointed at. Adding a competitor host to the allow-list is an operator
+decision made in the deployment's environment, never in code.
+
+Whose site a crawl fetched is derived, not stored: a crawl's `host_scope`
+either sits inside the project's own host scope or it does not
+(`src/lib/crawl/competitor-target.ts`). Own-site listings ask the store for the
+project's exact host and competitor listings for the competitor's exact
+host (`GET /api/crawls?project=<id>&competitor=<host>`), so a competitor crawl
+is never the latest own-site crawl and the crawl panel and the three crawl
+reviews keep seeing the project's own crawls only. The crawl grounding reader
+now also refuses `crawl-not-project-site` — a crawl the project made of
+another host — for `crawl-review`, `on-page-review` and
+`answer-readiness-review`, comparing the crawl's host scope with the run's own
+project domain after the ownership check and before any page is described.
+No agent task reads a competitor crawl in this milestone, and none is offered
+on one. The competitor crawl panel on the unmeasured project workspace offers
+the recorded domains only, one explicit control per domain, and describes a
+recorded crawl as the pages a rival's site returned, never as a measurement of
+the rival.
+
 ### What it observes, derives, and refuses to guess
 
 | Observed | Derived | Never stored |
@@ -696,8 +731,12 @@ it. The deployment plan was not verifiable from this repository.
 - A sitemap is read only when the origin serves it as XML, plain text, or HTML.
   One served as something else is recorded as `unavailable`, which leaves
   sitemap membership unknown rather than false.
-- Only the crawl panel and the two crawl-grounded agent tasks read crawl data:
-  the Technical SEO screens are entirely fixture data.
+- Only the crawl panels and the three crawl-grounded agent tasks read crawl
+  data: the Technical SEO screens are entirely fixture data.
+- A competitor crawl is evidence collected, not reviewed: no task reads it
+  yet, and the Market & Competitor Intelligence agent remains fixture-only.
+  Competitor domains added on a project workspace after creation are
+  session-only and cannot be crawled; only intake-recorded domains can.
 
 - Execution runs inside a request or a cron invocation, not a long-lived
   worker: one invocation handles at most 5 runs, so sustained backlogs drain at

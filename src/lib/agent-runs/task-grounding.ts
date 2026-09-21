@@ -51,7 +51,13 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         const crawlId = task.input.crawlId;
         if (typeof crawlId !== "string") return { ok: false, reason: "crawl-id-missing" };
 
-        const result = await readCrawlGrounding(readers.crawls, { crawlId, projectId: task.project.id });
+        // The run's own project and its own domain: a crawl of another project
+        // or of a competitor's site is refused before a page is described.
+        const result = await readCrawlGrounding(readers.crawls, {
+          crawlId,
+          projectId: task.project.id,
+          projectDomain: task.project.domain,
+        });
         if (!result.ok) return { ok: false, reason: result.reason };
 
         return {

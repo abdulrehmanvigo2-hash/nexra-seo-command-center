@@ -74,8 +74,12 @@ export default async function ProjectPage({ params }: PageParams) {
 
   // The project exists but nothing has measured it: show what is known, and
   // say so, rather than inventing the rest or denying the project exists.
+  // The recorded competitor domains are read here, on the server, for the
+  // competitor crawl panel: the list the operator is offered is the stored
+  // one, never anything the browser holds.
   if (found.length === 0) {
-    return <ProjectUnmeasured project={project} />;
+    const intake = await projectRepository.getProjectIntake(projectId);
+    return <ProjectUnmeasured project={project} competitorDomains={intake?.competitorDomains ?? []} />;
   }
 
   // Reporting data for some windows but not others is a broken store, not a

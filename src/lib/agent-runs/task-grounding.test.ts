@@ -1137,3 +1137,51 @@ describe("the Project Manager through the executor", () => {
     assert.doesNotMatch(seen.prompt ?? "", /PROJECT RECORD/);
   });
 });
+
+const COMPETITOR_CRAWL: Crawl = {
+  ...CRAWL,
+  id: "8f1c0d2e-0000-4000-8000-000000000009",
+  startUrl: "https://rival.example/",
+  hostScope: "rival.example",
+};
+
+describe("a competitor crawl reaches none of the project's own reviews", () => {
+  const reviews: readonly [string, ExecutionTask][] = [
+    ["crawl-review", crawlReviewTask],
+    ["on-page-review", onPageTask],
+    ["answer-readiness-review", answerReadinessTask],
+  ];
+
+  for (const [name, task] of reviews) {
+    test(`${name}: the project's own crawl of a rival's site is refused, with its own reason`, async () => {
+      const store = crawlStore(COMPETITOR_CRAWL);
+      const result = await createTaskGrounding(readers(store))({ ...task, input: { crawlId: COMPETITOR_CRAWL.id } });
+      assert.deepEqual(result, { ok: false, reason: "crawl-not-project-site" });
+      assert.equal(store.reads(), 1);
+    });
+
+    test(`${name}: the refusal reaches no provider`, async () => {
+      const { seen, provider } = capturingProvider();
+      const executor = createAiExecutor(provider, createTaskGrounding(readers(crawlStore(COMPETITOR_CRAWL))));
+      await assert.rejects(() => executor.execute({ ...task, input: { crawlId: COMPETITOR_CRAWL.id } }, new AbortController().signal));
+      assert.equal(seen.calls, 0, "the provider was called for a competitor crawl");
+    });
+  }
+
+  test("the domain compared against is the run's project's, whatever the input says", async () => {
+    const result = await createTaskGrounding(readers(crawlStore(COMPETITOR_CRAWL)))({
+      ...crawlReviewTask,
+      input: { crawlId: COMPETITOR_CRAWL.id, projectDomain: "rival.example" },
+    });
+    assert.deepEqual(result, { ok: false, reason: "crawl-not-project-site" });
+  });
+
+  test("the project's own crawl is still read by all three, byte for byte as before", async () => {
+    for (const [, task] of reviews) {
+      const result = await createTaskGrounding(readers())(task);
+      assert.ok(result.ok);
+      if (!result.ok) continue;
+      assert.equal(result.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
+    }
+  });
+});

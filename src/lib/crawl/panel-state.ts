@@ -52,6 +52,10 @@ export const REFUSAL_MESSAGE: Readonly<Record<CrawlFailureReason, string>> = {
   "start-unsafe":
     "The start URL resolved to an address this crawler refuses to connect to.",
   unavailable: "Crawls are not stored on this deployment's data source.",
+  "competitor-invalid": "The competitor domain is not a plain hostname, so no request was made.",
+  "competitor-not-recorded":
+    "That domain is not one of the competitor domains recorded for this project at intake, so no request was made.",
+  "competitor-is-project-site": "That domain is this project's own site, not a competitor's, so no request was made.",
 };
 
 const REASONS = Object.keys(REFUSAL_MESSAGE) as readonly CrawlFailureReason[];
