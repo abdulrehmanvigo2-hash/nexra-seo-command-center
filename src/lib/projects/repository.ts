@@ -16,6 +16,7 @@ export type {
   CreateProjectResult,
   ProjectRepository,
   ProjectRoster,
+  UpdateCompetitorsResult,
 } from "@/lib/projects/contract";
 
 /**
@@ -78,6 +79,7 @@ function atRequestTime(repository: ProjectRepository): ProjectRepository {
       return repository.getProjectIntake(id);
     },
     createProject: (input) => repository.createProject(input),
+    updateProjectCompetitors: (id, domains) => repository.updateProjectCompetitors(id, domains),
   };
 }
 

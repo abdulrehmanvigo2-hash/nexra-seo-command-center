@@ -489,6 +489,23 @@ Nothing about the crawler's fetching changed; only which recorded host it may
 be pointed at. Adding a competitor host to the allow-list is an operator
 decision made in the deployment's environment, never in code.
 
+The recorded list can be edited after intake. The Server Action
+`updateProjectCompetitorsAction` (`src/app/(app)/projects/actions.ts`) is the
+second and only other browser-to-project write beside creation: it confirms
+the operator with the Auth server, treats its argument as `unknown` and
+refuses any field but a project id and a list, loads the project on the
+server, validates the list against the project's own stored domain
+(`src/lib/projects/competitor-domains.ts` — bare hostnames only, no URL, path,
+port or address, not the project's own site or a subdomain or parent of it,
+no duplicates after canonicalisation, at most five), and writes
+`projects.competitor_domains` and nothing else on the row through a gateway
+patch that names that one column. It is rate-limited like creation (10 per
+ten minutes per operator, one at a time) and answers with the list as
+stored. The competitor domains panel on the unmeasured project workspace
+edits a draft, labels unsaved entries as such, and hands only the saved list
+to the competitor crawl panel beneath it; saving crawls nothing, queues
+nothing, and never touches `CRAWL_ALLOWED_HOSTS`.
+
 Whose site a crawl fetched is derived, not stored: a crawl's `host_scope`
 either sits inside the project's own host scope or it does not
 (`src/lib/crawl/competitor-target.ts`). Own-site listings ask the store for the
@@ -735,8 +752,9 @@ it. The deployment plan was not verifiable from this repository.
   data: the Technical SEO screens are entirely fixture data.
 - A competitor crawl is evidence collected, not reviewed: no task reads it
   yet, and the Market & Competitor Intelligence agent remains fixture-only.
-  Competitor domains added on a project workspace after creation are
-  session-only and cannot be crawled; only intake-recorded domains can.
+  On the measured, fixture-backed workspace the competitors tab is still
+  session-only; the persisted editor is on the unmeasured workspace, where
+  every intake-created project renders.
 
 - Execution runs inside a request or a cron invocation, not a long-lived
   worker: one invocation handles at most 5 runs, so sustained backlogs drain at
