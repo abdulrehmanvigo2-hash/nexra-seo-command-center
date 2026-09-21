@@ -88,7 +88,7 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Ten task types exist, all read-only: `project-review` (any agent),
+project. Eleven task types exist, all read-only: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -97,7 +97,9 @@ project. Ten task types exist, all read-only: `project-review` (any agent),
 `priority-review` (SEO Director, from one other agent's completed review),
 `intake-review` (Project Manager, from the project's own stored record) and
 `competitor-comparison-review` (Market & Competitor Intelligence, from the
-project's own recorded crawl and one recorded competitor's crawl). The
+project's own recorded crawl and one recorded competitor's crawl) and
+`evidence-pack-review` (Research & Evidence, from the records this product
+holds for the project). The
 three crawl reviews take one input, a crawl id, and are grounded in the same
 recorded crawl; the two Search Console reviews take one input, a range id, and
 are grounded in the project's own Search Console report; the priority review
@@ -106,7 +108,9 @@ takes one input, a run id, and is grounded in that run's stored output (see
 grounded in the run's own project record (see *Project intake review* below);
 the competitor comparison takes one input, a competitor's bare hostname, and
 is grounded in two crawls the server finds (see *Competitor comparison
-review* below).
+review* below); the evidence pack takes no input and is grounded in the
+project's newest own-site crawl, its default Search Console window and the
+competitor crawls on record (see *Evidence pack* below).
 Input is parsed strictly per task type, bounded, and screened for credentials;
 unknown fields are refused. Adding a task type needs no migration: the run
 table checks the id's format, not a list.
@@ -366,7 +370,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review` and `competitor-comparison-review` are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review`, `competitor-comparison-review` and `evidence-pack-review` are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
@@ -516,6 +520,77 @@ newest run whose input names that host. Nothing queues it automatically. A
 completed comparison is not a hand-off source: the Director's reader and the
 panel refuse it as `source-task-not-allowed`, and offering it would need one
 `UPSTREAM_TASK_TYPES` entry plus a matching upstream-evidence description.
+
+### Evidence pack
+
+`evidence-pack-review` is the Research & Evidence agent's first task, and
+the first grounded in more than one kind of record at once. It takes no
+input at all: the project is the run's, and the reader
+(`src/lib/research/evidence-pack.ts`) finds every record on the server from
+it. The agent is given the records this product holds for the project and
+is asked to say what they establish and cannot establish, in six fixed
+sections — RECORDED PAGE EVIDENCE, RECORDED SEARCH EVIDENCE, COMPETITOR
+EVIDENCE ON RECORD, CLAIMS THIS EVIDENCE SUPPORTS, CLAIMS THIS EVIDENCE
+CANNOT SUPPORT, and RECOMMENDED NEXT EVIDENCE TO COLLECT — with every
+supporting claim ending in a tag naming the record it rests on (`[crawl
+/path]` or `[search console <window>]`), the next evidence chosen from a
+closed list, and a fixed closing sentence saying no external source was
+consulted. It consults nothing outside the product, because nothing outside
+the product exists in the task, and the block says so beside the data as
+well as in the instructions: this agent's registry brief speaks of primary
+sources and dated citations, and a model checking its work against that
+brief must not be able to satisfy it by naming a study that does not exist.
+
+The reader, in order: the project record (`project-not-found`; `no-domain`
+where the stored domain is not a hostname); the newest own-site crawl by the
+project's exact host (`project-crawl-missing`, `project-crawl-unfinished`,
+`project-crawl-not-reviewable`; partial accepted and labelled a sample),
+read back with its pages and checked again for project, host role and state
+(`crawl-not-readable`), and formatted by the crawl reader's own formatter
+under the comparison's per-side bound of 25 pages and 60,000 bytes. Those
+refusals are decided before anything is formatted. The Search Console
+report for the default 30-day window follows: a connected report with
+queries is formatted exactly as the Search Console reviews see it; every
+other state — not connected, no data, access denied, unavailable, no top
+queries, or a provider that threw — is written as `SEARCH CONSOLE: not
+established — <state>` and never fails the task or becomes a figure. Then,
+for each competitor the stored record lists (reduced to hosts by the crawl
+panels' rule), one availability line: host, newest crawl status and pages
+fetched, or "no crawl recorded", or not established where the listing could
+not be read. No competitor page, title or declaration is included. The
+intake note is not read for the block, and no earlier agent run is read.
+
+The block is headed as records held by this product, with the crawl under
+`=== RECORDED PAGE EVIDENCE: <host> (crawl <id>) ===`, the report under
+`=== RECORDED SEARCH EVIDENCE ===`, the competitor lines under `COMPETITOR
+CRAWLS ON RECORD (availability only)`, and an EVIDENCE PACK LIMITS note
+stating that no external source was consulted, that the crawl is a bounded
+sample, that Search Console top rows are not the whole demand, that the
+competitor lines are availability only, that earlier reviews and intake
+notes are not evidence, and what the pack cannot establish. The stored
+evidence summary carries `source: "evidence-pack"`, the project host, the
+crawl id, status, pages fetched and included and a truncation flag, the
+Search Console disposition with property and window where Google gave
+them, the competitor domain and crawl counts, and the byte size — never page
+text, a query, or a note. The evidence is named to the model as "evidence
+pack records".
+
+Every section is bounded (at most four page lines under 8 words cited by
+path, two search lines under 12 words, one competitor line under 10 words,
+three tagged claims under 12 words, two unsupportable claims under 14 words
+naming what would establish them, one next-evidence line under 12 words;
+the whole under 1,500 characters with a cut order), because the worker
+refuses any summary over 2,000 characters. An answer at every bound stays
+under 1,500 characters with ordinary words and under the ceiling with long
+ones. The control is on the unmeasured project workspace, beneath the crawl
+panel: the shared queue-then-Run Now control, keyed by the project, offered
+only while the newest own-site crawl is reviewable, and restored after a
+page load from the Research & Evidence agent's newest run. Search Console
+and competitor crawls never block it. Nothing queues it automatically. A
+completed pack is not a hand-off source: it holds records and
+supportability, not actions to rank, and both the Director's reader and the
+panel refuse it as `source-task-not-allowed`. Its provenance line calls it
+advice organising recorded evidence, not a new measurement.
 
 ### Action policy
 
@@ -833,8 +908,16 @@ it. The deployment plan was not verifiable from this repository.
 - Only the crawl panels and the three crawl-grounded agent tasks read crawl
   data: the Technical SEO screens are entirely fixture data.
 - A competitor crawl is read by one task, the comparison review, and only
-  beside the project's own newest crawl; the Market & Competitor Intelligence
-  agent's other screens remain fixture-only. The comparison control checks
+  beside the project's own newest crawl; the evidence pack sees only that a
+  competitor crawl exists. The Market & Competitor Intelligence agent's
+  other screens remain fixture-only.
+- The evidence pack organises records this product already holds. It adds
+  no source: the Research & Evidence agent's registry brief about primary
+  sources and dated citations describes a capability the product does not
+  have, and the Content Studio's brief sources remain fixtures. The pack
+  control checks the project's own newest crawl once, when the panel loads;
+  an own-site crawl run afterwards on the same page is not seen until the
+  page is reloaded. Content Strategist and Writer have no runtime task yet. The comparison control checks
   the project's own newest crawl once, when the panel loads: an own-site
   crawl run afterwards on the same page is not seen until the page is
   reloaded. A grounding refusal fails the attempt as `execution-failed`

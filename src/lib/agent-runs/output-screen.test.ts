@@ -458,6 +458,14 @@ describe("the competitor comparison review through the worker's output screen", 
         listCompetitorCrawls: notHere("competitor crawls"),
         crawls: { getCrawl: notHere("a crawl") },
       },
+      evidencePack: {
+        getProjectById: notHere("the project record"),
+        getProjectIntake: notHere("the intake"),
+        listProjectCrawls: notHere("own-site crawls"),
+        listCompetitorCrawls: notHere("competitor crawls"),
+        crawls: { getCrawl: notHere("a crawl") },
+        searchConsole: notHere("Search Console"),
+      },
     };
     const { store, finishes, current } = memoryStore(
       queuedRun({ agentId: "market-intelligence", taskType: "competitor-comparison-review", input: { competitorDomain: "2vautomation.example" } }),
@@ -505,5 +513,189 @@ describe("the competitor comparison review through the worker's output screen", 
       assert.equal(refused.status, "failed", taskType);
       assert.equal(refused.error?.code, "rejected-output", taskType);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Research & Evidence pack, through the same screen
+// ---------------------------------------------------------------------------
+
+const PACK_METADATA: JsonObject = {
+  simulated: false,
+  grounded: true,
+  evidence: {
+    source: "evidence-pack",
+    projectId: PROJECT.id,
+    projectHost: "nexraagency.com",
+    crawlId: CRAWL_ID,
+    crawlStatus: "partial",
+    pagesFetched: 5,
+    pagesIncluded: 5,
+    truncated: false,
+    searchConsole: "included",
+    property: "sc-domain:nexraagency.com",
+    windowStart: "2026-08-19",
+    windowEnd: "2026-09-17",
+    competitorDomains: 1,
+    competitorCrawls: 1,
+    bytes: 18_400,
+  },
+  taskType: "evidence-pack-review",
+  attempt: 1,
+  provider: "anthropic",
+  model: "test-model",
+  inputTokens: 7_000,
+  outputTokens: 700,
+};
+
+const PACK_CLOSING =
+  "No external source was consulted; every citation above names a record this product holds, and nothing here establishes traffic beyond the Search Console window, rankings beyond average position, backlinks, authority, revenue, conversions, market share, citations, AI visibility or brand strength.";
+
+/** An answer of the shape the evidence pack instructions demand. */
+const PACK_ANSWER = [
+  "RECORDED PAGE EVIDENCE\n/ title \"Nexra Agency\", one h1, Organization JSON-LD.\n/services title \"Services\", one h1, no description.\n/contact title \"Contact\", self canonical, no JSON-LD.\n/privacy discovered, not reached, not audited.",
+  "RECORDED SEARCH EVIDENCE\n120 clicks, 4,000 impressions, average position 14.2 for the window.\nTop query \"nexra agency\": 40 clicks, average position 2.1.",
+  "COMPETITOR EVIDENCE ON RECORD\nOne competitor crawl exists: 2vautomation.example, partial, 5 pages.",
+  "CLAIMS THIS EVIDENCE SUPPORTS\nThe services page declares no meta description. [crawl /services]\nThe home page declares Organization structured data. [crawl /]\nThe brand query earned 40 clicks this window. [search console 2026-08-19 to 2026-09-17]",
+  "CLAIMS THIS EVIDENCE CANNOT SUPPORT\nThat the site ranks for non-brand terms; a Search Console query list beyond the top rows would show it.\nThat the services page is indexed; Search Console page data would establish it.",
+  "RECOMMENDED NEXT EVIDENCE TO COLLECT\nQueue the on-page review of the newest crawl.",
+  PACK_CLOSING,
+].join("\n\n");
+
+async function runPack(output: ExecutionOutput) {
+  const { store, finishes, current } = memoryStore(queuedRun({ agentId: "research-evidence", taskType: "evidence-pack-review", input: {} }));
+  const stub = answering(output);
+  const worker = createAgentRunWorker({
+    store,
+    executor: stub.executor,
+    projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+    timeoutMs: 5_000,
+  });
+  const outcome = await worker.executeRun(RUN_ID);
+  return { outcome, finishes, run: current(), executorCalls: stub.calls() };
+}
+
+describe("the Research & Evidence pack through the worker's output screen", () => {
+  test("a bounded six-section pack is kept, with its record metadata, and sits under 1,500 characters", async () => {
+    assert.ok(PACK_ANSWER.length < 1_500, `${PACK_ANSWER.length} characters`);
+    const { outcome, finishes, run, executorCalls } = await runPack({ summary: PACK_ANSWER, metadata: PACK_METADATA });
+    assert.equal(outcome.status, "executed");
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "completed");
+    assert.equal(run.status, "completed");
+    assert.equal(run.resultSummary, PACK_ANSWER);
+    assert.deepEqual(run.resultMetadata, PACK_METADATA);
+    for (const heading of ["RECORDED PAGE EVIDENCE", "RECORDED SEARCH EVIDENCE", "COMPETITOR EVIDENCE ON RECORD", "CLAIMS THIS EVIDENCE SUPPORTS", "CLAIMS THIS EVIDENCE CANNOT SUPPORT", "RECOMMENDED NEXT EVIDENCE TO COLLECT"]) {
+      assert.ok(run.resultSummary?.includes(`${heading}\n`), heading);
+    }
+    assert.ok(run.resultSummary?.endsWith(PACK_CLOSING));
+    // Every supporting claim carries a record tag.
+    const supports = run.resultSummary?.split("CLAIMS THIS EVIDENCE SUPPORTS\n")[1]?.split("\n\n")[0]?.split("\n") ?? [];
+    assert.equal(supports.length, 3);
+    for (const claim of supports) assert.match(claim, /\[(crawl \/\S*|search console [^\]]+)\]$/);
+  });
+
+  test("an unbounded pack — every fetched page by full URL with every declaration — runs over 2,000 characters and is refused after one executor call", async () => {
+    const page = (path: string) =>
+      `https://nexraagency.com${path}: title 48 characters, one h1, meta description 150 characters, canonical points at this page, no robots directive, 1 JSON-LD block (Organization), allowed by robots.txt, sitemap not established, 9 internal links out.`;
+    const overlong = [
+      `RECORDED PAGE EVIDENCE\n${["/", "/services", "/about", "/contact", "/blog", "/pricing"].map(page).join("\n")}`,
+      "RECORDED SEARCH EVIDENCE\n120 clicks, 4,000 impressions, CTR 3.00%, average position 14.2; previous window 100 clicks, 3,500 impressions.\nTop queries: \"nexra agency\" 40 clicks; \"nexra seo\" 12 clicks; \"seo agency austin\" 9 clicks.",
+      "COMPETITOR EVIDENCE ON RECORD\nOne competitor crawl exists: 2vautomation.example, partial, 5 pages fetched.",
+      "CLAIMS THIS EVIDENCE SUPPORTS\nThe services page declares no meta description. [crawl /services]\nThe home page declares Organization structured data. [crawl /]",
+      "CLAIMS THIS EVIDENCE CANNOT SUPPORT\nThat the site ranks for non-brand terms; a fuller query list would show it.",
+      "RECOMMENDED NEXT EVIDENCE TO COLLECT\nQueue the on-page review of the newest crawl.",
+      PACK_CLOSING,
+    ].join("\n\n");
+    assert.ok(overlong.length > 2_000, `fixture is only ${overlong.length} characters`);
+    const { finishes, run, executorCalls } = await runPack({ summary: overlong, metadata: PACK_METADATA });
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "failed");
+    assert.equal(run.status, "failed");
+    assert.equal(run.error?.code, "rejected-output");
+    assert.equal(run.resultSummary, null);
+    assert.equal(run.resultMetadata, null);
+  });
+
+  test("the ceiling is unchanged for this task: 2,000 characters is kept and 2,001 is refused", async () => {
+    const padded = `${PACK_ANSWER}\n${"x".repeat(2_000 - PACK_ANSWER.length - 1)}`;
+    assert.equal(padded.length, 2_000);
+    assert.equal((await runPack({ summary: padded, metadata: PACK_METADATA })).run.status, "completed");
+    const refused = await runPack({ summary: `${padded}x`, metadata: PACK_METADATA });
+    assert.equal(refused.run.status, "failed");
+    assert.equal(refused.run.error?.code, "rejected-output");
+  });
+
+  test("credential-shaped pack output is still refused", async () => {
+    for (const summary of [
+      `${PACK_ANSWER}\nAlso recorded on /contact: sk-abcdefghijklmnopqrstuvwxyz0123456789`,
+      `${PACK_ANSWER}\nToken: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U`,
+      `${PACK_ANSWER}\napi_key: 0123456789abcdef`,
+    ]) {
+      const { run, executorCalls } = await runPack({ summary, metadata: PACK_METADATA });
+      assert.equal(executorCalls, 1);
+      assert.equal(run.status, "failed");
+      assert.equal(run.error?.code, "rejected-output");
+      assert.equal(run.resultSummary, null);
+    }
+  });
+
+  test("the pack's own evidence summary is storable metadata: no key or value trips the screen", async () => {
+    const { run } = await runPack({ summary: PACK_ANSWER, metadata: PACK_METADATA });
+    assert.equal(run.status, "completed");
+    assert.deepEqual(run.resultMetadata, PACK_METADATA);
+  });
+
+  test("when the pack's grounding is refused, the real AI executor reaches no provider and the run fails before any output exists", async () => {
+    let providerCalls = 0;
+    const provider = {
+      id: "anthropic" as const,
+      model: "test-model",
+      async generate() {
+        providerCalls += 1;
+        return { text: PACK_ANSWER, model: "test-model", inputTokens: 1, outputTokens: 1 };
+      },
+    };
+    const notHere = (what: string) => () => Promise.reject(new Error(`${what} must not be read`));
+    const readers: TaskGroundingReaders = {
+      crawls: { getCrawl: notHere("a crawl") },
+      searchConsole: notHere("Search Console"),
+      runs: { getById: notHere("a run") },
+      projects: {
+        getProjectById: notHere("the project record"),
+        getProjectIntake: notHere("the intake"),
+        listCrawls: notHere("crawls"),
+        searchConsole: notHere("Search Console"),
+        listRuns: notHere("runs"),
+      },
+      comparison: {
+        getProjectById: notHere("the project record"),
+        getProjectIntake: notHere("the intake"),
+        listProjectCrawls: notHere("own-site crawls"),
+        listCompetitorCrawls: notHere("competitor crawls"),
+        crawls: { getCrawl: notHere("a crawl") },
+      },
+      evidencePack: {
+        getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null),
+        getProjectIntake: notHere("the intake"),
+        // No own-site crawl has ever been recorded: the pack is refused.
+        listProjectCrawls: async () => [],
+        listCompetitorCrawls: notHere("competitor crawls"),
+        crawls: { getCrawl: notHere("a crawl") },
+        searchConsole: notHere("Search Console"),
+      },
+    };
+    const { store, finishes, current } = memoryStore(queuedRun({ agentId: "research-evidence", taskType: "evidence-pack-review", input: {} }));
+    const worker = createAgentRunWorker({
+      store,
+      executor: createAiExecutor(provider, createTaskGrounding(readers)),
+      projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+      timeoutMs: 5_000,
+    });
+    await worker.executeRun(RUN_ID);
+    assert.equal(providerCalls, 0, "the provider was called for a refused grounding");
+    assert.equal(finishes[0]?.outcome, "failed");
+    assert.equal(current().error?.code, "execution-failed");
+    assert.equal(current().resultSummary, null);
   });
 });

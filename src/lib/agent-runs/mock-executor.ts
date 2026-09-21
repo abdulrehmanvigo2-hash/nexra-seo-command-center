@@ -119,6 +119,20 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "evidence-pack-review": {
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no record. `grounded: false`, as for
+          // every simulated result: it looked at nothing and packed nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+        };
+        return {
+          summary: `Simulated evidence pack by ${subject}. The mock executor read no crawl, no Search Console report and no competitor record, and compiled nothing; this is placeholder output, not evidence.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

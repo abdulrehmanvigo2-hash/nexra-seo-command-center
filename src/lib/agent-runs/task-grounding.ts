@@ -4,6 +4,7 @@ import { getTaskType } from "@/lib/agent-runs/task-types";
 import { readComparisonGrounding, type ComparisonGroundingReaders } from "@/lib/crawl/comparison-grounding";
 import { readCrawlGrounding, type CrawlGroundingReader } from "@/lib/crawl/grounding";
 import { readProjectGrounding, type ProjectGroundingReaders } from "@/lib/projects/grounding";
+import { readEvidencePackGrounding, type EvidencePackReaders } from "@/lib/research/evidence-pack";
 import {
   readSearchConsoleGrounding,
   type SearchConsoleReportReader,
@@ -24,8 +25,10 @@ import {
  * inventory of the evidence this product holds for it (`intake-review`); one
  * declaring `evidence: "competitor-comparison"` is given the newest recorded
  * crawl of the run's own site and the newest recorded crawl of one
- * competitor its stored record lists (`competitor-comparison-review`); every
- * other task gets none. In every case the project is the run's: a crawl id
+ * competitor its stored record lists (`competitor-comparison-review`); one
+ * declaring `evidence: "evidence-pack"` is given the records this product
+ * holds for the run's own project (`evidence-pack-review`); every other task
+ * gets none. In every case the project is the run's: a crawl id
  * or a source run id is checked against it, a report is fetched for it, a
  * record is read by it, and a competitor domain is matched against its own
  * record, so nothing a caller writes can reach another client's data.
@@ -42,6 +45,8 @@ export type TaskGroundingReaders = {
   readonly projects: ProjectGroundingReaders;
   /** The project repository and crawl service, for the two crawls a comparison reads. */
   readonly comparison: ComparisonGroundingReaders;
+  /** The project repository, crawl service and Search Console, for the records an evidence pack collects. */
+  readonly evidencePack: EvidencePackReaders;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -113,6 +118,22 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
       case "project": {
         // No input is read: the project is the run's own, and nothing else.
         const result = await readProjectGrounding(readers.projects, { projectId: task.project.id });
+        if (!result.ok) return { ok: false, reason: result.reason };
+
+        return {
+          ok: true,
+          grounding: {
+            text: result.grounding.text,
+            summary: { ...result.grounding.summary },
+            source: result.grounding.source,
+          },
+        };
+      }
+
+      case "evidence-pack": {
+        // No input is read: the project is the run's own, and every record
+        // is found by the server from it.
+        const result = await readEvidencePackGrounding(readers.evidencePack, { projectId: task.project.id });
         if (!result.ok) return { ok: false, reason: result.reason };
 
         return {

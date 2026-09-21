@@ -882,3 +882,87 @@ describe("queueing a competitor comparison review — the Market & Competitor In
     assert.equal(own.ok, true);
   });
 });
+
+describe("queueing an evidence pack — the Research & Evidence agent", () => {
+  const PACK_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "research-evidence",
+    taskType: "evidence-pack-review",
+    input: {},
+  };
+
+  test("creates one queued run for the Research & Evidence agent with an empty input, and touches no executor", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, PACK_REQUEST);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "research-evidence");
+    assert.equal(result.run.taskType, "evidence-pack-review");
+    assert.deepEqual(result.run.input, {});
+    assert.equal(result.run.source, "operator");
+    assert.equal(result.run.projectId, PROJECT.id);
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("an absent input is the same request as an empty one, and asking twice returns the first run", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const first = await runtime.createRun(OPERATOR, PACK_REQUEST);
+    const second = await runtime.createRun(OPERATOR, { ...PACK_REQUEST, input: undefined });
+    assert.ok(first.ok && second.ok);
+    if (!first.ok || !second.ok) return;
+    assert.equal(second.duplicate, true);
+    assert.equal(second.run.id, first.run.id);
+    assert.equal(inserts(), 1);
+  });
+
+  test("is found under the Research & Evidence agent, which is what the panel restores from", async () => {
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const created = await runtime.createRun(OPERATOR, PACK_REQUEST);
+    assert.ok(created.ok);
+    if (!created.ok) return;
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "research-evidence", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(created.run.id));
+    const theirs = await runtime.listRuns({ projectId: PROJECT.id, agentId: "content-strategist", limit: 25, offset: 0 });
+    assert.ok(theirs.ok && theirs.runs.length === 0);
+  });
+
+  test("is refused before anything is written for any input field, a string or array input, any other agent, or an unknown project", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...PACK_REQUEST, input: { projectId: "other-client" } }, "invalid"],
+      [{ ...PACK_REQUEST, input: { crawlId: CRAWL_ID } }, "invalid"],
+      [{ ...PACK_REQUEST, input: { range: "30d" } }, "invalid"],
+      [{ ...PACK_REQUEST, input: { sources: ["https://example.com/study"] } }, "invalid"],
+      [{ ...PACK_REQUEST, input: { focus: "cite the industry report" } }, "invalid"],
+      [{ ...PACK_REQUEST, input: "nexra-agency" }, "invalid"],
+      [{ ...PACK_REQUEST, input: ["nexra-agency"] }, "invalid"],
+      [{ ...PACK_REQUEST, agentId: "seo-director" }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, agentId: "project-manager" }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, agentId: "market-intelligence" }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, agentId: "content-strategist" }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, agentId: "writer" }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, agentId: "technical-seo" }, "task-not-allowed"],
+      // And the Research & Evidence agent may not run any other agent's review.
+      [{ ...PACK_REQUEST, taskType: "crawl-review", input: { crawlId: CRAWL_ID } }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, taskType: "intake-review", input: {} }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, taskType: "competitor-comparison-review", input: { competitorDomain: "rival.example" } }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, taskType: "priority-review", input: { sourceRunId: CRAWL_ID } }, "task-not-allowed"],
+      [{ ...PACK_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+});

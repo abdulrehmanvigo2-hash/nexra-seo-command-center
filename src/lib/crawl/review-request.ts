@@ -41,7 +41,8 @@ export type ReviewTaskType =
   | SearchConsoleReviewKind
   | "priority-review"
   | "intake-review"
-  | "competitor-comparison-review";
+  | "competitor-comparison-review"
+  | "evidence-pack-review";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
@@ -54,7 +55,8 @@ export type ReviewSpec = {
     | "analytics-learning"
     | "seo-director"
     | "project-manager"
-    | "market-intelligence";
+    | "market-intelligence"
+    | "research-evidence";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
@@ -202,6 +204,27 @@ export const COMPETITOR_COMPARISON_REVIEW: ReviewSpec = {
   groundedIn: "this project's recorded site crawl and this competitor's recorded crawl (page declarations only)",
 };
 
+/**
+ * The Research & Evidence agent's evidence pack for the project itself.
+ *
+ * The request carries no input at all: the project is the run's own, and
+ * every record the pack reads — the newest own-site crawl, the default
+ * Search Console window, which competitor crawls exist — is found on the
+ * server from it. The agent organises what those records establish and
+ * consults nothing outside the product; the wording never calls the result
+ * more than that. It is not a hand-off source: the runtime does not accept
+ * it as one, and the control follows the runtime.
+ */
+export const EVIDENCE_PACK_REVIEW: ReviewSpec = {
+  taskType: "evidence-pack-review",
+  agentId: "research-evidence",
+  agentName: "Research & Evidence",
+  action: "Compile evidence pack with Research & Evidence Agent",
+  summary:
+    "Queues a read-only evidence pack from the records this product holds for this project: the newest site crawl above, the Search Console window where connected, and which competitor crawls exist. The agent says what those records establish and cannot establish, each claim tagged with the record it rests on; it consults no outside source, invents no citation, and changes nothing.",
+  groundedIn: "records this product holds for this project (advice organising that evidence, not a new measurement)",
+};
+
 export type ReviewPayload = {
   readonly projectId: string;
   readonly agentId: ReviewSpec["agentId"];
@@ -212,7 +235,7 @@ export type ReviewPayload = {
     | { readonly sourceRunId: string }
     /** The comparison names a recorded competitor's hostname; the crawls are found on the server. */
     | { readonly competitorDomain: string }
-    /** The intake review names nothing: the project is the run's own. */
+    /** The intake review and the evidence pack name nothing: the project is the run's own. */
     | Record<string, never>;
 };
 
@@ -358,6 +381,39 @@ export function intakeReviewRequest(projectId: string | null): Queueability {
       projectId,
       agentId: INTAKE_REVIEW.agentId,
       taskType: INTAKE_REVIEW.taskType,
+      input: {},
+    },
+  };
+}
+
+/**
+ * Whether the project on screen can have its evidence packed, and the body
+ * that would ask for it.
+ *
+ * Offered only when the project's newest own-site crawl is one the server's
+ * reader would accept — present, finished, and not failed or cancelled —
+ * because the crawl is the one record the pack cannot do without. Search
+ * Console and competitor crawls are optional and never block the control. A
+ * crawl not yet known (the list has not loaded) is not offered either. The
+ * server remains the gate: it re-reads the record and the crawl at execution
+ * time.
+ */
+export function evidencePackRequest(projectId: string | null, projectCrawl: Crawl | null | undefined): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  const why = comparableSide(projectCrawl, {
+    unknown: "This project's crawl history has not loaded yet.",
+    missing: "Run a crawl of this project's own site first: the pack has nothing to read without one.",
+    running: "This project's newest site crawl is still running. The pack can be queued once it finishes.",
+    failed: "This project's newest site crawl failed, so there is no recorded page evidence to pack.",
+    cancelled: "This project's newest site crawl was cancelled, so there is no recorded page evidence to pack.",
+  });
+  if (why !== null) return { ok: false, why };
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: EVIDENCE_PACK_REVIEW.agentId,
+      taskType: EVIDENCE_PACK_REVIEW.taskType,
       input: {},
     },
   };
@@ -531,6 +587,19 @@ export function evidenceDescription(metadata: JsonObject): string | null {
   if (evidence === null) return null;
   if (evidence.source === "agent-run") return null;
   if (evidence.source === "project") return INTAKE_REVIEW.groundedIn;
+  if (evidence.source === "evidence-pack") {
+    const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
+    const property = typeof evidence.property === "string" ? evidence.property : null;
+    const start = typeof evidence.windowStart === "string" ? evidence.windowStart : null;
+    const end = typeof evidence.windowEnd === "string" ? evidence.windowEnd : null;
+    const search =
+      evidence.searchConsole === "included" && property && start && end
+        ? ` and Search Console for ${property}, ${start} to ${end}`
+        : "";
+    return crawlId
+      ? `records this product holds for this project: crawl ${crawlId}${search} (advice organising that evidence, not a new measurement)`
+      : EVIDENCE_PACK_REVIEW.groundedIn;
+  }
   if (evidence.source === "competitor-comparison") {
     const host = typeof evidence.competitorHost === "string" ? evidence.competitorHost : null;
     return host

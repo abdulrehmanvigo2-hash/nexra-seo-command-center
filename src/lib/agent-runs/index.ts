@@ -101,6 +101,23 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
           },
           crawls: crawlService(),
         },
+        // The Research & Evidence pack reads the same records through the
+        // same services: the newest own-site crawl by exact host, the
+        // default Search Console window through the cached provider, and
+        // competitor crawls by exact host for availability only. Intake
+        // notes and earlier runs are not read at all.
+        evidencePack: {
+          getProjectById: (id) => projectRepository.getProjectById(id),
+          getProjectIntake: (id) => projectRepository.getProjectIntake(id),
+          listProjectCrawls: (projectId) => crawlService().listCrawls(projectId, 1),
+          listCompetitorCrawls: async (projectId, competitorHost) => {
+            const listed = await crawlService().listCompetitorCrawls(projectId, competitorHost, 1);
+            return listed.ok ? listed.crawls : [];
+          },
+          crawls: crawlService(),
+          searchConsole: (projectId) =>
+            getSearchConsoleReport(searchConsoleProvider(), projectId, INVENTORY_RANGE_ID),
+        },
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

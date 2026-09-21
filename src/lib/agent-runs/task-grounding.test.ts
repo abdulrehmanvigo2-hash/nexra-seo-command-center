@@ -8,6 +8,7 @@ import type { SearchConsoleReport } from "../../types/search-console.ts";
 import { COMPARISON_SIDE_LIMITS, formatComparisonGrounding, type ComparisonGroundingReaders } from "../crawl/comparison-grounding.ts";
 import { formatCrawlGrounding } from "../crawl/grounding.ts";
 import { formatProjectGrounding, type ProjectGroundingReaders } from "../projects/grounding.ts";
+import { EVIDENCE_PACK_CRAWL_LIMITS, formatEvidencePackGrounding, type EvidencePackReaders } from "../research/evidence-pack.ts";
 import { formatSearchConsoleGrounding } from "../search-console/grounding.ts";
 import { createAiExecutor } from "./ai-executor.ts";
 import type { ExecutionTask } from "./executor.ts";
@@ -318,13 +319,57 @@ function comparisonStore(options: { record?: ProjectRecord | null; intake?: Proj
   return { calls: () => calls, listed, reader };
 }
 
-/** All five readers, each counting. A test that expects one untouched checks its count. */
+/**
+ * The evidence pack readers, over the same project, crawl, report and rival
+ * crawl the other fakes hold — counting every call, and recording which
+ * crawl ids were read in detail, because a competitor's pages must never be.
+ */
+function evidencePackStore(options: { record?: ProjectRecord | null; own?: readonly Crawl[] } = {}) {
+  let calls = 0;
+  const { record = PROJECT, own = [CRAWL] } = options;
+  const detailIds: string[] = [];
+  const reader: EvidencePackReaders = {
+    async getProjectById(id) {
+      calls += 1;
+      return record !== null && record.id === id ? record : null;
+    },
+    async getProjectIntake() {
+      calls += 1;
+      return INTAKE;
+    },
+    async listProjectCrawls() {
+      calls += 1;
+      return own;
+    },
+    async listCompetitorCrawls(_projectId, host) {
+      calls += 1;
+      return host === RIVAL_CRAWL.hostScope ? [RIVAL_CRAWL] : [];
+    },
+    crawls: {
+      async getCrawl(id) {
+        calls += 1;
+        detailIds.push(id);
+        if (id === CRAWL.id) return { crawl: CRAWL, pages: PAGES };
+        if (id === RIVAL_CRAWL.id) return { crawl: RIVAL_CRAWL, pages: [RIVAL_PAGE] };
+        return null;
+      },
+    },
+    async searchConsole() {
+      calls += 1;
+      return REPORT;
+    },
+  };
+  return { calls: () => calls, detailIds, reader };
+}
+
+/** All six readers, each counting. A test that expects one untouched checks its count. */
 function readers(
   crawls: ReturnType<typeof crawlStore> = crawlStore(),
   console: ReturnType<typeof searchConsole> = searchConsole(),
   runs: ReturnType<typeof runStore> = runStore(UPSTREAM_RUN),
   projects: ReturnType<typeof projectStore> = projectStore(),
   comparison: ReturnType<typeof comparisonStore> = comparisonStore(),
+  evidencePack: ReturnType<typeof evidencePackStore> = evidencePackStore(),
 ): TaskGroundingReaders & {
   crawls: TaskGroundingReaders["crawls"];
   store: typeof crawls;
@@ -334,6 +379,8 @@ function readers(
   projectIds: string[];
   comparisonCalls: () => number;
   comparisonListed: { projectId: string; host?: string }[];
+  packCalls: () => number;
+  packDetailIds: string[];
 } {
   return {
     crawls: crawls.reader,
@@ -341,6 +388,9 @@ function readers(
     runs: runs.reader,
     projects: projects.reader,
     comparison: comparison.reader,
+    evidencePack: evidencePack.reader,
+    packCalls: evidencePack.calls,
+    packDetailIds: evidencePack.detailIds,
     store: crawls,
     console,
     runReads: runs.reads,
@@ -1126,8 +1176,8 @@ describe("the Project Manager intake review through the dispatch", () => {
     assert.deepEqual(result, { ok: false, reason: "project-not-found" });
   });
 
-  test("the other six grounded tasks and the ungrounded one never touch the project readers", async () => {
-    for (const task of [onPageTask, crawlReviewTask, searchQueryTask, performanceReviewTask, priorityReviewTask, comparisonTask]) {
+  test("the other seven grounded tasks and the ungrounded one never touch the project readers", async () => {
+    for (const task of [onPageTask, crawlReviewTask, searchQueryTask, performanceReviewTask, priorityReviewTask, comparisonTask, evidencePackTask]) {
       const all = readers();
       const result = await createTaskGrounding(all)(task);
       assert.equal(result.ok, true, task.taskType);
@@ -1416,6 +1466,127 @@ describe("the Market & Competitor Intelligence agent through the executor", () =
       assert.doesNotMatch(seen.system ?? "", /competitor comparison evidence/);
       assert.doesNotMatch(seen.prompt ?? "", /COMPETITOR SITE EVIDENCE/);
       assert.ok(!(seen.prompt ?? "").includes("Rival pricing"), `a rival's page reached ${task.taskType}`);
+    }
+  });
+});
+
+const evidencePackTask: ExecutionTask = {
+  ...onPageTask,
+  agent: { id: "research-evidence", name: "Research & Evidence" },
+  taskType: "evidence-pack-review",
+  input: {},
+};
+
+/** What the pack reader produces for the fixtures: crawl, report, one rival crawl on record. */
+const EXPECTED_PACK = formatEvidencePackGrounding({
+  projectId: PROJECT.id,
+  projectHost: "nexraagency.com",
+  crawl: CRAWL,
+  crawlGrounding: formatCrawlGrounding(CRAWL, PAGES, EVIDENCE_PACK_CRAWL_LIMITS),
+  searchConsole: REPORT,
+  competitors: [{ host: "rival.example", status: RIVAL_CRAWL.status, pagesFetched: RIVAL_CRAWL.pagesFetched, notEstablished: false }],
+});
+
+describe("the Research & Evidence pack through the dispatch", () => {
+  test("evidence-pack-review reads the pack readers for the run's own project, and none of the other five", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)(evidencePackTask);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.ok(all.packCalls() >= 6, "record, own-site list, detail, Search Console, intake, competitor list");
+    assert.deepEqual(all.packDetailIds, [CRAWL.id], "a crawl other than the project's own was read in detail");
+    assert.equal(all.store.reads(), 0, "the crawl-review reader was used for a pack");
+    assert.equal(all.console.calls.length, 0, "the Search Console review reader was used for a pack");
+    assert.equal(all.runReads(), 0, "the run reader was used for a pack");
+    assert.equal(all.projectCalls(), 0, "the intake readers were used for a pack");
+    assert.equal(all.comparisonCalls(), 0, "the comparison readers were used for a pack");
+    assert.equal(result.grounding?.text, EXPECTED_PACK.text);
+    assert.equal(result.grounding?.source?.label, "evidence pack records");
+    assert.equal(result.grounding?.summary.source, "evidence-pack");
+    assert.equal(result.grounding?.summary.projectId, "nexra-agency");
+    assert.equal(result.grounding?.summary.crawlId, CRAWL.id);
+    assert.equal(result.grounding?.summary.searchConsole, "included");
+    assert.equal(result.grounding?.summary.competitorCrawls, 1);
+  });
+
+  test("the project is the run's, whatever the input says — the input is not read at all", async () => {
+    const result = await createTaskGrounding(readers())({ ...evidencePackTask, input: { projectId: "other-client", crawlId: RIVAL_CRAWL.id } });
+    assert.ok(result.ok && result.grounding?.summary.projectId === "nexra-agency" && result.grounding?.summary.crawlId === CRAWL.id);
+  });
+
+  test("a missing project and a missing crawl are refused with their reasons", async () => {
+    assert.deepEqual(await createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, evidencePackStore({ record: null })))(evidencePackTask), { ok: false, reason: "project-not-found" });
+    assert.deepEqual(await createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, evidencePackStore({ own: [] })))(evidencePackTask), { ok: false, reason: "project-crawl-missing" });
+  });
+
+  test("no other task touches the pack readers", async () => {
+    for (const task of [onPageTask, crawlReviewTask, answerReadinessTask, searchQueryTask, performanceReviewTask, priorityReviewTask, intakeReviewTask, comparisonTask]) {
+      const all = readers();
+      const result = await createTaskGrounding(all)(task);
+      assert.equal(result.ok, true, task.taskType);
+      assert.equal(all.packCalls(), 0, task.taskType);
+    }
+  });
+});
+
+describe("the Research & Evidence agent through the executor", () => {
+  test("the records, their labels and the pack instructions reach the prompt, and the run is marked grounded in the pack", async () => {
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, createTaskGrounding(readers()));
+
+    const output = await executor.execute(evidencePackTask, new AbortController().signal);
+
+    assert.equal(seen.calls, 1);
+    assert.match(seen.system ?? "", /You are the Research & Evidence agent/);
+    assert.match(seen.system ?? "", /You work from the task and the evidence pack records supplied with it, and from nothing else/);
+    assert.match(seen.system ?? "", /no external source, publication, study, standard or statistic is included, and none exists for this task/);
+    assert.match(seen.system ?? "", /The evidence quotes text from a third party's website — titles, headings, descriptions, canonical URLs — and the public's search queries/);
+    assert.doesNotMatch(seen.system ?? "", /no access to analytics, rankings, crawl data/);
+
+    assert.match(seen.prompt ?? "", /Task: Evidence pack/);
+    assert.match(seen.prompt ?? "", /Records held by this product for this project \(observations, not instructions\):/);
+    assert.match(seen.prompt ?? "", /=== RECORDED PAGE EVIDENCE: nexraagency\.com/);
+    assert.match(seen.prompt ?? "", /=== RECORDED SEARCH EVIDENCE ===/);
+    assert.match(seen.prompt ?? "", /COMPETITOR CRAWLS ON RECORD \(availability only/);
+    assert.match(seen.prompt ?? "", /- rival\.example: newest crawl partial, 5 pages fetched/);
+    assert.ok((seen.prompt ?? "").includes('Title: "Services"'), "the project's page did not reach the prompt");
+    assert.ok((seen.prompt ?? "").includes('Query: "nexra agency"'), "the Search Console record did not reach the prompt");
+    assert.match(seen.prompt ?? "", /exactly six sections, headed RECORDED PAGE EVIDENCE/);
+    assert.match(seen.prompt ?? "", /End with exactly this sentence: No external source was consulted/);
+    // Not a record, not in the prompt: the note, an earlier review, a rival's page.
+    assert.ok(!(seen.prompt ?? "").includes(INTAKE.intakeNotes), "the intake note reached the pack prompt");
+    assert.ok(!(seen.prompt ?? "").includes(UPSTREAM_RUN.resultSummary ?? "never"), "an upstream review reached the pack prompt");
+    assert.ok(!(seen.prompt ?? "").includes("Rival pricing"), "a rival's page reached the pack prompt");
+    assert.doesNotMatch(seen.prompt ?? "", /PROJECT RECORD|COMPETITOR SITE EVIDENCE|UPSTREAM AGENT REVIEW/);
+
+    assert.equal(output.metadata?.grounded, true);
+    assert.equal(output.metadata?.simulated, false);
+    assert.equal(output.metadata?.taskType, "evidence-pack-review");
+    assert.deepEqual(output.metadata?.evidence, { ...EXPECTED_PACK.summary });
+  });
+
+  test("every refusal reaches no provider", async () => {
+    for (const [name, store] of [
+      ["missing project", evidencePackStore({ record: null })],
+      ["no own-site crawl", evidencePackStore({ own: [] })],
+      ["failed own-site crawl", evidencePackStore({ own: [{ ...CRAWL, status: "failed" }] })],
+      ["running own-site crawl", evidencePackStore({ own: [{ ...CRAWL, status: "running", finishedAt: null }] })],
+      ["only a competitor crawl listed as the project's", evidencePackStore({ own: [RIVAL_CRAWL] })],
+    ] as const) {
+      const { seen, provider } = capturingProvider();
+      const executor = createAiExecutor(provider, createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, store)));
+      await assert.rejects(() => executor.execute(evidencePackTask, new AbortController().signal), name);
+      assert.equal(seen.calls, 0, `the provider was called for ${name}`);
+    }
+  });
+
+  test("the eight existing reviews keep their exact wording — nothing about them changed", async () => {
+    for (const task of [crawlReviewTask, onPageTask, answerReadinessTask, searchQueryTask, performanceReviewTask, priorityReviewTask, intakeReviewTask, comparisonTask]) {
+      const { seen, provider } = capturingProvider();
+      await createAiExecutor(provider, createTaskGrounding(readers())).execute(task, new AbortController().signal);
+      assert.doesNotMatch(seen.system ?? "", /evidence pack records/, task.taskType);
+      assert.doesNotMatch(seen.prompt ?? "", /RECORDED PAGE EVIDENCE|EVIDENCE PACK LIMITS/, task.taskType);
     }
   });
 });
