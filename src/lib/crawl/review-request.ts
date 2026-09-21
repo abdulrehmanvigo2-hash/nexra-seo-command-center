@@ -35,7 +35,7 @@ export const REVIEW_TASK_TYPE = "crawl-review";
 
 export type CrawlReviewKind = typeof REVIEW_TASK_TYPE | "on-page-review" | "answer-readiness-review";
 export type SearchConsoleReviewKind = "search-query-review" | "performance-review";
-export type ReviewTaskType = CrawlReviewKind | SearchConsoleReviewKind | "priority-review";
+export type ReviewTaskType = CrawlReviewKind | SearchConsoleReviewKind | "priority-review" | "intake-review";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
@@ -46,7 +46,8 @@ export type ReviewSpec = {
     | "ai-visibility"
     | "keyword-intent"
     | "analytics-learning"
-    | "seo-director";
+    | "seo-director"
+    | "project-manager";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
@@ -150,11 +151,37 @@ export const PRIORITY_REVIEW: ReviewSpec = {
   groundedIn: "one upstream agent's completed review",
 };
 
+/**
+ * The Project Manager's intake review of the project record itself.
+ *
+ * The request carries no input at all: the project is the run's own, read
+ * on the server from the persisted run, so there is nothing to name and
+ * nothing a caller could point elsewhere. The agent reads what the agency
+ * recorded and an inventory of what evidence exists — never the evidence —
+ * and proposes one next step. It is not a hand-off source: a record is the
+ * agency's own entries, not a finding about the site for the Director to
+ * rank.
+ */
+export const INTAKE_REVIEW: ReviewSpec = {
+  taskType: "intake-review",
+  agentId: "project-manager",
+  agentName: "Project Manager",
+  action: "Review intake with Project Manager Agent",
+  summary:
+    "Queues a read-only intake review of this project's stored record: the recorded goal and details, the agency's intake notes and competitor domains (unverified), and which evidence this product holds. It proposes one next step for you; it assigns nothing, schedules nothing, and changes nothing.",
+  groundedIn: "this project's stored record and evidence inventory",
+};
+
 export type ReviewPayload = {
   readonly projectId: string;
   readonly agentId: ReviewSpec["agentId"];
   readonly taskType: ReviewTaskType;
-  readonly input: { readonly crawlId: string } | { readonly range: RangeId } | { readonly sourceRunId: string };
+  readonly input:
+    | { readonly crawlId: string }
+    | { readonly range: RangeId }
+    | { readonly sourceRunId: string }
+    /** The intake review names nothing: the project is the run's own. */
+    | Record<string, never>;
 };
 
 export type Queueability =
@@ -283,6 +310,27 @@ export function handoffRequest(projectId: string | null, source: AgentRun | null
   };
 }
 
+/**
+ * Whether the project on screen can have its intake reviewed, and the body
+ * that would ask for it.
+ *
+ * Offered for any stored project: the record is the evidence, so there is no
+ * crawl or report to wait for. The server remains the gate — it re-reads the
+ * record at execution time and refuses a project that no longer exists.
+ */
+export function intakeReviewRequest(projectId: string | null): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: INTAKE_REVIEW.agentId,
+      taskType: INTAKE_REVIEW.taskType,
+      input: {},
+    },
+  };
+}
+
 /** Whether a completed run is one the Director hand-off control belongs under. */
 export function offersHandoff(run: AgentRun): boolean {
   return run.status === "completed" && isUpstreamTaskType(run.taskType);
@@ -360,6 +408,7 @@ export function evidenceDescription(metadata: JsonObject): string | null {
   const evidence = isJsonObject(metadata.evidence) ? metadata.evidence : null;
   if (evidence === null) return null;
   if (evidence.source === "agent-run") return null;
+  if (evidence.source === "project") return INTAKE_REVIEW.groundedIn;
   if (evidence.source === "search-console") {
     const property = typeof evidence.property === "string" ? evidence.property : null;
     const start = typeof evidence.startDate === "string" ? evidence.startDate : null;
@@ -496,7 +545,9 @@ export function queuedNote(state: {
 // ---------------------------------------------------------------------------
 
 /**
- * The input that names one review's evidence: a crawl, a window, or a run.
+ * The input that names one review's evidence: a crawl, a window, a run, or
+ * — for the intake review — nothing, because the project itself is the
+ * evidence.
  */
 export type ReviewInput = ReviewPayload["input"];
 

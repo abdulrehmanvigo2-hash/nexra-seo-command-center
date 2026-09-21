@@ -5,6 +5,7 @@ import {
   ProjectStatusBadge,
 } from "@/components/projects/project-chrome";
 import { CrawlPanel } from "@/components/crawl/crawl-panel";
+import { IntakeReviewPanel } from "@/components/projects/intake-review-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -120,6 +121,16 @@ export function ProjectUnmeasured({ project }: { project: ProjectRecord }) {
           ))}
         </dl>
       </section>
+
+      {/*
+        The Project Manager's intake review belongs on this screen and, for
+        now, only here: the record above is the whole of what is known about
+        an unmeasured project, and the review reads that record and an
+        inventory of what evidence exists. The measured workspace shows
+        modelled figures beside which a grounded review would need its own
+        wording, so it does not gain the panel in this milestone.
+      */}
+      <IntakeReviewPanel projectId={project.id} />
 
       {/*
         Thirty days, the window the rest of the product defaults to. This

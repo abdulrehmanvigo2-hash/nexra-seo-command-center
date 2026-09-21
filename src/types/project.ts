@@ -311,6 +311,21 @@ export type ProjectDetail = {
 // ---------------------------------------------------------------------------
 
 /**
+ * What the intake form recorded beyond the project record itself, read back
+ * for the Project Manager's intake review and nothing else.
+ *
+ * Both fields were typed by an operator when the project was created. They
+ * are the agency's own entries, not anything this product observed, and every
+ * reader treats them as unverified text.
+ */
+export type ProjectIntake = {
+  /** Rival domains entered at intake, canonical form, at most five. */
+  readonly competitorDomains: readonly string[];
+  /** The intake note, as typed; empty when none was given. */
+  readonly intakeNotes: string;
+};
+
+/**
  * What the create-project flow collects. The dialog keeps it in session state;
  * a persistent store validates and saves it through `createProject`.
  */

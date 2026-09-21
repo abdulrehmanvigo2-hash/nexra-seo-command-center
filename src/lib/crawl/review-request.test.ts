@@ -6,6 +6,7 @@ import type { Crawl } from "../../types/crawl.ts";
 import type { SearchConsoleReport } from "../../types/search-console.ts";
 import {
   CRAWL_REVIEWS,
+  INTAKE_REVIEW,
   PERFORMANCE_REVIEW,
   PRIORITY_REVIEW,
   REVIEW_AGENT_ID,
@@ -19,6 +20,7 @@ import {
   executeOutcome,
   handoffRequest,
   hasResult,
+  intakeReviewRequest,
   latestReviewRun,
   restoreReviewRun,
   reviewRunsUrl,
@@ -1116,5 +1118,121 @@ describe("restoring a review's run after the page loads", () => {
       assert.match(queuedNote({ run: RUN, duplicate: false }), /^Queued\. The scheduled worker picks runs up; nothing has been analysed yet\.$/);
       assert.match(queuedNote({ run: RUN, duplicate: true }), /already queued; showing that run/);
     });
+  });
+});
+
+describe("the intake review request", () => {
+  const completedIntake = (overrides: Partial<AgentRun> = {}): AgentRun => ({
+    ...RUN,
+    id: "11111111-0000-4000-8000-000000000030",
+    agentId: "project-manager",
+    taskType: "intake-review",
+    input: {},
+    status: "completed",
+    executor: "ai",
+    attemptCount: 1,
+    resultSummary: "RECORDED GOAL\nLeads, as recorded.",
+    resultMetadata: {
+      simulated: false,
+      grounded: true,
+      evidence: { source: "project", projectId: "nexra-agency", intakeNotes: "included", crawls: 1, searchConsoleState: "connected" },
+    },
+    createdAt: "2026-09-21T10:05:00.000Z",
+    updatedAt: "2026-09-21T10:06:00.000Z",
+    startedAt: "2026-09-21T10:05:00.000Z",
+    finishedAt: "2026-09-21T10:06:00.000Z",
+    ...overrides,
+  });
+
+  test("names the Project Manager and the intake task, with an empty input and nothing else", () => {
+    assert.deepEqual(intakeReviewRequest("nexra-agency"), {
+      ok: true,
+      payload: { projectId: "nexra-agency", agentId: "project-manager", taskType: "intake-review", input: {} },
+    });
+  });
+
+  test("is refused only when no project is selected — the record itself is the evidence", () => {
+    assert.deepEqual(intakeReviewRequest(null), { ok: false, why: "No project is selected." });
+    assert.equal(intakeReviewRequest("").ok, false);
+  });
+
+  test("the spec matches what the server allows, calls the notes unverified, and promises no changes", () => {
+    assert.equal(INTAKE_REVIEW.agentId, "project-manager");
+    assert.equal(INTAKE_REVIEW.taskType, "intake-review");
+    assert.equal(INTAKE_REVIEW.agentName, "Project Manager");
+    assert.equal(INTAKE_REVIEW.action, "Review intake with Project Manager Agent");
+    assert.match(INTAKE_REVIEW.summary, /^Queues a read-only intake review/);
+    assert.match(INTAKE_REVIEW.summary, /intake notes and competitor domains \(unverified\)/);
+    assert.match(INTAKE_REVIEW.summary, /assigns nothing, schedules nothing, and changes nothing/);
+    assert.equal(INTAKE_REVIEW.groundedIn, "this project's stored record and evidence inventory");
+    assert.doesNotMatch(INTAKE_REVIEW.summary, /succe|analysed|complete/i);
+  });
+
+  test("a server refusal names this agent and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, INTAKE_REVIEW), /The Project Manager agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, INTAKE_REVIEW), /does not know the intake-review task/);
+  });
+
+  test("a grounded intake result is described by the record it read, and is still advice", () => {
+    const provenance = outputProvenance(completedIntake(), INTAKE_REVIEW.groundedIn);
+    assert.equal(provenance?.text, "Model output, grounded in this project's stored record and evidence inventory. Advice, not measurement.");
+    assert.equal(provenance?.tone, "neutral");
+    // And Run History, which passes no description, reads the same from the evidence alone.
+    assert.equal(outputProvenance(completedIntake())?.text, provenance?.text);
+    assert.equal(evidenceDescription({ evidence: { source: "project" } }), INTAKE_REVIEW.groundedIn);
+    // Never the crawl wording a source-less summary would fall back to.
+    assert.doesNotMatch(outputProvenance(completedIntake())?.text ?? "", /crawl/);
+  });
+
+  test("a simulated intake result is labelled simulated, before anything else", () => {
+    const mock = completedIntake({ executor: "mock", resultMetadata: { simulated: true, grounded: false } });
+    assert.match(outputProvenance(mock, INTAKE_REVIEW.groundedIn)?.text ?? "", /^Simulated/);
+    assert.equal(outputProvenance(mock)?.tone, "warning");
+  });
+
+  test("a completed intake review never offers the Director hand-off, and the server's reader would refuse it", () => {
+    const completed = completedIntake();
+    assert.equal(offersHandoff(completed), false);
+    const refusal = handoffRequest("nexra-agency", completed);
+    assert.equal(refusal.ok, false);
+    assert.match(refusal.ok ? "" : refusal.why, /takes hand-offs from crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/);
+    // The runtime's own rule, not a panel rule: the same refusal for a grounded, completed run.
+    for (const status of ["queued", "running", "failed", "cancelled"] as AgentRunStatus[]) {
+      assert.equal(offersHandoff(completedIntake({ status })), false);
+    }
+  });
+
+  test("is restored from run history by project alone: the newest Project Manager intake run, whatever its state", async () => {
+    const older = completedIntake({ id: "11111111-0000-4000-8000-000000000031", createdAt: "2026-09-21T09:00:00.000Z" });
+    const newest = completedIntake({ id: "11111111-0000-4000-8000-000000000032", createdAt: "2026-09-21T11:00:00.000Z", status: "queued", executor: null, resultSummary: null, resultMetadata: null });
+    const otherAgent = completedIntake({ id: "11111111-0000-4000-8000-000000000033", agentId: "seo-director", taskType: "priority-review", input: { sourceRunId: older.id }, createdAt: "2026-09-21T12:00:00.000Z" });
+    const generic = completedIntake({ id: "11111111-0000-4000-8000-000000000034", taskType: "project-review", createdAt: "2026-09-21T12:00:00.000Z" });
+    const withInput = completedIntake({ id: "11111111-0000-4000-8000-000000000035", input: { focus: "x" }, createdAt: "2026-09-21T12:00:00.000Z" });
+
+    assert.equal(latestReviewRun([older, otherAgent, newest, generic, withInput], INTAKE_REVIEW, {})?.id, newest.id);
+    assert.equal(latestReviewRun([otherAgent, generic, withInput], INTAKE_REVIEW, {}), null);
+
+    const calls: string[] = [];
+    const fetchList = async (url: string, init: { cache: "no-store"; signal?: AbortSignal }) => {
+      calls.push(url);
+      assert.equal(init.cache, "no-store");
+      return { ok: true, json: async () => ({ runs: [older, otherAgent, newest] }) };
+    };
+    const restored = await restoreReviewRun("nexra-agency", INTAKE_REVIEW, {}, fetchList);
+    assert.equal(restored?.id, newest.id);
+    assert.deepEqual(calls, [`/api/agent-runs?project=nexra-agency&agent=project-manager&limit=${RESTORE_LIST_LIMIT}`]);
+    // A completed one carries what the control shows: result, provenance, and no hand-off.
+    const completed = await restoreReviewRun("nexra-agency", INTAKE_REVIEW, {}, async () => ({ ok: true, json: async () => ({ runs: [older] }) }));
+    assert.ok(completed && hasResult(completed));
+    assert.match(outputProvenance(completed!, INTAKE_REVIEW.groundedIn)?.text ?? "", /grounded in this project's stored record and evidence inventory/);
+    assert.equal(offersHandoff(completed!), false);
+  });
+
+  test("the six existing reviews are untouched by the intake review's presence", () => {
+    assert.equal(reviewRequest("nexra-agency", CRAWL).ok, true);
+    assert.equal(latestReviewRun([completedIntake()], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+    assert.equal(latestReviewRun([completedIntake()], PERFORMANCE_REVIEW, { range: "30d" }), null);
+    assert.equal(latestReviewRun([completedIntake()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
+    assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
   });
 });

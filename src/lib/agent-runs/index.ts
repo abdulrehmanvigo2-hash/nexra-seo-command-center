@@ -13,6 +13,7 @@ import { createSupabaseAgentRunStore } from "@/lib/agent-runs/supabase/store";
 import { createTaskGrounding } from "@/lib/agent-runs/task-grounding";
 import { logEvent } from "@/lib/observability/log";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
+import { INVENTORY_RANGE_ID, RUN_INVENTORY_LIMIT } from "@/lib/projects/grounding";
 import { projectRepository } from "@/lib/projects/repository";
 import { appRateLimiter } from "@/lib/security/app-rate-limit";
 import type { AsyncRateLimiter } from "@/lib/security/shared-rate-limit";
@@ -74,6 +75,17 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // keeps its own runs in: one record, read by id, checked against the
         // Director's project before a word of it is formatted.
         runs: store,
+        // The Project Manager's intake review reads the run's own project
+        // record and an inventory of what the other three readers hold for
+        // it — counts and states, through the same services, never contents.
+        projects: {
+          getProjectById: (id) => projectRepository.getProjectById(id),
+          getProjectIntake: (id) => projectRepository.getProjectIntake(id),
+          listCrawls: (projectId) => crawlService().listCrawls(projectId),
+          searchConsole: (projectId) =>
+            getSearchConsoleReport(searchConsoleProvider(), projectId, INVENTORY_RANGE_ID),
+          listRuns: (projectId) => store.listRuns({ projectId, limit: RUN_INVENTORY_LIMIT }),
+        },
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

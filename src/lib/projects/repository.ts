@@ -73,6 +73,10 @@ function atRequestTime(repository: ProjectRepository): ProjectRepository {
       await connection();
       return repository.getProjectDetail(id, rangeId);
     },
+    async getProjectIntake(id) {
+      await connection();
+      return repository.getProjectIntake(id);
+    },
     createProject: (input) => repository.createProject(input),
   };
 }

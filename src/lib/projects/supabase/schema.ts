@@ -7,6 +7,7 @@ import {
 } from "@/lib/projects/intake-rules";
 import type {
   ProjectGoal,
+  ProjectIntake,
   ProjectRecord,
   ProjectStatus,
   ProjectType,
@@ -94,6 +95,15 @@ export const PROJECT_READ_COLUMNS =
 
 export type ProjectReadRow = Omit<ProjectRow, "competitor_domains" | "intake_notes">;
 
+/**
+ * The intake-only columns, read on their own for the Project Manager's intake
+ * review. Kept apart from `PROJECT_READ_COLUMNS` so no screen receives them
+ * by accident: they are agency-typed text that nothing else should show.
+ */
+export const PROJECT_INTAKE_COLUMNS = "id,competitor_domains,intake_notes";
+
+export type ProjectIntakeRow = Pick<ProjectRow, "id" | "competitor_domains" | "intake_notes">;
+
 /** Raised when a row does not have the shape the migration defines. */
 export class ProjectRowError extends Error {
   constructor(message: string) {
@@ -169,6 +179,27 @@ export function projectRowToRecord(input: unknown): ProjectRecord {
     startedAt: dateInstant(requireText(row, "started_on"), "started_on"),
     updatedAt: instant(requireText(row, "updated_at"), "updated_at"),
     summary: requireText(row, "summary"),
+  };
+}
+
+/**
+ * The intake columns of a stored row as a `ProjectIntake`.
+ *
+ * Checked column by column like the record: a null or non-text note, or a
+ * list that is not a list of strings, is a drifted schema and fails loudly.
+ */
+export function projectIntakeRowToIntake(input: unknown): ProjectIntake {
+  if (typeof input !== "object" || input === null) {
+    throw new ProjectRowError("projects intake row is not an object");
+  }
+  const row: Record<string, unknown> = { ...input };
+  const domains = row.competitor_domains;
+  if (!Array.isArray(domains) || domains.some((entry) => typeof entry !== "string")) {
+    throw new ProjectRowError("projects.competitor_domains is not a list of text");
+  }
+  return {
+    competitorDomains: domains as string[],
+    intakeNotes: requireText(row, "intake_notes"),
   };
 }
 

@@ -6,6 +6,7 @@ import {
 } from "@/lib/crawl/grounding";
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
+import { INTAKE_REVIEW_INSTRUCTIONS } from "@/lib/projects/grounding";
 import { isRangeId } from "@/lib/search-console/date-windows";
 import {
   PERFORMANCE_REVIEW_INSTRUCTIONS,
@@ -51,9 +52,11 @@ export type TaskTypeDefinition = {
    * reader. `none` tasks reach the model with the validated input alone.
    * `agent-run` tasks are given one other agent's completed, grounded review
    * — model-generated advice, labelled as such, never the recorded evidence
-   * it was written over.
+   * it was written over. `project` tasks are given the run's own stored
+   * project record and an inventory of the evidence this product holds for
+   * it — agency-entered text, labelled unverified, never a measurement.
    */
-  readonly evidence: "none" | "crawl" | "search-console" | "agent-run";
+  readonly evidence: "none" | "crawl" | "search-console" | "agent-run" | "project";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -313,6 +316,35 @@ const priorityReview: TaskTypeDefinition = {
   },
 };
 
+/**
+ * The Project Manager's intake review of the run's own project.
+ *
+ * The first task grounded in what the agency recorded rather than in what
+ * this product observed. It takes no input at all: the project is the run's,
+ * read on the server from the persisted run, so there is nothing a caller
+ * could name and nothing to smuggle. The reader in `@/lib/projects/grounding`
+ * supplies the stored record, the intake entries (quoted, unverified, and
+ * screened for credentials) and an inventory of which evidence exists — never
+ * the evidence itself. Read-only, like every task here: it proposes one next
+ * step for an operator, assigns nothing, schedules nothing, and changes
+ * nothing. Operator-triggered only; nothing queues it automatically.
+ */
+const intakeReview: TaskTypeDefinition = {
+  id: "intake-review",
+  label: "Intake review",
+  description:
+    "Review what the agency recorded about this project and which evidence this product holds for it, and suggest one next step.",
+  agents: ["project-manager"],
+  policy: "read-only",
+  evidence: "project",
+  instructions: INTAKE_REVIEW_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, []);
+    if (!object.ok) return object;
+    return { ok: true, value: {} };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -322,6 +354,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   searchQueryReview,
   performanceReview,
   priorityReview,
+  intakeReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

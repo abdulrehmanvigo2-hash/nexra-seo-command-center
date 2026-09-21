@@ -16,6 +16,7 @@ import {
 import type { ProjectTableGateway } from "@/lib/projects/supabase/gateway";
 import {
   newProjectInsert,
+  projectIntakeRowToIntake,
   projectRowToRecord,
 } from "@/lib/projects/supabase/schema";
 import type { ProjectRecord } from "@/types/project";
@@ -86,6 +87,12 @@ export function createSupabaseProjectRepository(
       const record = await readRecord(id);
       const project = record ? withFixtureAnalytics(record) : null;
       return project ? fixtureDetail(project, rangeId) : null;
+    },
+
+    async getProjectIntake(id) {
+      if (!isStorableProjectId(id)) return null;
+      const row = await gateway.selectIntakeById(id);
+      return row ? projectIntakeRowToIntake(row) : null;
     },
 
     async createProject(input) {
