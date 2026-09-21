@@ -34,12 +34,18 @@ export const REVIEW_AGENT_ID = "technical-seo";
 export const REVIEW_TASK_TYPE = "crawl-review";
 
 export type CrawlReviewKind = typeof REVIEW_TASK_TYPE | "on-page-review";
-export type ReviewTaskType = CrawlReviewKind | "search-query-review" | "priority-review";
+export type SearchConsoleReviewKind = "search-query-review" | "performance-review";
+export type ReviewTaskType = CrawlReviewKind | SearchConsoleReviewKind | "priority-review";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
   readonly taskType: ReviewTaskType;
-  readonly agentId: typeof REVIEW_AGENT_ID | "on-page-seo" | "keyword-intent" | "seo-director";
+  readonly agentId:
+    | typeof REVIEW_AGENT_ID
+    | "on-page-seo"
+    | "keyword-intent"
+    | "analytics-learning"
+    | "seo-director";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
@@ -87,6 +93,32 @@ export const SEARCH_QUERY_REVIEW: ReviewSpec = {
   summary:
     "Queues a read-only review of the totals and top queries Google reported for this window. The agent reads the Search Console figures above; it changes nothing and fetches nothing beyond that report.",
   groundedIn: "this project's Search Console report",
+};
+
+/**
+ * The Analytics & Learning agent's review of the same window, as a
+ * measurement.
+ *
+ * The same request shape as the search query review with a different agent
+ * and task: what the figures did between two windows, and what to measure
+ * next. It reads the report the panel shows and nothing else, and it is the
+ * stage that closes the loop, so its completed run may be handed to the
+ * Director like any other specialist review.
+ */
+export const PERFORMANCE_REVIEW: ReviewSpec = {
+  taskType: "performance-review",
+  agentId: "analytics-learning",
+  agentName: "Analytics & Learning",
+  action: "Analyze with Analytics & Learning Agent",
+  summary:
+    "Queues a read-only performance review of the totals and top queries Google reported for this window against the previous one. The agent reads the Search Console figures above as a measurement; it changes nothing and fetches nothing beyond that report.",
+  groundedIn: "this project's Search Console report",
+};
+
+/** The two reviews that read the Search Console panel's report. */
+export const SEARCH_CONSOLE_REVIEWS: Readonly<Record<SearchConsoleReviewKind, ReviewSpec>> = {
+  "search-query-review": SEARCH_QUERY_REVIEW,
+  "performance-review": PERFORMANCE_REVIEW,
 };
 
 /**
@@ -168,6 +200,7 @@ export function searchQueryReviewRequest(
   projectId: string | null,
   report: SearchConsoleReport | null,
   rangeId: RangeId,
+  review: ReviewSpec = SEARCH_QUERY_REVIEW,
 ): Queueability {
   if (!projectId) return { ok: false, why: "Choose a single project to review its search queries." };
   if (report === null) return { ok: false, why: "Search Console data has not loaded yet." };
@@ -184,8 +217,8 @@ export function searchQueryReviewRequest(
     ok: true,
     payload: {
       projectId,
-      agentId: SEARCH_QUERY_REVIEW.agentId,
-      taskType: SEARCH_QUERY_REVIEW.taskType,
+      agentId: review.agentId,
+      taskType: review.taskType,
       input: { range: rangeId },
     },
   };
@@ -202,7 +235,7 @@ const HANDOFF_REFUSAL: Readonly<Record<RunGroundingRefusal, string>> = {
   "source-run-not-found": "That run no longer exists on the server.",
   "source-run-not-in-project": "That run belongs to a different project, so the Director cannot read it here.",
   "source-task-not-allowed":
-    "The SEO Director takes hand-offs from crawl reviews, on-page reviews and search query reviews only.",
+    "The SEO Director takes hand-offs from crawl reviews, on-page reviews, search query reviews and performance reviews only.",
   "source-run-unfinished": "This review has not finished, so there is nothing to hand off yet.",
   "source-run-not-completed": "This review did not complete, so it has no result to hand off.",
   "source-run-no-result": "This review stored no result, so there is nothing to hand off.",

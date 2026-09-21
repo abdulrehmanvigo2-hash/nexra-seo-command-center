@@ -522,3 +522,83 @@ describe("queueing a priority review — the SEO Director hand-off", () => {
     assert.equal(result.ok, true);
   });
 });
+
+describe("queueing a performance review — the Analytics & Learning agent", () => {
+  const PERFORMANCE_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "analytics-learning",
+    taskType: "performance-review",
+    input: { range: "30d" },
+  };
+
+  test("creates one queued run for the Analytics & Learning agent, naming the window and nothing else", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, PERFORMANCE_REQUEST);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "analytics-learning");
+    assert.equal(result.run.taskType, "performance-review");
+    assert.deepEqual(result.run.input, { range: "30d" });
+    assert.equal(result.run.source, "operator");
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("the performance review and the search query review of the same window are two different runs", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const performance = await runtime.createRun(OPERATOR, PERFORMANCE_REQUEST);
+    const queries = await runtime.createRun(OPERATOR, {
+      ...PERFORMANCE_REQUEST,
+      agentId: "keyword-intent",
+      taskType: "search-query-review",
+    });
+    assert.ok(performance.ok && queries.ok);
+    if (!performance.ok || !queries.ok) return;
+    assert.equal(queries.duplicate, false);
+    assert.notEqual(queries.run.id, performance.run.id);
+    assert.equal(inserts(), 2);
+  });
+
+  test("is found under the Analytics & Learning agent, and not under the Keyword agent", async () => {
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const created = await runtime.createRun(OPERATOR, PERFORMANCE_REQUEST);
+    assert.ok(created.ok);
+    if (!created.ok) return;
+
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "analytics-learning", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(created.run.id));
+    const theirs = await runtime.listRuns({ projectId: PROJECT.id, agentId: "keyword-intent", limit: 25, offset: 0 });
+    assert.ok(theirs.ok && theirs.runs.length === 0);
+  });
+
+  test("is refused before anything is written for a bad range, an extra field, or any other agent", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...PERFORMANCE_REQUEST, input: { range: "90d" } }, "invalid"],
+      [{ ...PERFORMANCE_REQUEST, input: {} }, "invalid"],
+      [{ ...PERFORMANCE_REQUEST, input: undefined }, "invalid"],
+      [{ ...PERFORMANCE_REQUEST, input: { range: "30d", property: "sc-domain:other.example" } }, "invalid"],
+      [{ ...PERFORMANCE_REQUEST, input: { range: "30d", projectId: "other-client" } }, "invalid"],
+      [{ ...PERFORMANCE_REQUEST, agentId: "keyword-intent" }, "task-not-allowed"],
+      [{ ...PERFORMANCE_REQUEST, agentId: "seo-director" }, "task-not-allowed"],
+      [{ ...PERFORMANCE_REQUEST, agentId: "technical-seo" }, "task-not-allowed"],
+      // And the Analytics agent may not run the Keyword agent's review of the same window.
+      [{ ...PERFORMANCE_REQUEST, taskType: "search-query-review" }, "task-not-allowed"],
+      [{ ...PERFORMANCE_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+});

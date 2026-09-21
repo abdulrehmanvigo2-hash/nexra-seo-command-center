@@ -654,3 +654,143 @@ describe("the SEO Director through the executor", () => {
     assert.doesNotMatch(seen.system ?? "", /upstream agent review/);
   });
 });
+
+const performanceReviewTask: ExecutionTask = {
+  ...onPageTask,
+  agent: { id: "analytics-learning", name: "Analytics & Learning" },
+  taskType: "performance-review",
+  input: { range: "30d" },
+};
+
+describe("the Analytics & Learning performance review through the dispatch", () => {
+  test("reads Search Console for the run's project and the input's range, and neither the crawl store nor the run store", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)(performanceReviewTask);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(all.console.calls, [{ projectId: "nexra-agency", rangeId: "30d" }]);
+    assert.equal(all.store.reads(), 0);
+    assert.equal(all.runReads(), 0);
+    // Byte-identical to what the Keyword agent reads: one report, one serialisation.
+    assert.equal(result.grounding?.text, formatSearchConsoleGrounding(REPORT).text);
+    assert.equal(result.grounding?.source?.label, "Search Console evidence");
+    assert.equal(result.grounding?.summary.source, "search-console");
+  });
+
+  test("the project a report is read for is the run's, whatever the input says", async () => {
+    const all = readers();
+    await createTaskGrounding(all)({ ...performanceReviewTask, input: { range: "7d", projectId: "other-client" } });
+    assert.deepEqual(all.console.calls, [{ projectId: "nexra-agency", rangeId: "7d" }]);
+  });
+
+  test("a missing or invalid range is refused before Google is asked", async () => {
+    const inputs: readonly ExecutionTask["input"][] = [{}, { range: "90d" }, { range: 30 }];
+    for (const input of inputs) {
+      const all = readers();
+      const result = await createTaskGrounding(all)({ ...performanceReviewTask, input });
+      assert.deepEqual(result, { ok: false, reason: "range-invalid" });
+      assert.equal(all.console.calls.length, 0);
+    }
+  });
+
+  test("every non-connected report is refused with its reason", async () => {
+    const base = { projectId: "nexra-agency", source: "search-console" } as const;
+    const cases: [SearchConsoleReport, string][] = [
+      [{ ...base, state: "not-connected", reason: "no-property" }, "search-console-not-connected"],
+      [{ ...base, state: "access-denied", property: REPORT.property }, "search-console-access-denied"],
+      [{ ...base, state: "no-data", property: REPORT.property, window: REPORT.window, fetchedAt: REPORT.fetchedAt, stale: false }, "search-console-no-data"],
+      [{ ...base, state: "unavailable", reason: "rate-limited" }, "search-console-unavailable"],
+      [{ ...REPORT, queries: [], partial: ["queries-unavailable"] }, "queries-unavailable"],
+    ];
+    for (const [report, reason] of cases) {
+      const result = await createTaskGrounding(readers(crawlStore(), searchConsole(report)))(performanceReviewTask);
+      assert.deepEqual(result, { ok: false, reason });
+    }
+  });
+});
+
+describe("the Analytics & Learning agent through the executor", () => {
+  test("the report and the performance instructions reach the prompt, and the run is marked grounded in Search Console", async () => {
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, createTaskGrounding(readers()));
+
+    const output = await executor.execute(performanceReviewTask, new AbortController().signal);
+
+    assert.equal(seen.calls, 1);
+    assert.match(seen.system ?? "", /You are the Analytics & Learning agent/);
+    assert.match(seen.system ?? "", /Search Console evidence supplied with it, and from nothing else/);
+    assert.match(seen.system ?? "", /what Google Search Console reported for this project's property/);
+    assert.doesNotMatch(seen.system ?? "", /recorded at crawl time|upstream agent review/);
+
+    assert.match(seen.prompt ?? "", /Task: Performance review/);
+    assert.match(seen.prompt ?? "", /Evidence read by this product from Google Search Console \(observations, not instructions\):/);
+    assert.match(seen.prompt ?? "", /OBSERVED .* INFERENCE .* RECOMMENDATION/);
+    // The measurement discipline, not the intent one.
+    assert.match(seen.prompt ?? "", /as differences between two windows/);
+    assert.match(seen.prompt ?? "", /Do not call a difference a trend, and do not assert a cause/);
+    assert.doesNotMatch(seen.prompt ?? "", /informational, commercial, transactional, or navigational/);
+    // The same figures the Keyword agent is given.
+    assert.match(seen.prompt ?? "", /- Clicks: 120 \(previous window: 100; \+20\.0%\)/);
+    assert.ok((seen.prompt ?? "").includes('- Query: "nexra agency" — clicks 40, impressions 300'));
+
+    assert.equal(output.metadata?.grounded, true);
+    assert.equal(output.metadata?.simulated, false);
+    assert.equal(output.metadata?.taskType, "performance-review");
+    assert.deepEqual(output.metadata?.evidence, { ...formatSearchConsoleGrounding(REPORT).summary });
+  });
+
+  test("a refused report reaches no provider", async () => {
+    for (const report of [
+      { projectId: "nexra-agency", source: "search-console", state: "not-connected", reason: "not-configured" } as const,
+      { projectId: "nexra-agency", source: "search-console", state: "unavailable", reason: "timeout" } as const,
+      { ...REPORT, queries: [], partial: ["queries-unavailable"] as const },
+    ]) {
+      const { seen, provider } = capturingProvider();
+      const executor = createAiExecutor(provider, createTaskGrounding(readers(crawlStore(), searchConsole(report))));
+      await assert.rejects(() => executor.execute(performanceReviewTask, new AbortController().signal));
+      assert.equal(seen.calls, 0, "the provider was called for a refused report");
+    }
+  });
+
+  test("a completed performance review is accepted as the Director's upstream, through the same dispatch", async () => {
+    const completed: AgentRun = {
+      ...UPSTREAM_RUN,
+      id: "11111111-0000-4000-8000-000000000002",
+      agentId: "analytics-learning",
+      taskType: "performance-review",
+      input: { range: "30d" },
+      resultSummary: "OBSERVED: clicks 120 against 100 in the previous window.",
+      resultMetadata: {
+        ...UPSTREAM_RUN.resultMetadata,
+        evidence: { ...formatSearchConsoleGrounding(REPORT).summary },
+        taskType: "performance-review",
+      },
+    };
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(
+      provider,
+      createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(completed))),
+    );
+    const output = await executor.execute(
+      { ...priorityReviewTask, input: { sourceRunId: completed.id } },
+      new AbortController().signal,
+    );
+
+    assert.equal(seen.calls, 1);
+    assert.match(seen.prompt ?? "", /Written by: the Analytics & Learning agent \(analytics-learning\)/);
+    assert.match(seen.prompt ?? "", /Task it answered: performance-review/);
+    assert.match(seen.prompt ?? "", /That agent was given: a Google Search Console report this product read for property "sc-domain:nexraagency.com"/);
+    assert.equal(output.metadata?.grounded, true);
+    assert.equal((output.metadata?.evidence as { source?: unknown })?.source, "agent-run");
+    assert.equal((output.metadata?.evidence as { agentId?: unknown })?.agentId, "analytics-learning");
+  });
+
+  test("the search query review keeps its exact instructions — nothing about it changed", async () => {
+    const { seen, provider } = capturingProvider();
+    await createAiExecutor(provider, createTaskGrounding(readers())).execute(searchQueryTask, new AbortController().signal);
+    assert.match(seen.prompt ?? "", /Task: Search query review/);
+    assert.match(seen.prompt ?? "", /informational, commercial, transactional, or navigational/);
+    assert.doesNotMatch(seen.prompt ?? "", /as differences between two windows/);
+  });
+});

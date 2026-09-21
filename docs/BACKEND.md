@@ -72,8 +72,11 @@ never mixed into — modelled figures, with explicit not-connected, no-data,
 partial, and stale states. Verified for `nexra-agency`
 (`sc-domain:nexraagency.com`).
 
-One agent task reads it: `search-query-review`, for the Keyword & Search
-Intent agent. The runtime fetches the report for the run's own project and the
+Two agent tasks read it: `search-query-review`, for the Keyword & Search
+Intent agent, and `performance-review`, for the Analytics & Learning agent.
+Both take one input, a range id, and are given the same evidence block with a
+different question — what the queries mean, and what the figures did. The
+runtime fetches the report for the run's own project and the
 range in the task input through the same cached provider the panel uses
 (`src/lib/search-console/grounding.ts`), serialises the window, the
 previous-window comparison where Google still holds it, and the top queries by
@@ -85,15 +88,16 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Six task types exist, all read-only: `project-review` (any agent),
+project. Seven task types exist, all read-only: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
-`search-query-review` (Keyword & Search Intent, from Search Console) and
+`search-query-review` (Keyword & Search Intent, from Search Console),
+`performance-review` (Analytics & Learning, from Search Console) and
 `priority-review` (SEO Director, from one other agent's completed review). The
 two crawl reviews take one input, a crawl id, and are grounded in the same
-recorded crawl; the search query review takes one input, a range id, and is
-grounded in the project's own Search Console report; the priority review takes
-one input, a run id, and is grounded in that run's stored output (see
+recorded crawl; the two Search Console reviews take one input, a range id, and
+are grounded in the project's own Search Console report; the priority review
+takes one input, a run id, and is grounded in that run's stored output (see
 *Agent hand-off* below). Input is parsed strictly per task type, bounded, and
 screened for credentials; unknown fields are refused. Adding a task type needs
 no migration: the run table checks the id's format, not a list.
@@ -290,7 +294,7 @@ or per operator. That control has to come from the provider account.
   `grounded` is `true` only when a record this product holds was actually
   loaded and put in the prompt — the tasks whose type declares
   `evidence: "crawl"` (`crawl-review`, `on-page-review`),
-  `evidence: "search-console"` (`search-query-review`) or
+  `evidence: "search-console"` (`search-query-review`, `performance-review`) or
   `evidence: "agent-run"` (`priority-review`). Their metadata also carries an
   `evidence` object saying which record: the crawl and its page counts; the
   property, window and query count; or, for a hand-off, the upstream run, its
@@ -324,6 +328,11 @@ the hand-off control under a completed review on the crawl and Search Console
 panels; nothing queues it automatically, no run records a parent, and the
 `source` column still permits `operator` only.
 
+The Analytics & Learning agent's `performance-review` is a hand-off source
+because it is the stage that closes the loop: a measurement of one window,
+handed back to the Director to weigh. It is queued from the Search Console
+panel beside the Keyword & Search Intent review, over the same report.
+
 What may be handed off is decided at execution time, by the reader, against
 the persisted run — the panel refuses for the same reasons, but the panel is
 not the gate. In order, and each before anything is formatted or any provider
@@ -333,7 +342,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review` or `search-query-review` — the ungrounded tasks and `priority-review` itself are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `search-query-review` or `performance-review` — the ungrounded tasks and `priority-review` itself are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
