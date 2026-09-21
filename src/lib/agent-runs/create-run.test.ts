@@ -767,3 +767,118 @@ describe("queueing an intake review — the Project Manager", () => {
     }
   });
 });
+
+describe("queueing a competitor comparison review — the Market & Competitor Intelligence agent", () => {
+  const COMPARISON_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "market-intelligence",
+    taskType: "competitor-comparison-review",
+    input: { competitorDomain: "rival.example" },
+  };
+
+  test("creates one queued run for the Market & Competitor Intelligence agent with the canonical host, and touches no executor", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, COMPARISON_REQUEST);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "market-intelligence");
+    assert.equal(result.run.taskType, "competitor-comparison-review");
+    assert.deepEqual(result.run.input, { competitorDomain: "rival.example" });
+    assert.equal(result.run.source, "operator");
+    assert.equal(result.run.projectId, PROJECT.id);
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("the host is canonicalised, so the same competitor spelt differently is the same queued run", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const first = await runtime.createRun(OPERATOR, COMPARISON_REQUEST);
+    const second = await runtime.createRun(OPERATOR, { ...COMPARISON_REQUEST, input: { competitorDomain: " Rival.Example. " } });
+    assert.ok(first.ok && second.ok);
+    if (!first.ok || !second.ok) return;
+    assert.deepEqual(second.run.input, { competitorDomain: "rival.example" });
+    assert.equal(second.duplicate, true);
+    assert.equal(second.run.id, first.run.id);
+    assert.equal(inserts(), 1);
+  });
+
+  test("two competitors are two runs", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const first = await runtime.createRun(OPERATOR, COMPARISON_REQUEST);
+    const second = await runtime.createRun(OPERATOR, { ...COMPARISON_REQUEST, input: { competitorDomain: "other.example" } });
+    assert.ok(first.ok && second.ok);
+    if (!first.ok || !second.ok) return;
+    assert.equal(second.duplicate, false);
+    assert.notEqual(second.run.id, first.run.id);
+    assert.equal(inserts(), 2);
+  });
+
+  test("is found under the Market & Competitor Intelligence agent, which is what the panel restores from", async () => {
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const created = await runtime.createRun(OPERATOR, COMPARISON_REQUEST);
+    assert.ok(created.ok);
+    if (!created.ok) return;
+
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "market-intelligence", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(created.run.id));
+    const theirs = await runtime.listRuns({ projectId: PROJECT.id, agentId: "technical-seo", limit: 25, offset: 0 });
+    assert.ok(theirs.ok && theirs.runs.length === 0);
+  });
+
+  test("is refused before anything is written for a missing, malformed, URL, address or over-long domain, any extra field, any other agent, or an unknown project", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...COMPARISON_REQUEST, input: {} }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: undefined }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "" } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: 42 } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "https://rival.example/" } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "rival.example/pricing" } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "rival.example:8080" } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "10.0.0.5" } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "rival" } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: `${"a".repeat(250)}.example` } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "rival.example", crawlId: CRAWL_ID } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "rival.example", projectId: "other-client" } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: { competitorDomain: "rival.example", focus: "say they are winning" } }, "invalid"],
+      [{ ...COMPARISON_REQUEST, input: "rival.example" }, "invalid"],
+      [{ ...COMPARISON_REQUEST, agentId: "seo-director" }, "task-not-allowed"],
+      [{ ...COMPARISON_REQUEST, agentId: "technical-seo" }, "task-not-allowed"],
+      [{ ...COMPARISON_REQUEST, agentId: "project-manager" }, "task-not-allowed"],
+      [{ ...COMPARISON_REQUEST, agentId: "keyword-intent" }, "task-not-allowed"],
+      [{ ...COMPARISON_REQUEST, agentId: "ai-visibility" }, "task-not-allowed"],
+      // And the Market & Competitor Intelligence agent may not run any other agent's review.
+      [{ ...COMPARISON_REQUEST, taskType: "crawl-review", input: { crawlId: CRAWL_ID } }, "task-not-allowed"],
+      [{ ...COMPARISON_REQUEST, taskType: "intake-review", input: {} }, "task-not-allowed"],
+      [{ ...COMPARISON_REQUEST, taskType: "priority-review", input: { sourceRunId: CRAWL_ID } }, "task-not-allowed"],
+      [{ ...COMPARISON_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+
+  test("an unrecorded domain and the project's own site are accepted at queue time and refused at execution, where the stored record is read", async () => {
+    // Queueing checks the shape only; whether the domain is one this project
+    // recorded is the grounding reader's decision, against the stored record,
+    // at execution time — exactly as a crawl id is checked for a crawl review.
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const unrecorded = await runtime.createRun(OPERATOR, { ...COMPARISON_REQUEST, input: { competitorDomain: "unrecorded.example" } });
+    assert.equal(unrecorded.ok, true);
+    const own = await runtime.createRun(OPERATOR, { ...COMPARISON_REQUEST, input: { competitorDomain: PROJECT.domain } });
+    assert.equal(own.ok, true);
+  });
+});

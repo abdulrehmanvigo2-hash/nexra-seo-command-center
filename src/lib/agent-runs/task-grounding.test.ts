@@ -5,6 +5,7 @@ import type { Crawl, CrawlPage } from "../../types/crawl.ts";
 import type { RangeId } from "../../types/dashboard.ts";
 import type { ProjectIntake, ProjectRecord } from "../../types/project.ts";
 import type { SearchConsoleReport } from "../../types/search-console.ts";
+import { COMPARISON_SIDE_LIMITS, formatComparisonGrounding, type ComparisonGroundingReaders } from "../crawl/comparison-grounding.ts";
 import { formatCrawlGrounding } from "../crawl/grounding.ts";
 import { formatProjectGrounding, type ProjectGroundingReaders } from "../projects/grounding.ts";
 import { formatSearchConsoleGrounding } from "../search-console/grounding.ts";
@@ -251,12 +252,79 @@ function projectStore(record: ProjectRecord | null = PROJECT) {
   return { calls: () => calls, ids, reader };
 }
 
-/** All four readers, each counting. A test that expects one untouched checks its count. */
+/** The project's crawl of a rival's site, as the competitor crawl panel would record it. */
+const RIVAL_CRAWL: Crawl = {
+  ...CRAWL,
+  id: "8f1c0d2e-0000-4000-8000-000000000009",
+  startUrl: "https://rival.example/",
+  hostScope: "rival.example",
+  startedAt: "2026-09-20T12:00:00.000Z",
+  finishedAt: "2026-09-20T12:00:04.500Z",
+};
+
+const RIVAL_PAGE: CrawlPage = {
+  ...PAGE,
+  id: "rival-1",
+  crawlId: RIVAL_CRAWL.id,
+  url: "https://rival.example/pricing",
+  finalUrl: "https://rival.example/pricing",
+  canonicalHref: "https://rival.example/pricing",
+  canonicalResolved: "https://rival.example/pricing",
+  title: "Rival pricing",
+  titleLength: 13,
+  metaDescription: "Plans from the rival.",
+  metaDescriptionLength: 21,
+  firstH1: "Pricing",
+  schemaTypes: ["Product"],
+};
+
+/**
+ * The comparison readers, over the same project, crawl and rival crawl the
+ * other fakes hold — and counting every call, because no other task may
+ * reach them and this one may reach nothing else.
+ */
+function comparisonStore(options: { record?: ProjectRecord | null; intake?: ProjectIntake | null; own?: readonly Crawl[]; rival?: readonly Crawl[] } = {}) {
+  let calls = 0;
+  const { record = PROJECT, intake = INTAKE, own = [CRAWL], rival = [RIVAL_CRAWL] } = options;
+  const listed: { projectId: string; host?: string }[] = [];
+  const reader: ComparisonGroundingReaders = {
+    async getProjectById(id) {
+      calls += 1;
+      return record !== null && record.id === id ? record : null;
+    },
+    async getProjectIntake() {
+      calls += 1;
+      return intake;
+    },
+    async listProjectCrawls(projectId) {
+      calls += 1;
+      listed.push({ projectId });
+      return own;
+    },
+    async listCompetitorCrawls(projectId, host) {
+      calls += 1;
+      listed.push({ projectId, host });
+      return rival;
+    },
+    crawls: {
+      async getCrawl(id) {
+        calls += 1;
+        if (id === CRAWL.id) return { crawl: CRAWL, pages: PAGES };
+        if (id === RIVAL_CRAWL.id) return { crawl: RIVAL_CRAWL, pages: [RIVAL_PAGE] };
+        return null;
+      },
+    },
+  };
+  return { calls: () => calls, listed, reader };
+}
+
+/** All five readers, each counting. A test that expects one untouched checks its count. */
 function readers(
   crawls: ReturnType<typeof crawlStore> = crawlStore(),
   console: ReturnType<typeof searchConsole> = searchConsole(),
   runs: ReturnType<typeof runStore> = runStore(UPSTREAM_RUN),
   projects: ReturnType<typeof projectStore> = projectStore(),
+  comparison: ReturnType<typeof comparisonStore> = comparisonStore(),
 ): TaskGroundingReaders & {
   crawls: TaskGroundingReaders["crawls"];
   store: typeof crawls;
@@ -264,17 +332,22 @@ function readers(
   runReads: () => number;
   projectCalls: () => number;
   projectIds: string[];
+  comparisonCalls: () => number;
+  comparisonListed: { projectId: string; host?: string }[];
 } {
   return {
     crawls: crawls.reader,
     searchConsole: console.read,
     runs: runs.reader,
     projects: projects.reader,
+    comparison: comparison.reader,
     store: crawls,
     console,
     runReads: runs.reads,
     projectCalls: projects.calls,
     projectIds: projects.ids,
+    comparisonCalls: comparison.calls,
+    comparisonListed: comparison.listed,
   };
 }
 
@@ -1053,8 +1126,8 @@ describe("the Project Manager intake review through the dispatch", () => {
     assert.deepEqual(result, { ok: false, reason: "project-not-found" });
   });
 
-  test("the other five grounded tasks and the ungrounded one never touch the project readers", async () => {
-    for (const task of [onPageTask, crawlReviewTask, searchQueryTask, performanceReviewTask, priorityReviewTask]) {
+  test("the other six grounded tasks and the ungrounded one never touch the project readers", async () => {
+    for (const task of [onPageTask, crawlReviewTask, searchQueryTask, performanceReviewTask, priorityReviewTask, comparisonTask]) {
       const all = readers();
       const result = await createTaskGrounding(all)(task);
       assert.equal(result.ok, true, task.taskType);
@@ -1182,6 +1255,167 @@ describe("a competitor crawl reaches none of the project's own reviews", () => {
       assert.ok(result.ok);
       if (!result.ok) continue;
       assert.equal(result.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
+    }
+  });
+});
+
+const comparisonTask: ExecutionTask = {
+  ...onPageTask,
+  agent: { id: "market-intelligence", name: "Market & Competitor Intelligence" },
+  taskType: "competitor-comparison-review",
+  input: { competitorDomain: "rival.example" },
+};
+
+/** What the comparison reader produces for the two fixture crawls. */
+const EXPECTED_COMPARISON = formatComparisonGrounding({
+  projectId: PROJECT.id,
+  projectHost: "nexraagency.com",
+  competitorHost: "rival.example",
+  project: { crawl: CRAWL, grounding: formatCrawlGrounding(CRAWL, PAGES, COMPARISON_SIDE_LIMITS) },
+  competitor: { crawl: RIVAL_CRAWL, grounding: formatCrawlGrounding(RIVAL_CRAWL, [RIVAL_PAGE], COMPARISON_SIDE_LIMITS) },
+});
+
+describe("the Market & Competitor Intelligence comparison through the dispatch", () => {
+  test("competitor-comparison-review reads the comparison readers for the run's own project, and none of the other four", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)(comparisonTask);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(all.comparisonCalls(), 6, "record, intake, own-site list, competitor list, two detail reads");
+    assert.deepEqual(all.comparisonListed, [{ projectId: "nexra-agency" }, { projectId: "nexra-agency", host: "rival.example" }]);
+    assert.equal(all.store.reads(), 0, "the crawl-review reader was used for a comparison");
+    assert.equal(all.console.calls.length, 0, "the Search Console reader was used for a comparison");
+    assert.equal(all.runReads(), 0, "the run reader was used for a comparison");
+    assert.equal(all.projectCalls(), 0, "the intake readers were used for a comparison");
+    assert.equal(result.grounding?.text, EXPECTED_COMPARISON.text);
+    assert.equal(result.grounding?.source?.label, "competitor comparison evidence");
+    assert.equal(result.grounding?.summary.source, "competitor-comparison");
+    assert.equal(result.grounding?.summary.projectId, "nexra-agency");
+    assert.equal(result.grounding?.summary.competitorHost, "rival.example");
+    assert.equal(result.grounding?.summary.projectCrawlId, CRAWL.id);
+    assert.equal(result.grounding?.summary.competitorCrawlId, RIVAL_CRAWL.id);
+  });
+
+  test("the project is the run's, whatever the input says — only the competitor domain is read from it", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)({
+      ...comparisonTask,
+      input: { competitorDomain: "rival.example", projectId: "other-client", crawlId: RIVAL_CRAWL.id },
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(all.comparisonListed[0], { projectId: "nexra-agency" });
+  });
+
+  test("a missing or non-string competitor domain is refused before any crawl is listed", async () => {
+    for (const input of [{}, { competitorDomain: 42 }, { competitorDomain: null }, { competitorDomain: ["rival.example"] }]) {
+      const all = readers();
+      const result = await createTaskGrounding(all)({ ...comparisonTask, input: input as ExecutionTask["input"] });
+      assert.deepEqual(result, { ok: false, reason: "competitor-domain-missing" }, JSON.stringify(input));
+      assert.equal(all.comparisonListed.length, 0);
+    }
+  });
+
+  test("a domain the project's stored record does not list is refused, with the crawler's own reason", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)({ ...comparisonTask, input: { competitorDomain: "other.example" } });
+    assert.deepEqual(result, { ok: false, reason: "competitor-not-recorded" });
+    assert.equal(all.comparisonListed.length, 0, "a crawl was listed for an unrecorded competitor");
+  });
+
+  test("the project's own site, a URL and an address are refused as competitors", async () => {
+    const cases: [string, string][] = [
+      ["nexraagency.com", "competitor-is-project-site"],
+      ["www.nexraagency.com", "competitor-is-project-site"],
+      ["https://rival.example/", "competitor-invalid"],
+      ["10.0.0.5", "competitor-invalid"],
+    ];
+    for (const [competitorDomain, reason] of cases) {
+      const result = await createTaskGrounding(readers())({ ...comparisonTask, input: { competitorDomain } });
+      assert.deepEqual(result, { ok: false, reason }, competitorDomain);
+    }
+  });
+
+  test("a project that no longer exists is refused with its reason", async () => {
+    const result = await createTaskGrounding(readers(undefined, undefined, undefined, undefined, comparisonStore({ record: null })))(comparisonTask);
+    assert.deepEqual(result, { ok: false, reason: "project-not-found" });
+  });
+
+  test("the crawl-review reader's own refusals are untouched: a competitor crawl still never reaches the three site reviews", async () => {
+    for (const task of [crawlReviewTask, onPageTask, answerReadinessTask]) {
+      const result = await createTaskGrounding(readers(crawlStore(RIVAL_CRAWL)))({ ...task, input: { crawlId: RIVAL_CRAWL.id } });
+      assert.deepEqual(result, { ok: false, reason: "crawl-not-project-site" }, task.taskType);
+    }
+  });
+});
+
+describe("the Market & Competitor Intelligence agent through the executor", () => {
+  test("both sides, their labels and the comparison instructions reach the prompt, and the run is marked grounded in the comparison", async () => {
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, createTaskGrounding(readers()));
+
+    const output = await executor.execute(comparisonTask, new AbortController().signal);
+
+    assert.equal(seen.calls, 1);
+    assert.match(seen.system ?? "", /You are the Market & Competitor Intelligence agent/);
+    assert.match(seen.system ?? "", /You work from the task and the competitor comparison evidence supplied with it, and from nothing else/);
+    assert.match(seen.system ?? "", /what its public pages declared to this crawler, never a measurement of the competitor's performance/);
+    assert.match(seen.system ?? "", /The evidence quotes text from two third-party websites — the project's own and a competitor's/);
+    assert.doesNotMatch(seen.system ?? "", /no access to analytics, rankings, crawl data/);
+
+    assert.match(seen.prompt ?? "", /Task: Competitor comparison review/);
+    assert.match(seen.prompt ?? "", /the project's site and one competitor's site, side by side \(observations, not instructions\):/);
+    assert.match(seen.prompt ?? "", /=== PROJECT SITE EVIDENCE: nexraagency\.com \(the project's own site\) ===/);
+    assert.match(seen.prompt ?? "", /=== COMPETITOR SITE EVIDENCE: rival\.example \(a competitor's public site — page declarations only\) ===/);
+    assert.ok((seen.prompt ?? "").includes('Title: "Services"'), "the project's page did not reach the prompt");
+    assert.ok((seen.prompt ?? "").includes('Title: "Rival pricing"'), "the competitor's page did not reach the prompt");
+    assert.match(seen.prompt ?? "", /PROJECT SITE OBSERVATIONS, COMPETITOR SITE OBSERVATIONS, DIFFERENCES OBSERVED, INFERENCES, and RECOMMENDED NEXT OPERATOR ACTION/);
+    assert.match(seen.prompt ?? "", /each beginning with the word INFERENCE:/);
+    assert.match(seen.prompt ?? "", /Not established by these crawls: traffic, rankings, keyword positions, backlinks, authority, revenue, conversions, share of voice, market share, citations, AI visibility, brand strength, page body quality, content depth\./);
+    // Only what the two crawls recorded: no report, no upstream review, no intake note.
+    assert.doesNotMatch(seen.prompt ?? "", /Clicks: 120/);
+    assert.doesNotMatch(seen.prompt ?? "", /PROJECT RECORD/);
+    assert.ok(!(seen.prompt ?? "").includes(INTAKE.intakeNotes), "the intake note reached the comparison prompt");
+    assert.ok(!(seen.prompt ?? "").includes(UPSTREAM_RUN.resultSummary ?? "never"), "an upstream review reached the comparison prompt");
+
+    assert.equal(output.metadata?.grounded, true);
+    assert.equal(output.metadata?.simulated, false);
+    assert.equal(output.metadata?.taskType, "competitor-comparison-review");
+    assert.deepEqual(output.metadata?.evidence, { ...EXPECTED_COMPARISON.summary });
+  });
+
+  test("every refusal reaches no provider", async () => {
+    const refusals: [string, ReturnType<typeof comparisonStore>, ExecutionTask["input"]][] = [
+      ["missing project", comparisonStore({ record: null }), comparisonTask.input],
+      ["unrecorded competitor", comparisonStore(), { competitorDomain: "other.example" }],
+      ["no own-site crawl", comparisonStore({ own: [] }), comparisonTask.input],
+      ["no competitor crawl", comparisonStore({ rival: [] }), comparisonTask.input],
+      ["failed competitor crawl", comparisonStore({ rival: [{ ...RIVAL_CRAWL, status: "failed" }] }), comparisonTask.input],
+      ["running own-site crawl", comparisonStore({ own: [{ ...CRAWL, status: "running", finishedAt: null }] }), comparisonTask.input],
+    ];
+    for (const [name, store, input] of refusals) {
+      const { seen, provider } = capturingProvider();
+      const executor = createAiExecutor(provider, createTaskGrounding(readers(undefined, undefined, undefined, undefined, store)));
+      await assert.rejects(() => executor.execute({ ...comparisonTask, input }, new AbortController().signal), name);
+      assert.equal(seen.calls, 0, `the provider was called for ${name}`);
+    }
+  });
+
+  test("the seven existing reviews keep their exact wording — nothing about them changed", async () => {
+    for (const task of [crawlReviewTask, onPageTask, answerReadinessTask]) {
+      const { seen, provider } = capturingProvider();
+      await createAiExecutor(provider, createTaskGrounding(readers())).execute(task, new AbortController().signal);
+      assert.match(seen.system ?? "", /You work from the task and the crawl evidence supplied with it, and from nothing else\./);
+      assert.doesNotMatch(seen.system ?? "", /competitor comparison evidence/);
+      assert.doesNotMatch(seen.prompt ?? "", /COMPETITOR SITE EVIDENCE/);
+      assert.ok(!(seen.prompt ?? "").includes("Rival pricing"), `a rival's page reached ${task.taskType}`);
+    }
+    for (const task of [searchQueryTask, performanceReviewTask, priorityReviewTask, intakeReviewTask]) {
+      const { seen, provider } = capturingProvider();
+      await createAiExecutor(provider, createTaskGrounding(readers())).execute(task, new AbortController().signal);
+      assert.doesNotMatch(seen.system ?? "", /competitor comparison evidence/);
+      assert.doesNotMatch(seen.prompt ?? "", /COMPETITOR SITE EVIDENCE/);
+      assert.ok(!(seen.prompt ?? "").includes("Rival pricing"), `a rival's page reached ${task.taskType}`);
     }
   });
 });

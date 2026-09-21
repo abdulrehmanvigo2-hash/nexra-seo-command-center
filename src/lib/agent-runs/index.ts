@@ -86,6 +86,21 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
             getSearchConsoleReport(searchConsoleProvider(), projectId, INVENTORY_RANGE_ID),
           listRuns: (projectId) => store.listRuns({ projectId, limit: RUN_INVENTORY_LIMIT }),
         },
+        // The Market & Competitor Intelligence comparison reads the newest
+        // own-site crawl and the newest crawl of one recorded competitor,
+        // through the same listings the panels read: own-site crawls are the
+        // project's exact host, competitor crawls the competitor's exact host,
+        // and the service re-checks the domain against the stored record.
+        comparison: {
+          getProjectById: (id) => projectRepository.getProjectById(id),
+          getProjectIntake: (id) => projectRepository.getProjectIntake(id),
+          listProjectCrawls: (projectId) => crawlService().listCrawls(projectId, 1),
+          listCompetitorCrawls: async (projectId, competitorHost) => {
+            const listed = await crawlService().listCompetitorCrawls(projectId, competitorHost, 1);
+            return listed.ok ? listed.crawls : [];
+          },
+          crawls: crawlService(),
+        },
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

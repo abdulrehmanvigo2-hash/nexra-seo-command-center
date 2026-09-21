@@ -1,4 +1,6 @@
 import type { ActionPolicy } from "@/lib/agent-runs/action-policy";
+import { COMPETITOR_COMPARISON_INSTRUCTIONS } from "@/lib/crawl/comparison-grounding";
+import { canonicalCompetitorHost } from "@/lib/crawl/competitor-target";
 import {
   ANSWER_READINESS_REVIEW_INSTRUCTIONS,
   CRAWL_REVIEW_INSTRUCTIONS,
@@ -55,8 +57,12 @@ export type TaskTypeDefinition = {
    * it was written over. `project` tasks are given the run's own stored
    * project record and an inventory of the evidence this product holds for
    * it — agency-entered text, labelled unverified, never a measurement.
+   * `competitor-comparison` tasks are given two crawls this product recorded
+   * — the project's own site and one recorded competitor's public site, each
+   * labelled as whose it is — and the competitor's side is page declarations
+   * only, never a measurement of the competitor.
    */
-  readonly evidence: "none" | "crawl" | "search-console" | "agent-run" | "project";
+  readonly evidence: "none" | "crawl" | "search-console" | "agent-run" | "project" | "competitor-comparison";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -345,6 +351,43 @@ const intakeReview: TaskTypeDefinition = {
   },
 };
 
+/**
+ * The Market & Competitor Intelligence agent's comparison of the project's
+ * site with one recorded competitor's site.
+ *
+ * The first task that reads a competitor crawl. The input names one
+ * competitor domain and nothing else, as a bare hostname; which crawls are
+ * read is decided on the server at execution time, by the reader in
+ * `@/lib/crawl/comparison-grounding`: the domain must be one the run's own
+ * project lists in its stored record, and both crawls are the newest this
+ * product recorded of each site, found by the server rather than named by
+ * the caller. A URL, a path, an address, or a bare word is refused here,
+ * before anything is stored; a domain the project never recorded, or the
+ * project's own site, is refused at execution, against the stored record.
+ * Read-only, like every task here: it proposes one next step for an
+ * operator and changes nothing. Operator-triggered only; nothing queues it
+ * automatically, and its completed run is not a hand-off source.
+ */
+const competitorComparisonReview: TaskTypeDefinition = {
+  id: "competitor-comparison-review",
+  label: "Competitor comparison review",
+  description:
+    "Compare the recorded crawl of this project's site with the recorded crawl of one competitor's public site, as page declarations only.",
+  agents: ["market-intelligence"],
+  policy: "read-only",
+  evidence: "competitor-comparison",
+  instructions: COMPETITOR_COMPARISON_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, ["competitorDomain"]);
+    if (!object.ok) return object;
+    const host = canonicalCompetitorHost(object.value.competitorDomain);
+    if (host === null) {
+      return { ok: false, error: "competitorDomain must be a bare domain this project has recorded as a competitor." };
+    }
+    return { ok: true, value: { competitorDomain: host } };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -355,6 +398,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   performanceReview,
   priorityReview,
   intakeReview,
+  competitorComparisonReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

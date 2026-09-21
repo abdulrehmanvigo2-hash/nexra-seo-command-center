@@ -1,6 +1,7 @@
 import { CRAWL_SOURCE, type GroundingReader } from "@/lib/agent-runs/ai-executor";
 import { readRunGrounding, type AgentRunReader } from "@/lib/agent-runs/run-grounding";
 import { getTaskType } from "@/lib/agent-runs/task-types";
+import { readComparisonGrounding, type ComparisonGroundingReaders } from "@/lib/crawl/comparison-grounding";
 import { readCrawlGrounding, type CrawlGroundingReader } from "@/lib/crawl/grounding";
 import { readProjectGrounding, type ProjectGroundingReaders } from "@/lib/projects/grounding";
 import {
@@ -20,11 +21,14 @@ import {
  * declaring `evidence: "agent-run"` is given one other agent's completed,
  * grounded review from the same project (`priority-review`); one declaring
  * `evidence: "project"` is given the run's own stored project record and an
- * inventory of the evidence this product holds for it (`intake-review`);
- * every other task gets none. In every case the project is the run's: a
- * crawl id or a source run id is checked against it, a report is fetched for
- * it, and a record is read by it, so nothing a caller writes can reach
- * another client's data.
+ * inventory of the evidence this product holds for it (`intake-review`); one
+ * declaring `evidence: "competitor-comparison"` is given the newest recorded
+ * crawl of the run's own site and the newest recorded crawl of one
+ * competitor its stored record lists (`competitor-comparison-review`); every
+ * other task gets none. In every case the project is the run's: a crawl id
+ * or a source run id is checked against it, a report is fetched for it, a
+ * record is read by it, and a competitor domain is matched against its own
+ * record, so nothing a caller writes can reach another client's data.
  *
  * Pure apart from the readers it is handed, so the same dispatch runs against
  * Supabase and Google in the application and in-memory fakes in a test.
@@ -36,6 +40,8 @@ export type TaskGroundingReaders = {
   readonly runs: AgentRunReader;
   /** The project repository, crawl service, Search Console and run store, each read by project id. */
   readonly projects: ProjectGroundingReaders;
+  /** The project repository and crawl service, for the two crawls a comparison reads. */
+  readonly comparison: ComparisonGroundingReaders;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -107,6 +113,26 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
       case "project": {
         // No input is read: the project is the run's own, and nothing else.
         const result = await readProjectGrounding(readers.projects, { projectId: task.project.id });
+        if (!result.ok) return { ok: false, reason: result.reason };
+
+        return {
+          ok: true,
+          grounding: {
+            text: result.grounding.text,
+            summary: { ...result.grounding.summary },
+            source: result.grounding.source,
+          },
+        };
+      }
+
+      case "competitor-comparison": {
+        // The input names a competitor domain; the project is the run's own,
+        // and the reader matches the domain against that project's stored
+        // record before either crawl is found.
+        const result = await readComparisonGrounding(readers.comparison, {
+          projectId: task.project.id,
+          competitorDomain: task.input.competitorDomain,
+        });
         if (!result.ok) return { ok: false, reason: result.reason };
 
         return {
