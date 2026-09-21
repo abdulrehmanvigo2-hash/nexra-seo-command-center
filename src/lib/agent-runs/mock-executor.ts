@@ -89,6 +89,20 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "intake-review": {
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no project record. `grounded: false`, as
+          // for every simulated result: it looked at nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+        };
+        return {
+          summary: `Simulated intake review by ${subject}. The mock executor read no project record or evidence inventory and analysed nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

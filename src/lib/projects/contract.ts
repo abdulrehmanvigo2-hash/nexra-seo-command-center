@@ -3,6 +3,7 @@ import type { RangeId } from "@/types/dashboard";
 import type {
   NewProjectInput,
   ProjectDetail,
+  ProjectIntake,
   ProjectListItem,
   ProjectRecord,
 } from "@/types/project";
@@ -69,6 +70,14 @@ export type ProjectRepository = {
    * null when there is no project or nothing has measured it.
    */
   getProjectDetail(id: string, rangeId: RangeId): Promise<ProjectDetail | null>;
+
+  /**
+   * What the intake form recorded beyond the record — the competitor domains
+   * and the note — or null when the id matches no project or this store keeps
+   * no intake entries. Read only by the Project Manager's intake review; no
+   * screen shows these, and nothing here verifies them.
+   */
+  getProjectIntake(id: string): Promise<ProjectIntake | null>;
 
   /**
    * Validates and stores a new project. Returns the stored record — not a

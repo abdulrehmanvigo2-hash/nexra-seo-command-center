@@ -1,13 +1,15 @@
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import {
+  PROJECT_INTAKE_COLUMNS,
   PROJECT_READ_COLUMNS,
   type ProjectInsert,
+  type ProjectIntakeRow,
   type ProjectReadRow,
   type ProjectsDatabase,
 } from "@/lib/projects/supabase/schema";
 
 /**
- * The three queries the Projects repository makes, and nothing else.
+ * The four queries the Projects repository makes, and nothing else.
  *
  * Kept apart from the repository so the repository's own logic — ordering, the
  * analytics join, validation, id allocation — can be exercised against an
@@ -24,6 +26,8 @@ export type ProjectTableGateway = {
   /** Every row, oldest first. */
   selectAll(): Promise<readonly ProjectReadRow[]>;
   selectById(id: string): Promise<ProjectReadRow | null>;
+  /** The intake-only columns of one row, or null when there is no such row. */
+  selectIntakeById(id: string): Promise<ProjectIntakeRow | null>;
   insert(row: ProjectInsert): Promise<InsertOutcome>;
 };
 
@@ -67,6 +71,16 @@ export function createSupabaseProjectGateway(
         .eq("id", id)
         .maybeSingle();
       if (error) throw new ProjectStoreError("read project", error);
+      return data;
+    },
+
+    async selectIntakeById(id) {
+      const { data, error } = await client
+        .from("projects")
+        .select(PROJECT_INTAKE_COLUMNS)
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw new ProjectStoreError("read project intake", error);
       return data;
     },
 

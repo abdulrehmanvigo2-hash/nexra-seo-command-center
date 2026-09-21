@@ -88,20 +88,23 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Eight task types exist, all read-only: `project-review` (any agent),
+project. Nine task types exist, all read-only: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
 `search-query-review` (Keyword & Search Intent, from Search Console),
-`performance-review` (Analytics & Learning, from Search Console) and
-`priority-review` (SEO Director, from one other agent's completed review). The
+`performance-review` (Analytics & Learning, from Search Console),
+`priority-review` (SEO Director, from one other agent's completed review) and
+`intake-review` (Project Manager, from the project's own stored record). The
 three crawl reviews take one input, a crawl id, and are grounded in the same
 recorded crawl; the two Search Console reviews take one input, a range id, and
 are grounded in the project's own Search Console report; the priority review
 takes one input, a run id, and is grounded in that run's stored output (see
-*Agent hand-off* below). Input is parsed strictly per task type, bounded, and
-screened for credentials; unknown fields are refused. Adding a task type needs
-no migration: the run table checks the id's format, not a list.
+*Agent hand-off* below); the intake review takes no input at all and is
+grounded in the run's own project record (see *Project intake review* below).
+Input is parsed strictly per task type, bounded, and screened for credentials;
+unknown fields are refused. Adding a task type needs no migration: the run
+table checks the id's format, not a list.
 
 Lifecycle, enforced in Postgres:
 
@@ -358,7 +361,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks and `priority-review` itself are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself and `intake-review` are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
@@ -389,6 +392,52 @@ anyway, on the quoted form, cutting on a code point with a disclosure that
 says the review was cut, and the header and limits note are never what is
 cut.
 
+### Project intake review
+
+`intake-review` is the first task grounded in what the agency recorded rather
+than in what this product observed. The Project Manager is given the run's
+own stored project record, the intake entries, and an inventory of which
+evidence this product holds for the project, and is asked for a review in
+five fixed sections — recorded goal, recorded project information, available
+evidence, missing information, and one suggested next review or operator
+action chosen from a closed list (run a crawl, connect or verify Search
+Console, queue one existing named review, or request one specific item from
+the client). It assigns, schedules, contacts, publishes and triggers nothing,
+and its answer is bounded to 1,500 characters with a fixed closing line
+naming what a record cannot establish. It is queued from the Project Manager
+panel on an unmeasured project's workspace — the screen every intake-created
+project renders — and takes no input: the project is the run's, read on the
+server from the persisted run, so no caller can name another client's
+project.
+
+The reader (`src/lib/projects/grounding.ts`) reads the record first and
+alone; a project that no longer exists refuses the attempt with
+`project-not-found` before any provider is reached. The intake columns and
+the three inventory reads follow, each keyed by the run's project id, and
+any one of them failing is written as "not established" rather than failing
+the attempt. What reaches the model:
+
+- the record's fields, every free-text one quoted as a JSON string and the
+  block headed as agency-entered, not a measurement;
+- the intake note, quoted verbatim as one JSON string under a heading that
+  calls it unverified and data — or withheld, with a fixed disclosure and
+  nothing else, when the run table's own credential detector matches it;
+- the competitor domains, quoted as a JSON array, each cut at 120 code points;
+- the inventory: crawl count and the latest crawl's status, dates and counts;
+  the Search Console state and property; counts of completed, model-executed,
+  grounded runs by task over the newest 100 runs. Availability only: no page
+  text, no clicks, impressions, queries or pages, and no review text.
+
+The intake columns (`competitor_domains`, `intake_notes`) are read through a
+repository method of their own, apart from the record read every screen
+makes, so nothing else receives them. The block is bounded to 12,000 UTF-8
+bytes; the note is the one variable cost and is cut on a code point with a
+disclosure, and the record, inventory and limits note are never what is cut.
+The stored evidence summary carries counts, states and flags only. A
+completed intake review is never a hand-off source: the record is the
+agency's own entries, not a finding about the site for the Director to rank,
+and both the reader and the panel refuse it as `source-task-not-allowed`.
+
 ### Action policy
 
 Every task type declares `read-only`, `draft`, `approval-required`, or
@@ -396,8 +445,8 @@ Every task type declares `read-only`, `draft`, `approval-required`, or
 `draft` run. No approval workflow exists, so an `approval-required` task is
 refused at creation with `422 {"error":"approval-required"}` and a message
 saying so, and, if its policy is tightened after runs were queued, those runs
-fail with `policy-blocked` before execution. Both
-existing tasks are `read-only`. Never automated: publishing, deleting pages,
+fail with `policy-blocked` before execution. Every
+existing task is `read-only`. Never automated: publishing, deleting pages,
 creating backlinks, outreach, destructive Search Console actions, DNS or domain
 changes.
 
@@ -667,6 +716,10 @@ it. The deployment plan was not verifiable from this repository.
 - The hand-off is one upstream run to one Director run, queued by an operator.
   No run records its parent, and no run queues another; automatic chaining
   needs a `source` value and a parent column the run table does not have.
+- The intake review's inventory says what evidence exists, never what it
+  found, and reads the intake entries only through its own reader; no screen
+  shows them. The panel is on the unmeasured project workspace only — the
+  measured, fixture-backed workspace does not offer it yet.
 - No approval workflow exists; `approval-required` tasks cannot run at all.
 - Reporting figures outside Search Console remain fixtures.
 - Run history lists the latest 25 runs per filter, without pagination.

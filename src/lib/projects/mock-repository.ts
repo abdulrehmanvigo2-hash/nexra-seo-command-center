@@ -37,6 +37,11 @@ export const mockProjectRepository: ProjectRepository = {
     return getProjectDetail(id, rangeId);
   },
 
+  /** The fixtures record no intake entries, and none are invented. */
+  async getProjectIntake() {
+    return null;
+  },
+
   async createProject() {
     return { ok: false, reason: "unavailable" };
   },
