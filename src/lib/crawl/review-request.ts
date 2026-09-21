@@ -42,7 +42,8 @@ export type ReviewTaskType =
   | "priority-review"
   | "intake-review"
   | "competitor-comparison-review"
-  | "evidence-pack-review";
+  | "evidence-pack-review"
+  | "content-plan-review";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
@@ -56,7 +57,8 @@ export type ReviewSpec = {
     | "seo-director"
     | "project-manager"
     | "market-intelligence"
-    | "research-evidence";
+    | "research-evidence"
+    | "content-strategist";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
@@ -223,6 +225,28 @@ export const EVIDENCE_PACK_REVIEW: ReviewSpec = {
   summary:
     "Queues a read-only evidence pack from the records this product holds for this project: the newest site crawl above, the Search Console window where connected, and which competitor crawls exist. The agent says what those records establish and cannot establish, each claim tagged with the record it rests on; it consults no outside source, invents no citation, and changes nothing.",
   groundedIn: "records this product holds for this project (advice organising that evidence, not a new measurement)",
+};
+
+/**
+ * The Content Strategist's plan for one page of the project itself.
+ *
+ * The same request shape as the evidence pack — no input, the project is
+ * the run's own — and the same records, read on the server through the
+ * same reader. The agent proposes one page over what the records establish
+ * and tags every recorded fact; it reads no earlier agent's output, no
+ * fixture brief and no keyword data, because none of those is a record.
+ * It is not a hand-off source: the runtime does not accept it as one, and
+ * the control follows the runtime.
+ */
+export const CONTENT_PLAN_REVIEW: ReviewSpec = {
+  taskType: "content-plan-review",
+  agentId: "content-strategist",
+  agentName: "Content Strategist",
+  action: "Create grounded content plan with Content Strategist Agent",
+  summary:
+    "Queues a read-only plan for one page from the records this product holds for this project: the newest site crawl above, the Search Console window where connected, and which competitor crawls exist. Every recorded fact in the plan is tagged with its record and every unsupported section is marked as needing evidence; it names no volume, difficulty, ranking or competitor figure, reads no earlier agent's output, and changes nothing.",
+  groundedIn:
+    "records this product holds for this project — a proposed content plan over that evidence, not a measurement",
 };
 
 export type ReviewPayload = {
@@ -420,6 +444,36 @@ export function evidencePackRequest(projectId: string | null, projectCrawl: Craw
 }
 
 /**
+ * Whether the project on screen can have a content plan made, and the body
+ * that would ask for it.
+ *
+ * The same gate as the evidence pack, because the same records are read:
+ * the newest own-site crawl must be one the server's reader would accept.
+ * Search Console and competitor crawls never block the control, and no
+ * earlier run — the evidence pack included — is required or read.
+ */
+export function contentPlanRequest(projectId: string | null, projectCrawl: Crawl | null | undefined): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  const why = comparableSide(projectCrawl, {
+    unknown: "This project's crawl history has not loaded yet.",
+    missing: "Run a crawl of this project's own site first: a plan has nothing to rest on without one.",
+    running: "This project's newest site crawl is still running. The plan can be queued once it finishes.",
+    failed: "This project's newest site crawl failed, so there is no recorded page evidence to plan over.",
+    cancelled: "This project's newest site crawl was cancelled, so there is no recorded page evidence to plan over.",
+  });
+  if (why !== null) return { ok: false, why };
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: CONTENT_PLAN_REVIEW.agentId,
+      taskType: CONTENT_PLAN_REVIEW.taskType,
+      input: {},
+    },
+  };
+}
+
+/**
  * Whether the competitor on screen can be compared with the project's site,
  * and the body that would ask for it.
  *
@@ -596,9 +650,14 @@ export function evidenceDescription(metadata: JsonObject): string | null {
       evidence.searchConsole === "included" && property && start && end
         ? ` and Search Console for ${property}, ${start} to ${end}`
         : "";
-    return crawlId
-      ? `records this product holds for this project: crawl ${crawlId}${search} (advice organising that evidence, not a new measurement)`
-      : EVIDENCE_PACK_REVIEW.groundedIn;
+    // The same records serve two tasks; the run's own task type says which
+    // reading was made of them, so Run History can say so too.
+    const reading =
+      metadata.taskType === "content-plan-review"
+        ? "a proposed content plan over that evidence, not a measurement"
+        : "advice organising that evidence, not a new measurement";
+    if (crawlId) return `records this product holds for this project: crawl ${crawlId}${search} (${reading})`;
+    return metadata.taskType === "content-plan-review" ? CONTENT_PLAN_REVIEW.groundedIn : EVIDENCE_PACK_REVIEW.groundedIn;
   }
   if (evidence.source === "competitor-comparison") {
     const host = typeof evidence.competitorHost === "string" ? evidence.competitorHost : null;

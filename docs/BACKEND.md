@@ -88,7 +88,7 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Eleven task types exist, all read-only: `project-review` (any agent),
+project. Twelve task types exist, all read-only: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -99,7 +99,8 @@ project. Eleven task types exist, all read-only: `project-review` (any agent),
 `competitor-comparison-review` (Market & Competitor Intelligence, from the
 project's own recorded crawl and one recorded competitor's crawl) and
 `evidence-pack-review` (Research & Evidence, from the records this product
-holds for the project). The
+holds for the project) and `content-plan-review` (Content Strategist, from
+the same records). The
 three crawl reviews take one input, a crawl id, and are grounded in the same
 recorded crawl; the two Search Console reviews take one input, a range id, and
 are grounded in the project's own Search Console report; the priority review
@@ -110,7 +111,9 @@ the competitor comparison takes one input, a competitor's bare hostname, and
 is grounded in two crawls the server finds (see *Competitor comparison
 review* below); the evidence pack takes no input and is grounded in the
 project's newest own-site crawl, its default Search Console window and the
-competitor crawls on record (see *Evidence pack* below).
+competitor crawls on record (see *Evidence pack* below); the content plan
+takes no input and reads the same records through the same reader (see
+*Content plan* below).
 Input is parsed strictly per task type, bounded, and screened for credentials;
 unknown fields are refused. Adding a task type needs no migration: the run
 table checks the id's format, not a list.
@@ -370,7 +373,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review`, `competitor-comparison-review` and `evidence-pack-review` are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review`, `competitor-comparison-review`, `evidence-pack-review` and `content-plan-review` are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
@@ -591,6 +594,50 @@ completed pack is not a hand-off source: it holds records and
 supportability, not actions to rank, and both the Director's reader and the
 panel refuse it as `source-task-not-allowed`. Its provenance line calls it
 advice organising recorded evidence, not a new measurement.
+
+### Content plan
+
+`content-plan-review` is the Content Strategist's first task and the second
+task to read the evidence pack block. It declares the same evidence kind the
+pack declares, so the runtime hands it the same records through the same
+reader, unchanged — the newest own-site crawl, the default Search Console
+window where connected, which competitor crawls exist — exactly as three
+agents read one crawl. It takes no input. It does not consume the
+completed pack: the plan and the pack are two readings of one set of
+records, and the pack's supported-claims list stays the authority a draft
+will cite, which the plan says in a fixed line. Nothing else reaches it: no
+intake note, no earlier agent's output, no competitor page, no fixture
+brief, cluster, source, volume, difficulty, coverage or citation score.
+
+The agent plans exactly one page in seven fixed sections — PAGE AND GOAL
+(one crawled path or "new page"), INTENT AND QUERY (an `INFERENCE:` tied to
+a recorded query with its `[search console <window>]` tag, or "not
+established"), TITLE AND H1 DIRECTION (recorded facts tagged, anything else
+marked `INFERENCE:`), OUTLINE (at most four sections, each ending `[crawl
+/path]`, `[search console <window>]` or `[needs evidence]`), INTERNAL LINKS
+AND SCHEMA (crawled paths and recorded JSON-LD types only, tagged), CLAIMS
+NOT PERMITTED (with the fixed line "Factual claims in the draft come only
+from the Research & Evidence pack's supported list."), and NEXT OPERATOR
+ACTION from a closed list — ending on a fixed sentence that the plan is a
+proposal naming no volume, difficulty, ranking, traffic, backlink,
+authority, conversion or market figure. The instructions forbid every
+invented figure, page, audience fact, source and cause, and ask for none of
+the clusters, topical maps or link graphs this agent's registry brief
+speaks of. Every section is bounded, with a cut order, so an answer at
+every bound stays under 1,500 characters with ordinary words and under the
+worker's ceiling with long ones.
+
+Provenance is the pack reader's, unchanged; the run's own task type tells
+Run History which reading was made, so a plan is described as "a proposed
+content plan over that evidence, not a measurement" and a pack keeps its
+own wording. The control is on the unmeasured project workspace beneath the
+Evidence pack panel: the shared queue-then-Run Now control, keyed by the
+project, gated on the newest own-site crawl exactly as the pack is, and
+restored from the Content Strategist's newest run; the pack, the intake
+review and the plan never pick up each other's runs. Nothing queues it
+automatically and nothing chains from the pack. A completed plan is not a
+hand-off source: it is strategy, not a finding to verify, and both the
+Director's reader and the panel refuse it as `source-task-not-allowed`.
 
 ### Action policy
 
@@ -917,7 +964,9 @@ it. The deployment plan was not verifiable from this repository.
   have, and the Content Studio's brief sources remain fixtures. The pack
   control checks the project's own newest crawl once, when the panel loads;
   an own-site crawl run afterwards on the same page is not seen until the
-  page is reloaded. Content Strategist and Writer have no runtime task yet. The comparison control checks
+  page is reloaded. The content plan reads the same records and has the
+  same limitation. The Writer has no runtime task yet, and the Content
+  Studio's briefs, coverage, linking and recommendations remain fixtures. The comparison control checks
   the project's own newest crawl once, when the panel loads: an own-site
   crawl run afterwards on the same page is not seen until the page is
   reloaded. A grounding refusal fails the attempt as `execution-failed`

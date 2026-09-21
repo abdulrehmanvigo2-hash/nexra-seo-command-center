@@ -8,6 +8,7 @@ import {
 } from "@/lib/crawl/grounding";
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
+import { CONTENT_PLAN_INSTRUCTIONS } from "@/lib/content/plan-instructions";
 import { INTAKE_REVIEW_INSTRUCTIONS } from "@/lib/projects/grounding";
 import { EVIDENCE_PACK_INSTRUCTIONS } from "@/lib/research/evidence-pack";
 import { isRangeId } from "@/lib/search-console/date-windows";
@@ -430,6 +431,36 @@ const evidencePackReview: TaskTypeDefinition = {
   },
 };
 
+/**
+ * The Content Strategist's plan for one page of the run's own project.
+ *
+ * The second task to read the evidence pack block, and the first for this
+ * agent. It declares the same evidence kind the Research & Evidence pack
+ * declares, so the runtime hands it the same records through the same
+ * reader — the newest own-site crawl, the default Search Console window
+ * where connected, which competitor crawls exist — and nothing else: no
+ * earlier agent's output, no intake note, no fixture brief or cluster. It
+ * takes no input at all. Read-only, like every task here: it proposes a
+ * plan for a person to take up, tags every recorded fact with its record,
+ * and changes nothing. Operator-triggered only; nothing queues it
+ * automatically, and its completed run is not a hand-off source.
+ */
+const contentPlanReview: TaskTypeDefinition = {
+  id: "content-plan-review",
+  label: "Content plan",
+  description:
+    "Plan one page for this project from the records this product holds, every recorded fact tagged with its record and every unsupported section marked as needing evidence.",
+  agents: ["content-strategist"],
+  policy: "read-only",
+  evidence: "evidence-pack",
+  instructions: CONTENT_PLAN_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, []);
+    if (!object.ok) return object;
+    return { ok: true, value: {} };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -442,6 +473,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   intakeReview,
   competitorComparisonReview,
   evidencePackReview,
+  contentPlanReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {
