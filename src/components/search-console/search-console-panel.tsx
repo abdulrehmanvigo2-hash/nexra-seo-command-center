@@ -125,6 +125,7 @@ export function SearchConsolePanel({
     searchQueryReviewRequest(projectId, report, rangeId),
     projectId ? `${projectId}:${rangeId}` : null,
     SEARCH_QUERY_REVIEW,
+    projectId,
   );
 
   /**
@@ -136,6 +137,7 @@ export function SearchConsolePanel({
     searchQueryReviewRequest(projectId, report, rangeId, PERFORMANCE_REVIEW),
     projectId ? `${projectId}:${rangeId}` : null,
     PERFORMANCE_REVIEW,
+    projectId,
   );
 
   return (
