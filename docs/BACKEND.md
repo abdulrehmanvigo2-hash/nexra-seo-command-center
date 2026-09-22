@@ -671,7 +671,14 @@ plan run and its crawl, and the section to draft: the first outline line of
 the plan whose tag names a record (`[crawl /path]` or `[search console
 <window>]`), chosen by the reader and quoted as data, or "none" with an
 instruction to return an evidence-needed result rather than invent a
-section. The plan follows under `=== CONTENT PLAN (MODEL-GENERATED PROPOSAL
+section. The reader finds the outline by its heading's words, not its
+presentation: a markdown hash or list marker before `OUTLINE`, emphasis
+around it, a colon or dash after it, its letter case, and a first item
+sharing its line are all tolerated, as are blank lines between items,
+list markers on them, and a closing emphasis or one punctuation mark after
+a tag. Nothing else is: a line qualifies only when a record tag ends it,
+any other text after the tag disqualifies it, and the outline ends at the
+next plan heading however that heading is decorated. The plan follows under `=== CONTENT PLAN (MODEL-GENERATED PROPOSAL
 — NOT FACTUAL EVIDENCE …) ===`, quoted verbatim as one JSON string and cut
 with a disclosure if it must be; then the records block verbatim under `===
 RECORDED PROJECT EVIDENCE ===`; then a DRAFT LIMITS note stating that the

@@ -567,3 +567,151 @@ describe("the fixtures agree with the pack reader", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Presentation around the outline: a model may decorate the heading, the
+// list and the tags, and none of it changes which line names a record.
+// ---------------------------------------------------------------------------
+
+describe("outline presentation variants", () => {
+  const ITEMS = [
+    "What automated lead follow-up does [crawl /]",
+    "Qualifying and booking steps [crawl /]",
+    "Where a person still belongs [crawl /blog]",
+    "Scoping an automation build [crawl /about]",
+  ];
+  const HEAD = "PAGE AND GOAL\n/ explains what the automation service does\n\nINTENT AND QUERY\nINFERENCE: not established\n\nTITLE AND H1 DIRECTION\nINFERENCE: keep the brand in the title\n\n";
+  const TAIL = "\n\nINTERNAL LINKS AND SCHEMA\nLink /about from / [crawl /about]\n\nCLAIMS NOT PERMITTED\nNo volume or ranking.\nFactual claims in the draft come only from the Research & Evidence pack's supported list.\n\nNEXT OPERATOR ACTION\nRun or re-run the site crawl";
+  const plan = (heading: string, lines: readonly string[] = ITEMS, joiner = "\n") => `${HEAD}${heading}\n${lines.join(joiner)}${TAIL}`;
+
+  const FIRST = /What automated lead follow-up does \[crawl \/\]/;
+
+  test("the exact outline is read as before", () => {
+    assert.deepEqual(planOutline(plan("OUTLINE")), ITEMS);
+    assert.deepEqual(selectSection(plan("OUTLINE")), { section: ITEMS[0], sectionIndex: 1, outlineTagged: 4, outlineNeedingEvidence: 0 });
+  });
+
+  test("the heading is recognised under harmless decoration, and the first line is selected with all four tagged", () => {
+    const headings = ["OUTLINE", "OUTLINE:", "Outline", "outline", "4. OUTLINE", "4) OUTLINE", "**OUTLINE**", "**OUTLINE:**", "__OUTLINE__", "## OUTLINE", "### Outline:", "OUTLINE —", "OUTLINE -", "- OUTLINE", "* OUTLINE"];
+    for (const heading of headings) {
+      const chosen = selectSection(plan(heading));
+      assert.equal(chosen.sectionIndex, 1, heading);
+      assert.match(chosen.section ?? "", FIRST, heading);
+      assert.equal(chosen.outlineTagged, 4, heading);
+      assert.equal(chosen.outlineNeedingEvidence, 0, heading);
+      assert.equal(planOutline(plan(heading)).length, 4, heading);
+    }
+  });
+
+  test("CRLF endings, bulleted lines, numbered lines and blank lines between items all keep the four lines", () => {
+    const crlf = plan("OUTLINE").replace(/\n/g, "\r\n");
+    assert.equal(selectSection(crlf).outlineTagged, 4);
+    assert.match(selectSection(crlf).section ?? "", FIRST);
+
+    const bulleted = plan("OUTLINE", ITEMS.map((line) => `- ${line}`));
+    assert.equal(selectSection(bulleted).outlineTagged, 4);
+    assert.equal(selectSection(bulleted).sectionIndex, 1);
+    assert.match(selectSection(bulleted).section ?? "", FIRST);
+
+    const numbered = plan("OUTLINE", ITEMS.map((line, index) => `${index + 1}. ${line}`));
+    assert.equal(selectSection(numbered).outlineTagged, 4);
+    assert.match(selectSection(numbered).section ?? "", FIRST);
+
+    const spaced = plan("OUTLINE", ITEMS, "\n\n");
+    assert.deepEqual(planOutline(spaced), ITEMS);
+    assert.equal(selectSection(spaced).outlineTagged, 4);
+    assert.match(selectSection(spaced).section ?? "", FIRST);
+
+    const gapAfterHeading = `${HEAD}OUTLINE\n\n${ITEMS.join("\n")}${TAIL}`;
+    assert.equal(selectSection(gapAfterHeading).outlineTagged, 4);
+  });
+
+  test("the heading sharing a line with the first item still yields four lines, first selected", () => {
+    for (const first of [`OUTLINE ${ITEMS[0]}`, `OUTLINE: ${ITEMS[0]}`, `**OUTLINE** ${ITEMS[0]}`, `## OUTLINE — ${ITEMS[0]}`, `Outline: ${ITEMS[0]}`]) {
+      const text = `${HEAD}${first}\n${ITEMS.slice(1).join("\n")}${TAIL}`;
+      assert.deepEqual(planOutline(text), ITEMS, first);
+      assert.deepEqual(selectSection(text), { section: ITEMS[0], sectionIndex: 1, outlineTagged: 4, outlineNeedingEvidence: 0 }, first);
+    }
+    // A sentence that merely begins with "Outline", with no separator, is prose, not the heading.
+    const prose = `${HEAD}Outline the service in the H1 [crawl /]\n\nOUTLINE\n${ITEMS.join("\n")}${TAIL}`;
+    assert.deepEqual(planOutline(prose), ITEMS);
+  });
+
+  test("punctuation after a tag and bolded tags still name the record", () => {
+    for (const mark of [".", ",", ";", ":", "!", "?"]) {
+      const text = plan("OUTLINE", ITEMS.map((line) => `${line}${mark}`));
+      assert.equal(selectSection(text).outlineTagged, 4, mark);
+      assert.match(selectSection(text).section ?? "", FIRST, mark);
+    }
+    const bold = plan("OUTLINE", ITEMS.map((line) => line.replace(/\[crawl [^\]]*\]$/, (tag) => `**${tag}**`)));
+    assert.equal(selectSection(bold).outlineTagged, 4);
+    assert.match(selectSection(bold).section ?? "", /\*\*\[crawl \/\]\*\*$/);
+    const boldThenPeriod = plan("OUTLINE", ITEMS.map((line) => line.replace(/\[crawl [^\]]*\]$/, (tag) => `**${tag}**.`)));
+    assert.equal(selectSection(boldThenPeriod).outlineTagged, 4);
+  });
+
+  test("each tag form qualifies on its own", () => {
+    for (const tag of ["[crawl /]", "[crawl /blog]", "[crawl /about]", "[search console 2026-08-21 to 2026-09-19]", "[search console 2026-08-21 to 2026-09-19].", "**[crawl /blog]**", "[crawl /blog]:"]) {
+      const chosen = selectSection(`OUTLINE\nOne planned section ${tag}`);
+      assert.equal(chosen.outlineTagged, 1, tag);
+      assert.equal(chosen.section, `One planned section ${tag}`, tag);
+    }
+  });
+
+  test("an untagged, malformed or over-tagged line never qualifies, and needs-evidence lines stay evidence-needed", () => {
+    const rejected = [
+      "What automated lead follow-up does",
+      "What automated lead follow-up does [crawl]",
+      "What automated lead follow-up does [crawl home]",
+      "What automated lead follow-up does [crawled /]",
+      "What automated lead follow-up does [search console]",
+      "What automated lead follow-up does [study 2024]",
+      "What automated lead follow-up does [crawl /] and more text",
+      "What automated lead follow-up does [crawl /] (see above)",
+      "What automated lead follow-up does [crawl /]..",
+      "[crawl /] What automated lead follow-up does",
+      "What automated lead follow-up does [Crawl /]",
+    ];
+    for (const line of rejected) {
+      const chosen = selectSection(`OUTLINE\n${line}`);
+      assert.equal(chosen.section, null, line);
+      assert.equal(chosen.outlineTagged, 0, line);
+    }
+    for (const line of ["Who the agency has worked with [needs evidence]", "Who the agency has worked with [needs evidence].", "Who the agency has worked with **[needs evidence]**", "Who the agency has worked with [NEEDS EVIDENCE]"]) {
+      const chosen = selectSection(`OUTLINE\n${line}`);
+      assert.equal(chosen.section, null, line);
+      assert.equal(chosen.outlineNeedingEvidence, 1, line);
+    }
+    // Mixed: the first *tagged* line is chosen, whatever precedes it.
+    const mixed = selectSection(`OUTLINE:\n- Who the agency has worked with [needs evidence]\n- Plain line\n- ${ITEMS[2]}.\n- ${ITEMS[3]}`);
+    assert.deepEqual(mixed, { section: `- ${ITEMS[2]}.`, sectionIndex: 3, outlineTagged: 2, outlineNeedingEvidence: 1 });
+  });
+
+  test("the outline ends at the next recognised heading however it is decorated, and at a capitalised heading the format does not name", () => {
+    for (const next of ["INTERNAL LINKS AND SCHEMA", "INTERNAL LINKS AND SCHEMA:", "**Internal links and schema**", "5. INTERNAL LINKS AND SCHEMA", "## Claims not permitted", "NEXT OPERATOR ACTION —", "INTERNAL LINKS AND SCHEMA: Link /about from / [crawl /about]"]) {
+      const text = `OUTLINE\n${ITEMS.join("\n")}\n\n${next}\nLink /about from / [crawl /about]`;
+      assert.deepEqual(planOutline(text), ITEMS, next);
+    }
+    const unnamed = `OUTLINE\nOnly this [needs evidence]\n\nLINKS AND SCHEMA\nLink /about from / [crawl /about]`;
+    assert.deepEqual(planOutline(unnamed), ["Only this [needs evidence]"]);
+    assert.equal(selectSection(unnamed).section, null);
+  });
+
+  test("the evidence-needed path is unchanged: a plan whose outline carries no record tag yields no section", () => {
+    const untagged = plan("**OUTLINE:**", ["How an engagement runs [needs evidence].", "Who the agency has worked with **[needs evidence]**"]);
+    assert.deepEqual(selectSection(untagged), { section: null, sectionIndex: null, outlineTagged: 0, outlineNeedingEvidence: 2 });
+  });
+
+  test("a decorated valid plan reaches the evidence block as outline line 1, through the reader", async () => {
+    const decorated = { ...PLAN, resultSummary: plan("**OUTLINE:**", ITEMS.map((line) => `- ${line}.`)) };
+    const { reader } = readers({ runs: [decorated, PACK_RUN] });
+    const result = await readDraftGrounding(reader, { planRunId: PLAN.id, projectId: "nexra-agency" });
+    assert.ok(result.ok);
+    if (!result.ok) return;
+    assert.match(result.grounding.text, /SECTION TO DRAFT: outline line 1 of the plan, quoted as data: "- What automated lead follow-up does \[crawl \/\]\."/);
+    assert.equal(result.grounding.summary.sectionIndex, 1);
+    assert.equal(result.grounding.summary.outlineTagged, 4);
+    assert.equal(result.grounding.summary.outlineNeedingEvidence, 0);
+    assert.doesNotMatch(result.grounding.text, /SECTION TO DRAFT: none/);
+  });
+});

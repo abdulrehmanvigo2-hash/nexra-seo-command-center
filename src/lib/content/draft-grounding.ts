@@ -151,13 +151,82 @@ export function byteLength(text: string): number {
 
 const NOT_ESTABLISHED = "not established";
 
-/** A tag that names a record: a crawled path or a Search Console window. */
-const RECORD_TAG = /\[(crawl \/\S*|search console [^\]]+)\]\s*$/;
-const NEEDS_EVIDENCE_TAG = /\[needs evidence\]\s*$/i;
+/**
+ * A tag that names a record: a crawled path or a Search Console window.
+ *
+ * The tag must end the line. What may follow it is presentation only — a
+ * closing markdown emphasis and at most one punctuation mark — so a model
+ * that writes `[crawl /].` or `**[crawl /blog]**` has still named a record,
+ * while a line with any other text after the tag has not.
+ */
+const TAG_TAIL = "(?:[*_]+)?[.,;:!?]?(?:[*_]+)?\\s*$";
+const RECORD_TAG = new RegExp(`\\[(crawl \\/[^\\]\\s]*|search console [^\\]]+)\\]${TAG_TAIL}`);
+const NEEDS_EVIDENCE_TAG = new RegExp(`\\[needs evidence\\]${TAG_TAIL}`, "i");
 
-/** A plan section heading: the next fixed heading after OUTLINE. */
-const OUTLINE_HEADING = /^OUTLINE\s*$/;
-const NEXT_HEADING = /^(INTERNAL LINKS AND SCHEMA|CLAIMS NOT PERMITTED|NEXT OPERATOR ACTION)\s*$/;
+/**
+ * Plan headings, matched on the line's words once its presentation is
+ * stripped: a markdown hash or list marker before it, emphasis around it,
+ * a colon or dash after it, and letter case are all decoration a model may
+ * add and none of them changes what the heading is. Any other words on the
+ * line are not a heading.
+ */
+const OUTLINE_HEADING = /^OUTLINE$/i;
+const NEXT_HEADING = /^(INTERNAL LINKS AND SCHEMA|CLAIMS NOT PERMITTED|NEXT OPERATOR ACTION)$/i;
+/** The OUTLINE heading sharing its line with the first item, as `OUTLINE item`, `OUTLINE: item` or `**OUTLINE** item`. */
+const INLINE_OUTLINE = /^(OUTLINE)(?:[*_]+)?(?:\s*[:\-–—]\s*|\s+)(\S.*)$/;
+const INLINE_OUTLINE_LOOSE = /^(OUTLINE)(?:[*_]+)?(?:\s*[:\-–—]\s*|[*_]+\s*)(\S.*)$/i;
+/** A line of capitals alone reads as a heading this plan format does not name; it ends the outline rather than joining it. */
+const CAPITAL_HEADING = /^[A-Z][A-Z0-9 &/-]{2,}$/;
+const LEADING_DECORATION = [/^#{1,6}\s+/, /^(?:\d+[.)]|[-*•])\s+/, /^[*_]+/];
+const TRAILING_DECORATION = [/[*_]+$/, /[:\-–—]+$/];
+
+/** The line without leading presentation: hashes, a list marker, opening emphasis. */
+function stripLeading(line: string): string {
+  let text = line.trim();
+  let previous = "";
+  while (text !== previous) {
+    previous = text;
+    for (const pattern of LEADING_DECORATION) text = text.replace(pattern, "").trim();
+  }
+  return text;
+}
+
+/** The line's words alone: leading and trailing presentation removed. */
+function undecorated(line: string): string {
+  let text = stripLeading(line);
+  let previous = "";
+  while (text !== previous) {
+    previous = text;
+    for (const pattern of TRAILING_DECORATION) text = text.replace(pattern, "").trim();
+    text = stripLeading(text);
+  }
+  return text;
+}
+
+/**
+ * Whether the line is the OUTLINE heading, and the first item when the
+ * heading shares its line with one. The standalone heading is matched in
+ * any case; an inline item is accepted after the capitalised heading, or
+ * after any case of it when a colon, dash or emphasis separates the two,
+ * so a sentence that merely begins with "Outline" is not mistaken for it.
+ */
+function outlineHeading(line: string): { readonly inlineItem: string | null } | null {
+  const words = undecorated(line);
+  if (OUTLINE_HEADING.test(words)) return { inlineItem: null };
+  const lead = stripLeading(line);
+  const inline = INLINE_OUTLINE.exec(lead) ?? INLINE_OUTLINE_LOOSE.exec(lead);
+  if (inline === null) return null;
+  const item = stripLeading(inline[2]);
+  return item.length === 0 ? { inlineItem: null } : { inlineItem: item };
+}
+
+/** Whether the line is one of the headings that follow OUTLINE, standalone or with its first item inline. */
+function endsOutline(line: string): boolean {
+  const words = undecorated(line);
+  if (NEXT_HEADING.test(words)) return true;
+  if (/^(INTERNAL LINKS AND SCHEMA|CLAIMS NOT PERMITTED|NEXT OPERATOR ACTION)(?:[*_]+)?(?:\s*[:\-–—]|\s)/i.test(stripLeading(line))) return true;
+  return CAPITAL_HEADING.test(words) && !RECORD_TAG.test(line) && !NEEDS_EVIDENCE_TAG.test(line);
+}
 
 /** The longest outline line carried into the block and the metadata, in code points. */
 const MAX_SECTION_LENGTH = 160;
@@ -224,19 +293,32 @@ export async function readDraftGrounding(
   return { ok: true, grounding: formatDraftGrounding(plan, records.grounding) };
 }
 
-/** The outline lines of a plan, as the plan's own instructions lay them out. */
+/**
+ * The outline lines of a plan, as the plan's own instructions lay them out.
+ *
+ * The lines between the OUTLINE heading and the next recognised heading,
+ * blank lines skipped, each kept as written apart from surrounding
+ * whitespace. Presentation around the headings is tolerated; nothing about
+ * the lines themselves is interpreted here — whether one names a record is
+ * `selectSection`'s question.
+ */
 export function planOutline(planText: string): readonly string[] {
   const lines = planText.split("\n");
-  const start = lines.findIndex((line) => OUTLINE_HEADING.test(line.trim()));
+  let start = -1;
+  let inlineItem: string | null = null;
+  for (const [index, line] of lines.entries()) {
+    const heading = outlineHeading(line);
+    if (heading === null) continue;
+    start = index;
+    inlineItem = heading.inlineItem;
+    break;
+  }
   if (start < 0) return [];
-  const outline: string[] = [];
+  const outline: string[] = inlineItem === null ? [] : [inlineItem];
   for (const line of lines.slice(start + 1)) {
     const trimmed = line.trim();
-    if (trimmed.length === 0) {
-      if (outline.length > 0) break;
-      continue;
-    }
-    if (NEXT_HEADING.test(trimmed)) break;
+    if (trimmed.length === 0) continue;
+    if (endsOutline(trimmed)) break;
     outline.push(trimmed);
   }
   return outline;
