@@ -10,6 +10,7 @@ import {
   CRAWL_REVIEWS,
   EVIDENCE_PACK_REVIEW,
   INTAKE_REVIEW,
+  OUTBOUND_LINK_REVIEW,
   competitorComparisonRequest,
   contentPlanRequest,
   evidencePackRequest,
@@ -1887,6 +1888,143 @@ describe("the section draft request", () => {
     assert.equal(latestReviewRun([completedDraft()], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
     assert.equal(latestReviewRun([completedDraft()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
     assert.equal(latestReviewRun([completedDraft()], INTAKE_REVIEW, {}), null);
+    assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Authority & Backlink agent's outbound link review: the same crawl, the
+// same request, its own agent, and wording that never calls an outbound link
+// a backlink.
+// ---------------------------------------------------------------------------
+
+describe("the outbound link review — the Authority & Backlink agent", () => {
+  const spec = OUTBOUND_LINK_REVIEW;
+  const LINK_RUN_ID = "11111111-0000-4000-8000-000000000080";
+
+  function completedLinkReview(overrides: Partial<AgentRun> = {}): AgentRun {
+    return {
+      ...RUN,
+      id: LINK_RUN_ID,
+      agentId: "authority-backlink",
+      taskType: "outbound-link-review",
+      input: { crawlId: CRAWL.id },
+      status: "completed",
+      executor: "ai",
+      attemptCount: 1,
+      resultSummary: "LINK RECORD\nCrawl of nexraagency.com, five pages fetched.\n\nOUTBOUND HOSTS\nnone recorded",
+      resultMetadata: {
+        simulated: false,
+        grounded: true,
+        taskType: "outbound-link-review",
+        evidence: { source: "crawl-links", crawlId: CRAWL.id, hostScope: "nexraagency.com", externalEdges: 3, externalHosts: 2 },
+      },
+      startedAt: "2026-09-21T10:05:00.000Z",
+      finishedAt: "2026-09-21T10:06:00.000Z",
+      createdAt: "2026-09-21T10:04:00.000Z",
+      ...overrides,
+    };
+  }
+
+  test("asks for the Authority agent's task over the crawl on screen, and nothing else", () => {
+    assert.deepEqual(reviewRequest("nexra-agency", CRAWL, spec), {
+      ok: true,
+      payload: {
+        projectId: "nexra-agency",
+        agentId: "authority-backlink",
+        taskType: "outbound-link-review",
+        input: { crawlId: CRAWL.id },
+      },
+    });
+  });
+
+  test("the spec matches what the server allows, says what it reads, and says what does not exist", () => {
+    assert.equal(spec.agentId, "authority-backlink");
+    assert.equal(spec.taskType, "outbound-link-review");
+    assert.equal(spec.agentName, "Authority & Backlink");
+    assert.equal(spec.action, "Review outbound links with Authority Agent");
+    assert.match(spec.summary, /^Queues a read-only review of the outbound links this crawl recorded on the project's own pages/);
+    assert.match(spec.summary, /fetches no host, contacts no one/);
+    assert.match(spec.summary, /no inbound backlink, referring domain or authority record to read, because this product holds none/);
+    assert.match(spec.summary, /changes nothing\.$/);
+    assert.match(spec.groundedIn, /what the project's own pages link to, never who links to them; no inbound backlink record exists$/);
+    assert.doesNotMatch(spec.summary, /backlink profile|referring domains found|authority score|outreach|prospect/i);
+  });
+
+  test("is refused for the same crawls the crawl reviews are refused for", () => {
+    assert.deepEqual(reviewRequest("", CRAWL, spec), { ok: false, why: "No project is selected." });
+    assert.deepEqual(reviewRequest("nexra-agency", null, spec), { ok: false, why: "Run a crawl first: there is nothing to review." });
+    assert.equal(reviewRequest("nexra-agency", { ...CRAWL, status: "running" }, spec).ok, false);
+    assert.equal(reviewRequest("nexra-agency", { ...CRAWL, status: "failed" }, spec).ok, false);
+    assert.equal(reviewRequest("nexra-agency", { ...CRAWL, status: "cancelled" }, spec).ok, false);
+    for (const status of ["completed", "partial"] as const) {
+      assert.equal(reviewRequest("nexra-agency", { ...CRAWL, status }, spec).ok, true);
+    }
+  });
+
+  test("a server refusal is explained with this agent's name and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, spec), /The Authority & Backlink agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, spec), /does not know the outbound-link-review task/);
+  });
+
+  test("a grounded review is described by what it read, outbound and never inbound", () => {
+    assert.equal(
+      outputProvenance(completedLinkReview(), spec.groundedIn)?.text,
+      `Model output, grounded in ${spec.groundedIn}. Advice, not measurement.`,
+    );
+    assert.equal(
+      outputProvenance(completedLinkReview())?.text,
+      `Model output, grounded in this crawl's recorded outbound links (crawl ${CRAWL.id}: 3 external edges to 2 hosts, observed on the project's own pages and never fetched; no inbound backlink record exists). Advice, not measurement.`,
+    );
+    assert.equal(outputProvenance(completedLinkReview())?.tone, "neutral");
+    assert.equal(
+      evidenceDescription({ evidence: { source: "crawl-links", crawlId: CRAWL.id, externalEdges: 1, externalHosts: 1 } }),
+      `this crawl's recorded outbound links (crawl ${CRAWL.id}: 1 external edge to 1 host, observed on the project's own pages and never fetched; no inbound backlink record exists)`,
+    );
+    assert.equal(evidenceDescription({ evidence: { source: "crawl-links" } }), spec.groundedIn);
+    assert.equal(evidenceDescription({ evidence: { source: "crawl-links", crawlId: CRAWL.id } }), spec.groundedIn);
+    const mock = completedLinkReview({ executor: "mock", resultMetadata: { simulated: true, grounded: false } });
+    assert.match(outputProvenance(mock, spec.groundedIn)?.text ?? "", /^Simulated/);
+  });
+
+  test("a completed outbound link review offers no Director hand-off and no Writer draft", () => {
+    const completed = completedLinkReview();
+    assert.equal(offersHandoff(completed), false);
+    assert.equal(offersDraft(completed), false);
+    const refusal = handoffRequest("nexra-agency", completed);
+    assert.equal(refusal.ok, false);
+    assert.match(refusal.ok ? "" : refusal.why, /takes hand-offs from crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/);
+  });
+
+  test("is restored by project, the Authority agent and this crawl's id, and by nothing else", async () => {
+    assert.equal(reviewRunsUrl("nexra-agency", spec), `/api/agent-runs?project=nexra-agency&agent=authority-backlink&limit=${RESTORE_LIST_LIMIT}`);
+    const older = completedLinkReview({ id: "11111111-0000-4000-8000-000000000081", createdAt: "2026-09-21T09:00:00.000Z" });
+    const newest = completedLinkReview({ id: "11111111-0000-4000-8000-000000000082", createdAt: "2026-09-21T12:00:00.000Z" });
+    const otherCrawl = completedLinkReview({ id: "11111111-0000-4000-8000-000000000083", input: { crawlId: "8f1c0d2e-0000-4000-8000-000000000002" }, createdAt: "2026-09-21T13:00:00.000Z" });
+    const technical: AgentRun = { ...RUN, status: "completed", createdAt: "2026-09-21T14:00:00.000Z" };
+    const input = { crawlId: CRAWL.id };
+    assert.equal(latestReviewRun([older, otherCrawl, technical, newest], spec, input)?.id, newest.id);
+    assert.equal(latestReviewRun([otherCrawl, technical], spec, input), null);
+    assert.equal(latestReviewRun([older, newest], CRAWL_REVIEWS["crawl-review"], input), null);
+    assert.equal(latestReviewRun([older, newest], CRAWL_REVIEWS["on-page-review"], input), null);
+
+    const calls: string[] = [];
+    const restored = await restoreReviewRun("nexra-agency", spec, input, async (url, init) => {
+      calls.push(url);
+      assert.equal(init.cache, "no-store");
+      return { ok: true, json: async () => ({ runs: [older, technical, newest] }) };
+    });
+    assert.equal(restored?.id, newest.id);
+    assert.deepEqual(calls, [`/api/agent-runs?project=nexra-agency&agent=authority-backlink&limit=${RESTORE_LIST_LIMIT}`]);
+  });
+
+  test("the three crawl reviews are untouched by it", () => {
+    const kinds = ["crawl-review", "on-page-review", "answer-readiness-review"] as const;
+    assert.equal(new Set(kinds.map((kind) => CRAWL_REVIEWS[kind].agentId)).size, 3);
+    assert.ok(!Object.values(CRAWL_REVIEWS).some((review) => review.taskType === spec.taskType));
+    assert.equal(reviewRequest("nexra-agency", CRAWL).ok, true);
+    assert.equal(latestReviewRun([completedLinkReview()], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+    assert.equal(latestReviewRun([completedLinkReview()], PRIORITY_REVIEW, { sourceRunId: LINK_RUN_ID }), null);
     assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
   });
 });

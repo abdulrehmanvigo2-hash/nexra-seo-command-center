@@ -463,3 +463,66 @@ describe("rows satisfy the migration's constraints", () => {
     );
   });
 });
+
+describe("createSupabaseCrawlStore — listLinks", () => {
+  const links = (crawlId: string) => [
+    { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true },
+    { fromUrl: "https://nexraagency.com/about", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false },
+    { fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false },
+    { fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false },
+    { fromUrl: "https://nexraagency.com/about", toUrl: "https://nexraagency.com/", rel: null, isInternal: true },
+  ].map((link) => ({ ...link, crawlId }));
+
+  test("reads a crawl's edges back exactly as written, external edges first, in a fixed order", async () => {
+    const { store } = storeWith();
+    const created = await store.insert(NEW_CRAWL);
+    assert.ok(created.status === "inserted");
+    const id = created.crawl.id;
+    await store.saveLinks(id, links(id));
+
+    const read = await store.listLinks(id, 100);
+    assert.deepEqual(read, [
+      { crawlId: id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false },
+      { crawlId: id, fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false },
+      { crawlId: id, fromUrl: "https://nexraagency.com/about", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false },
+      { crawlId: id, fromUrl: "https://nexraagency.com/about", toUrl: "https://nexraagency.com/", rel: null, isInternal: true },
+      { crawlId: id, fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true },
+    ]);
+  });
+
+  test("filters by the exact crawl id: another crawl's edges are never read", async () => {
+    const { store } = storeWith();
+    const first = await store.insert(NEW_CRAWL);
+    const second = await store.insert({ ...NEW_CRAWL, projectId: "halcyon-fintech" });
+    assert.ok(first.status === "inserted" && second.status === "inserted");
+    await store.saveLinks(first.crawl.id, links(first.crawl.id));
+    await store.saveLinks(second.crawl.id, links(second.crawl.id).slice(0, 2));
+
+    assert.equal((await store.listLinks(first.crawl.id, 100)).length, 5);
+    assert.equal((await store.listLinks(second.crawl.id, 100)).length, 2);
+    assert.ok((await store.listLinks(second.crawl.id, 100)).every((link) => link.crawlId === second.crawl.id));
+    assert.deepEqual(await store.listLinks("no-such-crawl", 100), []);
+  });
+
+  test("the limit bounds the read, and the external edges are the ones kept", async () => {
+    const { store } = storeWith();
+    const created = await store.insert(NEW_CRAWL);
+    assert.ok(created.status === "inserted");
+    await store.saveLinks(created.crawl.id, links(created.crawl.id));
+
+    const two = await store.listLinks(created.crawl.id, 2);
+    assert.equal(two.length, 2);
+    assert.ok(two.every((link) => !link.isInternal));
+  });
+
+  test("a store failure surfaces as a CrawlStoreError that quotes no row", async () => {
+    const { db, store } = storeWith();
+    db.failNext({ table: "nexra_crawl_links", operation: "select", error: postgrestError("42P01", "relation does not exist", "secret row content") });
+    await assert.rejects(() => store.listLinks("some-crawl", 10), (error: unknown) => {
+      assert.ok(error instanceof Error && error.name === "CrawlStoreError");
+      assert.match(error.message, /list crawl links failed/);
+      assert.ok(!error.message.includes("secret row content"));
+      return true;
+    });
+  });
+});

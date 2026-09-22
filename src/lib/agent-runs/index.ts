@@ -125,6 +125,13 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // checked against the run's project before a word of it is
         // formatted — and re-reads the pack that plan was written over.
         draft: { runs: store, evidencePack: evidencePackReaders },
+        // The Authority & Backlink review reads one crawl record through the
+        // same crawl service and that crawl's stored edges through its one
+        // bounded link read. No host is fetched.
+        links: {
+          crawls: crawlService(),
+          links: { listLinks: (crawlId, limit) => crawlService().listCrawlLinks(crawlId, limit) },
+        },
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

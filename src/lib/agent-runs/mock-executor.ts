@@ -163,6 +163,22 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "outbound-link-review": {
+        const crawlId = typeof task.input.crawlId === "string" ? task.input.crawlId : null;
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no crawl and no link record. `grounded:
+          // false`, as for every simulated result: it looked at nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+          crawlId,
+        };
+        return {
+          summary: `Simulated outbound link review by ${subject}. The mock executor read no crawl and no link record, and reviewed nothing; this is placeholder output, not a link review.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

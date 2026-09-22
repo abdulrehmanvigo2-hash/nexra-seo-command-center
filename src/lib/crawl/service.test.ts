@@ -121,6 +121,10 @@ function recordingStore(): CrawlStore & {
       calls.push("savePages");
       state.pages = pages.length;
     },
+    async listLinks() {
+      calls.push("listLinks");
+      return [];
+    },
     async saveLinks(_id, links) {
       calls.push("saveLinks");
       state.links = links.length;
