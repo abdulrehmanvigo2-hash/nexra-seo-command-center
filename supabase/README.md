@@ -164,6 +164,19 @@ not cache responses that the proxy has not seen. A signed-out session's
 unexpired access token still opens pages (the proxy verifies the token locally)
 until it expires, although the Auth server refuses it for every write.
 
+## Content drafts
+
+`nexra_content_drafts` and `nexra_content_draft_versions` keep one Writer
+section draft per Writer run and its immutable versions
+(`20260922120000_create_content_drafts.sql`, then
+`20260922120100_grant_content_drafts_to_service_role.sql`, applied after the
+crawl migrations, each followed by `NOTIFY pgrst, 'reload schema';`). Row
+level security is enabled with no policies; `service_role` holds the only
+grants. A draft's provenance and a version's text are guarded by triggers
+and never change after they are written; only a version's `fact_check` may
+be set later, by the milestone that checks it. Nothing here publishes: the
+published and approved columns exist for later milestones and stay null.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

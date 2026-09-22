@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SaveDraftControl } from "@/components/content/draft-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,7 @@ import {
   type ReviewSpec,
   type Tone,
 } from "@/lib/crawl/review-request";
+import { offersSaveAsDraft } from "@/lib/content/drafts/eligibility";
 import type { AgentRun } from "@/types/agent-run";
 
 /**
@@ -357,6 +359,7 @@ export function QueuedReview({
 
           {projectId !== null && offersHandoff(run) && <DirectorHandoff projectId={projectId} source={run} />}
           {projectId !== null && offersDraft(run) && <WriterDraft projectId={projectId} plan={run} />}
+          {projectId !== null && offersSaveAsDraft(run) && <SaveDraftControl key={run.id} projectId={projectId} run={run} />}
         </div>
       )}
     </section>
