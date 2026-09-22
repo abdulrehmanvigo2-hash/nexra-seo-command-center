@@ -1,6 +1,7 @@
 import { CRAWL_SOURCE, type GroundingReader } from "@/lib/agent-runs/ai-executor";
 import { readRunGrounding, type AgentRunReader } from "@/lib/agent-runs/run-grounding";
 import { getTaskType } from "@/lib/agent-runs/task-types";
+import { readDraftGrounding, type DraftGroundingReaders } from "@/lib/content/draft-grounding";
 import { readComparisonGrounding, type ComparisonGroundingReaders } from "@/lib/crawl/comparison-grounding";
 import { readCrawlGrounding, type CrawlGroundingReader } from "@/lib/crawl/grounding";
 import { readProjectGrounding, type ProjectGroundingReaders } from "@/lib/projects/grounding";
@@ -47,6 +48,8 @@ export type TaskGroundingReaders = {
   readonly comparison: ComparisonGroundingReaders;
   /** The project repository, crawl service and Search Console, for the records an evidence pack collects. */
   readonly evidencePack: EvidencePackReaders;
+  /** `content-draft` tasks: one completed plan by id, and the pack it was written over, re-read. */
+  readonly draft: DraftGroundingReaders;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -141,6 +144,25 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
           grounding: {
             text: result.grounding.text,
             summary: { ...result.grounding.summary },
+            source: result.grounding.source,
+          },
+        };
+      }
+
+      case "content-draft": {
+        // The input names a completed content plan; the project is the run's
+        // own, and the reader checks the plan against it before a word of
+        // the plan is formatted, then re-reads the records it was written over.
+        const planRunId = task.input.planRunId;
+        if (typeof planRunId !== "string") return { ok: false, reason: "plan-run-id-missing" };
+        const result = await readDraftGrounding(readers.draft, { planRunId, projectId: task.project.id });
+        if (!result.ok) return { ok: false, reason: result.reason };
+
+        return {
+          ok: true,
+          grounding: {
+            text: result.grounding.text,
+            summary: { ...result.grounding.summary, records: { ...result.grounding.summary.records } },
             source: result.grounding.source,
           },
         };

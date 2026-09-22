@@ -59,6 +59,24 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
     model: config.model,
     timeoutMs: AI_TIMEOUT_MS - 5_000,
   });
+  // The Research & Evidence pack reads the same records through the same
+  // services: the newest own-site crawl by exact host, the default Search
+  // Console window through the cached provider, and competitor crawls by
+  // exact host for availability only. Intake notes and earlier runs are not
+  // read at all. The Writer's draft re-reads the same pack, through the same
+  // readers, beside the completed plan it was written over.
+  const evidencePackReaders = {
+    getProjectById: (id: string) => projectRepository.getProjectById(id),
+    getProjectIntake: (id: string) => projectRepository.getProjectIntake(id),
+    listProjectCrawls: (projectId: string) => crawlService().listCrawls(projectId, 1),
+    listCompetitorCrawls: async (projectId: string, competitorHost: string) => {
+      const listed = await crawlService().listCompetitorCrawls(projectId, competitorHost, 1);
+      return listed.ok ? listed.crawls : [];
+    },
+    crawls: crawlService(),
+    searchConsole: (projectId: string) =>
+      getSearchConsoleReport(searchConsoleProvider(), projectId, INVENTORY_RANGE_ID),
+  };
   return {
     // The evidence a task may see is read here, from this product's own
     // records, and decided by the task type's declaration
@@ -101,23 +119,12 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
           },
           crawls: crawlService(),
         },
-        // The Research & Evidence pack reads the same records through the
-        // same services: the newest own-site crawl by exact host, the
-        // default Search Console window through the cached provider, and
-        // competitor crawls by exact host for availability only. Intake
-        // notes and earlier runs are not read at all.
-        evidencePack: {
-          getProjectById: (id) => projectRepository.getProjectById(id),
-          getProjectIntake: (id) => projectRepository.getProjectIntake(id),
-          listProjectCrawls: (projectId) => crawlService().listCrawls(projectId, 1),
-          listCompetitorCrawls: async (projectId, competitorHost) => {
-            const listed = await crawlService().listCompetitorCrawls(projectId, competitorHost, 1);
-            return listed.ok ? listed.crawls : [];
-          },
-          crawls: crawlService(),
-          searchConsole: (projectId) =>
-            getSearchConsoleReport(searchConsoleProvider(), projectId, INVENTORY_RANGE_ID),
-        },
+        evidencePack: evidencePackReaders,
+        // The Writer's section draft reads one completed plan from the same
+        // store the runtime keeps its own runs in — one record, by id,
+        // checked against the run's project before a word of it is
+        // formatted — and re-reads the pack that plan was written over.
+        draft: { runs: store, evidencePack: evidencePackReaders },
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

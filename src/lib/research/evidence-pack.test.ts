@@ -472,7 +472,7 @@ describe("the task type", () => {
     ];
     for (const agent of others) assert.equal(agentMayRun(definition!, agent), false, agent);
     assert.equal(agentMayRun(definition!, "research-evidence"), true);
-    assert.equal(TASK_TYPES.length, 12);
+    assert.equal(TASK_TYPES.length, 13);
   });
 
   test("accepts no input at all, and refuses every field, string and array", () => {

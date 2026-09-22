@@ -88,7 +88,7 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Twelve task types exist, all read-only: `project-review` (any agent),
+project. Thirteen task types exist, twelve read-only and one `draft`: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -99,8 +99,9 @@ project. Twelve task types exist, all read-only: `project-review` (any agent),
 `competitor-comparison-review` (Market & Competitor Intelligence, from the
 project's own recorded crawl and one recorded competitor's crawl) and
 `evidence-pack-review` (Research & Evidence, from the records this product
-holds for the project) and `content-plan-review` (Content Strategist, from
-the same records). The
+holds for the project), `content-plan-review` (Content Strategist, from
+the same records) and `section-draft` (Writer, from one completed content
+plan and the records it was written over). The
 three crawl reviews take one input, a crawl id, and are grounded in the same
 recorded crawl; the two Search Console reviews take one input, a range id, and
 are grounded in the project's own Search Console report; the priority review
@@ -113,7 +114,9 @@ review* below); the evidence pack takes no input and is grounded in the
 project's newest own-site crawl, its default Search Console window and the
 competitor crawls on record (see *Evidence pack* below); the content plan
 takes no input and reads the same records through the same reader (see
-*Content plan* below).
+*Content plan* below); the section draft takes one input, a plan run id,
+and is grounded in that plan quoted as a proposal beside the records re-read
+(see *Section draft* below).
 Input is parsed strictly per task type, bounded, and screened for credentials;
 unknown fields are refused. Adding a task type needs no migration: the run
 table checks the id's format, not a list.
@@ -373,7 +376,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review`, `competitor-comparison-review`, `evidence-pack-review` and `content-plan-review` are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review`, `competitor-comparison-review`, `evidence-pack-review`, `content-plan-review` and `section-draft` are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
@@ -638,6 +641,72 @@ review and the plan never pick up each other's runs. Nothing queues it
 automatically and nothing chains from the pack. A completed plan is not a
 hand-off source: it is strategy, not a finding to verify, and both the
 Director's reader and the panel refuse it as `source-task-not-allowed`.
+
+### Section draft
+
+`section-draft` is the Writer's first task, the first to declare the
+`draft` policy, and the second path by which one agent's output reaches
+another agent's prompt. The input names one completed content plan by run
+id and nothing else. The Writer-specific reader
+(`src/lib/content/draft-grounding.ts`) reads the plan by id and checks its
+project against the Writer's run before its task, state, provenance or text
+is looked at (`plan-run-not-found`, `plan-run-not-in-project`); then that it
+is a `content-plan-review` (`plan-task-not-allowed`, an allow-list of one
+kept apart from the Director's), completed (`plan-run-unfinished`,
+`plan-run-not-completed`), with a result (`plan-run-no-result`), executed by
+a model and not simulated (`plan-run-simulated`), grounded
+(`plan-run-not-grounded`), and carrying the evidence-pack crawl it was
+written over (`plan-provenance-missing`). Only then are the records read,
+through the evidence pack reader unchanged, with its refusals propagated;
+and if the newest own-site crawl is no longer the crawl the plan recorded,
+the task is refused as `plan-records-changed` rather than drafted over pages
+the plan never saw. Every refusal is decided before anything is formatted
+and before any provider is reached.
+
+The block is headed as content draft inputs and names the project host, the
+plan run and its crawl, and the section to draft: the first outline line of
+the plan whose tag names a record (`[crawl /path]` or `[search console
+<window>]`), chosen by the reader and quoted as data, or "none" with an
+instruction to return an evidence-needed result rather than invent a
+section. The plan follows under `=== CONTENT PLAN (MODEL-GENERATED PROPOSAL
+— NOT FACTUAL EVIDENCE …) ===`, quoted verbatim as one JSON string and cut
+with a disclosure if it must be; then the records block verbatim under `===
+RECORDED PROJECT EVIDENCE ===`; then a DRAFT LIMITS note stating that the
+plan is a proposal and not a source, that a tag in the plan is a claim to
+verify, that only the records establish facts, that unsupported items stay
+placeholders, and that the output is an unapproved draft that publishes and
+sends nothing. Intake notes, earlier Research & Evidence prose, competitor
+pages and fixtures never reach it.
+
+The Writer drafts exactly one section in five fixed sections — SECTION (the
+chosen outline line), DRAFT (prose, at most 90 words, no inline tags, no
+result, outcome, guarantee, audience, style or figure), CLAIMS USED (at most
+five lines, each ending with the record it rests on), PLACEHOLDERS (at most
+three `[NEEDS EVIDENCE: …]` lines), and STATUS ("Draft for operator review.
+Not published, not approved, not final.") — and ends on a fixed sentence
+that every claim is listed with its record and nothing was published or
+sent. Every section is bounded, with a cut order, so an answer at every
+bound stays under 1,500 characters with ordinary words and under the
+worker's 2,000-character ceiling, which is unchanged, with long ones. The
+stored evidence summary carries the plan run id and completion time, the
+plan's crawl id and the current one, the chosen section line and its
+position, the outline's tagged and needing-evidence counts, whether the
+plan was cut, the records' own summary, and the byte size — never plan text
+beyond that one line, and never a page.
+
+The control is nested beneath a completed content plan wherever the shared
+review control renders one: "Draft one section with Writer Agent", offered
+under any completed plan and refusing, with the reader's own reason, for a
+plan the Writer may not draft from; queue and Run Now stay two operator
+actions; the draft is restored by project, the Writer and the plan's id, so
+another plan's draft, the plan itself and the pack are never picked up.
+Nothing queues it when a plan completes. A completed draft is not a
+hand-off source and offers no further control; the Director's list and
+refusal rules are unchanged. The `draft` policy runs without an approval
+workflow because a draft changes nothing: publishing stays on the
+prohibited-actions list, and no draft storage, editing or publishing
+surface exists — a draft lives in the run's 2,000-character summary and is
+read in Run History.
 
 ### Action policy
 
@@ -965,8 +1034,11 @@ it. The deployment plan was not verifiable from this repository.
   control checks the project's own newest crawl once, when the panel loads;
   an own-site crawl run afterwards on the same page is not seen until the
   page is reloaded. The content plan reads the same records and has the
-  same limitation. The Writer has no runtime task yet, and the Content
-  Studio's briefs, coverage, linking and recommendations remain fixtures. The comparison control checks
+  same limitation. The Writer's section draft is one section per run, held
+  in the run's 2,000-character summary: no draft table, no version history,
+  no editing, no fact-check pass, no approval workflow and no publishing
+  exist, and the Content Studio's drafts, briefs, coverage, linking and
+  recommendations remain fixtures. The comparison control checks
   the project's own newest crawl once, when the panel loads: an own-site
   crawl run afterwards on the same page is not seen until the page is
   reloaded. A grounding refusal fails the attempt as `execution-failed`
