@@ -2028,3 +2028,65 @@ describe("the outbound link review — the Authority & Backlink agent", () => {
     assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
   });
 });
+
+import * as factCheck from "./review-request.ts";
+
+/**
+ * Stage 3: the fact-check review of one saved draft version, queued through
+ * the same control as every other review.
+ */
+describe("the draft fact-check review", () => {
+  const DRAFT = { id: "00000000-0000-4000-8000-0000000000d1", status: "drafting", currentVersion: 2 };
+  const V2 = { version: 2, factCheck: null };
+
+  test("names the Research & Evidence agent's draft-fact-check task and says what the check is and is not", () => {
+    const spec = factCheck.DRAFT_FACT_CHECK;
+    assert.equal(spec.taskType, "draft-fact-check");
+    assert.equal(spec.agentId, "research-evidence");
+    assert.equal(spec.agentName, "Research & Evidence");
+    assert.equal(spec.action, "Run fact-check with Research & Evidence Agent");
+    assert.match(spec.summary, /this exact version/);
+    assert.match(spec.summary, /never as evidence/);
+    assert.match(spec.summary, /Absence from the records is reported as absence, never as falsehood/);
+    assert.match(spec.summary, /approves nothing and publishes nothing; recording its result on the version is a separate click/);
+    assert.match(spec.groundedIn, /not a measurement, and not an approval/);
+  });
+
+  test("is offered for the current version of a live, unchecked draft, and refuses with a reason otherwise", () => {
+    assert.deepEqual(factCheck.factCheckRequest("nexra-agency", DRAFT, V2), {
+      ok: true,
+      payload: { projectId: "nexra-agency", agentId: "research-evidence", taskType: "draft-fact-check", input: { draftId: DRAFT.id, version: 2 } },
+    });
+    const refused = (request: ReturnType<typeof factCheck.factCheckRequest>) => (request.ok ? null : request.why);
+    assert.equal(refused(factCheck.factCheckRequest(null, DRAFT, V2)), "No project is selected.");
+    assert.equal(refused(factCheck.factCheckRequest("nexra-agency", null, V2)), "Save a draft first: there is nothing to check.");
+    assert.equal(refused(factCheck.factCheckRequest("nexra-agency", { ...DRAFT, status: "archived" }, V2)), "This draft is archived, so it is not checked.");
+    assert.equal(refused(factCheck.factCheckRequest("nexra-agency", DRAFT, { version: 2, factCheck: { status: "passed" } })), "This version already carries a fact-check; a version is checked once.");
+    assert.equal(refused(factCheck.factCheckRequest("nexra-agency", DRAFT, { version: 1, factCheck: null })), "Only the current version can be checked; version 2 is current.");
+  });
+
+  test("a stored fact-check run is restored for exactly its draft and version, and its provenance line names the version checked", () => {
+    const run = {
+      ...RUN,
+      agentId: "research-evidence",
+      taskType: "draft-fact-check",
+      input: { draftId: DRAFT.id, version: 2 },
+      status: "completed",
+      resultSummary: "SUPPORTED\nnone",
+      resultMetadata: { simulated: false, grounded: true, evidence: { source: "draft-version", draftId: DRAFT.id, version: 2, crawlId: "8f1c0d2e-0000-4000-8000-000000000001" } },
+    } as unknown as AgentRun;
+    assert.equal(factCheck.latestReviewRun([run], factCheck.DRAFT_FACT_CHECK, { draftId: DRAFT.id, version: 2 }), run);
+    assert.equal(factCheck.latestReviewRun([run], factCheck.DRAFT_FACT_CHECK, { draftId: DRAFT.id, version: 1 }), null, "a check of version 2 was restored for version 1");
+    assert.equal(factCheck.latestReviewRun([run], factCheck.DRAFT_FACT_CHECK, { draftId: "00000000-0000-4000-8000-0000000000d2", version: 2 }), null);
+    assert.equal(
+      factCheck.evidenceDescription(run.resultMetadata!),
+      `one saved draft version (draft ${DRAFT.id}, version 2, the thing under check) and the records this product holds, re-read: crawl 8f1c0d2e-0000-4000-8000-000000000001 (a check for operator review, not a measurement, and not an approval)`,
+    );
+    const provenance = factCheck.outputProvenance(run, factCheck.DRAFT_FACT_CHECK.groundedIn);
+    assert.match(provenance?.text ?? "", /^Model output, grounded in one saved draft version \(the thing under check\)/);
+    assert.match(provenance?.text ?? "", /Advice, not measurement\.$/);
+    // A completed fact-check is never itself a hand-off or draft source.
+    assert.equal(factCheck.offersHandoff(run), false);
+    assert.equal(factCheck.offersDraft(run), false);
+  });
+});

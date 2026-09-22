@@ -7,8 +7,10 @@
  */
 
 import type {
+  ContentDraft,
   ContentDraftVersion,
   CreateDraftFromWriterInput,
+  DraftFactCheck,
   DraftWithCurrentVersion,
   SaveVersionInput,
 } from "@/types/content-draft";
@@ -26,6 +28,19 @@ export type SaveVersionOutcome =
   | { readonly status: "not-found" }
   /** An archived draft is not edited. */
   | { readonly status: "archived" };
+
+export type RecordFactCheckOutcome =
+  | { readonly status: "recorded"; readonly version: ContentDraftVersion }
+  /** The version already carries a fact-check. Nothing was written. */
+  | { readonly status: "already-checked"; readonly version: ContentDraftVersion }
+  /** No such version. */
+  | { readonly status: "not-found" };
+
+export type MarkFactCheckedOutcome =
+  /** The parent moved from `drafting` to `fact-checked`, because the checked version was still current. */
+  | { readonly status: "updated"; readonly draft: ContentDraft }
+  /** The checked version is no longer current, or the parent was not in `drafting`. Nothing was written. */
+  | { readonly status: "unchanged" };
 
 export type ContentDraftStore = {
   /** Whether this store keeps drafts. The fixture data source does not. */
@@ -50,6 +65,28 @@ export type ContentDraftStore = {
    * one the operator started from. Never touches an earlier version.
    */
   saveVersion(input: SaveVersionInput): Promise<SaveVersionOutcome>;
+  /** One exact version by draft id and number, or null. */
+  getVersion(draftId: string, version: number): Promise<ContentDraftVersion | null>;
+  /**
+   * Writes the fact-check onto one exact version, only while that version's
+   * `factCheck` is still null: a version is checked once, and its text and
+   * every other column are untouched.
+   */
+  recordFactCheck(input: {
+    readonly draftId: string;
+    readonly version: number;
+    readonly factCheck: DraftFactCheck;
+  }): Promise<RecordFactCheckOutcome>;
+  /**
+   * Moves the parent from `drafting` to `fact-checked`, only if the checked
+   * version is still its current version. One conditional statement: a
+   * draft that advanced meanwhile is left exactly as it is.
+   */
+  markFactChecked(input: {
+    readonly projectId: string;
+    readonly draftId: string;
+    readonly version: number;
+  }): Promise<MarkFactCheckedOutcome>;
 };
 
 /**
@@ -76,5 +113,14 @@ export const unavailableDraftStore: ContentDraftStore = {
   },
   async saveVersion() {
     return { status: "not-found" };
+  },
+  async getVersion() {
+    return null;
+  },
+  async recordFactCheck() {
+    return { status: "not-found" };
+  },
+  async markFactChecked() {
+    return { status: "unchanged" };
   },
 };

@@ -2,18 +2,24 @@
 
 import { useEffect, useId, useState } from "react";
 import {
+  recordDraftFactCheck,
   saveDraftVersion,
   saveWriterRunAsDraft,
+  type RecordDraftFactCheckActionResult,
   type SaveDraftVersionActionResult,
   type SaveWriterRunAsDraftResult,
 } from "@/app/(app)/projects/draft-actions";
+import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
 import { isUnchanged, normaliseVersionText, refusalMessage } from "@/lib/content/drafts/edit-rules";
+import { offersRecordFactCheck } from "@/lib/content/drafts/fact-check-eligibility";
+import { readFactCheck } from "@/lib/content/drafts/parse-fact-check-output";
+import { DRAFT_FACT_CHECK, factCheckRequest } from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { AgentRun } from "@/types/agent-run";
-import type { ContentDraftVersion, DraftHistory } from "@/types/content-draft";
+import type { ContentDraft, ContentDraftVersion, DraftFactCheck, DraftHistory, FactCheckItem } from "@/types/content-draft";
 
 /**
  * The operator control that turns one completed Writer run into a saved
@@ -27,9 +33,13 @@ import type { ContentDraftVersion, DraftHistory } from "@/types/content-draft";
  * rather than changing any earlier one — version 1 is always the Writer's
  * text, selectable from the history and read-only there. The server decides
  * every save from its own records: the text bounds, the draft's ownership,
- * and whether the version the person started from is still current. There
- * is no fact-check, approve, publish or delete control, and an edited
- * version says plainly that its claims are not verified.
+ * and whether the version the person started from is still current. A
+ * fact-check is one more explicit pair of clicks: the Research & Evidence
+ * run is queued and started through the shared review control, and its
+ * result is recorded on the exact version it checked by a click of its own,
+ * which the server validates against the run's own metadata. There is no
+ * approve, publish or delete control, and an edited version says plainly
+ * that its claims are not verified until a check is recorded for it.
  */
 
 type State =
@@ -338,6 +348,13 @@ function DraftPanel({
             <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Body</dt>
             <dd className="whitespace-pre-wrap text-fg-muted">{viewing.body}</dd>
           </div>
+          <FactCheckSection
+            key={`${draft.id}:${viewing.version}`}
+            projectId={projectId}
+            draft={draft}
+            version={viewing}
+            onHistory={onHistory}
+          />
           {viewing.origin === "writer" ? (
             <>
               <ListRow label="Claims used" items={viewing.claims} />
@@ -363,10 +380,189 @@ function DraftPanel({
       )}
 
       <p className="text-xs text-fg-subtle">
-        Status: {draft.status}. Every save is a new version; nothing earlier is changed. Fact-checking, approval and
-        publishing are not available yet, and this draft is not published anywhere.
+        Status: {draft.status}. Every save is a new version; nothing earlier is changed. A fact-check belongs to the
+        exact version it was run on. Approval and publishing are not available yet, and this draft is not published
+        anywhere.
       </p>
     </section>
+  );
+}
+
+const FACT_CHECK_TONE: Readonly<Record<DraftFactCheck["status"], { readonly tone: "positive" | "warning" | "critical"; readonly label: string }>> = {
+  passed: { tone: "positive", label: "Passed" },
+  "needs-review": { tone: "warning", label: "Needs review" },
+  failed: { tone: "critical", label: "Failed" },
+};
+
+const RECORD_FAILURE: Readonly<Record<Exclude<RecordDraftFactCheckActionResult, { ok: true } | { reason: "ineligible" }>["reason"], string>> = {
+  unauthorized: "Your session has ended. Reload the page to sign in again.",
+  "rate-limited": "Too many requests. Wait a moment and try again.",
+  invalid: "This result cannot be recorded: its identifiers are not what the server expects.",
+  unavailable: "Drafts are not persisted on this deployment, so nothing can be recorded.",
+  "not-found": "This draft no longer exists on the server, or belongs to another project.",
+  "version-not-found": "This version no longer exists on the server.",
+  "already-checked": "This version already carries a fact-check from another run; a version is checked once.",
+  "run-not-found": "This run no longer exists on the server.",
+  failed: "The result could not be recorded. Nothing is known to have been written.",
+};
+
+/**
+ * One version's fact-check: the recorded result where there is one, and
+ * otherwise, for the current version of a live draft, the control that
+ * queues and starts a check and the click that records its result.
+ *
+ * Keyed by draft and version by the caller, so the queued-review state and
+ * the record note belong to exactly one version. Nothing here runs or
+ * records on its own: the run is queued and started by the shared control's
+ * own clicks, and recording is the button below, which the server validates
+ * against the run's own metadata before writing anything.
+ */
+function FactCheckSection({
+  projectId,
+  draft,
+  version,
+  onHistory,
+}: {
+  projectId: string;
+  draft: ContentDraft;
+  version: ContentDraftVersion;
+  onHistory: (history: DraftHistory, note: string) => void;
+}) {
+  const stored = readFactCheck(version.factCheck);
+  const request = factCheckRequest(projectId, draft, version);
+  const check = useQueuedReview(request, `${draft.id}:${version.version}`, DRAFT_FACT_CHECK, projectId);
+  const [recording, setRecording] = useState(false);
+  const [recordNote, setRecordNote] = useState<string | null>(null);
+  const run = check.state.status === "queued" ? check.state.run : null;
+  const recordable = run !== null && offersRecordFactCheck(run, draft.id, version.version);
+
+  async function record() {
+    if (recording || run === null || !recordable) return;
+    setRecording(true);
+    setRecordNote(null);
+    try {
+      const result = await recordDraftFactCheck(projectId, draft.id, version.version, run.id);
+      if (result.ok) {
+        onHistory(
+          result.saved,
+          result.recorded
+            ? `Fact-check recorded on version ${version.version}${result.draftStatusAdvanced ? "; the draft is now fact-checked" : ""}`
+            : `Version ${version.version} already carried this run's result`,
+        );
+      } else if (result.reason === "ineligible") {
+        setRecordNote(
+          result.refusal === "version-mismatch"
+            ? "This run checked a different version, so its result cannot be recorded here."
+            : result.refusal === "output-malformed"
+              ? "This run's answer is not in the fact-check's fixed form, so nothing was recorded."
+              : "This run is not a completed, grounded fact-check of this version, so nothing was recorded.",
+        );
+      } else {
+        setRecordNote(RECORD_FAILURE[result.reason]);
+      }
+    } catch {
+      setRecordNote(RECORD_FAILURE.failed);
+    } finally {
+      setRecording(false);
+    }
+  }
+
+  if (stored !== null) return <FactCheckResult check={stored} />;
+
+  const isCurrent = version.version === draft.currentVersion;
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Fact-check</dt>
+      <dd className="space-y-2 text-fg-muted">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="neutral">Not fact-checked</Badge>
+          <span className="text-xs text-fg-subtle">
+            {isCurrent
+              ? "No check has been recorded for this version. A check reads this exact text against the records this product holds."
+              : `No check was recorded for this version. Only the current version (${draft.currentVersion}) can be checked.`}
+          </span>
+        </div>
+        {isCurrent && draft.status !== "archived" && (
+          <>
+            <QueuedReview review={DRAFT_FACT_CHECK} nested {...check} />
+            {run !== null && run.status === "completed" && (
+              <div className="space-y-1 border-l-2 border-border pl-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="primary" icon="check" onClick={() => void record()} disabled={!recordable || recording}>
+                    {recording ? "Recording…" : `Record result on version ${version.version}`}
+                  </Button>
+                  <span className="text-xs text-fg-subtle">
+                    {recordable
+                      ? "Writes this run's result onto this version, once. The text is not changed, and nothing is approved or published."
+                      : "This run's result cannot be recorded here: it is simulated, ungrounded, or checked another version."}
+                  </span>
+                </div>
+                {recordNote && (
+                  <p className="text-xs text-critical" role="status">
+                    {recordNote}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function FactCheckResult({ check }: { check: DraftFactCheck }) {
+  const status = FACT_CHECK_TONE[check.status];
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Fact-check</dt>
+      <dd className="space-y-2 text-fg-muted">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={status.tone} dot>
+            {status.label}
+          </Badge>
+          <span className="text-xs text-fg-subtle">
+            Version {check.version} checked {formatFullDate(check.checkedAt)}, {formatTimeUtc(check.checkedAt)} by run{" "}
+            {check.checkedByRunId} against crawl {check.crawlId}
+            {check.searchWindow ? ` and Search Console ${check.searchWindow}` : ""} · recorded {formatFullDate(check.recordedAt)},{" "}
+            {formatTimeUtc(check.recordedAt)}
+          </span>
+        </div>
+        <p className="text-sm">{check.summary}</p>
+        <FactCheckGroup label="Supported" items={check.supported} />
+        <FactCheckGroup label="Partly supported" items={check.partial} />
+        <FactCheckGroup label="Unsupported — no record holds this" items={check.unsupported} />
+        <FactCheckGroup label="Unverifiable from these records" items={check.unverifiable} />
+        <FactCheckGroup label="Editorial — no factual claim" items={check.editorial} />
+        <p className="text-xs text-fg-subtle">
+          A check against the records this product holds, for this exact version. Unsupported means no record holds
+          the statement, not that it is false. This is not an approval, and nothing was published.
+        </p>
+      </dd>
+    </div>
+  );
+}
+
+function FactCheckGroup({ label, items }: { label: string; items: readonly FactCheckItem[] }) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-fg">
+        {label} ({items.length})
+      </p>
+      {items.length === 0 ? (
+        <p className="text-xs text-fg-subtle">none</p>
+      ) : (
+        <ul className="list-disc space-y-0.5 pl-5 text-sm">
+          {items.map((item, index) => (
+            <li key={`${index}-${item.text}`}>
+              &ldquo;{item.text}&rdquo;
+              {item.note ? ` — ${item.note}` : ""}
+              {item.evidence ? <span className="text-xs text-fg-subtle"> [{item.evidence}]</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

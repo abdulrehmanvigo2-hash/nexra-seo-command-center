@@ -189,6 +189,13 @@ and writes nothing. It never updates a version row, so the guard triggers
 above still hold: version 1 is the Writer's text for ever. Apply it after
 the two draft migrations, then `NOTIFY pgrst, 'reload schema';`.
 
+A version's `fact_check` is written by the application once, in one
+`update … where fact_check is null` statement carrying that column alone,
+with the result of a Research & Evidence run bound to that exact version;
+the parent's `status` moves to `fact-checked` in one conditional update
+(`where current_version = <checked> and status = 'drafting'`). Both use the
+grants above; the fact-check milestone added no migration.
+
 `20260922130100_content_draft_versions_guard_delete.sql` closes the gap the
 first guard left: it refuses every DELETE and TRUNCATE on
 `nexra_content_draft_versions`. The parent's `on delete cascade` is a

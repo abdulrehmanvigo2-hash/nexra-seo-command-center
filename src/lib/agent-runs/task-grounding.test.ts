@@ -9,6 +9,8 @@ import { COMPARISON_SIDE_LIMITS, formatComparisonGrounding, type ComparisonGroun
 import { formatCrawlGrounding } from "../crawl/grounding.ts";
 import { formatProjectGrounding, type ProjectGroundingReaders } from "../projects/grounding.ts";
 import { formatDraftGrounding, type DraftGroundingReaders } from "../content/draft-grounding.ts";
+import { formatFactCheckGrounding, type FactCheckGroundingReaders } from "../content/drafts/fact-check-grounding.ts";
+import type { ContentDraftVersion, DraftWithCurrentVersion } from "../../types/content-draft.ts";
 import { formatLinkGrounding, type LinkGroundingReaders } from "../authority/link-grounding.ts";
 import type { CrawlLink } from "../../types/crawl.ts";
 import { EVIDENCE_PACK_CRAWL_LIMITS, formatEvidencePackGrounding, type EvidencePackReaders } from "../research/evidence-pack.ts";
@@ -432,7 +434,73 @@ function draftStore(options: { runs?: readonly AgentRun[]; pack?: ReturnType<typ
   return { reader, runReads: () => runReads, packCalls: pack.calls, packDetailIds: pack.detailIds };
 }
 
-/** All seven readers, each counting. A test that expects one untouched checks its count. */
+/** One saved draft with two versions, the second current, over the fixture project. */
+const DRAFT: DraftWithCurrentVersion["draft"] = {
+  id: "00000000-0000-4000-8000-0000000000d1",
+  projectId: "nexra-agency",
+  sourceWriterRunId: "11111111-0000-4000-8000-000000000070",
+  sourcePlanRunId: "11111111-0000-4000-8000-000000000060",
+  sectionIndex: 1,
+  sectionLabel: "What the agency does, in one paragraph [crawl /services]",
+  status: "drafting",
+  currentVersion: 2,
+  approvedVersion: null,
+  approvedBy: null,
+  approvedAt: null,
+  publishedVersion: null,
+  publishedAt: null,
+  remoteContentId: null,
+  remoteTarget: null,
+  createdBy: "00000000-0000-4000-8000-00000000000a",
+  createdAt: "2026-09-22T12:00:00.000Z",
+  updatedAt: "2026-09-22T12:30:00.000Z",
+};
+
+const VERSION_1: ContentDraftVersion = {
+  id: "00000000-0000-4000-8000-0000000000e1",
+  draftId: DRAFT.id,
+  version: 1,
+  origin: "writer",
+  title: "What the agency does, in one paragraph [crawl /services]",
+  body: "Nexra Agency's services page is titled Services.",
+  claims: ["The services page is titled Services. [crawl /services]"],
+  placeholders: [],
+  factCheck: null,
+  createdBy: "00000000-0000-4000-8000-00000000000a",
+  createdAt: "2026-09-22T12:00:00.000Z",
+};
+
+const VERSION_2: ContentDraftVersion = {
+  ...VERSION_1,
+  id: "00000000-0000-4000-8000-0000000000e2",
+  version: 2,
+  origin: "operator",
+  body: "Nexra Agency's services page is titled Services. Clients love it.",
+  claims: [],
+  createdAt: "2026-09-22T12:30:00.000Z",
+};
+
+function factCheckStore(options: { pack?: ReturnType<typeof evidencePackStore>; drafts?: readonly DraftWithCurrentVersion[]; versions?: readonly ContentDraftVersion[] } = {}) {
+  const { pack = evidencePackStore(), drafts = [{ draft: DRAFT, version: VERSION_2 }], versions = [VERSION_1, VERSION_2] } = options;
+  let draftReads = 0;
+  let versionReads = 0;
+  const reader: FactCheckGroundingReaders = {
+    drafts: {
+      async getByProjectAndId(projectId, draftId) {
+        draftReads += 1;
+        return drafts.find((entry) => entry.draft.projectId === projectId && entry.draft.id === draftId) ?? null;
+      },
+      async getVersion(draftId, version) {
+        versionReads += 1;
+        return versions.find((entry) => entry.draftId === draftId && entry.version === version) ?? null;
+      },
+    },
+    evidencePack: pack.reader,
+  };
+  return { reader, draftReads: () => draftReads, versionReads: () => versionReads, packCalls: pack.calls, packDetailIds: pack.detailIds };
+}
+
+/** All eight readers, each counting. A test that expects one untouched checks its count. */
 function readers(
   crawls: ReturnType<typeof crawlStore> = crawlStore(),
   console: ReturnType<typeof searchConsole> = searchConsole(),
@@ -442,6 +510,7 @@ function readers(
   evidencePack: ReturnType<typeof evidencePackStore> = evidencePackStore(),
   draft: ReturnType<typeof draftStore> = draftStore(),
   links: ReturnType<typeof linkStore> = linkStore(),
+  factCheck: ReturnType<typeof factCheckStore> = factCheckStore(),
 ): TaskGroundingReaders & {
   crawls: TaskGroundingReaders["crawls"];
   store: typeof crawls;
@@ -458,6 +527,10 @@ function readers(
   draftPackDetailIds: string[];
   linkCrawlReads: () => number;
   linkListCalls: () => number;
+  factCheckDraftReads: () => number;
+  factCheckVersionReads: () => number;
+  factCheckPackCalls: () => number;
+  factCheckPackDetailIds: string[];
 } {
   return {
     crawls: crawls.reader,
@@ -468,6 +541,11 @@ function readers(
     evidencePack: evidencePack.reader,
     draft: draft.reader,
     links: links.reader,
+    factCheck: factCheck.reader,
+    factCheckDraftReads: factCheck.draftReads,
+    factCheckVersionReads: factCheck.versionReads,
+    factCheckPackCalls: factCheck.packCalls,
+    factCheckPackDetailIds: factCheck.packDetailIds,
     linkCrawlReads: links.crawlReads,
     linkListCalls: links.listCalls,
     packCalls: evidencePack.calls,
@@ -2044,5 +2122,101 @@ describe("the Authority agent's prompt", () => {
       assert.doesNotMatch(seen.system ?? "", /outbound link evidence/, task.taskType);
       assert.equal(links.listCalls(), 0, task.taskType);
     }
+  });
+});
+
+const factCheckTask: ExecutionTask = {
+  ...onPageTask,
+  agent: { id: "research-evidence", name: "Research & Evidence" },
+  taskType: "draft-fact-check",
+  input: { draftId: DRAFT.id, version: 2 },
+};
+
+describe("the Research & Evidence fact-check through the dispatch", () => {
+  test("draft-fact-check reads the draft and the exact version through the fact-check readers and the records through the same pack readers, and none of the other seven", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)(factCheckTask);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(all.factCheckDraftReads(), 1);
+    assert.equal(all.factCheckVersionReads(), 1);
+    assert.ok(all.factCheckPackCalls() >= 6);
+    assert.deepEqual(all.factCheckPackDetailIds, [CRAWL.id], "a crawl other than the project's own was read in detail");
+    assert.equal(all.store.reads(), 0);
+    assert.equal(all.console.calls.length, 0);
+    assert.equal(all.runReads(), 0, "a run reader was used for a fact-check");
+    assert.equal(all.draftRunReads(), 0, "the Writer's plan reader was used for a fact-check");
+    assert.equal(all.projectCalls(), 0);
+    assert.equal(all.comparisonCalls(), 0);
+    assert.equal(all.packCalls(), 0, "the pack task's own reader instance was used for a fact-check");
+    assert.equal(all.linkCrawlReads(), 0);
+    assert.equal(result.grounding?.summary.source, "draft-version");
+    assert.equal(result.grounding?.summary.draftId, DRAFT.id);
+    assert.equal(result.grounding?.summary.version, 2);
+    assert.equal(result.grounding?.summary.versionOrigin, "operator");
+    assert.equal(result.grounding?.summary.wasCurrent, true);
+    assert.equal(result.grounding?.summary.crawlId, CRAWL.id);
+    assert.deepEqual(result.grounding?.summary.recordPaths, ["/services"], "only the fetched page is a record a tag may name");
+    assert.equal(result.grounding?.source?.label, "fact-check inputs");
+    assert.equal(result.grounding?.text, formatFactCheckGrounding({ draft: DRAFT, version: VERSION_2 }, VERSION_2, formatEvidencePackGrounding({
+      projectId: PROJECT.id,
+      projectHost: "nexraagency.com",
+      crawl: CRAWL,
+      crawlGrounding: formatCrawlGrounding(CRAWL, PAGES, EVIDENCE_PACK_CRAWL_LIMITS),
+      searchConsole: REPORT,
+      competitors: [{ host: "rival.example", status: RIVAL_CRAWL.status, pagesFetched: RIVAL_CRAWL.pagesFetched, notEstablished: false }],
+    })).text);
+  });
+
+  test("the version named is the version read: version 1 is checked as version 1 even though version 2 is current", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)({ ...factCheckTask, input: { draftId: DRAFT.id, version: 1 } });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.grounding?.summary.version, 1);
+    assert.equal(result.grounding?.summary.versionOrigin, "writer");
+    assert.equal(result.grounding?.summary.wasCurrent, false);
+    assert.ok(result.grounding?.text.includes(JSON.stringify({ title: VERSION_1.title, body: VERSION_1.body })));
+    assert.ok(!result.grounding?.text.includes("Clients love it."), "version 2's text reached a check of version 1");
+  });
+
+  test("a missing, non-string or non-integer input is refused before anything is read", async () => {
+    for (const input of [{}, { draftId: DRAFT.id }, { version: 2 }, { draftId: 42, version: 2 }, { draftId: DRAFT.id, version: "2" }, { draftId: DRAFT.id, version: 0 }, { draftId: DRAFT.id, version: 1.5 }]) {
+      const all = readers();
+      const result = await createTaskGrounding(all)({ ...factCheckTask, input: input as ExecutionTask["input"] });
+      assert.equal(result.ok, false, JSON.stringify(input));
+      assert.match(result.ok ? "" : result.reason, /^(draft-id-missing|version-missing)$/);
+      assert.equal(all.factCheckDraftReads(), 0);
+      assert.equal(all.factCheckPackCalls(), 0);
+    }
+  });
+
+  test("another project's draft, a missing version, and a version already checked are refused before the records are read", async () => {
+    const other = readers();
+    const foreign = await createTaskGrounding(other)({ ...factCheckTask, project: { id: "halcyon-fintech", name: "Halcyon", domain: "halcyon.example" } });
+    assert.deepEqual(foreign, { ok: false, reason: "draft-not-found" });
+    assert.equal(other.factCheckVersionReads(), 0);
+    assert.equal(other.factCheckPackCalls(), 0);
+
+    const missing = readers();
+    assert.deepEqual(await createTaskGrounding(missing)({ ...factCheckTask, input: { draftId: DRAFT.id, version: 3 } }), { ok: false, reason: "version-not-found" });
+    assert.equal(missing.factCheckPackCalls(), 0);
+
+    const checked = readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, factCheckStore({
+      versions: [VERSION_1, { ...VERSION_2, factCheck: { status: "passed" } }],
+    }));
+    assert.deepEqual(await createTaskGrounding(checked)(factCheckTask), { ok: false, reason: "version-already-checked" });
+    assert.equal(checked.factCheckPackCalls(), 0);
+  });
+
+  test("the executor hands the model the text under check as data, the fact-check instructions, and a system prompt that names the inputs", async () => {
+    const { seen, provider } = capturingProvider();
+    await createAiExecutor(provider, createTaskGrounding(readers())).execute(factCheckTask, new AbortController().signal);
+    assert.match(seen.prompt ?? "", /=== TEXT UNDER CHECK \(AN UNAPPROVED DRAFT VERSION — NOT EVIDENCE/);
+    assert.match(seen.prompt ?? "", /Check the TEXT UNDER CHECK against RECORDED PROJECT EVIDENCE/);
+    assert.match(seen.prompt ?? "", /FACT-CHECK LIMITS/);
+    assert.match(seen.system ?? "", /fact-check inputs/);
+    assert.doesNotMatch(seen.prompt ?? "", /Draft exactly one section|Plan exactly one page/);
   });
 });

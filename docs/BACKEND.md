@@ -890,6 +890,67 @@ archived. The store's Stage 1 compensation, which removes a parent whose
 version 1 insert failed, deletes a parent with no versions and is
 unaffected. `fact_check` remains the one writable column of a version.
 
+### Fact-check of one version
+
+An operator can have one exact version checked against the records this
+product holds, and record the result on that version. The check is an
+agent run: the Research & Evidence agent's second task, `draft-fact-check`
+(`src/lib/agent-runs/task-types.ts`), read-only, evidence kind
+`draft-version`, input `{ draftId, version }`. It is queued and started
+through the same review control and the same agent-run routes as every
+other review, nested beneath the version on the Draft panel, and offered
+only for the current version of a live draft that carries no result yet.
+Nothing queues it on its own, and nothing runs on page load.
+
+The reader (`src/lib/content/drafts/fact-check-grounding.ts`) reads the
+draft by project and id together, so another project's draft is not found;
+then the exact version by number, never "the current one"; refuses an
+archived draft and a version that already carries a result; and re-reads
+the evidence pack through the same reader the Writer drafted over. The
+block quotes the version's title and body as one JSON string under a
+heading that names it the thing under check and never a source, beside the
+records, and names the fetched paths and the Search Console window a tag
+may cite. The run's metadata records the draft id, the version number, the
+crawl id, the window and the fetched paths. The agent answers under six
+fixed headings — SUPPORTED, PARTIAL, UNSUPPORTED, UNVERIFIABLE, EDITORIAL,
+SUMMARY — one quoted sentence per line, every supported line ending with
+the record it rests on, at most twelve statements checked, and is told in
+fixed words that absence from the records is not falsehood and that the
+check approves nothing.
+
+Recording the result is a separate, explicit click and a Server Action
+(`recordDraftFactCheck`, in the draft actions file): operator confirmed,
+every argument `unknown`, 30 recordings per ten minutes per operator. The
+service reads the draft by project and id, the version by number, and the
+run by id; refuses a run whose own metadata names any other draft or
+version (`version-mismatch`), a simulated, ungrounded, unfinished or
+malformed run, and a version that already carries another run's result;
+then builds the stored record deterministically
+(`src/lib/content/drafts/parse-fact-check-output.ts`): every tag is
+checked against the paths and window the run's evidence carried, a
+supported or partial line whose tag names nothing there is moved to
+unverifiable, and the overall status is derived from the groups — `failed`
+when anything is unsupported, `passed` only when at least one statement is
+supported and nothing is partial, unsupported or unverifiable, `needs-review`
+otherwise — never read from the model's own words. The record is written
+onto the version's `fact_check` in one statement conditional on the column
+still being null, so a version is checked once, its text and every other
+column untouched, and the update guard has nothing to refuse. The parent
+moves from `drafting` to `fact-checked` in one further conditional
+statement, only when the check passed and the checked version is still the
+draft's current version at that moment; a version 3 saved meanwhile leaves
+the parent as it is and version 2 keeps its historical result. Neither
+statement approves or publishes anything, and both use grants the Stage 1
+migration already gave; no migration was needed.
+
+The panel shows every version's fact-check state: "Not fact-checked" with
+the control for an unchecked current version, "Not fact-checked" and only a
+note for an unchecked historical one, and for a recorded result the status,
+the version checked, the run, the crawl and window, the timestamps, the
+summary, the five groups with their evidence references, and a fixed
+sentence that unsupported means no record holds the statement and that
+nothing was approved or published. There is no approve or publish control.
+
 The Server Action (`saveDraftVersion`, same file as the save action) takes
 every argument as `unknown`, confirms the operator with the Auth server,
 counts 60 saves per ten minutes per operator, and hands the request to the
@@ -1251,9 +1312,11 @@ it. The deployment plan was not verifiable from this repository.
   no backlink data provider, verified inbound link, referring-domain,
   anchor-text or placement record exists, none is derived from outbound
   edges, and the Backlinks & Authority screen remains fixtures. A saved
-  content draft is version 1 only: no editing, fact-check, approval or
-  publishing exists, the Content Studio does not show it, and a fixture
-  data source cannot keep it. A crawl
+  content draft can be edited into immutable versions and one exact version
+  fact-checked against the records this product holds; no approval or
+  publishing exists, a fact-check is a check and never an approval, the
+  Content Studio does not show drafts, and a fixture data source cannot
+  keep them. A crawl
   completed before `internal_links_out` was derived from recorded edges
   keeps the raw anchor count it stored, which reads high; no backfill was
   performed, and a fresh crawl records the corrected count. The comparison control checks

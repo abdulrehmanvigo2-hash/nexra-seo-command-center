@@ -184,6 +184,12 @@ class FakeQuery implements PromiseLike<Result<Row[] | null>> {
     return this;
   }
 
+  /** `is(column, null)`: the one form the store uses. */
+  is(column: string, value: null): this {
+    this.filters.push({ column, value });
+    return this;
+  }
+
   order(column: string, options?: { ascending?: boolean }): this {
     this.orderings.push({ column, ascending: options?.ascending !== false });
     return this;
@@ -231,7 +237,9 @@ class FakeQuery implements PromiseLike<Result<Row[] | null>> {
         if (frozen) return { data: null, error: postgrestError("23514", VERSION_IMMUTABLE) };
       }
       for (const row of targets) Object.assign(row, patch);
-      return { data: targets, error: null };
+      // The parent's updated_at trigger.
+      if (this.table === "nexra_content_drafts") for (const row of targets) row.updated_at = "2026-09-22T13:00:00.000Z";
+      return { data: targets.map((row) => ({ ...row })), error: null };
     }
 
     if (this.mode === "delete") {
