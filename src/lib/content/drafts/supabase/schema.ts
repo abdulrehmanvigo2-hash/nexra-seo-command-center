@@ -87,7 +87,19 @@ export type ContentDraftsDatabase = {
       };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      nexra_content_draft_save_version: {
+        Args: {
+          p_draft_id: string;
+          p_project_id: string;
+          p_expected_version: number;
+          p_title: string;
+          p_body: string;
+          p_created_by: string;
+        };
+        Returns: unknown;
+      };
+    };
   };
 };
 
@@ -181,4 +193,41 @@ export function firstVersionInsert(draftId: string, input: CreateDraftFromWriter
     placeholders: [...input.placeholders],
     created_by: input.createdBy,
   };
+}
+
+/**
+ * What `nexra_content_draft_save_version` answers, checked field by field.
+ * The function is this product's, but its answer still crosses a wire, and
+ * a shape it did not promise is an error here rather than a guess.
+ */
+export type SaveVersionRpcOutcome =
+  | { readonly outcome: "created"; readonly draft: ContentDraft; readonly version: ContentDraftVersion }
+  | { readonly outcome: "stale"; readonly currentVersion: number }
+  | { readonly outcome: "not-found" }
+  | { readonly outcome: "archived" };
+
+export function saveVersionResultToOutcome(data: unknown): SaveVersionRpcOutcome {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    throw new ContentDraftRowError("save_version answered with something other than an object.");
+  }
+  const result = data as Record<string, unknown>;
+  switch (result.outcome) {
+    case "created":
+      return {
+        outcome: "created",
+        draft: draftRowToDraft(result.draft as ContentDraftRow),
+        version: versionRowToVersion(result.version as ContentDraftVersionRow),
+      };
+    case "stale": {
+      const current = result.current_version;
+      if (typeof current !== "number") throw new ContentDraftRowError("save_version reported stale without the current version.");
+      return { outcome: "stale", currentVersion: current };
+    }
+    case "not-found":
+      return { outcome: "not-found" };
+    case "archived":
+      return { outcome: "archived" };
+    default:
+      throw new ContentDraftRowError(`save_version answered "${String(result.outcome)}", which this product does not recognise.`);
+  }
 }

@@ -1,34 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { saveWriterRunAsDraft, type SaveWriterRunAsDraftResult } from "@/app/(app)/projects/draft-actions";
+import { useEffect, useId, useState } from "react";
+import {
+  saveDraftVersion,
+  saveWriterRunAsDraft,
+  type SaveDraftVersionActionResult,
+  type SaveWriterRunAsDraftResult,
+} from "@/app/(app)/projects/draft-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
+import { isUnchanged, normaliseVersionText, refusalMessage } from "@/lib/content/drafts/edit-rules";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { AgentRun } from "@/types/agent-run";
-import type { DraftWithCurrentVersion } from "@/types/content-draft";
+import type { ContentDraftVersion, DraftHistory } from "@/types/content-draft";
 
 /**
  * The operator control that turns one completed Writer run into a saved
- * draft, and the read-only panel that shows the saved draft afterwards.
+ * draft, and the panel that shows the draft, its version history, and the
+ * editing surface.
  *
- * Nothing saves on its own: the control reads whether a draft already exists
+ * Nothing saves on its own. The control reads whether a draft already exists
  * for the run on screen (a GET, never a write) and shows either the "Save as
- * draft" button or the draft. Saving is one explicit click, answered by the
- * server from the run's own record — the text shown here is what the server
- * stored, never what the browser held. The same run saved again returns the
- * same draft. There is no edit, fact-check, approve, publish or delete
- * control, because none of those exists yet; the panel says so.
+ * draft" button or the draft. Saving the Writer's output is one explicit
+ * click; saving an edit is another, and creates a new immutable version
+ * rather than changing any earlier one — version 1 is always the Writer's
+ * text, selectable from the history and read-only there. The server decides
+ * every save from its own records: the text bounds, the draft's ownership,
+ * and whether the version the person started from is still current. There
+ * is no fact-check, approve, publish or delete control, and an edited
+ * version says plainly that its claims are not verified.
  */
 
 type State =
   | { readonly status: "loading" }
   | { readonly status: "none" }
-  | { readonly status: "saved"; readonly saved: DraftWithCurrentVersion; readonly justSaved: boolean }
+  | { readonly status: "saved"; readonly history: DraftHistory; readonly note: string }
   | { readonly status: "unavailable" }
   | { readonly status: "failed"; readonly message: string };
 
-const FAILURE: Readonly<Record<Exclude<SaveWriterRunAsDraftResult, { ok: true }>["reason"], string>> = {
+const READ_FAILED = "The saved draft could not be read. Reload to try again.";
+
+const SAVE_FAILURE: Readonly<Record<Exclude<SaveWriterRunAsDraftResult, { ok: true }>["reason"], string>> = {
   unauthorized: "Your session has ended. Reload the page to sign in again.",
   "rate-limited": "Too many saves. Wait a moment and try again.",
   invalid: "This run cannot be saved: its identifiers are not what the server expects.",
@@ -37,6 +50,15 @@ const FAILURE: Readonly<Record<Exclude<SaveWriterRunAsDraftResult, { ok: true }>
   ineligible: "This run is not a completed, grounded Writer draft, so it cannot be saved.",
   failed: "The draft could not be saved. Nothing is known to have been written.",
 };
+
+async function readHistory(projectId: string, key: { writerRun: string } | { draft: string }, signal?: AbortSignal): Promise<State> {
+  const params = new URLSearchParams({ project: projectId, ...key });
+  const response = await fetch(`/api/content-drafts?${params.toString()}`, { cache: "no-store", signal });
+  if (response.status === 503) return { status: "unavailable" };
+  if (!response.ok) return { status: "failed", message: READ_FAILED };
+  const body = (await response.json()) as { draft?: DraftHistory | null };
+  return body.draft ? { status: "saved", history: body.draft, note: "Restored from the saved draft" } : { status: "none" };
+}
 
 export function SaveDraftControl({ projectId, run }: { projectId: string; run: AgentRun }) {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -47,23 +69,11 @@ export function SaveDraftControl({ projectId, run }: { projectId: string; run: A
   // a new run on screen mounts a fresh control that asks again from "loading".
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({ project: projectId, writerRun: run.id });
-    fetch(`/api/content-drafts?${params.toString()}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (response.status === 503) {
-          setState({ status: "unavailable" });
-          return;
-        }
-        if (!response.ok) {
-          setState({ status: "failed", message: "The saved draft could not be read. Reload to try again." });
-          return;
-        }
-        const body = (await response.json()) as { draft?: DraftWithCurrentVersion | null };
-        setState(body.draft ? { status: "saved", saved: body.draft, justSaved: false } : { status: "none" });
-      })
+    readHistory(projectId, { writerRun: run.id }, controller.signal)
+      .then(setState)
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === "AbortError") return;
-        setState({ status: "failed", message: "The saved draft could not be read. Reload to try again." });
+        setState({ status: "failed", message: READ_FAILED });
       });
     return () => controller.abort();
   }, [projectId, run.id]);
@@ -73,12 +83,24 @@ export function SaveDraftControl({ projectId, run }: { projectId: string; run: A
     setSaving(true);
     try {
       const result = await saveWriterRunAsDraft(projectId, run.id);
-      if (result.ok) setState({ status: "saved", saved: result.saved, justSaved: result.created });
-      else setState({ status: "failed", message: FAILURE[result.reason] });
+      if (result.ok) setState({ status: "saved", history: result.saved, note: result.created ? "Saved just now" : "Already saved" });
+      else setState({ status: "failed", message: SAVE_FAILURE[result.reason] });
     } catch {
-      setState({ status: "failed", message: FAILURE.failed });
+      setState({ status: "failed", message: SAVE_FAILURE.failed });
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Re-reads the draft after another session advanced it. Returns what is now current, or null when the read failed. */
+  async function reload(draftId: string): Promise<DraftHistory | null> {
+    try {
+      const next = await readHistory(projectId, { draft: draftId });
+      setState(next);
+      return next.status === "saved" ? next.history : null;
+    } catch {
+      setState({ status: "failed", message: READ_FAILED });
+      return null;
     }
   }
 
@@ -86,7 +108,17 @@ export function SaveDraftControl({ projectId, run }: { projectId: string; run: A
     return <p className="text-xs text-fg-subtle">Checking for a saved draft…</p>;
   }
 
-  if (state.status === "saved") return <DraftPanel saved={state.saved} justSaved={state.justSaved} />;
+  if (state.status === "saved") {
+    return (
+      <DraftPanel
+        projectId={projectId}
+        history={state.history}
+        note={state.note}
+        onHistory={(history, note) => setState({ status: "saved", history, note })}
+        onReload={reload}
+      />
+    );
+  }
 
   return (
     <div className="space-y-2 border-t border-border pt-3">
@@ -98,7 +130,7 @@ export function SaveDraftControl({ projectId, run }: { projectId: string; run: A
           Keeps this section as draft version 1, exactly as the Writer produced it. Publishes nothing.
         </span>
       </div>
-      {state.status === "unavailable" && <p className="text-xs text-warning">{FAILURE.unavailable}</p>}
+      {state.status === "unavailable" && <p className="text-xs text-warning">{SAVE_FAILURE.unavailable}</p>}
       {state.status === "failed" && (
         <p className="text-xs text-critical" role="status">
           {state.message}
@@ -108,63 +140,251 @@ export function SaveDraftControl({ projectId, run }: { projectId: string; run: A
   );
 }
 
-function DraftPanel({ saved, justSaved }: { saved: DraftWithCurrentVersion; justSaved: boolean }) {
-  const { draft, version } = saved;
+const EDIT_FAILURE: Readonly<Record<Exclude<SaveDraftVersionActionResult, { ok: true } | { reason: "text" } | { reason: "stale" }>["reason"], string>> = {
+  unauthorized: "Your session has ended. Reload the page to sign in again.",
+  "rate-limited": "Too many saves. Wait a moment and try again.",
+  invalid: "This edit cannot be saved: its identifiers are not what the server expects.",
+  unavailable: "Drafts are not persisted on this deployment, so nothing can be saved.",
+  "not-found": "This draft no longer exists on the server, or belongs to another project.",
+  archived: "This draft is archived and cannot be edited.",
+  failed: "The edit could not be saved. Nothing is known to have been written.",
+};
+
+function originLabel(version: ContentDraftVersion): string {
+  return version.origin === "writer" ? "AI-generated original" : "Operator edit";
+}
+
+function DraftPanel({
+  projectId,
+  history,
+  note,
+  onHistory,
+  onReload,
+}: {
+  projectId: string;
+  history: DraftHistory;
+  note: string;
+  onHistory: (history: DraftHistory, note: string) => void;
+  onReload: (draftId: string) => Promise<DraftHistory | null>;
+}) {
+  const { draft, version: current, versions } = history;
+  const id = useId();
+  // Which version is on screen. A save or a reload that advances the draft
+  // selects the new current version itself, so this never points past the
+  // list; a number the list no longer has falls back to the current version.
+  const [selectedNumber, setSelectedNumber] = useState<number>(current.version);
+  const viewing = versions.find((entry) => entry.version === selectedNumber) ?? current;
+  const viewingCurrent = viewing.version === current.version;
+  const original = versions.find((entry) => entry.version === 1) ?? null;
+
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(current.title);
+  const [body, setBody] = useState(current.body);
+  const [saving, setSaving] = useState(false);
+  const [editNote, setEditNote] = useState<{ tone: "critical" | "warning" | "neutral"; text: string } | null>(null);
+  const [stale, setStale] = useState<number | null>(null);
+
+  const text = normaliseVersionText(title, body);
+  const dirty = editing && !isUnchanged({ title, body }, current);
+  const canEdit = viewingCurrent && !editing && draft.status !== "archived";
+
+  function beginEdit() {
+    setTitle(current.title);
+    setBody(current.body);
+    setEditNote(null);
+    setStale(null);
+    setEditing(true);
+  }
+
+  function discard() {
+    setTitle(current.title);
+    setBody(current.body);
+    setEditNote(null);
+    setStale(null);
+    setEditing(false);
+  }
+
+  /** After a stale refusal: read what is current now. The operator's text stays in the form until they discard it. */
+  async function reloadAfterStale() {
+    const fresh = await onReload(draft.id);
+    if (fresh === null) return;
+    setSelectedNumber(fresh.version.version);
+    setStale(null);
+    setEditNote({ tone: "warning", text: `Version ${fresh.version.version} is current now. Your unsaved text is still here; saving it creates version ${fresh.version.version + 1}.` });
+  }
+
+  async function saveEdit() {
+    if (saving || !text.ok || !dirty) return;
+    setSaving(true);
+    setEditNote(null);
+    try {
+      const result = await saveDraftVersion(projectId, draft.id, current.version, title, body);
+      if (result.ok) {
+        setEditing(false);
+        setSelectedNumber(result.saved.version.version);
+        onHistory(result.saved, result.created ? `Saved version ${result.saved.version.version} just now` : "No change to save");
+      } else if (result.reason === "stale") {
+        setStale(result.currentVersion);
+      } else if (result.reason === "text") {
+        setEditNote({ tone: "critical", text: refusalMessage(result.refusal) });
+      } else {
+        setEditNote({ tone: "critical", text: EDIT_FAILURE[result.reason] });
+      }
+    } catch {
+      setEditNote({ tone: "critical", text: EDIT_FAILURE.failed });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <section className="space-y-3 border-t border-border pt-3" aria-label="Saved draft">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="accent">Draft</Badge>
-        <Badge tone="neutral">Version {version.version}</Badge>
-        <Badge tone="neutral">{version.origin === "writer" ? "AI-generated original" : "Operator edit"}</Badge>
+        <Badge tone="neutral">Version {viewing.version}</Badge>
+        <Badge tone="neutral">{originLabel(viewing)}</Badge>
+        {!viewingCurrent && <Badge tone="warning">Historical, read-only</Badge>}
         <span className="text-xs text-fg-subtle">
-          {justSaved ? "Saved just now" : "Restored from the saved draft"} · created {formatFullDate(version.createdAt)},{" "}
-          {formatTimeUtc(version.createdAt)}
+          {viewingCurrent ? note : `Version ${current.version} is current`} · created {formatFullDate(viewing.createdAt)},{" "}
+          {formatTimeUtc(viewing.createdAt)}
         </span>
       </div>
 
-      <dl className="space-y-2 text-sm">
-        <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Section</dt>
-          <dd className="text-fg">{draft.sectionLabel}</dd>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Version" htmlFor={`${id}-version`} className="min-w-64">
+          <Select
+            id={`${id}-version`}
+            size="sm"
+            value={String(viewing.version)}
+            disabled={editing}
+            onChange={(event) => setSelectedNumber(Number(event.target.value))}
+            options={versions.map((entry) => ({
+              value: String(entry.version),
+              label: `Version ${entry.version} — ${originLabel(entry)}${entry.version === current.version ? " (current)" : ""}`,
+            }))}
+          />
+        </Field>
+        {!viewingCurrent && (
+          <Button onClick={() => setSelectedNumber(current.version)} icon="arrow-right">
+            Back to current
+          </Button>
+        )}
+        {canEdit && (
+          <Button onClick={beginEdit} icon="edit">
+            Edit
+          </Button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
+          <Field
+            label="Section title"
+            htmlFor={`${id}-title`}
+            required
+            error={!text.ok && text.refusal.field === "title" ? refusalMessage(text.refusal) : undefined}
+          >
+            <TextInput id={`${id}-title`} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={400} />
+          </Field>
+          <Field
+            label="Body"
+            htmlFor={`${id}-body`}
+            required
+            hint="Saved as a new version; earlier versions stay exactly as they were."
+            error={!text.ok && text.refusal.field === "body" ? refusalMessage(text.refusal) : undefined}
+          >
+            <TextArea id={`${id}-body`} rows={8} value={body} onChange={(event) => setBody(event.target.value)} />
+          </Field>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" icon="check" onClick={saveEdit} disabled={saving || !dirty || !text.ok || stale !== null}>
+              {saving ? "Saving…" : `Save as version ${current.version + 1}`}
+            </Button>
+            <Button onClick={discard} disabled={saving}>
+              Discard
+            </Button>
+            <span className="text-xs text-fg-subtle">
+              {stale !== null
+                ? ""
+                : dirty
+                  ? "Unsaved changes"
+                  : "No changes yet — saving the same text creates no version"}
+            </span>
+          </div>
+          {stale !== null && (
+            <p className="text-xs text-warning" role="status">
+              Version {stale} was saved by another session while you were editing, so this edit was not saved. Reload
+              the draft to read it; your text stays here until you discard it.{" "}
+              <Button size="sm" onClick={() => void reloadAfterStale()}>
+                Reload draft
+              </Button>
+            </p>
+          )}
+          {editNote && (
+            <p
+              className={editNote.tone === "critical" ? "text-xs text-critical" : editNote.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-subtle"}
+              role="status"
+            >
+              {editNote.text}
+            </p>
+          )}
         </div>
-        <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Body</dt>
-          <dd className="whitespace-pre-wrap text-fg-muted">{version.body}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Claims used</dt>
-          <dd className="text-fg-muted">
-            {version.claims.length === 0 ? (
-              "none"
-            ) : (
-              <ul className="list-disc space-y-0.5 pl-5">
-                {version.claims.map((claim) => (
-                  <li key={claim}>{claim}</li>
-                ))}
-              </ul>
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Placeholders</dt>
-          <dd className="text-fg-muted">
-            {version.placeholders.length === 0 ? (
-              "none"
-            ) : (
-              <ul className="list-disc space-y-0.5 pl-5">
-                {version.placeholders.map((placeholder) => (
-                  <li key={placeholder}>{placeholder}</li>
-                ))}
-              </ul>
-            )}
-          </dd>
-        </div>
-      </dl>
+      ) : (
+        <dl className="space-y-2 text-sm">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Section</dt>
+            <dd className="text-fg">{viewing.title}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Body</dt>
+            <dd className="whitespace-pre-wrap text-fg-muted">{viewing.body}</dd>
+          </div>
+          {viewing.origin === "writer" ? (
+            <>
+              <ListRow label="Claims used" items={viewing.claims} />
+              <ListRow label="Placeholders" items={viewing.placeholders} />
+            </>
+          ) : (
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Claims used</dt>
+              <dd className="space-y-1 text-fg-muted">
+                <p className="text-warning">
+                  Not verified. This version was edited by a person; the Writer&apos;s recorded claims apply to version 1
+                  only, and the factual claims in this text require re-verification before any approval.
+                </p>
+                {original && original.claims.length > 0 && (
+                  <p className="text-xs text-fg-subtle">
+                    Recorded for version 1, not for this text: {original.claims.join(" · ")}
+                  </p>
+                )}
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
 
       <p className="text-xs text-fg-subtle">
-        Status: {draft.status}. Editing, fact-checking, approval and publishing are not available yet; this draft is
-        stored for a person to review and is not published anywhere.
+        Status: {draft.status}. Every save is a new version; nothing earlier is changed. Fact-checking, approval and
+        publishing are not available yet, and this draft is not published anywhere.
       </p>
     </section>
+  );
+}
+
+function ListRow({ label, items }: { label: string; items: readonly string[] }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{label}</dt>
+      <dd className="text-fg-muted">
+        {items.length === 0 ? (
+          "none"
+        ) : (
+          <ul className="list-disc space-y-0.5 pl-5">
+            {items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        )}
+      </dd>
+    </div>
   );
 }
