@@ -8,6 +8,7 @@ import {
   draftRowToDraft,
   draftToInsert,
   firstVersionInsert,
+  saveVersionResultToOutcome,
   versionRowToVersion,
   type ContentDraftsDatabase,
 } from "@/lib/content/drafts/supabase/schema";
@@ -131,6 +132,36 @@ export function createSupabaseDraftStore(client: SupabaseClient<ContentDraftsDat
       if (error) throw new ContentDraftStoreError("read draft", error);
       if (data === null) return null;
       return versionOf(draftId, data.current_version);
+    },
+
+    async listVersions(draftId, limit) {
+      const { data, error } = await client
+        .from("nexra_content_draft_versions")
+        .select(CONTENT_DRAFT_VERSION_READ_COLUMNS)
+        .eq("draft_id", draftId)
+        .order("version", { ascending: false })
+        .limit(limit);
+      if (error) throw new ContentDraftStoreError("list draft versions", error);
+      return data.map(versionRowToVersion);
+    },
+
+    // Saving an edit is a Postgres function: one transaction under a row
+    // lock on the parent, so the version number and the parent's pointer
+    // move together and a concurrent save is answered stale, never combined.
+    async saveVersion(input) {
+      const { data, error } = await client.rpc("nexra_content_draft_save_version", {
+        p_draft_id: input.draftId,
+        p_project_id: input.projectId,
+        p_expected_version: input.expectedVersion,
+        p_title: input.title,
+        p_body: input.body,
+        p_created_by: input.createdBy,
+      });
+      if (error) throw new ContentDraftStoreError("save draft version", error);
+      const outcome = saveVersionResultToOutcome(data);
+      if (outcome.outcome === "created") return { status: "created", saved: { draft: outcome.draft, version: outcome.version } };
+      if (outcome.outcome === "stale") return { status: "stale", currentVersion: outcome.currentVersion };
+      return { status: outcome.outcome };
     },
   };
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { CreateDraftFromWriterInput } from "../../../../types/content-draft.ts";
 import { FakeDraftSupabase, asDraftClient, postgrestError } from "./fake-client.ts";
-import { ContentDraftRowError, versionRowToVersion, draftRowToDraft } from "./schema.ts";
+import { ContentDraftRowError, draftRowToDraft, saveVersionResultToOutcome, versionRowToVersion } from "./schema.ts";
 import { ContentDraftStoreError, createSupabaseDraftStore } from "./store.ts";
 
 /**
@@ -196,5 +196,247 @@ describe("row mapping against the migration's bounds", () => {
     assert.equal(version.origin, "writer");
     assert.equal(version.version, 1);
     assert.equal(draft.status, "drafting");
+  });
+});
+
+describe("createSupabaseDraftStore — versions", () => {
+  const EDIT = {
+    projectId: "nexra-agency",
+    expectedVersion: 1,
+    title: "What automated lead follow-up does",
+    body: "An operator rewrote this section by hand.",
+    createdBy: "00000000-0000-4000-8000-00000000000c",
+  };
+
+  async function seeded() {
+    const { db, store } = storeWith();
+    const created = await store.createFromWriterRun(INPUT);
+    assert.ok(created.status === "created");
+    db.writes.length = 0;
+    return { db, store, draftId: created.saved.draft.id, first: created.saved.version };
+  }
+
+  test("saving an edit goes through the one database function, which writes version 2 with no claims and advances the parent together", async () => {
+    const { db, store, draftId, first } = await seeded();
+    const outcome = await store.saveVersion({ ...EDIT, draftId });
+    assert.equal(outcome.status, "created");
+    if (outcome.status !== "created") return;
+    assert.deepEqual(db.writes, [{ table: "nexra_content_drafts", operation: "rpc" }], "one call, no separate inserts or updates");
+    assert.equal(outcome.saved.draft.id, draftId);
+    assert.equal(outcome.saved.draft.currentVersion, 2);
+    assert.equal(outcome.saved.version.version, 2);
+    assert.equal(outcome.saved.version.origin, "operator");
+    assert.equal(outcome.saved.version.title, EDIT.title);
+    assert.equal(outcome.saved.version.body, EDIT.body);
+    assert.deepEqual(outcome.saved.version.claims, []);
+    assert.deepEqual(outcome.saved.version.placeholders, []);
+    assert.equal(outcome.saved.version.factCheck, null);
+    assert.equal(outcome.saved.version.createdBy, EDIT.createdBy);
+    // Version 1's row is exactly what it was.
+    const rows = db.rows.nexra_content_draft_versions;
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].version, 1);
+    assert.equal(rows[0].origin, "writer");
+    assert.equal(rows[0].body, INPUT.body);
+    assert.deepEqual(rows[0].claims, INPUT.claims);
+    assert.deepEqual(await store.getCurrentVersion(draftId), outcome.saved.version);
+    assert.deepEqual(await store.getByProjectAndId("nexra-agency", draftId), outcome.saved);
+    void first;
+  });
+
+  test("the function's stale, not-found and archived answers are passed through, and none of them writes", async () => {
+    const { db, store, draftId } = await seeded();
+    assert.deepEqual(await store.saveVersion({ ...EDIT, draftId, expectedVersion: 2 }), { status: "stale", currentVersion: 1 });
+    assert.deepEqual(await store.saveVersion({ ...EDIT, draftId, projectId: "halcyon-fintech" }), { status: "not-found" });
+    assert.deepEqual(await store.saveVersion({ ...EDIT, draftId: "00000000-0000-4000-8000-000000000999" }), { status: "not-found" });
+    db.rows.nexra_content_drafts[0].status = "archived";
+    assert.deepEqual(await store.saveVersion({ ...EDIT, draftId }), { status: "archived" });
+    assert.equal(db.rows.nexra_content_draft_versions.length, 1);
+    assert.equal(db.rows.nexra_content_drafts[0].current_version, 1);
+  });
+
+  test("a second save from the same version is stale once the first has landed", async () => {
+    const { store, draftId } = await seeded();
+    assert.equal((await store.saveVersion({ ...EDIT, draftId })).status, "created");
+    assert.deepEqual(await store.saveVersion({ ...EDIT, draftId, body: "A different edit of version 1." }), { status: "stale", currentVersion: 2 });
+    const third = await store.saveVersion({ ...EDIT, draftId, expectedVersion: 2, body: "An edit of version 2." });
+    assert.ok(third.status === "created" && third.saved.version.version === 3);
+  });
+
+  test("an edit returns a fact-checked or approved parent to drafting and leaves the approval columns as they were", async () => {
+    const { db, store, draftId } = await seeded();
+    Object.assign(db.rows.nexra_content_drafts[0], { status: "approved", approved_version: 1, approved_by: INPUT.createdBy, approved_at: "2026-09-22T12:05:00.000Z" });
+    const outcome = await store.saveVersion({ ...EDIT, draftId });
+    assert.ok(outcome.status === "created");
+    assert.equal(outcome.saved.draft.status, "drafting");
+    assert.equal(outcome.saved.draft.approvedVersion, 1);
+    assert.equal(outcome.saved.draft.approvedBy, INPUT.createdBy);
+    assert.equal(outcome.saved.draft.publishedVersion, null);
+  });
+
+  test("lists a draft's versions newest first, within the limit, and only that draft's", async () => {
+    const { db, store, draftId } = await seeded();
+    await store.saveVersion({ ...EDIT, draftId });
+    await store.saveVersion({ ...EDIT, draftId, expectedVersion: 2, body: "Third." });
+    const other = await store.createFromWriterRun({ ...INPUT, sourceWriterRunId: "11111111-0000-4000-8000-000000000071" });
+    assert.ok(other.status === "created");
+    const all = await store.listVersions(draftId, 100);
+    assert.deepEqual(all.map((version) => version.version), [3, 2, 1]);
+    assert.ok(all.every((version) => version.draftId === draftId));
+    assert.deepEqual((await store.listVersions(draftId, 2)).map((version) => version.version), [3, 2]);
+    assert.deepEqual((await store.listVersions(other.saved.draft.id, 100)).map((version) => version.version), [1]);
+    assert.deepEqual(await store.listVersions("00000000-0000-4000-8000-000000000999", 100), []);
+    assert.equal(db.rows.nexra_content_draft_versions.length, 4);
+  });
+
+  test("a function or list failure is a ContentDraftStoreError that quotes no row text", async () => {
+    const { db, store, draftId } = await seeded();
+    db.failNext({ table: "nexra_content_drafts", operation: "rpc", error: postgrestError("42501", "permission denied", "secret row content") });
+    await assert.rejects(() => store.saveVersion({ ...EDIT, draftId }), (error: unknown) => {
+      assert.ok(error instanceof ContentDraftStoreError);
+      assert.match(error.message, /save draft version failed \(42501\)/);
+      assert.ok(!error.message.includes("secret row content"));
+      return true;
+    });
+    assert.equal(db.rows.nexra_content_draft_versions.length, 1);
+    db.failNext({ table: "nexra_content_draft_versions", operation: "select", error: postgrestError("42P01", "relation does not exist", "secret row content") });
+    await assert.rejects(() => store.listVersions(draftId, 100), (error: unknown) => {
+      assert.ok(error instanceof ContentDraftStoreError);
+      assert.match(error.message, /list draft versions failed/);
+      assert.ok(!error.message.includes("secret row content"));
+      return true;
+    });
+  });
+
+  test("an answer from the function that this product does not recognise is an error, never a saved version", () => {
+    assert.throws(() => saveVersionResultToOutcome({ outcome: "merged" }), ContentDraftRowError);
+    assert.throws(() => saveVersionResultToOutcome({ outcome: "stale" }), ContentDraftRowError);
+    assert.throws(() => saveVersionResultToOutcome(null), ContentDraftRowError);
+    assert.throws(() => saveVersionResultToOutcome([]), ContentDraftRowError);
+    assert.deepEqual(saveVersionResultToOutcome({ outcome: "stale", current_version: 4 }), { outcome: "stale", currentVersion: 4 });
+    assert.deepEqual(saveVersionResultToOutcome({ outcome: "not-found" }), { outcome: "not-found" });
+    assert.deepEqual(saveVersionResultToOutcome({ outcome: "archived" }), { outcome: "archived" });
+  });
+});
+
+/**
+ * Version permanence. The fake mirrors the two guards the migrations put on
+ * `nexra_content_draft_versions` — no update to identity or text, no delete
+ * at all — so these tests state what the database refuses and what the
+ * store does around it. The migration text itself is checked in the last
+ * test; the SQL is exercised on a real Postgres outside this runner.
+ */
+describe("version rows are permanent", () => {
+  const EDIT = {
+    projectId: "nexra-agency",
+    title: "Edited title",
+    body: "An operator rewrote this section by hand.",
+    createdBy: "00000000-0000-4000-8000-00000000000c",
+  };
+
+  async function withThreeVersions() {
+    const { db, store } = storeWith();
+    const created = await store.createFromWriterRun(INPUT);
+    assert.ok(created.status === "created");
+    const draftId = created.saved.draft.id;
+    assert.equal((await store.saveVersion({ ...EDIT, draftId, expectedVersion: 1 })).status, "created");
+    assert.equal((await store.saveVersion({ ...EDIT, draftId, expectedVersion: 2, body: "Third." })).status, "created");
+    return { db, store, draftId };
+  }
+
+  function assertIntegrity(db: FakeDraftSupabase) {
+    for (const draft of db.rows.nexra_content_drafts) {
+      const versions = db.rows.nexra_content_draft_versions.filter((row) => row.draft_id === draft.id).map((row) => row.version as number).sort((a, b) => a - b);
+      assert.deepEqual(versions, Array.from({ length: versions.length }, (_, index) => index + 1), `draft ${String(draft.id)}: versions are numbered 1..N without gaps`);
+      assert.equal(draft.current_version, versions.length, `draft ${String(draft.id)}: current_version names the newest version`);
+      assert.equal(db.rows.nexra_content_draft_versions.find((row) => row.draft_id === draft.id && row.version === 1)?.origin, "writer");
+    }
+    const parents = new Set(db.rows.nexra_content_drafts.map((row) => row.id));
+    assert.ok(db.rows.nexra_content_draft_versions.every((row) => parents.has(row.draft_id)), "no version without its parent");
+  }
+
+  test("a direct delete of any version row is refused and removes nothing, version 1 included", async () => {
+    const { db, draftId } = await withThreeVersions();
+    const before = JSON.stringify(db.rows.nexra_content_draft_versions);
+    for (const version of [1, 2, 3]) {
+      const result = await db.from("nexra_content_draft_versions").delete().eq("draft_id", draftId).eq("version", version);
+      assert.equal(result.error?.code, "23514", `version ${version}`);
+      assert.match(result.error?.message ?? "", /a version is never deleted/);
+    }
+    const all = await db.from("nexra_content_draft_versions").delete().eq("draft_id", draftId);
+    assert.equal(all.error?.code, "23514");
+    assert.equal(JSON.stringify(db.rows.nexra_content_draft_versions), before);
+    assert.equal(db.rows.nexra_content_draft_versions.length, 3);
+    assertIntegrity(db);
+  });
+
+  test("deleting a parent that has versions is refused too, because its cascade would delete them; the parent and every version stay", async () => {
+    const { db, store, draftId } = await withThreeVersions();
+    const result = await db.from("nexra_content_drafts").delete().eq("id", draftId);
+    assert.equal(result.error?.code, "23514");
+    assert.equal(db.rows.nexra_content_drafts.length, 1);
+    assert.equal(db.rows.nexra_content_draft_versions.length, 3);
+    assert.deepEqual((await store.listVersions(draftId, 100)).map((version) => version.version), [3, 2, 1]);
+    assertIntegrity(db);
+  });
+
+  test("the Stage 1 compensation still removes a parent that has no version 1, because the cascade then reaches no version row", async () => {
+    const { db, store } = storeWith();
+    db.failNext({ table: "nexra_content_draft_versions", operation: "insert", error: postgrestError("23514", "check violation") });
+    await assert.rejects(() => store.createFromWriterRun(INPUT), /create draft version failed/);
+    assert.equal(db.rows.nexra_content_drafts.length, 0, "the parent without a version was removed");
+    assert.equal(db.rows.nexra_content_draft_versions.length, 0);
+    assert.equal((await store.createFromWriterRun(INPUT)).status, "created");
+    assertIntegrity(db);
+  });
+
+  test("a version's identity and text still cannot be updated, while fact_check can be written once for that exact version", async () => {
+    const { db, draftId } = await withThreeVersions();
+    const v1 = db.rows.nexra_content_draft_versions.find((row) => row.draft_id === draftId && row.version === 1)!;
+    for (const patch of [{ body: "tampered" }, { title: "tampered" }, { claims: [] }, { origin: "operator" }, { version: 9 }, { created_by: EDIT.createdBy }]) {
+      const result = await db.from("nexra_content_draft_versions").update(patch).eq("id", v1.id);
+      assert.equal(result.error?.code, "23514", JSON.stringify(patch));
+      assert.match(result.error?.message ?? "", /a version is immutable/);
+    }
+    assert.equal(v1.body, INPUT.body);
+    assert.deepEqual(v1.claims, INPUT.claims);
+    const check = { checkedAt: "2026-09-22T13:00:00.000Z", verdict: "needs-work", claims: [{ text: INPUT.claims[0], status: "supported" }] };
+    const written = await db.from("nexra_content_draft_versions").update({ fact_check: check }).eq("id", v1.id);
+    assert.equal(written.error, null);
+    assert.deepEqual(v1.fact_check, check);
+    // Version 2 is untouched by version 1's check.
+    assert.equal(db.rows.nexra_content_draft_versions.find((row) => row.draft_id === draftId && row.version === 2)?.fact_check, null);
+    assertIntegrity(db);
+  });
+
+  test("versions 2 and 3 are still created normally under the guards, and the history stays whole", async () => {
+    const { db, store, draftId } = await withThreeVersions();
+    const fourth = await store.saveVersion({ ...EDIT, draftId, expectedVersion: 3, body: "Fourth." });
+    assert.ok(fourth.status === "created" && fourth.saved.version.version === 4);
+    assert.deepEqual(db.writes.filter((write) => write.operation === "delete"), [], "creating versions deletes nothing");
+    assert.deepEqual((await store.listVersions(draftId, 100)).map((version) => [version.version, version.body]), [
+      [4, "Fourth."],
+      [3, "Third."],
+      [2, EDIT.body],
+      [1, INPUT.body],
+    ]);
+    assertIntegrity(db);
+  });
+
+  test("the migration declares the delete guard as a before-delete row trigger and a before-truncate trigger, and changes nothing else", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const sql = await readFile(new URL("../../../../../supabase/migrations/20260922130100_content_draft_versions_guard_delete.sql", import.meta.url), "utf8");
+    assert.match(sql, /create function public\.nexra_content_draft_versions_guard_delete\(\)\s+returns trigger\s+language plpgsql\s+set search_path = ''/);
+    assert.match(sql, /raise exception 'nexra_content_draft_versions: a version is never deleted; archive the draft instead'\s+using errcode = 'check_violation';/);
+    assert.match(sql, /create trigger nexra_content_draft_versions_guard_delete\s+before delete on public\.nexra_content_draft_versions\s+for each row\s+execute function public\.nexra_content_draft_versions_guard_delete\(\);/);
+    assert.match(sql, /create trigger nexra_content_draft_versions_guard_truncate\s+before truncate on public\.nexra_content_draft_versions\s+for each statement\s+execute function public\.nexra_content_draft_versions_guard_delete\(\);/);
+    // No `when` clause: nothing lets a delete through, the parent's cascade included.
+    assert.doesNotMatch(sql, /\bwhen \(/i);
+    // Nothing else is touched: in the statements (comments aside) there is no
+    // alter, drop, grant, insert or update, and no mention of the save
+    // function, the update guard or the foreign key.
+    const statements = sql.replace(/^\s*--.*$/gm, "").replace(/comment on function[\s\S]*?';/g, "");
+    assert.doesNotMatch(statements, /\b(alter|drop|grant|revoke|insert|update)\b/i);
+    assert.doesNotMatch(statements, /nexra_content_draft_save_version|guard_update|fkey|cascade/);
   });
 });

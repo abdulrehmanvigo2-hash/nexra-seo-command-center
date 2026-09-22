@@ -82,3 +82,19 @@ export type DraftWithCurrentVersion = {
   readonly draft: ContentDraft;
   readonly version: ContentDraftVersion;
 };
+
+/** A draft, its current version, and every version in ascending order. */
+export type DraftHistory = DraftWithCurrentVersion & {
+  readonly versions: readonly ContentDraftVersion[];
+};
+
+/** What saving an operator's edit records. The store numbers it and adds ids and times. */
+export type SaveVersionInput = {
+  readonly projectId: string;
+  readonly draftId: string;
+  /** The version the operator started editing from; the save is refused when it is no longer current. */
+  readonly expectedVersion: number;
+  readonly title: string;
+  readonly body: string;
+  readonly createdBy: string;
+};

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getOperator } from "@/lib/auth/session";
 import { draftService } from "@/lib/content/drafts";
-import type { SaveWriterRunResult } from "@/lib/content/drafts/service";
+import type { SaveVersionResult, SaveWriterRunResult } from "@/lib/content/drafts/service";
 import { appRateLimiter } from "@/lib/security/app-rate-limit";
 
 /**
@@ -53,6 +53,67 @@ export async function saveWriterRunAsDraft(projectId: unknown, writerRunId: unkn
     return { ok: false, reason: "failed" };
   } finally {
     inFlight.delete(operator.id);
+  }
+
+  if (result.ok && result.created) revalidatePath(`/projects/${projectId}`);
+  return result;
+}
+
+/**
+ * Saves an operator's edit of a draft as its next immutable version.
+ *
+ * The same shape as saving the Writer's output, and the same rules: the
+ * caller must be an operator, every argument is treated as `unknown`, and
+ * the service decides — text bounds, ownership by project and id together,
+ * the version the operator started from against the draft's current one,
+ * and an unchanged edit — before the store writes version N+1 and advances
+ * the pointer in one database transaction. Version 1 and every earlier
+ * version are never touched. The action calls no provider, checks no fact,
+ * approves nothing and publishes nothing.
+ */
+
+export type SaveDraftVersionActionResult =
+  | SaveVersionResult
+  | { readonly ok: false; readonly reason: "unauthorized" }
+  | { readonly ok: false; readonly reason: "rate-limited"; readonly retryAfterSeconds: number };
+
+const EDITS = { limit: 60, windowSeconds: 10 * 60 } as const;
+const editsInFlight = new Set<string>();
+
+export async function saveDraftVersion(
+  projectId: unknown,
+  draftId: unknown,
+  expectedVersion: unknown,
+  title: unknown,
+  body: unknown,
+): Promise<SaveDraftVersionActionResult> {
+  const operator = await getOperator();
+  if (!operator) return { ok: false, reason: "unauthorized" };
+  if (
+    typeof projectId !== "string" ||
+    typeof draftId !== "string" ||
+    typeof expectedVersion !== "number" ||
+    typeof title !== "string" ||
+    typeof body !== "string"
+  ) {
+    return { ok: false, reason: "invalid" };
+  }
+
+  if (editsInFlight.has(operator.id)) return { ok: false, reason: "rate-limited", retryAfterSeconds: 1 };
+
+  editsInFlight.add(operator.id);
+  let result: SaveVersionResult;
+  try {
+    const allowance = await appRateLimiter("drafts.edit", EDITS).consume(operator.id);
+    if (!allowance.allowed) {
+      return { ok: false, reason: "rate-limited", retryAfterSeconds: Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000)) };
+    }
+    result = await draftService().saveVersion({ projectId, draftId, expectedVersion, title, body, operatorId: operator.id });
+  } catch (error) {
+    console.error("saveDraftVersion:", error instanceof Error ? `${error.name}: ${error.message}` : "unknown error");
+    return { ok: false, reason: "failed" };
+  } finally {
+    editsInFlight.delete(operator.id);
   }
 
   if (result.ok && result.created) revalidatePath(`/projects/${projectId}`);

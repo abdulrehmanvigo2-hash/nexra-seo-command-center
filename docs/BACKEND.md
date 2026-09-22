@@ -849,11 +849,74 @@ wherever the shared review control renders one; it is offered for nothing
 else. On a page load the control reads `GET /api/content-drafts?project=…&
 writerRun=…` (operators only, a read) and shows the saved draft instead of
 the button, so nothing is saved twice and nothing saves on its own. The
-draft panel shows version 1, "AI-generated original", the section, body,
-claims used, placeholders and creation time, and says that editing,
-fact-checking, approval and publishing do not exist yet. There is no edit,
-fact-check, approve, publish or delete control. The Content Studio remains
-fixture-only: no real draft row reaches it and no fixture reaches a draft.
+draft panel shows the current version, the section, body and creation
+time, and says that fact-checking, approval and publishing do not exist yet.
+There is no fact-check, approve, publish or delete control. The Content
+Studio remains fixture-only: no real draft row reaches it and no fixture
+reaches a draft.
+
+### Operator editing and version history
+
+An operator may edit a saved draft. Every save is a new version row (2, 3,
+…); no existing version is ever updated, and version 1 stays the Writer's
+output exactly as generated, so the model-generated original can always be
+read beside whatever a person later wrote.
+
+The write is one Postgres function,
+`public.nexra_content_draft_save_version` (migration
+`20260922130000_content_draft_save_version.sql`, `security definer`,
+`search_path` pinned empty, executable by `service_role` only). It locks the
+parent row (`select … for update`), refuses when the draft is not this
+project's (`not-found`), is archived (`archived`), or its `current_version`
+is not the version the operator started from (`stale`, naming the current
+one), and otherwise inserts `current_version + 1` with `origin = operator`,
+empty `claims` and `placeholders`, null `fact_check`, and advances the
+parent's pointer in the same transaction. Two operators saving from the
+same version therefore never combine: the first wins, the second is told
+which version is current now and re-reads it. A parent that was
+`fact-checked` or `approved` returns to `drafting`, because the checked or
+approved text is no longer the current text; `approved_version`,
+`approved_by`, `approved_at` and the published columns are left exactly as
+they were, so the record of what was approved survives and nothing is ever
+approved or published by an edit. The function was written because
+PostgREST cannot make the version insert and the pointer update one
+transaction from the client; the store calls it through `rpc`.
+
+Versions are permanent. Beside the Stage 1 update guard, a delete guard
+(`20260922130100_content_draft_versions_guard_delete.sql`) refuses every
+DELETE and TRUNCATE on the versions table, including the cascade from a
+parent delete: a draft with versions cannot be deleted by anything, only
+archived. The store's Stage 1 compensation, which removes a parent whose
+version 1 insert failed, deletes a parent with no versions and is
+unaffected. `fact_check` remains the one writable column of a version.
+
+The Server Action (`saveDraftVersion`, same file as the save action) takes
+every argument as `unknown`, confirms the operator with the Auth server,
+counts 60 saves per ten minutes per operator, and hands the request to the
+service, which validates the ids, normalises the text (line endings folded
+to LF, surrounding whitespace removed) and refuses an empty title or body
+or one over the columns' bounds (400 and 20,000 characters) before reading
+anything; reads the draft by project and id together, so another project's
+draft is not found; refuses a stale expected version; and treats the saved
+text sent again as no change, creating no version. Only then does the
+store's function run, and it applies the ownership and version checks a
+second time under the lock. No provider is called, no run queued, nothing
+crawled, nothing published, and nothing is saved on the operator's behalf:
+there is no autosave.
+
+The panel shows the current version's number, origin ("AI-generated
+original" for version 1, "Operator edit" for the rest), creation time, and
+a version selector. Choosing an earlier version shows it read-only, marked
+"Historical, read-only", with a way back to the current one; only the
+current version of a non-archived draft has an Edit control. Editing uses
+the existing title input and text area, shows "Unsaved changes" once the
+text differs from the saved version, and offers Save (as the next version)
+and Discard. An operator-edited version shows no claims of its own: the
+panel says it is not verified, that the Writer's recorded claims apply to
+version 1 only, and that its factual claims need re-verification before
+any approval. `GET /api/content-drafts?project=…&draft=…` reads one draft
+with its versions (newest 100), so a page refresh shows the latest version
+without creating one.
 
 ## Crawl foundation
 

@@ -177,6 +177,27 @@ and never change after they are written; only a version's `fact_check` may
 be set later, by the milestone that checks it. Nothing here publishes: the
 published and approved columns exist for later milestones and stay null.
 
+`20260922130000_content_draft_save_version.sql` adds
+`public.nexra_content_draft_save_version(...)`, the one function an
+operator's edit goes through. It runs as `security definer` with
+`search_path` pinned empty, is executable by `service_role` only (revoked
+from `public`, `anon` and `authenticated`), locks the parent row, checks
+project, status and expected version, and inserts the next version and
+advances `current_version` in one transaction; a stale or foreign request
+is answered as JSON (`{"outcome": "stale" | "not-found" | "archived"}`)
+and writes nothing. It never updates a version row, so the guard triggers
+above still hold: version 1 is the Writer's text for ever. Apply it after
+the two draft migrations, then `NOTIFY pgrst, 'reload schema';`.
+
+`20260922130100_content_draft_versions_guard_delete.sql` closes the gap the
+first guard left: it refuses every DELETE and TRUNCATE on
+`nexra_content_draft_versions`. The parent's `on delete cascade` is a
+delete of version rows, so a draft that has versions can no longer be
+deleted either; it is archived (`status = 'archived'`) instead. A parent
+with no version — the only parent the store ever deletes, when its version
+1 insert failed — can still be removed. The foreign key itself is
+unchanged. Apply it after `20260922130000`.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and
