@@ -1133,3 +1133,89 @@ describe("queueing a section draft — the Writer", () => {
     }
   });
 });
+
+describe("queueing an outbound link review — the Authority & Backlink agent", () => {
+  const LINK_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "authority-backlink",
+    taskType: "outbound-link-review",
+    input: { crawlId: CRAWL_ID },
+  };
+
+  test("creates one queued run for the Authority agent, read-only, with the crawl id lowercased, and touches no executor", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, { ...LINK_REQUEST, input: { crawlId: CRAWL_ID.toUpperCase() } });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "authority-backlink");
+    assert.equal(result.run.taskType, "outbound-link-review");
+    assert.deepEqual(result.run.input, { crawlId: CRAWL_ID });
+    assert.equal(result.run.projectId, PROJECT.id);
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("asking twice for the same crawl returns the first run; another crawl is another run; a crawl review of the same crawl is not this run", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const first = await runtime.createRun(OPERATOR, LINK_REQUEST);
+    const second = await runtime.createRun(OPERATOR, LINK_REQUEST);
+    const other = await runtime.createRun(OPERATOR, { ...LINK_REQUEST, input: { crawlId: "8f1c0d2e-0000-4000-8000-000000000002" } });
+    const technical = await runtime.createRun(OPERATOR, { ...LINK_REQUEST, agentId: "technical-seo", taskType: "crawl-review" });
+    assert.ok(first.ok && second.ok && other.ok && technical.ok);
+    if (!first.ok || !second.ok || !other.ok || !technical.ok) return;
+    assert.equal(second.duplicate, true);
+    assert.equal(second.run.id, first.run.id);
+    assert.equal(other.duplicate, false);
+    assert.equal(technical.duplicate, false);
+    assert.equal(inserts(), 3);
+  });
+
+  test("is found under the Authority agent, which is what the control restores from", async () => {
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const created = await runtime.createRun(OPERATOR, LINK_REQUEST);
+    assert.ok(created.ok);
+    if (!created.ok) return;
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "authority-backlink", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(created.run.id));
+    const theirs = await runtime.listRuns({ projectId: PROJECT.id, agentId: "technical-seo", limit: 25, offset: 0 });
+    assert.ok(theirs.ok && theirs.runs.length === 0);
+  });
+
+  test("is refused before anything is written for a missing or malformed crawl id, any extra field, any other agent, or an unknown project", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...LINK_REQUEST, input: {} }, "invalid"],
+      [{ ...LINK_REQUEST, input: undefined }, "invalid"],
+      [{ ...LINK_REQUEST, input: { crawlId: "not-a-uuid" } }, "invalid"],
+      [{ ...LINK_REQUEST, input: { crawlId: 42 } }, "invalid"],
+      [{ ...LINK_REQUEST, input: { crawlId: CRAWL_ID, host: "linkedin.com" } }, "invalid"],
+      [{ ...LINK_REQUEST, input: { crawlId: CRAWL_ID, projectId: "other" } }, "invalid"],
+      [{ ...LINK_REQUEST, input: CRAWL_ID }, "invalid"],
+      [{ ...LINK_REQUEST, input: [CRAWL_ID] }, "invalid"],
+      [{ ...LINK_REQUEST, agentId: "technical-seo" }, "task-not-allowed"],
+      [{ ...LINK_REQUEST, agentId: "on-page-seo" }, "task-not-allowed"],
+      [{ ...LINK_REQUEST, agentId: "market-intelligence" }, "task-not-allowed"],
+      [{ ...LINK_REQUEST, agentId: "seo-director" }, "task-not-allowed"],
+      [{ ...LINK_REQUEST, agentId: "writer" }, "task-not-allowed"],
+      // And the Authority agent may not run any other agent's review.
+      [{ ...LINK_REQUEST, taskType: "crawl-review" }, "task-not-allowed"],
+      [{ ...LINK_REQUEST, taskType: "on-page-review" }, "task-not-allowed"],
+      [{ ...LINK_REQUEST, taskType: "competitor-comparison-review", input: { competitorDomain: "rival.example" } }, "task-not-allowed"],
+      [{ ...LINK_REQUEST, taskType: "priority-review", input: { sourceRunId: CRAWL_ID } }, "task-not-allowed"],
+      [{ ...LINK_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+});

@@ -3,9 +3,11 @@ import "server-only";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type { CrawlStore } from "@/lib/crawl/contract";
 import {
+  CRAWL_LINK_READ_COLUMNS,
   CRAWL_PAGE_READ_COLUMNS,
   CRAWL_READ_COLUMNS,
   completionToUpdate,
+  crawlLinkRowToLink,
   crawlPageRowToPage,
   crawlRowToCrawl,
   linkToInsert,
@@ -133,6 +135,22 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
         .limit(limit);
       if (error) throw new CrawlStoreError("list crawl pages", error);
       return data.map(crawlPageRowToPage);
+    },
+
+    async listLinks(crawlId, limit) {
+      // External edges first (`is_internal` false sorts before true), then by
+      // target and source, so the same crawl always reads back in the same
+      // order and a bounded read keeps the outbound edges.
+      const { data, error } = await client
+        .from("nexra_crawl_links")
+        .select(CRAWL_LINK_READ_COLUMNS)
+        .eq("crawl_id", crawlId)
+        .order("is_internal", { ascending: true })
+        .order("to_url", { ascending: true })
+        .order("from_url", { ascending: true })
+        .limit(limit);
+      if (error) throw new CrawlStoreError("list crawl links", error);
+      return data.map(crawlLinkRowToLink);
     },
   };
 }

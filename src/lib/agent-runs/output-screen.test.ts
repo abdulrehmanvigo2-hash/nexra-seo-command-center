@@ -466,6 +466,10 @@ describe("the competitor comparison review through the worker's output screen", 
         crawls: { getCrawl: notHere("a crawl") },
         searchConsole: notHere("Search Console"),
       },
+      links: {
+        crawls: { getCrawl: notHere("a crawl") },
+        links: { listLinks: notHere("link edges") },
+      },
       draft: {
         runs: { getById: notHere("a run") },
         evidencePack: {
@@ -694,6 +698,10 @@ describe("the Research & Evidence pack through the worker's output screen", () =
         listCompetitorCrawls: notHere("competitor crawls"),
         crawls: { getCrawl: notHere("a crawl") },
         searchConsole: notHere("Search Console"),
+      },
+      links: {
+        crawls: { getCrawl: notHere("a crawl") },
+        links: { listLinks: notHere("link edges") },
       },
       draft: {
         runs: { getById: notHere("a run") },
@@ -952,5 +960,126 @@ describe("the Writer's section draft through the worker's output screen", () => 
     assert.equal(run.status, "completed");
     assert.deepEqual(run.resultMetadata, DRAFT_METADATA);
     assert.ok(!JSON.stringify(run.resultMetadata).includes("PAGE AND GOAL"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Authority & Backlink agent's outbound link review: the same screen, the
+// same ceiling, and metadata that holds counts and never a host.
+// ---------------------------------------------------------------------------
+
+const LINK_METADATA: JsonObject = {
+  simulated: false,
+  grounded: true,
+  evidence: {
+    source: "crawl-links",
+    crawlId: CRAWL_ID,
+    hostScope: "nexraagency.com",
+    pagesFetched: 5,
+    linksRecorded: 15,
+    internalEdges: 8,
+    externalEdges: 7,
+    externalHosts: 3,
+    hostsIncluded: 3,
+    truncated: false,
+    bytes: 2_100,
+  },
+  taskType: "outbound-link-review",
+  attempt: 1,
+  provider: "anthropic",
+  model: "test-model",
+  inputTokens: 1_100,
+  outputTokens: 240,
+};
+
+const LINK_NOT_ESTABLISHED =
+  "No inbound backlink, referring domain, authority, anchor-text or placement record exists for this project; nothing above is a backlink.";
+const LINK_CLOSING =
+  "The only evidence here is this project's own recorded site crawl and the outbound edges it observed; no inbound link to this site was measured by anything.";
+
+const LINK_ANSWER = [
+  "LINK RECORD\nCrawl of nexraagency.com, five pages fetched, partial.\nEdges recorded: 15 in all, 8 internal, 7 external.",
+  "OUTBOUND HOSTS\nwww.linkedin.com: 4 edges, rel (none) and nofollow noopener [crawl /about]\npartner.example: 1 edge, rel sponsored [crawl /services]\ncdn.example: 1 edge, rel (none) [crawl /services]",
+  "DECLARATIONS TO CHECK\nOBSERVED: three edges to www.linkedin.com carry no rel [crawl /]\nOBSERVED: the partner.example link is declared sponsored [crawl /services]\nINFERENCE: confirm the cdn.example script link is intended [crawl /services]",
+  `NOT ESTABLISHED\n${LINK_NOT_ESTABLISHED}`,
+  "EVIDENCE NEEDED\nA connected backlink data source.",
+  "NEXT OPERATOR ACTION\nCheck the rel declarations on the named paths.",
+  LINK_CLOSING,
+].join("\n\n");
+
+async function runLinkReview(output: ExecutionOutput) {
+  const { store, finishes, current } = memoryStore(
+    queuedRun({ agentId: "authority-backlink", taskType: "outbound-link-review", input: { crawlId: CRAWL_ID } }),
+  );
+  const stub = answering(output);
+  const worker = createAgentRunWorker({
+    store,
+    executor: stub.executor,
+    projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+    timeoutMs: 5_000,
+  });
+  const outcome = await worker.executeRun(RUN_ID);
+  return { outcome, finishes, run: current(), executorCalls: stub.calls() };
+}
+
+describe("an outbound link review on the screen — the Authority & Backlink agent", () => {
+  test("a bounded review with six sections, the fixed line and the closing sentence completes and is stored as returned", async () => {
+    assert.ok(LINK_ANSWER.length < 1_500, `${LINK_ANSWER.length} characters`);
+    const { outcome, finishes, run, executorCalls } = await runLinkReview({ summary: LINK_ANSWER, metadata: LINK_METADATA });
+    assert.equal(outcome.status, "executed");
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "completed");
+    assert.equal(run.status, "completed");
+    assert.equal(run.resultSummary, LINK_ANSWER);
+    assert.deepEqual(run.resultMetadata, LINK_METADATA);
+    for (const heading of ["LINK RECORD", "OUTBOUND HOSTS", "DECLARATIONS TO CHECK", "NOT ESTABLISHED", "EVIDENCE NEEDED", "NEXT OPERATOR ACTION"]) {
+      assert.ok(run.resultSummary?.includes(`${heading}\n`), heading);
+    }
+    const hosts = run.resultSummary?.split("OUTBOUND HOSTS\n")[1]?.split("\n\n")[0]?.split("\n") ?? [];
+    assert.ok(hosts.length >= 1 && hosts.length <= 6);
+    for (const line of hosts) assert.match(line, /\[crawl \/\S*\]$/);
+    const declarations = run.resultSummary?.split("DECLARATIONS TO CHECK\n")[1]?.split("\n\n")[0]?.split("\n") ?? [];
+    assert.ok(declarations.length <= 3);
+    for (const line of declarations) assert.match(line, /^(OBSERVED|INFERENCE): /);
+    assert.ok(run.resultSummary?.includes(`NOT ESTABLISHED\n${LINK_NOT_ESTABLISHED}`));
+    assert.ok(run.resultSummary?.endsWith(LINK_CLOSING));
+    assert.doesNotMatch(run.resultSummary ?? "", /backlinks? (count|profile)|referring domains: \d|authority score|domain rating/i);
+  });
+
+  test("the metadata is counts and identifiers only: no host, path or URL is stored", async () => {
+    const { run } = await runLinkReview({ summary: LINK_ANSWER, metadata: LINK_METADATA });
+    const stored = JSON.stringify(run.resultMetadata);
+    for (const leak of ["linkedin", "partner.example", "cdn.example", "/services", "https://"]) {
+      assert.ok(!stored.includes(leak), `${leak} reached the metadata`);
+    }
+  });
+
+  test("an overlong review is refused, and nothing of it is stored", async () => {
+    const overlong = `${LINK_ANSWER}\n${"x".repeat(2_000)}`;
+    const { finishes, run, executorCalls } = await runLinkReview({ summary: overlong, metadata: LINK_METADATA });
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "failed");
+    assert.equal(run.status, "failed");
+    assert.equal(run.error?.code, "rejected-output");
+    assert.equal(run.resultSummary, null);
+  });
+
+  test("the ceiling is unchanged for this task: 2,000 characters is kept and 2,001 is refused", async () => {
+    const padded = `${LINK_ANSWER}\n${"x".repeat(2_000 - LINK_ANSWER.length - 1)}`;
+    assert.equal(padded.length, 2_000);
+    assert.equal((await runLinkReview({ summary: padded, metadata: LINK_METADATA })).run.status, "completed");
+    const over = `${padded}x`;
+    assert.equal(over.length, 2_001);
+    assert.equal((await runLinkReview({ summary: over, metadata: LINK_METADATA })).run.error?.code, "rejected-output");
+  });
+
+  test("a review that carries something credential-shaped is refused like any other output", async () => {
+    const { run } = await runLinkReview({
+      summary: `${LINK_ANSWER}\nToken: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U`,
+      metadata: LINK_METADATA,
+    });
+    assert.equal(run.status, "failed");
+    assert.equal(run.error?.code, "rejected-output");
+    assert.equal(run.resultSummary, null);
   });
 });

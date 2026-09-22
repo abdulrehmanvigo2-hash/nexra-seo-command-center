@@ -45,7 +45,8 @@ export type ReviewTaskType =
   | "competitor-comparison-review"
   | "evidence-pack-review"
   | "content-plan-review"
-  | "section-draft";
+  | "section-draft"
+  | "outbound-link-review";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
@@ -61,7 +62,8 @@ export type ReviewSpec = {
     | "market-intelligence"
     | "research-evidence"
     | "content-strategist"
-    | "writer";
+    | "writer"
+    | "authority-backlink";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
@@ -100,6 +102,27 @@ export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, ReviewSpec>> = {
       "Queues a read-only answer-readiness review of the structured data, headings, titles, descriptions, canonicals and robots directives recorded above. It judges page declarations only — not AI crawler access, citations or visibility, which no crawl can observe — and changes nothing.",
     groundedIn: "this crawl's recorded pages",
   },
+};
+
+/**
+ * The Authority & Backlink agent's review of one crawl's outbound links.
+ *
+ * The same crawl as the three reviews above, the same request shape and the
+ * same refusals, read by a reader of its own over the crawl's stored edges.
+ * It is offered beneath the project's own-site crawl only — a competitor
+ * crawl panel never renders it — and it describes what the client's pages
+ * link to, never who links to them: no inbound backlink, referring domain
+ * or authority record exists for it to read, and its wording says so.
+ */
+export const OUTBOUND_LINK_REVIEW: ReviewSpec = {
+  taskType: "outbound-link-review",
+  agentId: "authority-backlink",
+  agentName: "Authority & Backlink",
+  action: "Review outbound links with Authority Agent",
+  summary:
+    "Queues a read-only review of the outbound links this crawl recorded on the project's own pages: which outside hosts they link to, how many edges, and the rel declarations as written. It reads recorded edges only — it fetches no host, contacts no one, and has no inbound backlink, referring domain or authority record to read, because this product holds none — and changes nothing.",
+  groundedIn:
+    "this crawl's recorded outbound links — what the project's own pages link to, never who links to them; no inbound backlink record exists",
 };
 
 /**
@@ -733,6 +756,15 @@ export function evidenceDescription(metadata: JsonObject): string | null {
   if (evidence === null) return null;
   if (evidence.source === "agent-run") return null;
   if (evidence.source === "project") return INTAKE_REVIEW.groundedIn;
+  if (evidence.source === "crawl-links") {
+    const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
+    const external = typeof evidence.externalEdges === "number" ? evidence.externalEdges : null;
+    const hosts = typeof evidence.externalHosts === "number" ? evidence.externalHosts : null;
+    if (crawlId && external !== null && hosts !== null) {
+      return `this crawl's recorded outbound links (crawl ${crawlId}: ${external} external edge${external === 1 ? "" : "s"} to ${hosts} host${hosts === 1 ? "" : "s"}, observed on the project's own pages and never fetched; no inbound backlink record exists)`;
+    }
+    return OUTBOUND_LINK_REVIEW.groundedIn;
+  }
   if (evidence.source === "content-draft") {
     const planRunId = typeof evidence.planRunId === "string" ? evidence.planRunId : null;
     const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;

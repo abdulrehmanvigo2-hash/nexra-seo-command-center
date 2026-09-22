@@ -1,6 +1,7 @@
 import { CRAWL_SOURCE, type GroundingReader } from "@/lib/agent-runs/ai-executor";
 import { readRunGrounding, type AgentRunReader } from "@/lib/agent-runs/run-grounding";
 import { getTaskType } from "@/lib/agent-runs/task-types";
+import { readLinkGrounding, type LinkGroundingReaders } from "@/lib/authority/link-grounding";
 import { readDraftGrounding, type DraftGroundingReaders } from "@/lib/content/draft-grounding";
 import { readComparisonGrounding, type ComparisonGroundingReaders } from "@/lib/crawl/comparison-grounding";
 import { readCrawlGrounding, type CrawlGroundingReader } from "@/lib/crawl/grounding";
@@ -50,6 +51,8 @@ export type TaskGroundingReaders = {
   readonly evidencePack: EvidencePackReaders;
   /** `content-draft` tasks: one completed plan by id, and the pack it was written over, re-read. */
   readonly draft: DraftGroundingReaders;
+  /** `crawl-links` tasks: one crawl record, and the edges it recorded, read bounded. */
+  readonly links: LinkGroundingReaders;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -137,6 +140,30 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         // No input is read: the project is the run's own, and every record
         // is found by the server from it.
         const result = await readEvidencePackGrounding(readers.evidencePack, { projectId: task.project.id });
+        if (!result.ok) return { ok: false, reason: result.reason };
+
+        return {
+          ok: true,
+          grounding: {
+            text: result.grounding.text,
+            summary: { ...result.grounding.summary },
+            source: result.grounding.source,
+          },
+        };
+      }
+
+      case "crawl-links": {
+        const crawlId = task.input.crawlId;
+        if (typeof crawlId !== "string") return { ok: false, reason: "crawl-id-missing" };
+
+        // The run's own project and its own domain, as for the crawl reviews:
+        // another project's crawl or a competitor's site is refused before an
+        // edge is read.
+        const result = await readLinkGrounding(readers.links, {
+          crawlId,
+          projectId: task.project.id,
+          projectDomain: task.project.domain,
+        });
         if (!result.ok) return { ok: false, reason: result.reason };
 
         return {

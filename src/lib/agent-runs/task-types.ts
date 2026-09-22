@@ -8,6 +8,7 @@ import {
 } from "@/lib/crawl/grounding";
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
+import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
 import { SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
 import { CONTENT_PLAN_INSTRUCTIONS } from "@/lib/content/plan-instructions";
 import { INTAKE_REVIEW_INSTRUCTIONS } from "@/lib/projects/grounding";
@@ -73,6 +74,10 @@ export type TaskTypeDefinition = {
    * beside the evidence pack it was written over, re-read now; the reader
    * refuses when the plan is not this project's, not completed, simulated,
    * ungrounded, or written over a crawl that is no longer the newest.
+   * `crawl-links` tasks are given the link edges one crawl of the project's
+   * own site recorded — what its pages link to, grouped by target host,
+   * recorded and never fetched — and no backlink, referring domain or
+   * authority record, because this product holds none.
    */
   readonly evidence:
     | "none"
@@ -82,7 +87,8 @@ export type TaskTypeDefinition = {
     | "project"
     | "competitor-comparison"
     | "evidence-pack"
-    | "content-draft";
+    | "content-draft"
+    | "crawl-links";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -503,6 +509,33 @@ const sectionDraft: TaskTypeDefinition = {
   },
 };
 
+/**
+ * The Authority & Backlink agent's first task: the outbound links one crawl
+ * of the project's own site recorded.
+ *
+ * The same single input as the crawl reviews, checked by the same rule, and
+ * read by a reader of its own (`@/lib/authority/link-grounding`) over the
+ * crawl's stored edges: which outside hosts the client's pages link to, how
+ * many edges, and the rel declarations as written. It is the one thing this
+ * product records about links, and it points outward only: no inbound
+ * backlink, referring domain, authority figure, anchor text or placement is
+ * recorded anywhere, and the task says so in fixed words. Read-only, like
+ * every review here: it fetches no host, contacts no one, and changes
+ * nothing. Operator-triggered only; nothing queues it automatically, and
+ * its completed run is not a hand-off source.
+ */
+const outboundLinkReview: TaskTypeDefinition = {
+  id: "outbound-link-review",
+  label: "Outbound link review",
+  description:
+    "Review the outbound links one completed crawl recorded on the project's own pages: the hosts they point to and the rel declarations as written, never a backlink.",
+  agents: ["authority-backlink"],
+  policy: "read-only",
+  evidence: "crawl-links",
+  instructions: OUTBOUND_LINK_REVIEW_INSTRUCTIONS,
+  parseInput: parseCrawlIdInput,
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -517,6 +550,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   evidencePackReview,
   contentPlanReview,
   sectionDraft,
+  outboundLinkReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

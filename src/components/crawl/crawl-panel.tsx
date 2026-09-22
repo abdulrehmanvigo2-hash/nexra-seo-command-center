@@ -21,7 +21,7 @@ import {
   pageRow,
   type PageRow,
 } from "@/lib/crawl/pages-view";
-import { CRAWL_REVIEWS, reviewRequest } from "@/lib/crawl/review-request";
+import { CRAWL_REVIEWS, OUTBOUND_LINK_REVIEW, reviewRequest } from "@/lib/crawl/review-request";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { Crawl, CrawlPage } from "@/types/crawl";
@@ -219,6 +219,15 @@ export function CrawlPanel({
     CRAWL_REVIEWS["answer-readiness-review"],
     projectId,
   );
+  // The Authority & Backlink review reads this crawl's recorded outbound
+  // edges. It belongs to the own-site crawl alone: the competitor crawl panel
+  // is a different component and never offers it.
+  const outboundLinks = useQueuedReview(
+    reviewRequest(projectId, shown, OUTBOUND_LINK_REVIEW),
+    shownId,
+    OUTBOUND_LINK_REVIEW,
+    projectId,
+  );
 
   return (
     <Panel>
@@ -325,6 +334,7 @@ export function CrawlPanel({
               projectId={projectId}
               {...answerReadiness}
             />
+            <QueuedReview review={OUTBOUND_LINK_REVIEW} projectId={projectId} {...outboundLinks} />
 
             {pages.status === "loading" && <Skeleton className="h-20 w-full" />}
 

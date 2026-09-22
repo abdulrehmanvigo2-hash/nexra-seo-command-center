@@ -8,7 +8,7 @@ import { runCrawl, type EngineOptions } from "@/lib/crawl/engine";
 import { hostScopeFromDomain, startUrlForDomain } from "@/lib/crawl/url-policy";
 import { logEvent } from "@/lib/observability/log";
 import type { ProjectRepository } from "@/lib/projects/contract";
-import type { Crawl, CrawlFailureReason, CrawlPage, CrawlStatus } from "@/types/crawl";
+import type { Crawl, CrawlFailureReason, CrawlLink, CrawlPage, CrawlStatus } from "@/types/crawl";
 
 /**
  * The rules around a crawl: who may start one, against what, and what is
@@ -55,6 +55,12 @@ export type CrawlService = {
    */
   startCrawl(projectId: string, operatorId: string, target?: CompetitorCrawlTarget): Promise<StartCrawlResult>;
   getCrawl(id: string, pageLimit?: number): Promise<CrawlDetail | null>;
+  /**
+   * The edges one crawl recorded, bounded, external edges first. A read of
+   * stored rows only: no target is fetched, and a crawl no store holds reads
+   * as an empty list, never as a site with no links.
+   */
+  listCrawlLinks(id: string, limit?: number): Promise<readonly CrawlLink[]>;
   /** The project's own-site crawls only, newest first. A competitor crawl is never among them. */
   listCrawls(projectId: string, limit?: number): Promise<readonly Crawl[]>;
   /** The crawls of one recorded competitor domain, newest first, or why the domain is refused. */
@@ -72,6 +78,9 @@ export type CrawlServiceOptions = {
 
 const DEFAULT_PAGE_LIMIT = 500;
 const DEFAULT_CRAWL_LIST_LIMIT = 25;
+/** Enough for every edge a full-budget crawl can record (pages × links per page), and no more. */
+const DEFAULT_LINK_LIMIT = 5_000;
+const MAX_LINK_LIMIT = 10_000;
 
 /** How a start failure is recorded on the crawl row. */
 const START_FAILURE_MESSAGE: Readonly<Record<string, string>> = {
@@ -252,6 +261,11 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
       const crawl = await store.getById(id);
       if (crawl === null) return null;
       return { crawl, pages: await store.listPages(id, pageLimit) };
+    },
+
+    async listCrawlLinks(id, limit = DEFAULT_LINK_LIMIT) {
+      const bounded = Number.isInteger(limit) && limit > 0 ? Math.min(limit, MAX_LINK_LIMIT) : DEFAULT_LINK_LIMIT;
+      return store.listLinks(id, bounded);
     },
 
     async listCrawls(projectId, limit = DEFAULT_CRAWL_LIST_LIMIT) {

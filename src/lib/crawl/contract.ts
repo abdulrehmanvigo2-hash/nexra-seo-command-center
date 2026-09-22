@@ -56,6 +56,12 @@ export type CrawlStore = {
   savePages(crawlId: string, pages: readonly Omit<CrawlPage, "id" | "crawlId">[]): Promise<void>;
   saveLinks(crawlId: string, links: readonly Omit<CrawlLink, "crawlId">[]): Promise<void>;
   listPages(crawlId: string, limit: number): Promise<readonly CrawlPage[]>;
+  /**
+   * The edges one crawl recorded, external edges first, then by target and
+   * source URL, so a bounded read holds what the site links out to before
+   * what it links to within itself. Read-only: nothing here fetches a target.
+   */
+  listLinks(crawlId: string, limit: number): Promise<readonly CrawlLink[]>;
 };
 
 /**
@@ -86,6 +92,9 @@ export const unavailableCrawlStore: CrawlStore = {
     /* nothing is stored */
   },
   async listPages() {
+    return [];
+  },
+  async listLinks() {
     return [];
   },
 };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AgentRun } from "../../types/agent-run.ts";
+import type { AgentRun, JsonObject } from "../../types/agent-run.ts";
 import type { Crawl, CrawlPage } from "../../types/crawl.ts";
 import type { RangeId } from "../../types/dashboard.ts";
 import type { ProjectIntake, ProjectRecord } from "../../types/project.ts";
@@ -9,6 +9,8 @@ import { COMPARISON_SIDE_LIMITS, formatComparisonGrounding, type ComparisonGroun
 import { formatCrawlGrounding } from "../crawl/grounding.ts";
 import { formatProjectGrounding, type ProjectGroundingReaders } from "../projects/grounding.ts";
 import { formatDraftGrounding, type DraftGroundingReaders } from "../content/draft-grounding.ts";
+import { formatLinkGrounding, type LinkGroundingReaders } from "../authority/link-grounding.ts";
+import type { CrawlLink } from "../../types/crawl.ts";
 import { EVIDENCE_PACK_CRAWL_LIMITS, formatEvidencePackGrounding, type EvidencePackReaders } from "../research/evidence-pack.ts";
 import { formatSearchConsoleGrounding } from "../search-console/grounding.ts";
 import { createAiExecutor } from "./ai-executor.ts";
@@ -118,6 +120,36 @@ function crawlStore(crawl: Crawl = CRAWL, pages: readonly CrawlPage[] = PAGES) {
       },
     },
   };
+}
+
+/** The edges the crawl recorded: a few internal, three external to two hosts. */
+const LINKS: readonly CrawlLink[] = [
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/services", rel: null, isInternal: true },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://nexraagency.com/", rel: null, isInternal: true },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false },
+];
+
+/** The Authority agent's readers: a crawl record of its own and the crawl's edges. */
+function linkStore(crawl: Crawl = CRAWL, links: readonly CrawlLink[] = LINKS) {
+  let crawlReads = 0;
+  let listCalls = 0;
+  const reader: LinkGroundingReaders = {
+    crawls: {
+      async getCrawl(id: string) {
+        crawlReads += 1;
+        return id === crawl.id ? { crawl, pages: PAGES } : null;
+      },
+    },
+    links: {
+      async listLinks(id: string, limit: number) {
+        listCalls += 1;
+        return id === crawl.id ? links.slice(0, limit) : [];
+      },
+    },
+  };
+  return { reader, crawlReads: () => crawlReads, listCalls: () => listCalls };
 }
 
 const REPORT: Extract<SearchConsoleReport, { state: "connected" }> = {
@@ -409,6 +441,7 @@ function readers(
   comparison: ReturnType<typeof comparisonStore> = comparisonStore(),
   evidencePack: ReturnType<typeof evidencePackStore> = evidencePackStore(),
   draft: ReturnType<typeof draftStore> = draftStore(),
+  links: ReturnType<typeof linkStore> = linkStore(),
 ): TaskGroundingReaders & {
   crawls: TaskGroundingReaders["crawls"];
   store: typeof crawls;
@@ -423,6 +456,8 @@ function readers(
   draftRunReads: () => number;
   draftPackCalls: () => number;
   draftPackDetailIds: string[];
+  linkCrawlReads: () => number;
+  linkListCalls: () => number;
 } {
   return {
     crawls: crawls.reader,
@@ -432,6 +467,9 @@ function readers(
     comparison: comparison.reader,
     evidencePack: evidencePack.reader,
     draft: draft.reader,
+    links: links.reader,
+    linkCrawlReads: links.crawlReads,
+    linkListCalls: links.listCalls,
     packCalls: evidencePack.calls,
     packDetailIds: evidencePack.detailIds,
     draftRunReads: draft.runReads,
@@ -1878,6 +1916,133 @@ describe("the Writer through the executor", () => {
       await createAiExecutor(provider, createTaskGrounding(readers())).execute(task, new AbortController().signal);
       assert.doesNotMatch(seen.prompt ?? "", /CONTENT DRAFT INPUTS|SECTION TO DRAFT|Draft exactly one section/, task.taskType);
       assert.doesNotMatch(seen.system ?? "", /Writer agent|content draft inputs/, task.taskType);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Authority & Backlink agent: one crawl's recorded outbound edges.
+// ---------------------------------------------------------------------------
+
+const outboundLinkTask: ExecutionTask = {
+  ...onPageTask,
+  agent: { id: "authority-backlink", name: "Authority & Backlink" },
+  taskType: "outbound-link-review",
+};
+
+describe("outbound-link-review is grounded in the crawl's recorded edges, through the Authority agent's own reader", () => {
+  test("reads the crawl record and its edges once each, and not through the crawl reviews' reader", async () => {
+    const crawls = crawlStore();
+    const links = linkStore();
+    const result = await createTaskGrounding(readers(crawls, undefined, undefined, undefined, undefined, undefined, undefined, links))(outboundLinkTask);
+    assert.equal(result.ok, true);
+    if (!result.ok || result.grounding === null) return;
+    assert.ok(result.grounding.text.startsWith("OUTBOUND LINK RECORD"));
+    assert.equal(result.grounding.text, formatLinkGrounding(CRAWL, LINKS).text);
+    assert.deepEqual(result.grounding.summary, { ...formatLinkGrounding(CRAWL, LINKS).summary });
+    assert.equal(result.grounding.source?.label, "outbound link evidence");
+    assert.equal(links.crawlReads(), 1);
+    assert.equal(links.listCalls(), 1);
+    assert.equal(crawls.reads(), 0, "the crawl reviews' reader was used for a link review");
+  });
+
+  test("the summary is counts only, and the block names the two hosts with their recorded paths", async () => {
+    const result = await createTaskGrounding(readers())(outboundLinkTask);
+    assert.ok(result.ok && result.grounding !== null);
+    if (!result.ok || result.grounding === null) return;
+    assert.deepEqual(result.grounding.summary, {
+      source: "crawl-links",
+      crawlId: CRAWL.id,
+      hostScope: "nexraagency.com",
+      pagesFetched: CRAWL.pagesFetched,
+      linksRecorded: 5,
+      internalEdges: 2,
+      externalEdges: 3,
+      externalHosts: 2,
+      hostsIncluded: 2,
+      truncated: false,
+      bytes: result.grounding.summary.bytes,
+    });
+    assert.ok(result.grounding.text.includes("1. www.linkedin.com — 2 edges; rel as written: (none) | nofollow noopener; from [crawl /] [crawl /services]"));
+    assert.ok(result.grounding.text.includes("2. partner.example — 1 edge; rel as written: sponsored; from [crawl /services]"));
+    assert.ok(!JSON.stringify(result.grounding.summary).includes("linkedin"));
+  });
+
+  test("a missing or non-string crawl id is refused before anything is read", async () => {
+    const links = linkStore();
+    const inputs: JsonObject[] = [{}, { crawlId: 42 }, { crawlId: null }];
+    for (const input of inputs) {
+      const result = await createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, links))({ ...outboundLinkTask, input });
+      assert.deepEqual(result, { ok: false, reason: "crawl-id-missing" }, JSON.stringify(input));
+    }
+    assert.equal(links.crawlReads(), 0);
+    assert.equal(links.listCalls(), 0);
+  });
+
+  test("another project's crawl, a competitor crawl, a running crawl and a failed crawl are refused with the crawl reader's reasons, and no edge is read", async () => {
+    const cases: [ReturnType<typeof linkStore>, ExecutionTask, string][] = [
+      [linkStore(), { ...outboundLinkTask, project: { id: "halcyon-fintech", name: "Halcyon", domain: "halcyonfintech.com" } }, "crawl-not-in-project"],
+      [linkStore(COMPETITOR_CRAWL), { ...outboundLinkTask, input: { crawlId: COMPETITOR_CRAWL.id } }, "crawl-not-project-site"],
+      [linkStore({ ...CRAWL, status: "running", finishedAt: null }), outboundLinkTask, "crawl-unfinished"],
+      [linkStore({ ...CRAWL, status: "failed", stopReason: "error" }), outboundLinkTask, "crawl-not-reviewable"],
+      [linkStore({ ...CRAWL, id: "8f1c0d2e-0000-4000-8000-000000000077" }), outboundLinkTask, "crawl-not-found"],
+    ];
+    for (const [links, task, reason] of cases) {
+      const result = await createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, links))(task);
+      assert.deepEqual(result, { ok: false, reason }, reason);
+      assert.equal(links.listCalls(), 0, `${reason}: an edge was read`);
+    }
+  });
+
+  test("a crawl with no external edge is grounded, and says none recorded", async () => {
+    const links = linkStore(CRAWL, LINKS.filter((link) => link.isInternal));
+    const result = await createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, links))(outboundLinkTask);
+    assert.ok(result.ok && result.grounding !== null);
+    if (!result.ok || result.grounding === null) return;
+    assert.ok(result.grounding.text.includes("none recorded"));
+    assert.equal(result.grounding.summary.externalEdges, 0);
+  });
+});
+
+describe("the Authority agent's prompt", () => {
+  test("names the outbound link evidence as what it works from, carries the task and the block, and claims nothing inbound", async () => {
+    const { seen, provider } = capturingProvider();
+    await createAiExecutor(provider, createTaskGrounding(readers())).execute(outboundLinkTask, new AbortController().signal);
+    assert.equal(seen.calls, 1);
+    assert.match(seen.system ?? "", /You work from the task and the outbound link evidence supplied with it/);
+    assert.match(seen.system ?? "", /link targets and rel attributes as written on its pages/);
+    assert.match(seen.prompt ?? "", /Task: Outbound link review/);
+    assert.match(seen.prompt ?? "", /OUTBOUND LINK RECORD/);
+    assert.match(seen.prompt ?? "", /=== OUTBOUND HOSTS/);
+    assert.match(seen.prompt ?? "", /Answer in exactly six sections/);
+    assert.match(seen.prompt ?? "", /An outbound link is never a backlink\./);
+    assert.doesNotMatch(seen.prompt ?? "", /referring domains: \d|authority score: \d|\d+ backlinks|domain rating/i);
+    assert.doesNotMatch(seen.prompt ?? "", /CONTENT DRAFT INPUTS|COMPETITOR COMPARISON|EVIDENCE PACK \(/);
+  });
+
+  test("a refused crawl reaches no provider", async () => {
+    const cases: [ReturnType<typeof linkStore>, string][] = [
+      [linkStore(COMPETITOR_CRAWL), COMPETITOR_CRAWL.id],
+      [linkStore({ ...CRAWL, status: "running", finishedAt: null }), CRAWL.id],
+      [linkStore({ ...CRAWL, id: "8f1c0d2e-0000-4000-8000-000000000078" }), CRAWL.id],
+    ];
+    for (const [links, crawlId] of cases) {
+      const { seen, provider } = capturingProvider();
+      const executor = createAiExecutor(provider, createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, links)));
+      await assert.rejects(() => executor.execute({ ...outboundLinkTask, input: { crawlId } }, new AbortController().signal));
+      assert.equal(seen.calls, 0, "the provider was called for a refused crawl");
+      assert.equal(links.listCalls(), 0);
+    }
+  });
+
+  test("the eleven existing tasks keep their exact wording — none of them reads an edge", async () => {
+    for (const task of [crawlReviewTask, onPageTask, answerReadinessTask, searchQueryTask, performanceReviewTask, priorityReviewTask, intakeReviewTask, comparisonTask, evidencePackTask, contentPlanTask, sectionDraftTask]) {
+      const links = linkStore();
+      const { seen, provider } = capturingProvider();
+      await createAiExecutor(provider, createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, links))).execute(task, new AbortController().signal);
+      assert.doesNotMatch(seen.prompt ?? "", /OUTBOUND LINK RECORD|OUTBOUND HOSTS|Outbound link review/, task.taskType);
+      assert.doesNotMatch(seen.system ?? "", /outbound link evidence/, task.taskType);
+      assert.equal(links.listCalls(), 0, task.taskType);
     }
   });
 });

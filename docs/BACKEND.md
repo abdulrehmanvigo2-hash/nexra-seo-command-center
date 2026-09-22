@@ -88,7 +88,7 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Thirteen task types exist, twelve read-only and one `draft`: `project-review` (any agent),
+project. Fourteen task types exist, thirteen read-only and one `draft`: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -100,8 +100,9 @@ project. Thirteen task types exist, twelve read-only and one `draft`: `project-r
 project's own recorded crawl and one recorded competitor's crawl) and
 `evidence-pack-review` (Research & Evidence, from the records this product
 holds for the project), `content-plan-review` (Content Strategist, from
-the same records) and `section-draft` (Writer, from one completed content
-plan and the records it was written over). The
+the same records), `section-draft` (Writer, from one completed content
+plan and the records it was written over) and `outbound-link-review`
+(Authority & Backlink, from the link edges one own-site crawl recorded). The
 three crawl reviews take one input, a crawl id, and are grounded in the same
 recorded crawl; the two Search Console reviews take one input, a range id, and
 are grounded in the project's own Search Console report; the priority review
@@ -116,7 +117,9 @@ competitor crawls on record (see *Evidence pack* below); the content plan
 takes no input and reads the same records through the same reader (see
 *Content plan* below); the section draft takes one input, a plan run id,
 and is grounded in that plan quoted as a proposal beside the records re-read
-(see *Section draft* below).
+(see *Section draft* below); the outbound link review takes one input, a
+crawl id, and is grounded in that crawl's stored link edges (see *Outbound
+link review* below).
 Input is parsed strictly per task type, bounded, and screened for credentials;
 unknown fields are refused. Adding a task type needs no migration: the run
 table checks the id's format, not a list.
@@ -376,7 +379,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review`, `competitor-comparison-review`, `evidence-pack-review`, `content-plan-review` and `section-draft` are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review`, `competitor-comparison-review`, `evidence-pack-review`, `content-plan-review`, `section-draft` and `outbound-link-review` are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
@@ -708,6 +711,70 @@ prohibited-actions list, and no draft storage, editing or publishing
 surface exists — a draft lives in the run's 2,000-character summary and is
 read in Run History.
 
+### Outbound link review
+
+`outbound-link-review` is the Authority & Backlink agent's first task and
+the first reader over `nexra_crawl_links`. The crawler records every anchor
+it resolves as an edge — source URL, target URL, the `rel` attribute as
+written, and whether the target is within the crawl's host — and external
+edges are recorded and never fetched. That is the whole of what this
+product knows about links, and it points one way: what the client's pages
+link *to*, never who links to the client. No inbound backlink, referring
+domain, authority figure, anchor text or link placement is recorded by
+anything here, and the block says so in its own text.
+
+The input is a crawl id and nothing else, parsed by the crawl reviews'
+rule. The Authority-specific reader (`src/lib/authority/link-grounding.ts`)
+reads the crawl record through the crawl reader and checks it before an
+edge is read: it must exist (`crawl-not-found`), belong to the run's
+project (`crawl-not-in-project`), be the project's own site rather than a
+competitor's (`crawl-not-project-site`), and have finished in a reviewable
+state (`crawl-unfinished`, `crawl-not-reviewable`) — the crawl reader's own
+five refusals, decided before any provider is reached. Then the edges are
+read through one bounded store method (`listLinks`, external edges first,
+then by target and source URL, at most 5,000 rows), grouped by target host
+— most edges first, then host name — with the distinct `rel` values as
+written ("(none)" for an anchor with no rel), and up to three source paths
+per host, each a `[crawl /path]` tag. At most 40 hosts and 60,000 bytes are
+described; hosts beyond that are counted and disclosed as omitted, and an
+edge read that hit its row limit is reported as a lower bound. A crawl with
+no external edge is not a refusal: the block states "none recorded".
+
+The block is headed as an outbound link record, states the crawl, its host,
+the internal, external and total edge counts, a direction line ("every edge
+below is FROM a crawled page of the site TO the named host"), the host list
+under `=== OUTBOUND HOSTS ===`, and a LINK RECORD LIMITS note: an edge is
+an outbound link and never a backlink, nothing inbound is recorded and each
+such figure is not established rather than zero, a rel value is the page's
+own declaration and says nothing about worth or payment, no target was
+fetched, and the crawl is a bounded sample. The agent answers in six fixed
+sections — LINK RECORD, OUTBOUND HOSTS (at most six tagged lines, or "none
+recorded"), DECLARATIONS TO CHECK (at most three lines beginning OBSERVED or
+INFERENCE), NOT ESTABLISHED (exactly: "No inbound backlink, referring
+domain, authority, anchor-text or placement record exists for this project;
+nothing above is a backlink."), EVIDENCE NEEDED and NEXT OPERATOR ACTION
+(each from a fixed list) — and ends on a fixed sentence naming the recorded
+own-site crawl as the only evidence. Every section is bounded so an answer
+at every bound stays under 1,500 characters with ordinary words and under
+the worker's unchanged 2,000-character ceiling with long ones. The
+instructions forbid backlink counts, referring domains, authority, link
+quality or toxicity, traffic, rankings, conversions, competitor backlinks,
+anchor text, placement, any claim that a host links back, any prospect,
+contact or outreach message. The stored evidence summary is counts and
+identifiers only — source, crawl id, host scope, pages fetched, edges
+recorded, internal and external edges, external hosts, hosts included,
+truncated, bytes — never a host name, URL or path.
+
+The control is the fourth beneath the project's own-site crawl: "Review
+outbound links with Authority Agent", offered for the same crawls as the
+three crawl reviews and refused for the same; queue and Run Now stay two
+operator actions; the run is restored by project, the Authority agent and
+the crawl's id. The competitor crawl panel never offers it. Nothing queues
+it when a crawl finishes. A completed review is not a hand-off source and
+offers no further control; the Director's list and refusal rules are
+unchanged. The Backlinks & Authority screen stays fixture-only: nothing
+there is read by this task, and nothing this task records reaches it.
+
 ### Action policy
 
 Every task type declares `read-only`, `draft`, `approval-required`, or
@@ -1038,7 +1105,13 @@ it. The deployment plan was not verifiable from this repository.
   in the run's 2,000-character summary: no draft table, no version history,
   no editing, no fact-check pass, no approval workflow and no publishing
   exist, and the Content Studio's drafts, briefs, coverage, linking and
-  recommendations remain fixtures. The comparison control checks
+  recommendations remain fixtures. The Authority & Backlink agent's
+  outbound link review reads only the edges one own-site crawl recorded:
+  no backlink data provider, verified inbound link, referring-domain,
+  anchor-text or placement record exists, none is derived from outbound
+  edges, and the Backlinks & Authority screen remains fixtures; a page's
+  stored `internal_links_out` count is known to include external anchors,
+  a counting defect in the engine kept out of this milestone. The comparison control checks
   the project's own newest crawl once, when the panel loads: an own-site
   crawl run afterwards on the same page is not seen until the page is
   reloaded. A grounding refusal fails the attempt as `execution-failed`

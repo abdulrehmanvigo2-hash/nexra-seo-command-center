@@ -161,6 +161,8 @@ export type CrawlsDatabase = {
 export const CRAWL_READ_COLUMNS =
   "id, project_id, start_url, host_scope, status, stop_reason, max_pages, max_depth, max_duration_ms, user_agent, robots_state, sitemap_state, pages_discovered, pages_fetched, pages_failed, error_code, error_message, created_by, started_at, finished_at";
 
+export const CRAWL_LINK_READ_COLUMNS = "crawl_id, from_url, to_url, rel, is_internal";
+
 export const CRAWL_PAGE_READ_COLUMNS =
   "id, crawl_id, url, final_url, fetch_state, http_status, redirect_hops, redirect_chain, content_type, content_bytes, robots_meta, robots_txt_allowed, canonical_href, canonical_resolved, canonical_is_self, title, title_length, meta_description, meta_description_length, h1_count, first_h1, schema_types, schema_blocks, schema_parse_failed, in_sitemap, depth, internal_links_in, internal_links_out, fetched_at, error_code";
 
@@ -339,6 +341,17 @@ export function pageToInsert(
     internal_links_out: page.internalLinksOut,
     fetched_at: page.fetchedAt,
     error_code: page.errorCode,
+  };
+}
+
+/** A link row, read back exactly as it was written: the `rel` is the page's own text. */
+export function crawlLinkRowToLink(row: CrawlLinkRow): CrawlLink {
+  return {
+    crawlId: row.crawl_id,
+    fromUrl: row.from_url,
+    toUrl: row.to_url,
+    rel: row.rel,
+    isInternal: row.is_internal,
   };
 }
 
