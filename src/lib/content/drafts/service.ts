@@ -12,6 +12,7 @@
  * publishes.
  */
 
+import { approvalEligibility, type ApprovalRefusal } from "@/lib/content/drafts/approval-rules";
 import type { ContentDraftStore } from "@/lib/content/drafts/contract";
 import { isUnchanged, normaliseVersionText, type VersionTextRefusal } from "@/lib/content/drafts/edit-rules";
 import {
@@ -122,6 +123,31 @@ export type RecordFactCheckResult =
   /** The store wrote the result but the history could not then be read. */
   | { readonly ok: false; readonly reason: "failed" };
 
+export type ApproveVersionRequest = {
+  readonly projectId: string;
+  readonly draftId: string;
+  /** The exact version to approve, which must still be the draft's current one. */
+  readonly version: number;
+  /** The operator's Supabase Auth user id, confirmed by the caller. */
+  readonly operatorId: string;
+};
+
+export type ApproveVersionResult =
+  /** The parent records this exact version as approved. `approved: false` means it already did, so nothing was written. */
+  | { readonly ok: true; readonly approved: boolean; readonly saved: DraftHistory }
+  | { readonly ok: false; readonly reason: "invalid" }
+  | { readonly ok: false; readonly reason: "unavailable" }
+  /** No such draft in this project. */
+  | { readonly ok: false; readonly reason: "not-found" }
+  /** The draft has no version with that number. */
+  | { readonly ok: false; readonly reason: "version-not-found" }
+  /** The policy refuses; nothing was written. */
+  | { readonly ok: false; readonly reason: "ineligible"; readonly refusal: ApprovalRefusal }
+  /** Another save advanced the draft first; nothing was written. */
+  | { readonly ok: false; readonly reason: "stale"; readonly currentVersion: number }
+  /** The store wrote nothing and the re-read explains nothing; nothing was written. */
+  | { readonly ok: false; readonly reason: "failed" };
+
 export type DraftService = {
   saveWriterRun(request: SaveWriterRunRequest): Promise<SaveWriterRunResult>;
   findForWriterRun(projectId: string, writerRunId: string): Promise<FindDraftResult>;
@@ -131,6 +157,8 @@ export type DraftService = {
   getHistory(projectId: string, draftId: string): Promise<FindDraftResult>;
   /** Records one completed fact-check run's result on the exact version it checked. */
   recordFactCheck(request: RecordFactCheckRequest): Promise<RecordFactCheckResult>;
+  /** Approves one exact version, under the explicit policy, in one conditional statement. Publishes nothing. */
+  approveVersion(request: ApproveVersionRequest): Promise<ApproveVersionResult>;
 };
 
 /** How many versions are read back for the history list. */
@@ -340,6 +368,64 @@ export function createDraftService(dependencies: {
       const now = await store.getByProjectAndId(projectId, draftId);
       if (now === null) return { ok: false, reason: "failed" };
       return { ok: true, recorded: true, factCheck, draftStatusAdvanced, saved: await history(now) };
+    },
+
+    // Approval is bound to the exact version and decided twice: the policy
+    // here, over the parent, the version and its recorded check, and then
+    // the store's one conditional statement, which writes only if that
+    // version is still current and the parent still fact-checked. A draft
+    // another session advanced or approved meanwhile is answered from a
+    // re-read, never approved as "the current one". No version row is
+    // touched and nothing is published.
+    async approveVersion(request) {
+      if (
+        !isProjectId(request.projectId) ||
+        !isUuid(request.draftId) ||
+        !isUuid(request.operatorId) ||
+        !Number.isInteger(request.version) ||
+        request.version < 1
+      ) {
+        return { ok: false, reason: "invalid" };
+      }
+      if (!store.storesDrafts) return { ok: false, reason: "unavailable" };
+      const projectId = request.projectId;
+      const draftId = request.draftId.toLowerCase();
+
+      const existing = await store.getByProjectAndId(projectId, draftId);
+      if (existing === null) return { ok: false, reason: "not-found" };
+      const version = await store.getVersion(existing.draft.id, request.version);
+      if (version === null) return { ok: false, reason: "version-not-found" };
+
+      // The same run's approval asked again: already recorded, nothing written.
+      if (existing.draft.status === "approved" && existing.draft.approvedVersion === request.version) {
+        return { ok: true, approved: false, saved: await history(existing) };
+      }
+      if (existing.draft.currentVersion !== request.version) {
+        return { ok: false, reason: "stale", currentVersion: existing.draft.currentVersion };
+      }
+      const eligibility = approvalEligibility(existing.draft, version);
+      if (!eligibility.ok) return { ok: false, reason: "ineligible", refusal: eligibility.reason };
+
+      const outcome = await store.approveVersion({
+        projectId,
+        draftId,
+        version: request.version,
+        approvedBy: request.operatorId.toLowerCase(),
+        approvedAt: new Date().toISOString(),
+      });
+      if (outcome.status === "approved") return { ok: true, approved: true, saved: await history({ draft: outcome.draft, version }) };
+
+      // The statement matched no row: read why, and never guess.
+      const now = await store.getByProjectAndId(projectId, draftId);
+      if (now === null) return { ok: false, reason: "not-found" };
+      if (now.draft.status === "approved" && now.draft.approvedVersion === request.version) {
+        return { ok: true, approved: false, saved: await history(now) };
+      }
+      if (now.draft.currentVersion !== request.version) {
+        return { ok: false, reason: "stale", currentVersion: now.draft.currentVersion };
+      }
+      const again = approvalEligibility(now.draft, version);
+      return again.ok ? { ok: false, reason: "failed" } : { ok: false, reason: "ineligible", refusal: again.reason };
     },
   };
 }

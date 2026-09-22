@@ -193,8 +193,13 @@ A version's `fact_check` is written by the application once, in one
 `update … where fact_check is null` statement carrying that column alone,
 with the result of a Research & Evidence run bound to that exact version;
 the parent's `status` moves to `fact-checked` in one conditional update
-(`where current_version = <checked> and status = 'drafting'`). Both use the
-grants above; the fact-check milestone added no migration.
+(`where current_version = <checked> and status = 'drafting'`). Approval is
+one further conditional update of the parent alone (`set status =
+'approved', approved_version, approved_by, approved_at where
+current_version = <version> and status = 'fact-checked'`), satisfying the
+`approval_complete` constraint from Stage 1. All three use the grants
+above; neither the fact-check nor the approval milestone added a
+migration.
 
 `20260922130100_content_draft_versions_guard_delete.sql` closes the gap the
 first guard left: it refuses every DELETE and TRUNCATE on

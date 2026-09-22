@@ -2,9 +2,11 @@
 
 import { useEffect, useId, useState } from "react";
 import {
+  approveDraftVersion,
   recordDraftFactCheck,
   saveDraftVersion,
   saveWriterRunAsDraft,
+  type ApproveDraftVersionActionResult,
   type RecordDraftFactCheckActionResult,
   type SaveDraftVersionActionResult,
   type SaveWriterRunAsDraftResult,
@@ -13,6 +15,7 @@ import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-re
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
+import { approvalEligibility, approvalRefusalMessage, isApprovedVersion } from "@/lib/content/drafts/approval-rules";
 import { isUnchanged, normaliseVersionText, refusalMessage } from "@/lib/content/drafts/edit-rules";
 import { offersRecordFactCheck } from "@/lib/content/drafts/fact-check-eligibility";
 import { readFactCheck } from "@/lib/content/drafts/parse-fact-check-output";
@@ -37,9 +40,13 @@ import type { ContentDraft, ContentDraftVersion, DraftFactCheck, DraftHistory, F
  * fact-check is one more explicit pair of clicks: the Research & Evidence
  * run is queued and started through the shared review control, and its
  * result is recorded on the exact version it checked by a click of its own,
- * which the server validates against the run's own metadata. There is no
- * approve, publish or delete control, and an edited version says plainly
- * that its claims are not verified until a check is recorded for it.
+ * which the server validates against the run's own metadata. Approval is
+ * one more explicit action with a confirmation step, offered only for the
+ * current version whose recorded check passed, and bound to that exact
+ * version; the server applies the same policy again and writes in one
+ * conditional statement. There is no publish or delete control, and an
+ * edited version says plainly that its claims are not verified until a
+ * check is recorded for it.
  */
 
 type State =
@@ -254,6 +261,7 @@ function DraftPanel({
         <Badge tone="neutral">Version {viewing.version}</Badge>
         <Badge tone="neutral">{originLabel(viewing)}</Badge>
         {!viewingCurrent && <Badge tone="warning">Historical, read-only</Badge>}
+        {isApprovedVersion(draft, viewing) && <Badge tone="positive">Approved version</Badge>}
         <span className="text-xs text-fg-subtle">
           {viewingCurrent ? note : `Version ${current.version} is current`} · created {formatFullDate(viewing.createdAt)},{" "}
           {formatTimeUtc(viewing.createdAt)}
@@ -355,6 +363,13 @@ function DraftPanel({
             version={viewing}
             onHistory={onHistory}
           />
+          <ApprovalSection
+            key={`approval:${draft.id}:${viewing.version}:${draft.status}`}
+            projectId={projectId}
+            draft={draft}
+            version={viewing}
+            onHistory={onHistory}
+          />
           {viewing.origin === "writer" ? (
             <>
               <ListRow label="Claims used" items={viewing.claims} />
@@ -380,11 +395,145 @@ function DraftPanel({
       )}
 
       <p className="text-xs text-fg-subtle">
-        Status: {draft.status}. Every save is a new version; nothing earlier is changed. A fact-check belongs to the
-        exact version it was run on. Approval and publishing are not available yet, and this draft is not published
-        anywhere.
+        Status: {draft.status}. Every save is a new version; nothing earlier is changed. A fact-check and an approval
+        each belong to the exact version they were recorded for. Publishing is not available yet, and this draft is
+        not published anywhere.
       </p>
     </section>
+  );
+}
+
+const APPROVE_FAILURE: Readonly<Record<Exclude<ApproveDraftVersionActionResult, { ok: true } | { reason: "ineligible" } | { reason: "stale" }>["reason"], string>> = {
+  unauthorized: "Your session has ended. Reload the page to sign in again.",
+  "rate-limited": "Too many requests. Wait a moment and try again.",
+  invalid: "This approval cannot be recorded: its identifiers are not what the server expects.",
+  unavailable: "Drafts are not persisted on this deployment, so nothing can be approved.",
+  "not-found": "This draft no longer exists on the server, or belongs to another project.",
+  "version-not-found": "This version no longer exists on the server.",
+  failed: "The approval could not be recorded. Nothing is known to have been written.",
+};
+
+/**
+ * One version's approval state: the recorded approval where this version
+ * is the approved one; otherwise, for the current version, whether the
+ * explicit policy makes it eligible and, if so, the two-step control that
+ * approves it. Nothing here publishes, and nothing approves without the
+ * confirmation click; the server applies the policy again and writes in
+ * one conditional statement bound to this exact version.
+ */
+function ApprovalSection({
+  projectId,
+  draft,
+  version,
+  onHistory,
+}: {
+  projectId: string;
+  draft: ContentDraft;
+  version: ContentDraftVersion;
+  onHistory: (history: DraftHistory, note: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const isCurrent = version.version === draft.currentVersion;
+  const approvedHere = isApprovedVersion(draft, version);
+  const eligibility = approvalEligibility(draft, version);
+
+  async function approve() {
+    if (approving || !confirming || !eligibility.ok) return;
+    setApproving(true);
+    setNote(null);
+    try {
+      const result = await approveDraftVersion(projectId, draft.id, version.version);
+      if (result.ok) {
+        setConfirming(false);
+        onHistory(result.saved, result.approved ? `Version ${version.version} approved` : `Version ${version.version} was already approved`);
+      } else if (result.reason === "stale") {
+        setConfirming(false);
+        setNote(`Version ${result.currentVersion} was saved while you were looking at version ${version.version}, so nothing was approved. Reload the draft to read the current version.`);
+      } else if (result.reason === "ineligible") {
+        setConfirming(false);
+        setNote(approvalRefusalMessage(result.refusal));
+      } else {
+        setNote(APPROVE_FAILURE[result.reason]);
+      }
+    } catch {
+      setNote(APPROVE_FAILURE.failed);
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  if (approvedHere) {
+    return (
+      <div>
+        <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Approval</dt>
+        <dd className="space-y-1 text-fg-muted">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="positive" dot>
+              Approved
+            </Badge>
+            <span className="text-xs text-fg-subtle">
+              Approved version {draft.approvedVersion}
+              {draft.approvedAt ? ` · ${formatFullDate(draft.approvedAt)}, ${formatTimeUtc(draft.approvedAt)}` : ""}
+              {draft.approvedBy ? ` · by operator ${draft.approvedBy}` : ""}
+            </span>
+          </div>
+          <p className="text-xs text-fg-subtle">
+            {draft.status === "approved"
+              ? "This exact text is approved. It is not published: publishing is not available yet."
+              : `This version was approved as it stood; version ${draft.currentVersion} is current now and has not been approved.`}
+          </p>
+        </dd>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Approval</dt>
+      <dd className="space-y-2 text-fg-muted">
+        {eligibility.ok ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="accent">Ready for approval</Badge>
+              <span className="text-xs text-fg-subtle">
+                The recorded fact-check of this version passed. Approving records this exact text as approved; it
+                publishes nothing.
+              </span>
+            </div>
+            {confirming ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="primary" icon="check" onClick={() => void approve()} disabled={approving}>
+                  {approving ? "Approving…" : `Confirm: approve version ${version.version}`}
+                </Button>
+                <Button onClick={() => setConfirming(false)} disabled={approving}>
+                  Cancel
+                </Button>
+                <span className="text-xs text-fg-subtle">
+                  Approval is recorded against version {version.version} only. If a newer version is saved first, nothing
+                  is approved.
+                </span>
+              </div>
+            ) : (
+              <Button onClick={() => setConfirming(true)} icon="check">
+                Approve version {version.version}
+              </Button>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={isCurrent ? "warning" : "neutral"}>{isCurrent ? "Not eligible for approval" : "Not approved"}</Badge>
+            <span className="text-xs text-fg-subtle">{approvalRefusalMessage(eligibility.reason)}</span>
+          </div>
+        )}
+        {note && (
+          <p className="text-xs text-critical" role="status">
+            {note}
+          </p>
+        )}
+      </dd>
+    </div>
   );
 }
 

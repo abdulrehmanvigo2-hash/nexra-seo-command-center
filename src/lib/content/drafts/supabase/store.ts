@@ -184,6 +184,28 @@ export function createSupabaseDraftStore(client: SupabaseClient<ContentDraftsDat
       return data.length === 1 ? { status: "updated", draft: draftRowToDraft(data[0]) } : { status: "unchanged" };
     },
 
+    // One statement, conditional on the version still being current and
+    // the parent still fact-checked: a draft that advanced meanwhile, or
+    // was approved by another session, matches no row and is left as it
+    // is. The patch carries the approval columns and the status only.
+    async approveVersion(input) {
+      const { data, error } = await client
+        .from("nexra_content_drafts")
+        .update({
+          status: "approved",
+          approved_version: input.version,
+          approved_by: input.approvedBy,
+          approved_at: input.approvedAt,
+        })
+        .eq("id", input.draftId)
+        .eq("project_id", input.projectId)
+        .eq("current_version", input.version)
+        .eq("status", "fact-checked")
+        .select(CONTENT_DRAFT_READ_COLUMNS);
+      if (error) throw new ContentDraftStoreError("approve draft version", error);
+      return data.length === 1 ? { status: "approved", draft: draftRowToDraft(data[0]) } : { status: "unchanged" };
+    },
+
     // Saving an edit is a Postgres function: one transaction under a row
     // lock on the parent, so the version number and the parent's pointer
     // move together and a concurrent save is answered stale, never combined.

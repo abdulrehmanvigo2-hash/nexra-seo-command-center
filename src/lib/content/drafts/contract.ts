@@ -42,6 +42,12 @@ export type MarkFactCheckedOutcome =
   /** The checked version is no longer current, or the parent was not in `drafting`. Nothing was written. */
   | { readonly status: "unchanged" };
 
+export type ApproveVersionOutcome =
+  /** The parent now records this exact version as approved. */
+  | { readonly status: "approved"; readonly draft: ContentDraft }
+  /** The one conditional statement matched no row: the version is no longer current, or the parent is not fact-checked. Nothing was written. */
+  | { readonly status: "unchanged" };
+
 export type ContentDraftStore = {
   /** Whether this store keeps drafts. The fixture data source does not. */
   readonly storesDrafts: boolean;
@@ -87,6 +93,19 @@ export type ContentDraftStore = {
     readonly draftId: string;
     readonly version: number;
   }): Promise<MarkFactCheckedOutcome>;
+  /**
+   * Records the exact version as approved on the parent, in one statement
+   * conditional on that version still being current and the parent still
+   * being `fact-checked`. No version row is touched, and nothing is
+   * published.
+   */
+  approveVersion(input: {
+    readonly projectId: string;
+    readonly draftId: string;
+    readonly version: number;
+    readonly approvedBy: string;
+    readonly approvedAt: string;
+  }): Promise<ApproveVersionOutcome>;
 };
 
 /**
@@ -121,6 +140,9 @@ export const unavailableDraftStore: ContentDraftStore = {
     return { status: "not-found" };
   },
   async markFactChecked() {
+    return { status: "unchanged" };
+  },
+  async approveVersion() {
     return { status: "unchanged" };
   },
 };

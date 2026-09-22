@@ -74,10 +74,11 @@ export type ContentDraftsDatabase = {
       nexra_content_drafts: {
         Row: ContentDraftRow;
         Insert: ContentDraftInsert;
-        // The one transition the application makes directly: the parent's
-        // status, after a fact-check of its current version. Every other
-        // transition is a later milestone's, and provenance is guarded.
-        Update: Pick<ContentDraftRow, "status">;
+        // The transitions the application makes directly: the parent's
+        // status after a fact-check of its current version, and the approval
+        // of its current version. Publication is a later milestone's, and
+        // provenance is guarded.
+        Update: Partial<Pick<ContentDraftRow, "status" | "approved_version" | "approved_by" | "approved_at">>;
         Relationships: [];
       };
       nexra_content_draft_versions: {

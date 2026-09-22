@@ -236,6 +236,19 @@ class FakeQuery implements PromiseLike<Result<Row[] | null>> {
         const frozen = VERSION_FROZEN.some((column) => column in patch && targets.some((row) => !sameValue(row[column], patch[column])));
         if (frozen) return { data: null, error: postgrestError("23514", VERSION_IMMUTABLE) };
       }
+      // The parent's approval-complete check: the three approval columns are set or null together.
+      if (this.table === "nexra_content_drafts") {
+        for (const row of targets) {
+          const next = { ...row, ...patch };
+          const nulls = [next.approved_version, next.approved_by, next.approved_at].map((value) => value === null || value === undefined);
+          if (!nulls.every((flag) => flag === nulls[0])) {
+            return { data: null, error: postgrestError("23514", "violates check constraint nexra_content_drafts_approval_complete") };
+          }
+          if (typeof next.status === "string" && !["drafting", "fact-checked", "approved", "published", "archived"].includes(next.status)) {
+            return { data: null, error: postgrestError("23514", "violates check constraint nexra_content_drafts_status_valid") };
+          }
+        }
+      }
       for (const row of targets) Object.assign(row, patch);
       // The parent's updated_at trigger.
       if (this.table === "nexra_content_drafts") for (const row of targets) row.updated_at = "2026-09-22T13:00:00.000Z";
