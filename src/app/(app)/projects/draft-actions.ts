@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getOperator } from "@/lib/auth/session";
 import { draftService } from "@/lib/content/drafts";
-import type { RecordFactCheckResult, SaveVersionResult, SaveWriterRunResult } from "@/lib/content/drafts/service";
+import type { ApproveVersionResult, RecordFactCheckResult, SaveVersionResult, SaveWriterRunResult } from "@/lib/content/drafts/service";
 import { appRateLimiter } from "@/lib/security/app-rate-limit";
 
 /**
@@ -174,5 +174,58 @@ export async function recordDraftFactCheck(
   }
 
   if (result.ok && result.recorded) revalidatePath(`/projects/${projectId}`);
+  return result;
+}
+
+/**
+ * Approves one exact draft version.
+ *
+ * The same shape as the writes above: the caller must be an operator, every
+ * argument is treated as `unknown`, and the service decides — the draft by
+ * project and id, the version by number, the explicit policy over the
+ * version's recorded fact-check (a pass, and only a pass), and then one
+ * conditional statement that writes only while that version is still
+ * current and the parent still fact-checked. The approver and the time are
+ * the server's, never the browser's. Approval publishes nothing and sends
+ * nothing anywhere.
+ */
+
+export type ApproveDraftVersionActionResult =
+  | ApproveVersionResult
+  | { readonly ok: false; readonly reason: "unauthorized" }
+  | { readonly ok: false; readonly reason: "rate-limited"; readonly retryAfterSeconds: number };
+
+const APPROVALS = { limit: 20, windowSeconds: 10 * 60 } as const;
+const approvalsInFlight = new Set<string>();
+
+export async function approveDraftVersion(
+  projectId: unknown,
+  draftId: unknown,
+  version: unknown,
+): Promise<ApproveDraftVersionActionResult> {
+  const operator = await getOperator();
+  if (!operator) return { ok: false, reason: "unauthorized" };
+  if (typeof projectId !== "string" || typeof draftId !== "string" || typeof version !== "number") {
+    return { ok: false, reason: "invalid" };
+  }
+
+  if (approvalsInFlight.has(operator.id)) return { ok: false, reason: "rate-limited", retryAfterSeconds: 1 };
+
+  approvalsInFlight.add(operator.id);
+  let result: ApproveVersionResult;
+  try {
+    const allowance = await appRateLimiter("drafts.approve", APPROVALS).consume(operator.id);
+    if (!allowance.allowed) {
+      return { ok: false, reason: "rate-limited", retryAfterSeconds: Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000)) };
+    }
+    result = await draftService().approveVersion({ projectId, draftId, version, operatorId: operator.id });
+  } catch (error) {
+    console.error("approveDraftVersion:", error instanceof Error ? `${error.name}: ${error.message}` : "unknown error");
+    return { ok: false, reason: "failed" };
+  } finally {
+    approvalsInFlight.delete(operator.id);
+  }
+
+  if (result.ok && result.approved) revalidatePath(`/projects/${projectId}`);
   return result;
 }

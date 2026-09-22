@@ -547,3 +547,79 @@ describe("createSupabaseDraftStore — fact-check", () => {
     assert.equal(db.rows.nexra_content_drafts[0].status, "drafting");
   });
 });
+
+/**
+ * Stage 4: the approval written onto the parent in one conditional
+ * statement, and nothing else.
+ */
+describe("createSupabaseDraftStore — approval", () => {
+  async function factChecked() {
+    const { db, store } = storeWith();
+    const created = await store.createFromWriterRun(INPUT);
+    assert.ok(created.status === "created");
+    const draftId = created.saved.draft.id;
+    const edited = await store.saveVersion({ projectId: "nexra-agency", draftId, expectedVersion: 1, title: "Edited", body: "An operator rewrote this.", createdBy: INPUT.createdBy });
+    assert.ok(edited.status === "created");
+    assert.equal((await store.markFactChecked({ projectId: "nexra-agency", draftId, version: 2 })).status, "updated");
+    db.writes.length = 0;
+    return { db, store, draftId };
+  }
+  const APPROVAL = { approvedBy: "00000000-0000-4000-8000-00000000000d", approvedAt: "2026-09-22T16:00:00.000Z" };
+
+  test("approves the current fact-checked version in one update carrying the approval columns and the status, and touches no version row", async () => {
+    const { db, store, draftId } = await factChecked();
+    const versionsBefore = JSON.stringify(db.rows.nexra_content_draft_versions);
+    const outcome = await store.approveVersion({ projectId: "nexra-agency", draftId, version: 2, ...APPROVAL });
+    assert.equal(outcome.status, "approved");
+    if (outcome.status !== "approved") return;
+    assert.equal(outcome.draft.status, "approved");
+    assert.equal(outcome.draft.approvedVersion, 2);
+    assert.equal(outcome.draft.approvedBy, APPROVAL.approvedBy);
+    assert.equal(outcome.draft.approvedAt, APPROVAL.approvedAt);
+    assert.equal(outcome.draft.currentVersion, 2);
+    assert.equal(outcome.draft.publishedVersion, null);
+    assert.deepEqual(db.writes, [{ table: "nexra_content_drafts", operation: "update" }]);
+    assert.equal(JSON.stringify(db.rows.nexra_content_draft_versions), versionsBefore);
+    assert.equal(db.rows.nexra_content_drafts.length, 1);
+  });
+
+  test("the statement matches no row when the version is not current, the parent is not fact-checked, or the project differs; nothing changes", async () => {
+    const { db, store, draftId } = await factChecked();
+    assert.deepEqual(await store.approveVersion({ projectId: "nexra-agency", draftId, version: 1, ...APPROVAL }), { status: "unchanged" });
+    assert.deepEqual(await store.approveVersion({ projectId: "halcyon-fintech", draftId, version: 2, ...APPROVAL }), { status: "unchanged" });
+    db.rows.nexra_content_drafts[0].status = "drafting";
+    assert.deepEqual(await store.approveVersion({ projectId: "nexra-agency", draftId, version: 2, ...APPROVAL }), { status: "unchanged" });
+    assert.equal(db.rows.nexra_content_drafts[0].approved_version, null);
+    assert.equal(db.rows.nexra_content_drafts[0].approved_by, null);
+    db.rows.nexra_content_drafts[0].status = "fact-checked";
+    // A second approval of the same version matches no row either: the parent is already approved.
+    assert.equal((await store.approveVersion({ projectId: "nexra-agency", draftId, version: 2, ...APPROVAL })).status, "approved");
+    assert.deepEqual(await store.approveVersion({ projectId: "nexra-agency", draftId, version: 2, approvedBy: "00000000-0000-4000-8000-00000000000e", approvedAt: "2026-09-22T17:00:00.000Z" }), { status: "unchanged" });
+    assert.equal(db.rows.nexra_content_drafts[0].approved_by, APPROVAL.approvedBy);
+  });
+
+  test("an edit after approval returns the parent to drafting through the save function and keeps the approval record", async () => {
+    const { db, store, draftId } = await factChecked();
+    assert.equal((await store.approveVersion({ projectId: "nexra-agency", draftId, version: 2, ...APPROVAL })).status, "approved");
+    const next = await store.saveVersion({ projectId: "nexra-agency", draftId, expectedVersion: 2, title: "Edited", body: "Third.", createdBy: INPUT.createdBy });
+    assert.ok(next.status === "created");
+    assert.equal(next.saved.draft.status, "drafting");
+    assert.equal(next.saved.draft.currentVersion, 3);
+    assert.equal(next.saved.draft.approvedVersion, 2);
+    assert.equal(next.saved.draft.approvedBy, APPROVAL.approvedBy);
+    assert.equal(db.rows.nexra_content_drafts[0].published_version, null);
+  });
+
+  test("a failed update is a ContentDraftStoreError that quotes no row, and nothing is approved", async () => {
+    const { db, store, draftId } = await factChecked();
+    db.failNext({ table: "nexra_content_drafts", operation: "update", error: postgrestError("42501", "permission denied", "secret row content") });
+    await assert.rejects(() => store.approveVersion({ projectId: "nexra-agency", draftId, version: 2, ...APPROVAL }), (error: unknown) => {
+      assert.ok(error instanceof ContentDraftStoreError);
+      assert.match(error.message, /approve draft version failed \(42501\)/);
+      assert.ok(!error.message.includes("secret row content"));
+      return true;
+    });
+    assert.equal(db.rows.nexra_content_drafts[0].status, "fact-checked");
+    assert.equal(db.rows.nexra_content_drafts[0].approved_version, null);
+  });
+});

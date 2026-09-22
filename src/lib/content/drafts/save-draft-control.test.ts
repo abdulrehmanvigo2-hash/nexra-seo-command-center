@@ -117,7 +117,7 @@ describe("the draft panel's editing and history path", () => {
     assert.match(control, /Not verified\. This version was edited by a person/);
     assert.match(control, /require re-verification before any approval/);
     assert.match(control, /Recorded for version 1, not for this text/);
-    assert.match(control, /A fact-check belongs to the\s+exact version it was run on\. Approval and publishing are not available yet/);
+    assert.match(control, /A fact-check and an approval\s+each belong to the exact version they were recorded for\. Publishing is not available yet/);
   });
 
   test("the client imports no provider, crawl, publishing or agent-run action", async () => {
@@ -129,6 +129,7 @@ describe("the draft panel's editing and history path", () => {
       "@/components/ui/badge",
       "@/components/ui/button",
       "@/components/ui/field",
+      "@/lib/content/drafts/approval-rules",
       "@/lib/content/drafts/edit-rules",
       "@/lib/content/drafts/fact-check-eligibility",
       "@/lib/content/drafts/parse-fact-check-output",
@@ -182,12 +183,14 @@ describe("the draft panel's fact-check path", () => {
     assert.match(control, /failed: \{ tone: "critical", label: "Failed" \}/);
   });
 
-  test("no approve, publish or delete control exists on the panel", async () => {
+  test("no publish or delete control exists on the panel, and the fact-check itself approves nothing", async () => {
     const control = await readFile(PANEL, "utf8");
     const buttonLabels = [...control.matchAll(/<Button[^>]*>\s*([^<{]+?)\s*<\/Button>/g)].map((match) => match[1].trim());
-    for (const label of buttonLabels) assert.doesNotMatch(label, /approve|publish|delete/i, label);
-    assert.doesNotMatch(control, /onClick=\{[^}]*(approve|publish|delete)[^}]*\}/i);
-    assert.match(control, /Approval and publishing are not available yet/);
+    for (const label of buttonLabels) assert.doesNotMatch(label, /publish|delete/i, label);
+    assert.doesNotMatch(control, /onClick=\{[^}]*(publish|delete)[^}]*\}/i);
+    // Recording a fact-check never approves: the record control's own wording, and its action, say so.
+    assert.match(control, /Writes this run's result onto this version, once\. The text is not changed, and nothing is approved or published\./);
+    assert.doesNotMatch(control, /async function record\(\) \{[\s\S]*?approveDraftVersion[\s\S]*?\n  \}/);
   });
 
   test("the record control's failure wording covers every server answer and treats a mismatched version as a refusal, not a retry", async () => {
@@ -197,5 +200,53 @@ describe("the draft panel's fact-check path", () => {
     }
     assert.match(control, /result\.refusal === "version-mismatch"\s*\? "This run checked a different version, so its result cannot be recorded here\."/);
     assert.match(control, /a version is checked once/);
+  });
+});
+
+/**
+ * Stage 4: approval on the same panel. Checked at the source: the policy
+ * decides what is shown, the button exists only for an eligible current
+ * version, a confirmation click stands between the button and the write,
+ * the write is one action bound to the version on screen, an approved
+ * version stays identifiable in history, and no publish control exists.
+ */
+describe("the draft panel's approval path", () => {
+  test("the approval section is keyed to one draft, one version and the parent's status, decides by the shared policy, and approves only after a confirmation click", async () => {
+    const control = await readFile(PANEL, "utf8");
+    assert.match(control, /<ApprovalSection\s+key=\{`approval:\$\{draft\.id\}:\$\{viewing\.version\}:\$\{draft\.status\}`\}/);
+    assert.match(control, /const eligibility = approvalEligibility\(draft, version\);/);
+    assert.equal((control.match(/approveDraftVersion\(/g) ?? []).length, 1, "the approve action is invoked from exactly one place");
+    assert.match(control, /async function approve\(\) \{\s*if \(approving \|\| !confirming \|\| !eligibility\.ok\) return;/);
+    assert.match(control, /approveDraftVersion\(projectId, draft\.id, version\.version\)/);
+    assert.match(control, /<Button onClick=\{\(\) => setConfirming\(true\)\} icon="check">\s*Approve version \{version\.version\}/);
+    assert.match(control, /Confirm: approve version \$\{version\.version\}/);
+    assert.match(control, /<Button onClick=\{\(\) => setConfirming\(false\)\} disabled=\{approving\}>\s*Cancel/);
+    assert.equal((control.match(/useEffect\(/g) ?? []).length, 1, "no effect approves or records on its own");
+  });
+
+  test("an eligible version reads Ready for approval; an ineligible current version reads Not eligible with the policy's reason; an approved version shows version, approver and time", async () => {
+    const control = await readFile(PANEL, "utf8");
+    assert.match(control, /<Badge tone="accent">Ready for approval<\/Badge>/);
+    assert.match(control, /The recorded fact-check of this version passed\. Approving records this exact text as approved; it\s+publishes nothing\./);
+    assert.match(control, /\{isCurrent \? "Not eligible for approval" : "Not approved"\}/);
+    assert.match(control, /\{approvalRefusalMessage\(eligibility\.reason\)\}/);
+    assert.match(control, /<Badge tone="positive" dot>\s*Approved\s*<\/Badge>/);
+    assert.match(control, /Approved version \{draft\.approvedVersion\}/);
+    assert.match(control, /by operator \$\{draft\.approvedBy\}/);
+    assert.match(control, /formatFullDate\(draft\.approvedAt\)/);
+    // History: the approved version keeps its badge whatever the parent's status is now.
+    assert.match(control, /\{isApprovedVersion\(draft, viewing\) && <Badge tone="positive">Approved version<\/Badge>\}/);
+    assert.match(control, /This version was approved as it stood; version \$\{draft\.currentVersion\} is current now and has not been approved\./);
+    // A stale refusal names the newer version and approves nothing.
+    assert.match(control, /so nothing was approved\. Reload the draft to read the current version\./);
+  });
+
+  test("no publish or delete control exists, and approval says it publishes nothing", async () => {
+    const control = await readFile(PANEL, "utf8");
+    const buttonLabels = [...control.matchAll(/<Button[^>]*>\s*([^<{]+?)\s*<\/Button>/g)].map((match) => match[1].trim());
+    for (const label of buttonLabels) assert.doesNotMatch(label, /publish|delete/i, label);
+    assert.doesNotMatch(control, /onClick=\{[^}]*(publish|delete)[^}]*\}/i);
+    assert.match(control, /It is not published: publishing is not available yet\./);
+    assert.match(control, /Publishing is not available yet, and this draft is\s+not published anywhere\./);
   });
 });

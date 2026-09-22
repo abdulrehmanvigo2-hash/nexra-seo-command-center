@@ -126,6 +126,21 @@ function memoryStore(options: { storesDrafts?: boolean; raceOnce?: boolean; race
       drafts[drafts.indexOf(entry)] = { ...entry, draft };
       return { status: "updated", draft };
     },
+    async approveVersion(input) {
+      calls.push("approve");
+      const entry = drafts.find((candidate) => candidate.draft.projectId === input.projectId && candidate.draft.id === input.draftId);
+      if (!entry || entry.draft.currentVersion !== input.version || entry.draft.status !== "fact-checked") return { status: "unchanged" };
+      const draft = {
+        ...entry.draft,
+        status: "approved" as const,
+        approvedVersion: input.version,
+        approvedBy: input.approvedBy,
+        approvedAt: input.approvedAt,
+        updatedAt: "2026-09-22T16:00:00.000Z",
+      };
+      drafts[drafts.indexOf(entry)] = { ...entry, draft };
+      return { status: "approved", draft };
+    },
   };
   return { store, drafts, versions, calls };
 }
@@ -297,7 +312,7 @@ describe("draftService.saveWriterRun", () => {
 
   test("the service has no provider, crawler or publisher to call: its only dependencies are the store and the run reader", () => {
     const service = createDraftService({ store: memoryStore().store, runs: runReader([]).reader });
-    assert.deepEqual(Object.keys(service).sort(), ["findForWriterRun", "getHistory", "recordFactCheck", "saveVersion", "saveWriterRun"]);
+    assert.deepEqual(Object.keys(service).sort(), ["approveVersion", "findForWriterRun", "getHistory", "recordFactCheck", "saveVersion", "saveWriterRun"]);
   });
 });
 
@@ -853,5 +868,175 @@ describe("draftService.recordFactCheck", () => {
     assert.deepEqual(calls, []);
     const unavailable = createDraftService({ store: unavailableDraftStore, runs: runReader([]).reader });
     assert.deepEqual(await unavailable.recordFactCheck(record("00000000-0000-4000-8000-000000000001", 1)), { ok: false, reason: "unavailable" });
+  });
+});
+
+/**
+ * Stage 4: one exact version approved under the explicit policy. These
+ * tests read the store's own logs after every attempt to show that only
+ * the parent's approval columns and status change, that no version row
+ * moves, that nothing is published, and that a stale or ineligible
+ * version is refused rather than the newest one approved.
+ */
+
+const APPROVER = "00000000-0000-4000-8000-00000000000d";
+
+/** A draft whose version 2 carries a recorded check with the given status, the parent as the fact-check milestone leaves it. */
+async function checkedDraft(status: "passed" | "needs-review" | "failed" | "none" = "passed") {
+  const output =
+    status === "needs-review"
+      ? CHECK_OUTPUT.replace("PARTIAL\nnone", 'PARTIAL\n- "The home page presents automated lead follow-up" — the title names it [crawl /]').replace('SUPPORTED\n- "Nexra Agency\'s home page presents automated lead follow-up" [crawl /]', "SUPPORTED\nnone")
+      : status === "failed"
+        ? CHECK_OUTPUT.replace("UNSUPPORTED\nnone", 'UNSUPPORTED\n- "The agency has fifty clients" — no record holds this')
+        : CHECK_OUTPUT;
+  const memory = await checkable({ runs: [] });
+  if (status !== "none") {
+    memory.runList.push(factCheckRun({ draftId: memory.draftId, version: 2 }, {}, output));
+    const recorded = await memory.service.recordFactCheck(record(memory.draftId, 2));
+    assert.ok(recorded.ok && recorded.recorded);
+    if (recorded.ok) assert.equal(recorded.factCheck.status, status);
+  }
+  memory.calls.length = 0;
+  const before = JSON.parse(JSON.stringify(memory.versions)) as ContentDraftVersion[];
+  return { ...memory, before };
+}
+
+const approve = (draftId: string, version: number, projectId = "nexra-agency", operatorId = APPROVER) => ({ projectId, draftId, version, operatorId });
+
+describe("draftService.approveVersion", () => {
+  test("a current version whose recorded check passed is approved: exact version, operator and time on the parent, status approved, no version row changed, nothing published", async () => {
+    const { service, drafts, versions, calls, draftId, before } = await checkedDraft("passed");
+    assert.equal(drafts[0].draft.status, "fact-checked");
+    const result = await service.approveVersion(approve(draftId, 2));
+    assert.ok(result.ok);
+    if (!result.ok) return;
+    assert.equal(result.approved, true);
+    const { draft } = result.saved;
+    assert.equal(draft.status, "approved");
+    assert.equal(draft.approvedVersion, 2);
+    assert.equal(draft.approvedBy, APPROVER);
+    assert.match(draft.approvedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(draft.currentVersion, 2);
+    assert.equal(draft.publishedVersion, null);
+    assert.equal(draft.publishedAt, null);
+    assert.equal(draft.remoteContentId, null);
+    assert.equal(draft.remoteTarget, null);
+    assert.deepEqual(versions, before, "a version row changed on approval");
+    assert.equal(versions.length, 2, "a version was created by approval");
+    assert.deepEqual(calls, ["get", "get-version", "approve", "list"]);
+    assert.equal(result.saved.version.version, 2);
+    // The version's fact-check stays attached and unchanged.
+    assert.equal((result.saved.versions[1].factCheck as { status?: unknown }).status, "passed");
+  });
+
+  test("needs-review, failed and unchecked versions are refused by the explicit policy, and nothing is written", async () => {
+    for (const [status, refusal] of [
+      ["needs-review", "fact-check-needs-review"],
+      ["failed", "fact-check-failed"],
+      ["none", "not-fact-checked"],
+    ] as const) {
+      const { service, drafts, versions, calls, draftId, before } = await checkedDraft(status);
+      const result = await service.approveVersion(approve(draftId, 2));
+      assert.deepEqual(result, { ok: false, reason: "ineligible", refusal }, status);
+      assert.equal(drafts[0].draft.status, "drafting", status);
+      assert.equal(drafts[0].draft.approvedVersion, null, status);
+      assert.deepEqual(versions, before, status);
+      assert.ok(!calls.includes("approve"), `${status}: the store's write was reached`);
+    }
+  });
+
+  test("an archived draft, another project's draft, an unknown draft and an unknown version are refused before any write", async () => {
+    const { service, drafts, calls, draftId } = await checkedDraft("passed");
+    assert.deepEqual(await service.approveVersion(approve(draftId, 2, "halcyon-fintech")), { ok: false, reason: "not-found" });
+    assert.deepEqual(await service.approveVersion(approve("00000000-0000-4000-8000-000000000999", 2)), { ok: false, reason: "not-found" });
+    assert.deepEqual(await service.approveVersion(approve(draftId, 9)), { ok: false, reason: "version-not-found" });
+    drafts[0] = { ...drafts[0], draft: { ...drafts[0].draft, status: "archived" } };
+    assert.deepEqual(await service.approveVersion(approve(draftId, 2)), { ok: false, reason: "ineligible", refusal: "draft-archived" });
+    assert.ok(!calls.includes("approve"));
+    assert.equal(drafts[0].draft.approvedVersion, null);
+  });
+
+  test("a stale version is refused and the newest is never approved in its place: version 3 saved first leaves version 2 unapproved and version 3 untouched", async () => {
+    const { service, drafts, versions, draftId } = await checkedDraft("passed");
+    const third = await service.saveVersion(edit(draftId, 2, { body: "Third text, saved before the approval landed." }));
+    assert.ok(third.ok && third.created && third.saved.draft.currentVersion === 3);
+    assert.equal(drafts[0].draft.status, "drafting");
+    const result = await service.approveVersion(approve(draftId, 2));
+    assert.deepEqual(result, { ok: false, reason: "stale", currentVersion: 3 });
+    assert.equal(drafts[0].draft.status, "drafting");
+    assert.equal(drafts[0].draft.approvedVersion, null);
+    assert.equal(versions[2].factCheck, null);
+    assert.equal(versions[2].body, "Third text, saved before the approval landed.");
+    // Version 1 can never be approved either: it is not current.
+    assert.deepEqual(await service.approveVersion(approve(draftId, 1)), { ok: false, reason: "stale", currentVersion: 3 });
+  });
+
+  test("a version that advances between the service's read and the store's write is answered stale from a re-read, never approved", async () => {
+    const memory = await checkedDraft("passed");
+    const { service, drafts, draftId } = memory;
+    // The store loses the race: by the time its conditional statement runs, version 3 is current.
+    const original = memory.store.approveVersion;
+    memory.store.approveVersion = async (input) => {
+      await service.saveVersion(edit(draftId, 2, { body: "Raced in." }));
+      return original(input);
+    };
+    const result = await service.approveVersion(approve(draftId, 2));
+    assert.deepEqual(result, { ok: false, reason: "stale", currentVersion: 3 });
+    assert.equal(drafts[0].draft.approvedVersion, null);
+    assert.equal(drafts[0].draft.status, "drafting");
+  });
+
+  test("approving twice writes once: the second call answers approved: false with the same record", async () => {
+    const { service, drafts, calls, draftId } = await checkedDraft("passed");
+    const first = await service.approveVersion(approve(draftId, 2));
+    assert.ok(first.ok && first.approved);
+    const approvedAt = drafts[0].draft.approvedAt;
+    calls.length = 0;
+    const second = await service.approveVersion(approve(draftId, 2, "nexra-agency", "00000000-0000-4000-8000-00000000000e"));
+    assert.ok(second.ok);
+    if (!second.ok) return;
+    assert.equal(second.approved, false);
+    assert.equal(second.saved.draft.approvedBy, APPROVER, "a second approval replaced the first approver");
+    assert.equal(second.saved.draft.approvedAt, approvedAt);
+    assert.ok(!calls.includes("approve"), "a second approval reached the store's write");
+  });
+
+  test("after an approved version 2 is edited, version 3 is drafting and unapproved, and version 2 stays identifiable as the approved one", async () => {
+    const { service, drafts, versions, draftId } = await checkedDraft("passed");
+    const approved = await service.approveVersion(approve(draftId, 2));
+    assert.ok(approved.ok && approved.approved);
+    const approvedAt = drafts[0].draft.approvedAt;
+    const third = await service.saveVersion(edit(draftId, 2, { body: "Edited after approval." }));
+    assert.ok(third.ok && third.created);
+    if (!third.ok) return;
+    assert.equal(third.saved.draft.status, "drafting");
+    assert.equal(third.saved.draft.currentVersion, 3);
+    assert.equal(third.saved.draft.approvedVersion, 2, "the historical approval was erased");
+    assert.equal(third.saved.draft.approvedBy, APPROVER);
+    assert.equal(third.saved.draft.approvedAt, approvedAt);
+    assert.equal(third.saved.version.factCheck, null);
+    assert.equal((versions[1].factCheck as { status?: unknown }).status, "passed", "version 2's check was detached");
+    // Version 3 is not approvable: unchecked, and the parent is drafting.
+    assert.deepEqual(await service.approveVersion(approve(draftId, 3)), { ok: false, reason: "ineligible", refusal: "not-fact-checked" });
+    // Version 2 is not approvable again: not current.
+    assert.deepEqual(await service.approveVersion(approve(draftId, 2)), { ok: false, reason: "stale", currentVersion: 3 });
+    const history = await service.getHistory("nexra-agency", draftId);
+    assert.ok(history.ok && history.saved?.draft.approvedVersion === 2 && history.saved.draft.status === "drafting");
+  });
+
+  test("an invalid id or version is refused before anything is read, and with no draft store nothing is written", async () => {
+    const { service, calls, draftId } = await checkedDraft("passed");
+    for (const request of [
+      approve(draftId, 2, "nexra-agency", "operator"),
+      approve("nope", 2),
+      approve(draftId, 2, "Nexra Agency"),
+      approve(draftId, 0),
+      approve(draftId, 1.5),
+    ]) {
+      assert.deepEqual(await service.approveVersion(request), { ok: false, reason: "invalid" }, JSON.stringify(request));
+    }
+    assert.deepEqual(calls, []);
+    const unavailable = createDraftService({ store: unavailableDraftStore, runs: runReader([]).reader });
+    assert.deepEqual(await unavailable.approveVersion(approve("00000000-0000-4000-8000-000000000001", 1)), { ok: false, reason: "unavailable" });
   });
 });

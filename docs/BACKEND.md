@@ -949,7 +949,50 @@ note for an unchecked historical one, and for a recorded result the status,
 the version checked, the run, the crawl and window, the timestamps, the
 summary, the five groups with their evidence references, and a fixed
 sentence that unsupported means no record holds the statement and that
-nothing was approved or published. There is no approve or publish control.
+nothing was approved or published.
+
+### Approval of one exact version
+
+An operator can approve the draft's current version, and only under an
+explicit policy (`src/lib/content/drafts/approval-rules.ts`): the version
+must be the current one, the draft live and in the `fact-checked` state a
+passed check of that version leaves it in, and the version's recorded
+fact-check must be `passed`. `needs-review` is not a pass and is refused
+with its own reason; `failed` and an unchecked version are refused; there
+is no override. Approval is not publication: nothing is sent anywhere, and
+the published columns stay null.
+
+The write is one Server Action (`approveDraftVersion`, in the draft actions
+file): operator confirmed, every argument `unknown`, 20 approvals per ten
+minutes per operator, one in flight per operator. The service reads the
+draft by project and id together and the version by number, applies the
+policy, and then the store issues one conditional statement — `update …
+set status = 'approved', approved_version, approved_by, approved_at where
+id and project_id match and current_version = <version> and status =
+'fact-checked'` — so a version that stopped being current between the read
+and the write matches no row and is answered `stale` from a re-read, never
+approved as "the current one". The approver is the server-confirmed
+operator id and the time is the server's; neither comes from the browser.
+No version row is touched, no version is created, and the version's
+`fact_check` stays attached, so the record answers which version was
+approved, by whom, when, and what check that exact text had. A second
+approval of the same version writes nothing and is answered as already
+approved.
+
+History: the Stage 2 save function leaves `approved_version`, `approved_by`
+and `approved_at` untouched when a new version is saved, so an approved
+version 2 stays identifiable as the approved one after version 3 exists;
+the parent returns to `drafting`, and version 3 is unapproved and, being
+unchecked, ineligible. No migration was needed: the columns and the
+`approval_complete` check constraint exist since Stage 1, and the update
+uses grants already given.
+
+The panel shows, for the current version: "Ready for approval" with an
+"Approve version N" button and a confirmation step when the policy
+passes; "Not eligible for approval" with the policy's reason otherwise. An
+approved version shows "Approved", the version number, the approver's
+operator id and the time, in history too, with a note that a newer current
+version is not approved. There is no publish control.
 
 The Server Action (`saveDraftVersion`, same file as the save action) takes
 every argument as `unknown`, confirms the operator with the Auth server,
@@ -1312,11 +1355,11 @@ it. The deployment plan was not verifiable from this repository.
   no backlink data provider, verified inbound link, referring-domain,
   anchor-text or placement record exists, none is derived from outbound
   edges, and the Backlinks & Authority screen remains fixtures. A saved
-  content draft can be edited into immutable versions and one exact version
-  fact-checked against the records this product holds; no approval or
-  publishing exists, a fact-check is a check and never an approval, the
-  Content Studio does not show drafts, and a fixture data source cannot
-  keep them. A crawl
+  content draft can be edited into immutable versions, one exact version
+  fact-checked against the records this product holds, and the current
+  version approved only when its recorded check passed; no publishing
+  exists, an approval sends nothing anywhere, the Content Studio does not
+  show drafts, and a fixture data source cannot keep them. A crawl
   completed before `internal_links_out` was derived from recorded edges
   keeps the raw anchor count it stored, which reads high; no backfill was
   performed, and a fresh crawl records the corrected count. The comparison control checks
