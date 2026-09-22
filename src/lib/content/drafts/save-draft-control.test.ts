@@ -126,6 +126,7 @@ describe("the draft panel's editing and history path", () => {
     assert.deepEqual(imports.sort(), [
       "@/app/(app)/projects/draft-actions",
       "@/components/agent-runs/queued-review",
+      "@/components/content/publication-proposal-section",
       "@/components/ui/badge",
       "@/components/ui/button",
       "@/components/ui/field",

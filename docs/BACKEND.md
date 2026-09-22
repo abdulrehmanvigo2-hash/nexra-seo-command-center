@@ -994,6 +994,75 @@ approved version shows "Approved", the version number, the approver's
 operator id and the time, in history too, with a note that a newer current
 version is not approved. There is no publish control.
 
+### Publication proposal for one exact approved version
+
+Stage 5 begins with a proposal, not a publication. An operator can record
+the intention to publish the approved current version to one registered
+destination; nothing is written anywhere else, no GitHub call is made, and
+no file, branch, commit, pull request or deployment is created.
+
+Eligibility (`src/lib/content/publications/proposal-rules.ts`, shared by
+the panel and the server, no override): the version is the draft's
+current one; the draft is not archived or published; the version's
+recorded fact-check is `passed` and was recorded for that draft and
+version (`needs-review`, `failed` and unchecked are refused with their own
+reasons); the version carries no `[NEEDS EVIDENCE: …]` placeholder, listed
+or left in its text; the draft is `approved` and its approved version is
+this version; and no proposal for the draft is active. The live Nexra
+Agency version 2, checked `needs-review`, is refused.
+
+Binding and concurrency. The service reads the draft by project and id and
+the version by number, computes the content hash (SHA-256 of
+`nexra-content-draft-version/1`, NUL, title, NUL, body) from the stored
+row, compares it with the hash the operator was shown, and builds the
+preview. The one database function (`nexra_content_publication_propose`,
+migration `20260922140000`) then locks the parent draft, re-checks every
+condition against the locked rows, recomputes the hash itself, copies the
+approval snapshot from the locked parent, and inserts only if no proposal
+is active. A draft edited or re-approved between the read and the write
+is answered `stale`; two concurrent requests serialise on the lock and the
+second is answered `exists` (checked with two real sessions against a
+local PostgreSQL 16). The browser's approval, text, hash and identity are
+never stored.
+
+Destination (`src/lib/content/publications/destinations.ts`): a registry
+of one, the Nexra Agency website (`nexraagency.com`), offered only to the
+`nexra-agency` project. The site's source repository is named for a
+person to read and is never contacted; no credential exists. The site's
+content format has not been inspected, so the content path and format are
+null and shown as unresolved: the slug (lowercase letters, digits and
+single hyphens, 3–80 characters, never corrected) is the only target
+identifier, validated without creating anything.
+
+Preview (`src/lib/content/publications/preview.ts`, format
+`draft-section-text/1`): one deterministic plain-text document carrying
+the version's exact title and body, labelled "DRAFT SECTION — NOT A
+COMPLETE PUBLISHABLE ARTICLE" and "This proposal does not publish content
+or create a GitHub pull request.", with the destination, the unresolved
+path, the slug, the version and row id, the content hash and the approval.
+Its hash is stored; on every read the preview is rebuilt from the bound
+row and checked against both stored hashes.
+
+Writes are two Server Actions (`app/(app)/projects/publication-actions.ts`):
+`preparePublicationProposal` (10 per ten minutes per operator) and
+`withdrawPublicationProposal` (20 per ten minutes), operator confirmed
+first, every argument `unknown`, one write in flight per operator. Reads
+are `GET /api/content-publications?project=…&draft=…`, operators only.
+Withdrawal is one conditional update of the proposal's status and
+withdrawer; the database stamps the time. No draft, version, fact-check or
+approval column changes, and a withdrawn proposal is final.
+
+The draft panel's "Publication proposal" section always shows the
+no-publication statement. For an eligible current version it offers
+"Prepare publication proposal", then the destination, the slug, the exact
+version and row id, the content hash, the approval and the exact text,
+and a confirmation button. An active proposal shows its binding, whether it
+still matches the approved current version (after an edit it is marked
+stale and should be withdrawn), whether its preview verified, the exact
+text, and "Withdraw proposal" with a confirmation. An ineligible version
+shows the reason and no button. There is no publish, merge, deploy or
+pull-request control.
+
 The Server Action (`saveDraftVersion`, same file as the save action) takes
 every argument as `unknown`, confirms the operator with the Auth server,
 counts 60 saves per ten minutes per operator, and hands the request to the
@@ -1357,8 +1426,11 @@ it. The deployment plan was not verifiable from this repository.
   edges, and the Backlinks & Authority screen remains fixtures. A saved
   content draft can be edited into immutable versions, one exact version
   fact-checked against the records this product holds, and the current
-  version approved only when its recorded check passed; no publishing
-  exists, an approval sends nothing anywhere, the Content Studio does not
+  version approved only when its recorded check passed, and an approved
+  current version proposed for publication to the one registered
+  destination; no publishing exists, a proposal and an approval send
+  nothing anywhere, the destination's content path is unresolved, the
+  Content Studio does not
   show drafts, and a fixture data source cannot keep them. A crawl
   completed before `internal_links_out` was derived from recorded edges
   keeps the raw anchor count it stored, which reads high; no backfill was

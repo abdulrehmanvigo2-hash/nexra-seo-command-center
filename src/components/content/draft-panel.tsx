@@ -12,6 +12,7 @@ import {
   type SaveWriterRunAsDraftResult,
 } from "@/app/(app)/projects/draft-actions";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
+import { PublicationProposalSection } from "@/components/content/publication-proposal-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
@@ -44,9 +45,11 @@ import type { ContentDraft, ContentDraftVersion, DraftFactCheck, DraftHistory, F
  * one more explicit action with a confirmation step, offered only for the
  * current version whose recorded check passed, and bound to that exact
  * version; the server applies the same policy again and writes in one
- * conditional statement. There is no publish or delete control, and an
- * edited version says plainly that its claims are not verified until a
- * check is recorded for it.
+ * conditional statement. A publication proposal for the approved current
+ * version is its own section (`./publication-proposal-section`): it
+ * publishes nothing and creates no pull request. There is no publish or
+ * delete control, and an edited version says plainly that its claims are
+ * not verified until a check is recorded for it.
  */
 
 type State =
@@ -369,6 +372,12 @@ function DraftPanel({
             draft={draft}
             version={viewing}
             onHistory={onHistory}
+          />
+          <PublicationProposalSection
+            key={`proposal:${draft.id}:${viewing.version}:${draft.status}:${draft.currentVersion}`}
+            projectId={projectId}
+            draft={draft}
+            version={viewing}
           />
           {viewing.origin === "writer" ? (
             <>

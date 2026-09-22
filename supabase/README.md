@@ -210,6 +210,32 @@ with no version — the only parent the store ever deletes, when its version
 1 insert failed — can still be removed. The foreign key itself is
 unchanged. Apply it after `20260922130000`.
 
+`20260922140000_create_content_publication_proposals.sql` adds
+`public.nexra_content_publication_proposals` and
+`public.nexra_content_publication_propose(...)`. A proposal records an
+operator's intention to publish one exact approved version; it publishes
+nothing and contacts nothing. The row binds the draft and project, the
+version by number and by row id, a SHA-256 of the version's text, the
+approval snapshot, a destination registry key, a slug, and the preview's
+format and hash. Status is `proposed` or `withdrawn` only; two partial
+unique indexes allow one active proposal per draft and per destination
+slug. A guard trigger freezes the binding, makes `withdrawn` final and
+stamps the withdrawal with the database's time; another refuses every
+DELETE and TRUNCATE. The function runs as `security definer` with
+`search_path` pinned empty, locks the parent draft `for update` (the same
+lock the version-save function takes), re-checks approval, current
+version, approval snapshot, version row id, a passed check recorded for
+that version, the absence of placeholders, and recomputes the text hash
+from the stored row before inserting; anything else is answered as JSON
+(`stale`, `not-found`, `version-not-found`, `ineligible`,
+`content-mismatch`, `exists`, `slug-taken`) and writes nothing.
+`service_role` is given SELECT and UPDATE on the table (after `revoke
+all`, so Supabase's default privileges cannot leave INSERT or DELETE
+behind) and EXECUTE on the function; `anon` and `authenticated` get
+nothing. No existing table, column, function or grant is changed. Apply it
+after `20260922130100`, then `NOTIFY pgrst, 'reload schema';`. It has been
+applied only to a throwaway local PostgreSQL 16 for validation.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and
