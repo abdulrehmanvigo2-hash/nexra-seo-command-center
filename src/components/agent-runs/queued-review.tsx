@@ -395,5 +395,7 @@ function DirectorHandoff({ projectId, source }: { projectId: string; source: Age
  */
 function WriterDraft({ projectId, plan }: { projectId: string; plan: AgentRun }) {
   const draft = useQueuedReview(draftRequest(projectId, plan), plan.id, SECTION_DRAFT, projectId);
-  return <QueuedReview review={SECTION_DRAFT} nested {...draft} />;
+  // The project goes with it: the Writer's own result carries the Save-as-draft
+  // control, and that control renders only for a run whose project is known.
+  return <QueuedReview review={SECTION_DRAFT} nested projectId={projectId} {...draft} />;
 }
