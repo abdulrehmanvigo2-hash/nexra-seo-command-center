@@ -881,6 +881,24 @@ Internal link counts are within one crawl only. A bounded crawl cannot
 establish that a page has no inbound links anywhere, so **orphan status is not
 derived and must not be** from this data.
 
+Both counts are derived from the recorded edges, after the walk: a page's
+`internal_links_in` is the number of distinct recorded internal edges whose
+target is that page, and its `internal_links_out` is the number of distinct
+recorded internal edges whose source is that page — the same URL
+normalisation, host classification and source-target deduplication that
+`nexra_crawl_links` holds, so the sum of either count over a crawl's pages
+equals the crawl's internal edge count. A raw anchor is not a link: repeated
+hrefs, fragments, `mailto:` and `tel:` and `javascript:` anchors, hrefs that
+do not normalise, and links to other hosts never reach either count. A page
+whose robots meta says `nofollow` or `none` records no edges and counts zero
+on the outbound side. **Crawls completed before this definition took effect
+stored the raw extracted anchor count in `internal_links_out`** — duplicates,
+non-URLs and external anchors included — so their page-level outbound figures
+read high, while their edge table and inbound counts were always as described
+here. No backfill was performed: completed crawl rows are written once and
+are never rewritten, and the agent runs grounded on them are unchanged. A
+fresh crawl records the corrected count.
+
 ### Lifecycle
 
 ```
@@ -1109,9 +1127,10 @@ it. The deployment plan was not verifiable from this repository.
   outbound link review reads only the edges one own-site crawl recorded:
   no backlink data provider, verified inbound link, referring-domain,
   anchor-text or placement record exists, none is derived from outbound
-  edges, and the Backlinks & Authority screen remains fixtures; a page's
-  stored `internal_links_out` count is known to include external anchors,
-  a counting defect in the engine kept out of this milestone. The comparison control checks
+  edges, and the Backlinks & Authority screen remains fixtures. A crawl
+  completed before `internal_links_out` was derived from recorded edges
+  keeps the raw anchor count it stored, which reads high; no backfill was
+  performed, and a fresh crawl records the corrected count. The comparison control checks
   the project's own newest crawl once, when the panel loads: an own-site
   crawl run afterwards on the same page is not seen until the page is
   reloaded. A grounding refusal fails the attempt as `execution-failed`
