@@ -75,15 +75,38 @@ function undecorated(line: string): string {
   return text;
 }
 
-function headingOf(line: string): Heading | null {
-  const words = undecorated(line).toUpperCase();
-  return FACT_CHECK_SECTIONS.find((heading) => heading === words) ?? null;
+/**
+ * A heading sharing its line with its first content, as `SUMMARY: one
+ * sentence` or `EDITORIAL: - "…"`: the heading in capitals exactly as the
+ * contract names it, optional emphasis, a colon or dash, then the content.
+ * Capitals are required here, unlike for a heading alone, so a sentence
+ * that merely begins with "Partial" or "Summary" is never read as one.
+ */
+const INLINE_HEADING = new RegExp(`^(${FACT_CHECK_SECTIONS.join("|")})(?:[*_]+)?\\s*[:\\-–—]\\s*(\\S.*)$`);
+
+/** The line without leading presentation: hashes, a list marker, opening emphasis. */
+function stripLeading(line: string): string {
+  let text = line.trim();
+  let previous = "";
+  while (text !== previous) {
+    previous = text;
+    for (const pattern of LEADING_DECORATION) text = text.replace(pattern, "").trim();
+  }
+  return text;
 }
 
-/** "none", however the model punctuates it, is an empty list. */
-function isNone(lines: readonly string[]): boolean {
-  return lines.length === 1 && /^[*_]*none[*_]*[.!]?$/i.test(lines[0].trim());
+/** The heading a line carries, and the content that shares its line, if any. */
+function headingOf(line: string): { readonly heading: Heading; readonly inline: string | null } | null {
+  const words = undecorated(line).toUpperCase();
+  const alone = FACT_CHECK_SECTIONS.find((heading) => heading === words);
+  if (alone !== undefined) return { heading: alone, inline: null };
+  const inline = INLINE_HEADING.exec(stripLeading(line));
+  if (inline === null) return null;
+  return { heading: inline[1] as Heading, inline: inline[2].trim() };
 }
+
+/** "none", however the model marks or punctuates it — `none`, `- none`, `None.`, `**none**` — is not an item. */
+const NONE_LINE = /^(?:\d+[.)]|[-*•])?\s*[*_]*none[*_]*[.!]?$/i;
 
 function nonEmptyLines(lines: readonly string[]): readonly string[] {
   return lines.map((line) => line.trim()).filter((line) => line.length > 0);
@@ -130,25 +153,25 @@ export function parseFactCheckLine(line: string): ParsedFactCheckItem {
 
 export function parseFactCheckOutput(text: string): ParseFactCheckOutputResult {
   const lines = text.split("\n");
-  const found: { heading: Heading; index: number }[] = [];
+  const found: { heading: Heading; index: number; inline: string | null }[] = [];
   for (const [index, line] of lines.entries()) {
     const heading = headingOf(line);
-    if (heading !== null) found.push({ heading, index });
+    if (heading !== null) found.push({ heading: heading.heading, index, inline: heading.inline });
   }
   if (found.length !== FACT_CHECK_SECTIONS.length) return { ok: false, reason: "headings" };
   if (found.some((entry, position) => entry.heading !== FACT_CHECK_SECTIONS[position])) {
     return { ok: false, reason: "headings" };
   }
 
+  // A section's lines: what shared the heading's line, then the lines
+  // beneath it; blank lines and every form of "none" dropped.
   const sectionOf = (position: number): readonly string[] => {
     const start = found[position].index + 1;
     const end = position + 1 < found.length ? found[position + 1].index : lines.length;
-    return nonEmptyLines(lines.slice(start, end));
+    const inline = found[position].inline;
+    return nonEmptyLines([...(inline === null ? [] : [inline]), ...lines.slice(start, end)]).filter((line) => !NONE_LINE.test(line));
   };
-  const listOf = (position: number): readonly ParsedFactCheckItem[] => {
-    const section = sectionOf(position);
-    return isNone(section) ? [] : section.map(parseFactCheckLine);
-  };
+  const listOf = (position: number): readonly ParsedFactCheckItem[] => sectionOf(position).map(parseFactCheckLine);
 
   const supported = listOf(0);
   const partial = listOf(1);

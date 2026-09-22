@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { FACT_CHECK_CLOSING } from "./fact-check-grounding.ts";
+import { factCheckRunEligibility } from "./fact-check-eligibility.ts";
+import type { AgentRun } from "../../../types/agent-run.ts";
 import {
   buildFactCheck,
   deriveFactCheckStatus,
@@ -184,5 +186,136 @@ describe("buildFactCheck", () => {
     assert.equal(readFactCheck({ status: "approved" }), null);
     assert.equal(readFactCheck({ status: "passed", draftId: "x", version: 2 }), null);
     assert.equal(readFactCheck({ status: "passed", draftId: "x", version: 2, checkedAt: "t", checkedByRunId: "r", recordedAt: "t", recordedBy: "o", crawlId: "c", summary: "s", supported: "not a list", partial: [], unsupported: [], unverifiable: [], editorial: [] }), null);
+  });
+});
+
+/**
+ * The live output the first production check produced, which the parser
+ * refused: headings with colons, "- none" as a list item under each empty
+ * group, two EDITORIAL lines, a SUMMARY, and the closing line. Kept exact,
+ * in both forms the summary may take, so this shape can never be refused
+ * again — and so "- none" can never become an item.
+ */
+const LIVE_OUTPUT = [
+  "SUPPORTED:",
+  "- none",
+  "",
+  "PARTIAL:",
+  "- none",
+  "",
+  "UNSUPPORTED:",
+  "- none",
+  "",
+  "UNVERIFIABLE:",
+  "- none",
+  "",
+  "EDITORIAL:",
+  '- "Nexra Agency helps businesses grow with automated lead follow-up."',
+  '- "Get in touch to see how it works."',
+  "",
+  "SUMMARY:",
+  "Two sentences: none supported, none partial, none unsupported, none unverifiable, two editorial; none unchecked.",
+  "",
+  FACT_CHECK_CLOSING,
+].join("\n");
+
+const LIVE_OUTPUT_INLINE_SUMMARY = LIVE_OUTPUT.replace(
+  "SUMMARY:\nTwo sentences",
+  "SUMMARY: Two sentences",
+);
+
+describe("the live output shape (regression)", () => {
+  for (const [name, text] of [
+    ["summary on its own line", LIVE_OUTPUT],
+    ["summary sharing the heading's line", LIVE_OUTPUT_INLINE_SUMMARY],
+  ] as const) {
+    test(`parses with ${name}: two editorial items, the other four groups empty, no evidence invented, status needs-review`, () => {
+      const parsed = parseFactCheckOutput(text);
+      assert.ok(parsed.ok, `refused: ${parsed.ok ? "" : parsed.reason}`);
+      if (!parsed.ok) return;
+      assert.deepEqual(parsed.output.supported, []);
+      assert.deepEqual(parsed.output.partial, []);
+      assert.deepEqual(parsed.output.unsupported, []);
+      assert.deepEqual(parsed.output.unverifiable, []);
+      assert.deepEqual(parsed.output.editorial.map((item) => item.text), [
+        "Nexra Agency helps businesses grow with automated lead follow-up.",
+        "Get in touch to see how it works.",
+      ]);
+      assert.equal(parsed.output.summary, "Two sentences: none supported, none partial, none unsupported, none unverifiable, two editorial; none unchecked.");
+      const check = buildFactCheck({
+        output: parsed.output,
+        evidence: EVIDENCE,
+        draftId: "00000000-0000-4000-8000-0000000000d1",
+        version: 2,
+        checkedAt: "2026-09-22T15:40:00.000Z",
+        checkedByRunId: "11111111-0000-4000-8000-000000000080",
+        recordedAt: "2026-09-22T15:45:00.000Z",
+        recordedBy: "00000000-0000-4000-8000-00000000000a",
+      });
+      assert.equal(check.status, "needs-review", "an editorial-only text is not a pass");
+      assert.deepEqual([check.supported, check.partial, check.unsupported, check.unverifiable], [[], [], [], []]);
+      assert.ok(check.editorial.every((item) => item.evidence === null && item.note === null));
+      assert.doesNotMatch(JSON.stringify(check), /"text":"none"/i, '"none" became an item');
+    });
+  }
+
+  test("every form of none under a heading is empty, and an inline heading is read only in capitals with a separator", () => {
+    const forms = ["none", "- none", "* None.", "1. none", "**none**", "- **None**", "• none!"];
+    for (const form of forms) {
+      const parsed = parseFactCheckOutput(["SUPPORTED:", form, "PARTIAL:", form, "UNSUPPORTED:", form, "UNVERIFIABLE:", form, "EDITORIAL:", form, "SUMMARY:", "Nothing to place."].join("\n"));
+      assert.ok(parsed.ok, form);
+      if (parsed.ok) assert.deepEqual([parsed.output.supported, parsed.output.partial, parsed.output.unsupported, parsed.output.unverifiable, parsed.output.editorial], [[], [], [], [], []], form);
+    }
+    // Inline content after a capitalised heading belongs to that section.
+    const inline = parseFactCheckOutput(['SUPPORTED: - "The services page is titled Services" [crawl /services]', "PARTIAL: none", "UNSUPPORTED: none", "UNVERIFIABLE: none", 'EDITORIAL: "Get in touch."', "SUMMARY: Two sentences."].join("\n"));
+    assert.ok(inline.ok);
+    if (inline.ok) {
+      assert.deepEqual(inline.output.supported, [{ text: "The services page is titled Services", note: null, evidence: "crawl /services" }]);
+      assert.deepEqual(inline.output.editorial, [{ text: "Get in touch.", note: null, evidence: null }]);
+      assert.equal(inline.output.summary, "Two sentences.");
+    }
+    // A sentence that begins with a heading's word in ordinary case is content, not a heading.
+    const sentence = parseFactCheckOutput(["SUPPORTED:", "- none", "PARTIAL:", "- none", "UNSUPPORTED:", "- none", "UNVERIFIABLE:", "- none", "EDITORIAL:", '- "Summary: we help you grow."', "- Partial - refunds are offered", "SUMMARY:", "Two editorial."].join("\n"));
+    assert.ok(sentence.ok);
+    if (sentence.ok) assert.equal(sentence.output.editorial.length, 2);
+    // Free-form text is still refused.
+    assert.deepEqual(parseFactCheckOutput("The draft looks fine to me. Supported: everything. Summary: passed."), { ok: false, reason: "headings" });
+    assert.deepEqual(parseFactCheckOutput(LIVE_OUTPUT.replace("UNVERIFIABLE:\n- none\n\n", "")), { ok: false, reason: "headings" });
+  });
+
+  test("the live output is eligible for recording on the exact version its run checked, and on no other", () => {
+    const run: AgentRun = {
+      id: "11111111-0000-4000-8000-000000000080",
+      projectId: "nexra-agency",
+      agentId: "research-evidence",
+      taskType: "draft-fact-check",
+      input: { draftId: "00000000-0000-4000-8000-0000000000d1", version: 2 },
+      status: "completed",
+      source: "operator",
+      executor: "ai",
+      attemptCount: 1,
+      maxAttempts: 3,
+      resultSummary: LIVE_OUTPUT,
+      resultMetadata: {
+        simulated: false,
+        grounded: true,
+        taskType: "draft-fact-check",
+        evidence: { source: "draft-version", draftId: "00000000-0000-4000-8000-0000000000d1", version: 2, crawlId: EVIDENCE.crawlId, searchWindow: EVIDENCE.searchWindow, recordPaths: [...EVIDENCE.recordPaths] },
+      },
+      error: null,
+      createdBy: "00000000-0000-4000-8000-00000000000a",
+      cancelledBy: null,
+      createdAt: "2026-09-22T15:30:00.000Z",
+      updatedAt: "2026-09-22T15:40:00.000Z",
+      startedAt: "2026-09-22T15:39:00.000Z",
+      finishedAt: "2026-09-22T15:40:00.000Z",
+      nextAttemptAt: null,
+      autoRetryCount: 0,
+    };
+    const target = { projectId: "nexra-agency", draftId: "00000000-0000-4000-8000-0000000000d1", version: 2 };
+    const eligible = factCheckRunEligibility(run, target);
+    assert.equal(eligible.ok, true, eligible.ok ? "" : `${eligible.reason} ${eligible.detail ?? ""}`);
+    assert.equal(factCheckRunEligibility(run, { ...target, version: 1 }).ok, false);
+    assert.equal(factCheckRunEligibility(run, { ...target, projectId: "halcyon-fintech" }).ok, false);
   });
 });
