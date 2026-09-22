@@ -559,3 +559,249 @@ describe("concurrency", () => {
     assert.equal(page(result.pages, "https://example.com/").depth, 0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Internal links out: one distinct recorded internal edge from the page, once.
+// ---------------------------------------------------------------------------
+
+describe("internal links out", () => {
+  const SITE = {
+    "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+    "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+  } satisfies Record<string, Route>;
+
+  type Result = Awaited<ReturnType<typeof crawl>>;
+
+  const internalEdges = (result: Result) => result.links.filter((link) => link.isInternal);
+  const sumOut = (result: Result) => result.pages.reduce((sum, entry) => sum + entry.internalLinksOut, 0);
+
+  /**
+   * The invariant every case below holds: the pages' outbound counts add up
+   * to the recorded internal edges, and each page's count is its own edges.
+   * (The inbound side has no such sum: an internal target that was never
+   * queued — a nofollow link, say — has an edge but no page row.)
+   */
+  function consistent(result: Result): void {
+    assert.equal(sumOut(result), internalEdges(result).length, "sum of internalLinksOut ≠ recorded internal edges");
+    for (const entry of result.pages) {
+      const from = result.links.filter((link) => link.isInternal && link.fromUrl === entry.url).length;
+      assert.equal(entry.internalLinksOut, from, `${entry.url}: internalLinksOut ≠ its recorded internal edges`);
+    }
+  }
+
+  test("only internal links: the count is the number of distinct internal targets", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": { body: `<a href="/a">a</a><a href="/b">b</a><a href="/c">c</a>` },
+      "https://example.com/a": { body: "<h1>a</h1>" },
+      "https://example.com/b": { body: "<h1>b</h1>" },
+      "https://example.com/c": { body: "<h1>c</h1>" },
+    });
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 3);
+    for (const path of ["/a", "/b", "/c"]) assert.equal(page(result.pages, `https://example.com${path}`).internalLinksOut, 0);
+    consistent(result);
+  });
+
+  test("internal plus external links: only the internal edges are counted, the external ones are recorded", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": {
+        body: `<a href="/a">a</a><a href="https://elsewhere.example.net/x">out</a><a href="https://other.example.org/">out2</a>`,
+      },
+      "https://example.com/a": { body: "<h1>a</h1>" },
+    });
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 1);
+    assert.equal(result.links.filter((link) => !link.isInternal).length, 2);
+    assert.equal(result.links.length, 3);
+    consistent(result);
+  });
+
+  test("a duplicate target, with a tracking parameter and with a fragment, is one edge and counts once", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": { body: `<a href="/dup">1</a><a href="/dup?utm_source=x">2</a><a href="/dup#frag">3</a>` },
+      "https://example.com/dup": { body: "<h1>once</h1>" },
+    });
+    assert.equal(internalEdges(result).length, 1);
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 1);
+    assert.equal(page(result.pages, "https://example.com/dup").internalLinksIn, 1);
+    consistent(result);
+  });
+
+  test("mailto, tel, javascript, ftp and malformed hrefs contribute nothing; a bare # resolves to the page itself under the existing normalisation", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": {
+        body: [
+          `<a href="mailto:hello@example.com">m</a>`,
+          `<a href="tel:+15551234567">t</a>`,
+          `<a href="javascript:void(0)">j</a>`,
+          `<a href="ftp://example.com/file">f</a>`,
+          `<a href="http://[not-a-host/">bad</a>`,
+          `<a href="https://user:pw@example.com/secret">creds</a>`,
+        ].join(""),
+      },
+    });
+    assert.equal(result.links.length, 0);
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 0);
+    consistent(result);
+
+    // `#` is not a second normalisation rule: it resolves to the page's own
+    // URL, the fragment is dropped, and the edge table records a self-link.
+    const hash = await crawl({
+      ...SITE,
+      "https://example.com/": { body: `<a href="#">top</a><a href="#top">top again</a>` },
+    });
+    assert.deepEqual(
+      hash.links.map((link) => [link.fromUrl, link.toUrl, link.isInternal]),
+      [["https://example.com/", "https://example.com/", true]],
+    );
+    assert.equal(page(hash.pages, "https://example.com/").internalLinksOut, 1);
+    consistent(hash);
+  });
+
+  test("relative and absolute same-host URLs count as the URLs they normalise to", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": {
+        body: [
+          `<a href="/a">1</a>`,
+          `<a href="https://example.com/a">2</a>`,
+          `<a href="a">3</a>`,
+          `<a href="https://EXAMPLE.com/a">4</a>`,
+          `<a href="https://example.com:443/a">5</a>`,
+          `<a href="/A">6</a>`,
+          `<a href="/a/">7</a>`,
+          `<a href="http://example.com/a">8</a>`,
+        ].join(""),
+      },
+      "https://example.com/a": { body: "<h1>a</h1>" },
+    });
+    // /a (five spellings), /A, /a/ and http://…/a are four distinct normalised URLs.
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 4);
+    assert.deepEqual(
+      internalEdges(result).map((link) => link.toUrl).sort(),
+      ["http://example.com/a", "https://example.com/A", "https://example.com/a", "https://example.com/a/"],
+    );
+    consistent(result);
+  });
+
+  test("a www subdomain is internal by the label-boundary rule; a look-alike host and a suffix host are external", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": {
+        body: [
+          `<a href="https://www.example.com/p">www</a>`,
+          `<a href="https://evil-example.com/p">lookalike</a>`,
+          `<a href="https://example.com.evil.net/">suffix</a>`,
+        ].join(""),
+      },
+      "https://www.example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://www.example.com/p": { body: "<h1>www</h1>" },
+    });
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 1);
+    assert.deepEqual(
+      result.links.map((link) => [new URL(link.toUrl).hostname, link.isInternal]),
+      [["www.example.com", true], ["evil-example.com", false], ["example.com.evil.net", false]],
+    );
+    consistent(result);
+  });
+
+  test("in a competitor crawl the project's own site is external, and only the rival's internal edges are counted", async () => {
+    const result = await crawl(
+      {
+        "https://rival.example/robots.txt": ROBOTS_ALLOW_ALL,
+        "https://rival.example/sitemap.xml": { status: 404, type: "application/xml" },
+        "https://rival.example/": { body: `<a href="/about">about</a><a href="https://example.com/">the project</a>` },
+        "https://rival.example/about": { body: "<h1>about</h1>" },
+      },
+      { startUrl: "https://rival.example/", hostScope: "rival.example" },
+    );
+    assert.equal(page(result.pages, "https://rival.example/").internalLinksOut, 1);
+    const toProject = result.links.find((link) => link.toUrl === "https://example.com/");
+    assert.ok(toProject);
+    assert.equal(toProject.isInternal, false);
+    assert.ok(!result.pages.some((entry) => entry.url.includes("example.com/")), "the project's site was fetched from a rival's crawl");
+    consistent(result);
+  });
+
+  test("a nofollow anchor is recorded and counted as an internal edge, but not followed", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": { body: `<a href="/n" rel="nofollow">n</a><a href="/f">f</a>` },
+      "https://example.com/n": { body: "<h1>never fetched</h1>" },
+      "https://example.com/f": { body: "<h1>f</h1>" },
+    });
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 2);
+    assert.deepEqual(
+      result.links.map((link) => [link.toUrl, link.rel]),
+      [["https://example.com/n", "nofollow"], ["https://example.com/f", null]],
+    );
+    assert.ok(!result.pages.some((entry) => entry.url === "https://example.com/n"), "a nofollow link was followed");
+    consistent(result);
+  });
+
+  test("a page whose robots meta says nofollow or none records no edges and counts zero", async () => {
+    for (const directive of ["noindex,nofollow", "none"]) {
+      const result = await crawl({
+        ...SITE,
+        "https://example.com/": { body: `<meta name="robots" content="${directive}"><a href="/hidden">h</a><a href="/also">a</a>` },
+        "https://example.com/hidden": { body: "<h1>hidden</h1>" },
+        "https://example.com/also": { body: "<h1>also</h1>" },
+      });
+      assert.equal(result.links.length, 0, directive);
+      assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 0, directive);
+      assert.equal(result.pages.length, 1, directive);
+      consistent(result);
+    }
+  });
+
+  test("a self-link is recorded once and counted once, on both ends", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": { body: `<a href="/">home</a><a href="https://example.com/">home again</a><a href="/a">a</a>` },
+      "https://example.com/a": { body: `<a href="/a">me</a><a href="/a">me too</a>` },
+    });
+    const home = page(result.pages, "https://example.com/");
+    assert.equal(home.internalLinksOut, 2);
+    assert.equal(home.internalLinksIn, 1);
+    const a = page(result.pages, "https://example.com/a");
+    assert.equal(a.internalLinksOut, 1);
+    assert.equal(a.internalLinksIn, 2);
+    assert.equal(internalEdges(result).length, 3);
+    consistent(result);
+  });
+
+  test("the 300-anchor extraction cap keeps the count equal to the recorded edges", async () => {
+    const anchors = Array.from({ length: 400 }, (_, index) => `<a href="/p${index}">${index}</a>`).join("");
+    const result = await crawl(
+      { ...SITE, "https://example.com/": { body: anchors } },
+      { budget: { maxPages: 1, maxDepth: 1, maxDurationMs: 60_000 } },
+    );
+    assert.equal(internalEdges(result).length, 300);
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 300);
+    // Discovered-but-unreached pages carry no counts of their own.
+    for (const entry of result.pages) {
+      if (entry.url === "https://example.com/") continue;
+      assert.equal(entry.fetchState, "budget-skipped");
+      assert.equal(entry.internalLinksOut, 0);
+    }
+    consistent(result);
+  });
+
+  test("a page that never answered has no outbound count; an error page whose body was read keeps its recorded edges", async () => {
+    const result = await crawl({
+      ...SITE,
+      "https://example.com/": { body: `<a href="/gone">gone</a><a href="/down">down</a>` },
+      // An HTTP error with an HTML body is parsed, as it always was, so its
+      // anchors are edges of the graph and the page's count says so.
+      "https://example.com/gone": { status: 500, body: `<a href="/a">a</a>` },
+      "https://example.com/down": { fail: "connection" },
+    });
+    assert.equal(page(result.pages, "https://example.com/gone").fetchState, "http-error");
+    assert.equal(page(result.pages, "https://example.com/gone").internalLinksOut, 1);
+    assert.equal(page(result.pages, "https://example.com/down").internalLinksOut, 0);
+    assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 2);
+    consistent(result);
+  });
+});

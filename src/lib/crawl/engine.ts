@@ -160,8 +160,11 @@ function toPage(
     schemaParseFailed: extracted?.schemaParseFailed ?? false,
     inSitemap: context.inSitemap,
     depth,
+    // Both counts are filled in after the walk, from the edges it recorded:
+    // the raw anchor list is not a link count, since it still holds
+    // duplicates, fragments, mailto and other non-URLs, and external targets.
     internalLinksIn: 0,
-    internalLinksOut: extracted?.links.length ?? 0,
+    internalLinksOut: 0,
     fetchedAt: context.fetchedAt,
     errorCode: null,
   };
@@ -335,6 +338,7 @@ export async function runCrawl(options: EngineOptions): Promise<CrawlResult> {
   const links: Omit<CrawlLink, "crawlId">[] = [];
   const linkKeys = new Set<string>();
   const inboundCounts = new Map<string, number>();
+  const outboundCounts = new Map<string, number>();
   const known = new Set<string>([startUrl]);
   let frontier: Queued[] = [{ url: startUrl, depth: 0 }];
   let stopReason: CrawlStopReason = "completed";
@@ -345,7 +349,14 @@ export async function runCrawl(options: EngineOptions): Promise<CrawlResult> {
     if (linkKeys.has(key)) return;
     linkKeys.add(key);
     links.push({ fromUrl: from, toUrl: to, rel, isInternal });
-    if (isInternal) inboundCounts.set(to, (inboundCounts.get(to) ?? 0) + 1);
+    // One distinct internal edge counts once on each end. Every source is a
+    // fetched page, so the pages' outbound counts sum to the crawl's internal
+    // edge count; a target that was never queued (a nofollow link) has an
+    // inbound count and no page row, so the inbound side has no such sum.
+    if (isInternal) {
+      inboundCounts.set(to, (inboundCounts.get(to) ?? 0) + 1);
+      outboundCounts.set(from, (outboundCounts.get(from) ?? 0) + 1);
+    }
   };
 
   while (frontier.length > 0) {
@@ -439,6 +450,7 @@ export async function runCrawl(options: EngineOptions): Promise<CrawlResult> {
   const withCounts = [...pages.values()].map((page) => ({
     ...page,
     internalLinksIn: inboundCounts.get(page.url) ?? 0,
+    internalLinksOut: outboundCounts.get(page.url) ?? 0,
   }));
 
   return {
