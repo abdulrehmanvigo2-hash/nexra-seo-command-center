@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import {
   PRIORITY_REVIEW,
   RUN_STATUS,
+  SECTION_DRAFT,
   executability,
   executeOutcome,
+  draftRequest,
   handoffRequest,
   hasResult,
+  offersDraft,
   offersHandoff,
   outputProvenance,
   queueRefusal,
@@ -353,6 +356,7 @@ export function QueuedReview({
           </p>
 
           {projectId !== null && offersHandoff(run) && <DirectorHandoff projectId={projectId} source={run} />}
+          {projectId !== null && offersDraft(run) && <WriterDraft projectId={projectId} plan={run} />}
         </div>
       )}
     </section>
@@ -373,4 +377,20 @@ export function QueuedReview({
 function DirectorHandoff({ projectId, source }: { projectId: string; source: AgentRun }) {
   const handoff = useQueuedReview(handoffRequest(projectId, source), source.id, PRIORITY_REVIEW, projectId);
   return <QueuedReview review={PRIORITY_REVIEW} nested {...handoff} />;
+}
+
+/**
+ * The Writer's section draft from a completed content plan.
+ *
+ * The same control as every other review, nested beneath the completed plan
+ * that is its input: it queues, it runs now, and it reconciles against the
+ * persisted Writer run for this plan. It is offered under a plan the Writer
+ * may draft from and refuses, with the reader's own reason, for one it may
+ * not. The draft's own result offers nothing further — no publish, no edit,
+ * no approval, because the product has no such action — and nothing queues
+ * on its own.
+ */
+function WriterDraft({ projectId, plan }: { projectId: string; plan: AgentRun }) {
+  const draft = useQueuedReview(draftRequest(projectId, plan), plan.id, SECTION_DRAFT, projectId);
+  return <QueuedReview review={SECTION_DRAFT} nested {...draft} />;
 }

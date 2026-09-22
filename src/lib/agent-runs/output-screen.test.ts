@@ -466,6 +466,17 @@ describe("the competitor comparison review through the worker's output screen", 
         crawls: { getCrawl: notHere("a crawl") },
         searchConsole: notHere("Search Console"),
       },
+      draft: {
+        runs: { getById: notHere("a run") },
+        evidencePack: {
+          getProjectById: notHere("the project record"),
+          getProjectIntake: notHere("the intake"),
+          listProjectCrawls: notHere("own-site crawls"),
+          listCompetitorCrawls: notHere("competitor crawls"),
+          crawls: { getCrawl: notHere("a crawl") },
+          searchConsole: notHere("Search Console"),
+        },
+      },
     };
     const { store, finishes, current } = memoryStore(
       queuedRun({ agentId: "market-intelligence", taskType: "competitor-comparison-review", input: { competitorDomain: "2vautomation.example" } }),
@@ -684,6 +695,17 @@ describe("the Research & Evidence pack through the worker's output screen", () =
         crawls: { getCrawl: notHere("a crawl") },
         searchConsole: notHere("Search Console"),
       },
+      draft: {
+        runs: { getById: notHere("a run") },
+        evidencePack: {
+          getProjectById: notHere("the project record"),
+          getProjectIntake: notHere("the intake"),
+          listProjectCrawls: notHere("own-site crawls"),
+          listCompetitorCrawls: notHere("competitor crawls"),
+          crawls: { getCrawl: notHere("a crawl") },
+          searchConsole: notHere("Search Console"),
+        },
+      },
     };
     const { store, finishes, current } = memoryStore(queuedRun({ agentId: "research-evidence", taskType: "evidence-pack-review", input: {} }));
     const worker = createAgentRunWorker({
@@ -796,5 +818,139 @@ describe("the Content Strategist plan through the worker's output screen", () =>
       assert.equal(run.error?.code, "rejected-output");
       assert.equal(run.resultSummary, null);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Writer's section draft, through the same screen
+// ---------------------------------------------------------------------------
+
+const PLAN_ID = "11111111-0000-4000-8000-000000000060";
+
+const DRAFT_METADATA: JsonObject = {
+  simulated: false,
+  grounded: true,
+  evidence: {
+    source: "content-draft",
+    projectId: PROJECT.id,
+    projectHost: "nexraagency.com",
+    planRunId: PLAN_ID,
+    planCompletedAt: "2026-09-21T10:06:00.000Z",
+    planCrawlId: CRAWL_ID,
+    crawlId: CRAWL_ID,
+    section: "What the agency does, in one paragraph [crawl /services]",
+    sectionIndex: 2,
+    outlineTagged: 2,
+    outlineNeedingEvidence: 2,
+    planTruncated: false,
+    records: (PACK_METADATA.evidence as JsonObject),
+    bytes: 21_000,
+  },
+  taskType: "section-draft",
+  attempt: 1,
+  provider: "anthropic",
+  model: "test-model",
+  inputTokens: 8_000,
+  outputTokens: 500,
+};
+
+const DRAFT_STATUS = "Draft for operator review. Not published, not approved, not final.";
+const DRAFT_CLOSING = "Every claim in this draft is listed above with the record it rests on; nothing here was published or sent anywhere.";
+
+/** An answer of the shape the section draft instructions demand. */
+const DRAFT_ANSWER = [
+  "SECTION\nWhat the agency does, in one paragraph [crawl /services]",
+  "DRAFT\nNexra Agency's services page introduces the agency in a single section. Its title and its one heading both read Services, and the page declares itself as the canonical address for that description. The page also describes the agency as an organisation in its structured data, which is how a search engine is told what kind of entity stands behind the page.",
+  "CLAIMS USED\nThe page title is Services. [crawl /services]\nThe page has one h1. [crawl /services]\nThe canonical points at itself. [crawl /services]\nOrganization structured data is declared. [crawl /services]",
+  "PLACEHOLDERS\n[NEEDS EVIDENCE: how an engagement runs]\n[NEEDS EVIDENCE: who the agency has worked with]",
+  `STATUS\n${DRAFT_STATUS}`,
+  DRAFT_CLOSING,
+].join("\n\n");
+
+async function runDraft(output: ExecutionOutput) {
+  const { store, finishes, current } = memoryStore(queuedRun({ agentId: "writer", taskType: "section-draft", input: { planRunId: PLAN_ID } }));
+  const stub = answering(output);
+  const worker = createAgentRunWorker({
+    store,
+    executor: stub.executor,
+    projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+    timeoutMs: 5_000,
+  });
+  const outcome = await worker.executeRun(RUN_ID);
+  return { outcome, finishes, run: current(), executorCalls: stub.calls() };
+}
+
+describe("the Writer's section draft through the worker's output screen", () => {
+  test("a draft-policy task runs through the worker: a bounded five-section draft is kept, with its plan and record metadata, under 1,500 characters", async () => {
+    assert.ok(DRAFT_ANSWER.length < 1_500, `${DRAFT_ANSWER.length} characters`);
+    const { outcome, finishes, run, executorCalls } = await runDraft({ summary: DRAFT_ANSWER, metadata: DRAFT_METADATA });
+    assert.equal(outcome.status, "executed");
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "completed");
+    assert.equal(run.status, "completed", "the draft policy was not allowed to run");
+    assert.equal(run.resultSummary, DRAFT_ANSWER);
+    assert.deepEqual(run.resultMetadata, DRAFT_METADATA);
+    for (const heading of ["SECTION", "DRAFT", "CLAIMS USED", "PLACEHOLDERS", "STATUS"]) {
+      assert.ok(run.resultSummary?.includes(`${heading}\n`), heading);
+    }
+    const body = run.resultSummary?.split("DRAFT\n")[1]?.split("\n\n")[0] ?? "";
+    assert.ok(body.split(/\s+/).length <= 90, "the draft body is over 90 words");
+    assert.doesNotMatch(body, /\[(crawl|search console|NEEDS EVIDENCE)/, "an inline tag reached the prose");
+    const claims = run.resultSummary?.split("CLAIMS USED\n")[1]?.split("\n\n")[0]?.split("\n") ?? [];
+    assert.ok(claims.length >= 1 && claims.length <= 5);
+    for (const claim of claims) assert.match(claim, /\[(crawl \/\S*|search console [^\]]+)\]$/);
+    const placeholders = run.resultSummary?.split("PLACEHOLDERS\n")[1]?.split("\n\n")[0]?.split("\n") ?? [];
+    for (const placeholder of placeholders) assert.match(placeholder, /^\[NEEDS EVIDENCE: .+\]$/);
+    assert.ok(run.resultSummary?.includes(`STATUS\n${DRAFT_STATUS}`));
+    assert.ok(run.resultSummary?.endsWith(DRAFT_CLOSING));
+  });
+
+  test("an unbounded draft — a full page rather than a section — runs over 2,000 characters and is refused after one executor call", async () => {
+    const paragraph = "Nexra Agency helps growing companies win qualified demand through search, combining technical foundations, content built on evidence, and measurement that shows what moved and why, so that every page earns its place and every claim can be traced to a record. ";
+    const overlong = [
+      "SECTION\nWhat the agency does, in one paragraph [crawl /services]",
+      `DRAFT\n${paragraph.repeat(9)}`,
+      "CLAIMS USED\nThe page title is Services. [crawl /services]",
+      "PLACEHOLDERS\nnone",
+      `STATUS\n${DRAFT_STATUS}`,
+      DRAFT_CLOSING,
+    ].join("\n\n");
+    assert.ok(overlong.length > 2_000, `fixture is only ${overlong.length} characters`);
+    const { finishes, run, executorCalls } = await runDraft({ summary: overlong, metadata: DRAFT_METADATA });
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "failed");
+    assert.equal(run.status, "failed");
+    assert.equal(run.error?.code, "rejected-output");
+    assert.equal(run.resultSummary, null);
+  });
+
+  test("the ceiling is unchanged for this task: 2,000 characters is kept and 2,001 is refused", async () => {
+    const padded = `${DRAFT_ANSWER}\n${"x".repeat(2_000 - DRAFT_ANSWER.length - 1)}`;
+    assert.equal(padded.length, 2_000);
+    assert.equal((await runDraft({ summary: padded, metadata: DRAFT_METADATA })).run.status, "completed");
+    const refused = await runDraft({ summary: `${padded}x`, metadata: DRAFT_METADATA });
+    assert.equal(refused.run.status, "failed");
+    assert.equal(refused.run.error?.code, "rejected-output");
+  });
+
+  test("credential-shaped draft output is still refused", async () => {
+    for (const summary of [
+      `${DRAFT_ANSWER}\nAlso on /contact: sk-abcdefghijklmnopqrstuvwxyz0123456789`,
+      `${DRAFT_ANSWER}\nToken: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U`,
+      `${DRAFT_ANSWER}\napi_key: 0123456789abcdef`,
+    ]) {
+      const { run, executorCalls } = await runDraft({ summary, metadata: DRAFT_METADATA });
+      assert.equal(executorCalls, 1);
+      assert.equal(run.status, "failed");
+      assert.equal(run.error?.code, "rejected-output");
+      assert.equal(run.resultSummary, null);
+    }
+  });
+
+  test("the draft's own evidence summary is storable metadata: nested records, ids and counts pass the screen, and no plan text is in it", async () => {
+    const { run } = await runDraft({ summary: DRAFT_ANSWER, metadata: DRAFT_METADATA });
+    assert.equal(run.status, "completed");
+    assert.deepEqual(run.resultMetadata, DRAFT_METADATA);
+    assert.ok(!JSON.stringify(run.resultMetadata).includes("PAGE AND GOAL"));
   });
 });

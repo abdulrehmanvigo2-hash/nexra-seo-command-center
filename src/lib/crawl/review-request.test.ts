@@ -16,6 +16,9 @@ import {
   PERFORMANCE_REVIEW,
   PRIORITY_REVIEW,
   REVIEW_AGENT_ID,
+  SECTION_DRAFT,
+  draftRequest,
+  offersDraft,
   REVIEW_TASK_TYPE,
   SEARCH_QUERY_REVIEW,
   searchQueryReviewRequest,
@@ -1733,6 +1736,157 @@ describe("the content plan request", () => {
     assert.equal(latestReviewRun([completedPlan()], INTAKE_REVIEW, {}), null);
     assert.equal(latestReviewRun([completedPlan()], COMPETITOR_COMPARISON_REVIEW, { competitorDomain: "rival.example" }), null);
     assert.equal(latestReviewRun([completedPlan()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
+    assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
+  });
+});
+
+describe("the section draft request", () => {
+  const plan = (overrides: Partial<AgentRun> = {}): AgentRun => ({
+    ...RUN,
+    id: "11111111-0000-4000-8000-000000000060",
+    agentId: "content-strategist",
+    taskType: "content-plan-review",
+    input: {},
+    status: "completed",
+    executor: "ai",
+    attemptCount: 1,
+    resultSummary: "PAGE AND GOAL\n/services.\n\nOUTLINE\nWhat the agency does [crawl /services]",
+    resultMetadata: {
+      simulated: false,
+      grounded: true,
+      taskType: "content-plan-review",
+      evidence: { source: "evidence-pack", projectId: "nexra-agency", crawlId: CRAWL.id },
+    },
+    createdAt: "2026-09-21T10:05:00.000Z",
+    finishedAt: "2026-09-21T10:06:00.000Z",
+    ...overrides,
+  });
+
+  const completedDraft = (overrides: Partial<AgentRun> = {}): AgentRun => ({
+    ...RUN,
+    id: "11111111-0000-4000-8000-000000000070",
+    agentId: "writer",
+    taskType: "section-draft",
+    input: { planRunId: plan().id },
+    status: "completed",
+    executor: "ai",
+    attemptCount: 1,
+    resultSummary: "SECTION\nWhat the agency does [crawl /services]\n\nDRAFT\nThe services page states what the agency does.",
+    resultMetadata: {
+      simulated: false,
+      grounded: true,
+      taskType: "section-draft",
+      evidence: { source: "content-draft", planRunId: plan().id, crawlId: CRAWL.id, section: "What the agency does [crawl /services]" },
+    },
+    createdAt: "2026-09-21T11:05:00.000Z",
+    finishedAt: "2026-09-21T11:06:00.000Z",
+    ...overrides,
+  });
+
+  test("names the Writer and the draft task, with the plan's id and nothing else", () => {
+    assert.deepEqual(draftRequest("nexra-agency", plan()), {
+      ok: true,
+      payload: { projectId: "nexra-agency", agentId: "writer", taskType: "section-draft", input: { planRunId: plan().id } },
+    });
+  });
+
+  test("is refused, with the reader's own reason worded for the operator, for every plan the Writer may not draft from", () => {
+    assert.deepEqual(draftRequest(null, plan()), { ok: false, why: "No project is selected." });
+    assert.deepEqual(draftRequest("nexra-agency", null), { ok: false, why: "Complete a content plan first: there is nothing to draft from." });
+    const cases: [Partial<AgentRun>, RegExp][] = [
+      [{ projectId: "halcyon-fintech" }, /belongs to a different project/],
+      [{ taskType: "evidence-pack-review", agentId: "research-evidence" }, /drafts from a completed content plan only/],
+      [{ status: "queued", resultSummary: null, resultMetadata: null }, /has not finished/],
+      [{ status: "running" }, /has not finished/],
+      [{ status: "failed" }, /did not complete/],
+      [{ status: "cancelled" }, /did not complete/],
+      [{ resultSummary: "" }, /stored no result/],
+      [{ executor: "mock", resultMetadata: { simulated: true, grounded: false } }, /Simulated output cannot be drafted from/],
+      [{ resultMetadata: { simulated: false, grounded: false } }, /not grounded in recorded evidence/],
+      [{ resultMetadata: { simulated: false, grounded: true } }, /recorded no crawl it was written over/],
+    ];
+    for (const [overrides, why] of cases) {
+      const result = draftRequest("nexra-agency", plan(overrides));
+      assert.equal(result.ok, false, JSON.stringify(overrides));
+      assert.match(result.ok ? "" : result.why, why, JSON.stringify(overrides));
+    }
+  });
+
+  test("the control belongs under a completed plan and nowhere else", () => {
+    assert.equal(offersDraft(plan()), true);
+    for (const status of ["queued", "running", "failed", "cancelled"] as AgentRunStatus[]) assert.equal(offersDraft(plan({ status })), false);
+    assert.equal(offersDraft(completedDraft()), false, "a draft never offers a further draft");
+    assert.equal(offersDraft({ ...RUN, status: "completed" }), false);
+    assert.equal(offersDraft(plan({ taskType: "evidence-pack-review", agentId: "research-evidence" })), false);
+    // A completed plan offers the Writer, never the Director; a simulated plan still shows the control, which then refuses with the reason.
+    assert.equal(offersHandoff(plan()), false);
+    assert.equal(draftRequest("nexra-agency", plan({ executor: "mock", resultMetadata: { simulated: true, grounded: false } })).ok, false);
+  });
+
+  test("the spec matches what the server allows, calls the plan a proposal, and promises no publishing", () => {
+    assert.equal(SECTION_DRAFT.agentId, "writer");
+    assert.equal(SECTION_DRAFT.taskType, "section-draft");
+    assert.equal(SECTION_DRAFT.agentName, "Writer");
+    assert.equal(SECTION_DRAFT.action, "Draft one section with Writer Agent");
+    assert.match(SECTION_DRAFT.summary, /^Queues a draft of one section/);
+    assert.match(SECTION_DRAFT.summary, /as a proposal — never as evidence/);
+    assert.match(SECTION_DRAFT.summary, /it is not published, not approved, and changes nothing/);
+    assert.match(SECTION_DRAFT.groundedIn, /a draft for operator review, not a measurement and not published/);
+    assert.doesNotMatch(SECTION_DRAFT.summary, /succe|analysed|complete\b|publish it|approved draft|final/i);
+  });
+
+  test("a server refusal names this agent and task", () => {
+    assert.match(queueRefusal(422, { error: "task-not-allowed" }, SECTION_DRAFT), /The Writer agent is not allowed/);
+    assert.match(queueRefusal(422, { error: "unknown-task-type" }, SECTION_DRAFT), /does not know the section-draft task/);
+  });
+
+  test("a grounded draft is described by the plan and the records it rests on, and is still a draft", () => {
+    const provenance = outputProvenance(completedDraft(), SECTION_DRAFT.groundedIn);
+    assert.equal(provenance?.text, "Model output, grounded in a completed content plan (a proposal) and the records it was written over — a draft for operator review, not a measurement and not published. Advice, not measurement.");
+    assert.equal(provenance?.tone, "neutral");
+    assert.equal(
+      outputProvenance(completedDraft())?.text,
+      `Model output, grounded in the Content Strategist's completed plan (run ${plan().id}, a proposal) and the records it was written over, re-read: crawl ${CRAWL.id} (a draft for operator review, not a measurement and not published). Advice, not measurement.`,
+    );
+    assert.equal(evidenceDescription({ evidence: { source: "content-draft" } }), SECTION_DRAFT.groundedIn);
+    const mock = completedDraft({ executor: "mock", resultMetadata: { simulated: true, grounded: false } });
+    assert.match(outputProvenance(mock, SECTION_DRAFT.groundedIn)?.text ?? "", /^Simulated/);
+  });
+
+  test("a completed draft never offers the Director hand-off, and the server's reader would refuse it", () => {
+    const completed = completedDraft();
+    assert.equal(offersHandoff(completed), false);
+    const refusal = handoffRequest("nexra-agency", completed);
+    assert.equal(refusal.ok, false);
+    assert.match(refusal.ok ? "" : refusal.why, /takes hand-offs from crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/);
+  });
+
+  test("is restored by project, agent and plan id: the newest draft of this plan, never another plan's, the plan itself, or the pack", async () => {
+    const older = completedDraft({ id: "11111111-0000-4000-8000-000000000071", createdAt: "2026-09-21T09:00:00.000Z" });
+    const newest = completedDraft({ id: "11111111-0000-4000-8000-000000000072", createdAt: "2026-09-21T12:00:00.000Z", status: "queued", executor: null, resultSummary: null, resultMetadata: null });
+    const otherPlan = completedDraft({ id: "11111111-0000-4000-8000-000000000073", input: { planRunId: "11111111-0000-4000-8000-000000000061" }, createdAt: "2026-09-21T13:00:00.000Z" });
+    const input = { planRunId: plan().id };
+    assert.equal(latestReviewRun([older, otherPlan, newest, plan()], SECTION_DRAFT, input)?.id, newest.id);
+    assert.equal(latestReviewRun([otherPlan, plan()], SECTION_DRAFT, input), null);
+    assert.equal(latestReviewRun([older, newest], PRIORITY_REVIEW, { sourceRunId: plan().id }), null);
+    assert.equal(latestReviewRun([older, newest], EVIDENCE_PACK_REVIEW, {}), null);
+
+    const calls: string[] = [];
+    const restored = await restoreReviewRun("nexra-agency", SECTION_DRAFT, input, async (url, init) => {
+      calls.push(url);
+      assert.equal(init.cache, "no-store");
+      return { ok: true, json: async () => ({ runs: [older, otherPlan, newest] }) };
+    });
+    assert.equal(restored?.id, newest.id);
+    assert.deepEqual(calls, [`/api/agent-runs?project=nexra-agency&agent=writer&limit=${RESTORE_LIST_LIMIT}`]);
+  });
+
+  test("the ten existing reviews are untouched by the draft's presence", () => {
+    assert.equal(reviewRequest("nexra-agency", CRAWL).ok, true);
+    assert.equal(evidencePackRequest("nexra-agency", CRAWL).ok, true);
+    assert.equal(latestReviewRun([completedDraft()], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+    assert.equal(latestReviewRun([completedDraft()], PRIORITY_REVIEW, { sourceRunId: RUN.id }), null);
+    assert.equal(latestReviewRun([completedDraft()], INTAKE_REVIEW, {}), null);
     assert.equal(outputProvenance({ ...RUN, status: "completed", resultSummary: "x", resultMetadata: { simulated: false, grounded: true } })?.text, "Model output, grounded in this crawl's recorded pages. Advice, not measurement.");
   });
 });

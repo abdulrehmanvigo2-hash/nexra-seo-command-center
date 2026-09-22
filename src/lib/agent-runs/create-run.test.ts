@@ -1050,3 +1050,86 @@ describe("queueing a content plan — the Content Strategist", () => {
     }
   });
 });
+
+describe("queueing a section draft — the Writer", () => {
+  const PLAN_ID = "11111111-0000-4000-8000-000000000060";
+  const DRAFT_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "writer",
+    taskType: "section-draft",
+    input: { planRunId: PLAN_ID },
+  };
+
+  test("creates one queued run for the Writer under the draft policy, with the plan id lowercased, and touches no executor", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, { ...DRAFT_REQUEST, input: { planRunId: PLAN_ID.toUpperCase() } });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.duplicate, false);
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "writer");
+    assert.equal(result.run.taskType, "section-draft");
+    assert.deepEqual(result.run.input, { planRunId: PLAN_ID });
+    assert.equal(result.run.projectId, PROJECT.id);
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+  });
+
+  test("asking twice for the same plan returns the first run; another plan is another run", async () => {
+    const { store, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const first = await runtime.createRun(OPERATOR, DRAFT_REQUEST);
+    const second = await runtime.createRun(OPERATOR, DRAFT_REQUEST);
+    const other = await runtime.createRun(OPERATOR, { ...DRAFT_REQUEST, input: { planRunId: "11111111-0000-4000-8000-000000000061" } });
+    assert.ok(first.ok && second.ok && other.ok);
+    if (!first.ok || !second.ok || !other.ok) return;
+    assert.equal(second.duplicate, true);
+    assert.equal(second.run.id, first.run.id);
+    assert.equal(other.duplicate, false);
+    assert.equal(inserts(), 2);
+  });
+
+  test("is found under the Writer, which is what the nested control restores from", async () => {
+    const { store } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const created = await runtime.createRun(OPERATOR, DRAFT_REQUEST);
+    assert.ok(created.ok);
+    if (!created.ok) return;
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "writer", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(created.run.id));
+    const theirs = await runtime.listRuns({ projectId: PROJECT.id, agentId: "content-strategist", limit: 25, offset: 0 });
+    assert.ok(theirs.ok && theirs.runs.length === 0);
+  });
+
+  test("is refused before anything is written for a missing or malformed plan id, any extra field, a string or array input, any other agent, or an unknown project", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...DRAFT_REQUEST, input: {} }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: undefined }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: "not-a-uuid" } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: 42 } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, crawlId: CRAWL_ID } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, section: 2 } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { sourceRunId: PLAN_ID } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: PLAN_ID }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: [PLAN_ID] }, "invalid"],
+      [{ ...DRAFT_REQUEST, agentId: "content-strategist" }, "task-not-allowed"],
+      [{ ...DRAFT_REQUEST, agentId: "research-evidence" }, "task-not-allowed"],
+      [{ ...DRAFT_REQUEST, agentId: "seo-director" }, "task-not-allowed"],
+      [{ ...DRAFT_REQUEST, agentId: "on-page-seo" }, "task-not-allowed"],
+      // And the Writer may not run any other agent's review.
+      [{ ...DRAFT_REQUEST, taskType: "content-plan-review", input: {} }, "task-not-allowed"],
+      [{ ...DRAFT_REQUEST, taskType: "priority-review", input: { sourceRunId: PLAN_ID } }, "task-not-allowed"],
+      [{ ...DRAFT_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+});

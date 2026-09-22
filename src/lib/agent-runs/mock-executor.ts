@@ -147,6 +147,22 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "section-draft": {
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no plan and no record. `grounded: false`,
+          // as for every simulated result: it looked at nothing and drafted
+          // nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+          planRunId: typeof task.input.planRunId === "string" ? task.input.planRunId : null,
+        };
+        return {
+          summary: `Simulated section draft by ${subject}. The mock executor read no plan and no record, and drafted nothing; this is placeholder output, not a draft.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

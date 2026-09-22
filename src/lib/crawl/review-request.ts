@@ -23,6 +23,7 @@ import {
   isUpstreamTaskType,
   type RunGroundingRefusal,
 } from "@/lib/agent-runs/run-grounding";
+import { DRAFT_SOURCE_TASK_TYPE, draftSourceRefusal, type DraftGroundingRefusal } from "@/lib/content/draft-grounding";
 import { resolveCompetitorTarget, type CompetitorTargetRefusal } from "@/lib/crawl/competitor-target";
 import { AGENT_NAMES } from "@/lib/mock/agents/registry";
 import type { AgentRun, AgentRunStatus, JsonObject } from "@/types/agent-run";
@@ -43,7 +44,8 @@ export type ReviewTaskType =
   | "intake-review"
   | "competitor-comparison-review"
   | "evidence-pack-review"
-  | "content-plan-review";
+  | "content-plan-review"
+  | "section-draft";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
@@ -58,7 +60,8 @@ export type ReviewSpec = {
     | "project-manager"
     | "market-intelligence"
     | "research-evidence"
-    | "content-strategist";
+    | "content-strategist"
+    | "writer";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
   /** The button label. Says "analyze", and the note beside it says "queues". */
@@ -249,6 +252,29 @@ export const CONTENT_PLAN_REVIEW: ReviewSpec = {
     "records this product holds for this project — a proposed content plan over that evidence, not a measurement",
 };
 
+/**
+ * The Writer's section draft, from a completed content plan.
+ *
+ * The first control here whose task is a `draft`, not a `read-only` review:
+ * it produces text for a person to read, and nothing more. The plan on
+ * screen is its input — quoted to the model as a proposal, never as
+ * evidence — and the records the plan was written over are re-read by the
+ * server. One section per run, chosen by the server's reader; every claim
+ * carries its record; anything unsupported is a marked placeholder. There
+ * is no publish, edit or approve control anywhere, because the product has
+ * no such action, and the draft's own result offers no further step.
+ */
+export const SECTION_DRAFT: ReviewSpec = {
+  taskType: "section-draft",
+  agentId: "writer",
+  agentName: "Writer",
+  action: "Draft one section with Writer Agent",
+  summary:
+    "Queues a draft of one section of the planned page. The Writer reads the completed plan above as a proposal — never as evidence — beside the records it was written over, drafts the first outline section that carries a record tag, lists every claim with its record, and marks anything unsupported as a placeholder. The draft is for you to review; it is not published, not approved, and changes nothing.",
+  groundedIn:
+    "a completed content plan (a proposal) and the records it was written over — a draft for operator review, not a measurement and not published",
+};
+
 export type ReviewPayload = {
   readonly projectId: string;
   readonly agentId: ReviewSpec["agentId"];
@@ -259,6 +285,8 @@ export type ReviewPayload = {
     | { readonly sourceRunId: string }
     /** The comparison names a recorded competitor's hostname; the crawls are found on the server. */
     | { readonly competitorDomain: string }
+    /** The section draft names the completed content plan it drafts from. */
+    | { readonly planRunId: string }
     /** The intake review and the evidence pack name nothing: the project is the run's own. */
     | Record<string, never>;
 };
@@ -385,6 +413,61 @@ export function handoffRequest(projectId: string | null, source: AgentRun | null
       agentId: PRIORITY_REVIEW.agentId,
       taskType: PRIORITY_REVIEW.taskType,
       input: { sourceRunId: source.id },
+    },
+  };
+}
+
+/**
+ * Why a plan on screen cannot be drafted from, in the operator's words.
+ *
+ * The reasons are the reader's own (`draftSourceRefusal`), the ones it can
+ * give from the run alone; the rest — records unreadable, a newer crawl —
+ * are found by the server at execution time and reported on the run.
+ */
+const DRAFT_REFUSAL: Readonly<Record<Exclude<DraftGroundingRefusal, "plan-run-not-found">, string>> = {
+  "plan-run-not-in-project": "That plan belongs to a different project, so the Writer cannot draft from it here.",
+  "plan-task-not-allowed": "The Writer drafts from a completed content plan only.",
+  "plan-run-unfinished": "This plan has not finished, so there is nothing to draft from yet.",
+  "plan-run-not-completed": "This plan did not complete, so it has no result to draft from.",
+  "plan-run-no-result": "This plan stored no result, so there is nothing to draft from.",
+  "plan-run-simulated": "Simulated output cannot be drafted from: the mock executor planned nothing.",
+  "plan-run-not-grounded": "This plan was not grounded in recorded evidence, so a draft would rest on nothing.",
+  "plan-provenance-missing": "This plan recorded no crawl it was written over, so its claims cannot be checked.",
+  "plan-records-changed": "This project has a newer site crawl than the one this plan was written over.",
+  "project-not-found": "That project no longer exists on the server.",
+  "no-domain": "This project records no domain, so its records cannot be found.",
+  "project-crawl-missing": "This project's own site has not been crawled, so there are no records to draft over.",
+  "project-crawl-unfinished": "This project's newest site crawl is still running.",
+  "project-crawl-not-reviewable": "This project's newest site crawl recorded no pages to draft over.",
+  "crawl-not-readable": "This project's newest site crawl could not be read.",
+};
+
+/**
+ * Whether the completed plan on screen can be drafted from by the Writer, and
+ * the body that would ask for it.
+ *
+ * Offered only for a run the server's own reader would accept from the run
+ * alone — the same project, a content plan, completed, executed by a model,
+ * grounded, with the crawl it was written over recorded — checked here so
+ * the control explains itself. The server remains the gate: it re-reads the
+ * plan and the records at execution time, and refuses a plan whose crawl is
+ * no longer the newest.
+ */
+export function draftRequest(projectId: string | null, plan: AgentRun | null): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  if (plan === null) return { ok: false, why: "Complete a content plan first: there is nothing to draft from." };
+  if (plan.projectId !== projectId) return { ok: false, why: DRAFT_REFUSAL["plan-run-not-in-project"] };
+
+  const refusal = draftSourceRefusal(plan);
+  if (refusal !== null && refusal !== "plan-run-not-found") return { ok: false, why: DRAFT_REFUSAL[refusal] };
+
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: SECTION_DRAFT.agentId,
+      taskType: SECTION_DRAFT.taskType,
+      input: { planRunId: plan.id },
     },
   };
 }
@@ -568,6 +651,15 @@ export function offersHandoff(run: AgentRun): boolean {
   return run.status === "completed" && isUpstreamTaskType(run.taskType);
 }
 
+/**
+ * Whether a completed run is one the Writer's draft control belongs under:
+ * a completed content plan, and nothing else. A draft never offers a
+ * further draft, and no plan queues one on its own.
+ */
+export function offersDraft(run: AgentRun): boolean {
+  return run.status === "completed" && run.taskType === DRAFT_SOURCE_TASK_TYPE;
+}
+
 // ---------------------------------------------------------------------------
 // What the panel shows
 // ---------------------------------------------------------------------------
@@ -641,6 +733,14 @@ export function evidenceDescription(metadata: JsonObject): string | null {
   if (evidence === null) return null;
   if (evidence.source === "agent-run") return null;
   if (evidence.source === "project") return INTAKE_REVIEW.groundedIn;
+  if (evidence.source === "content-draft") {
+    const planRunId = typeof evidence.planRunId === "string" ? evidence.planRunId : null;
+    const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
+    if (planRunId && crawlId) {
+      return `the Content Strategist's completed plan (run ${planRunId}, a proposal) and the records it was written over, re-read: crawl ${crawlId} (a draft for operator review, not a measurement and not published)`;
+    }
+    return SECTION_DRAFT.groundedIn;
+  }
   if (evidence.source === "evidence-pack") {
     const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
     const property = typeof evidence.property === "string" ? evidence.property : null;

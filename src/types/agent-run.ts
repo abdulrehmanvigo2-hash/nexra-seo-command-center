@@ -39,7 +39,8 @@ export type AgentTaskType =
   | "intake-review"
   | "competitor-comparison-review"
   | "evidence-pack-review"
-  | "content-plan-review";
+  | "content-plan-review"
+  | "section-draft";
 
 export type JsonValue =
   | string

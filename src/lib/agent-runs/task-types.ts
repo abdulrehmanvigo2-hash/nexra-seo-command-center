@@ -8,6 +8,7 @@ import {
 } from "@/lib/crawl/grounding";
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
+import { SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
 import { CONTENT_PLAN_INSTRUCTIONS } from "@/lib/content/plan-instructions";
 import { INTAKE_REVIEW_INSTRUCTIONS } from "@/lib/projects/grounding";
 import { EVIDENCE_PACK_INSTRUCTIONS } from "@/lib/research/evidence-pack";
@@ -67,6 +68,11 @@ export type TaskTypeDefinition = {
    * newest own-site crawl, its Search Console window where connected, and
    * which competitor crawls exist — with intake notes, earlier reviews and
    * competitor pages excluded, and no source outside the product.
+   * `content-draft` tasks are given one completed content plan — another
+   * agent's model-generated proposal, quoted as data and labelled as such —
+   * beside the evidence pack it was written over, re-read now; the reader
+   * refuses when the plan is not this project's, not completed, simulated,
+   * ungrounded, or written over a crawl that is no longer the newest.
    */
   readonly evidence:
     | "none"
@@ -75,7 +81,8 @@ export type TaskTypeDefinition = {
     | "agent-run"
     | "project"
     | "competitor-comparison"
-    | "evidence-pack";
+    | "evidence-pack"
+    | "content-draft";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -461,6 +468,41 @@ const contentPlanReview: TaskTypeDefinition = {
   },
 };
 
+/**
+ * The Writer's first task, and the first task here whose policy is `draft`
+ * rather than `read-only`: it produces text a person may later use, but it
+ * publishes nothing, edits nothing, and sends nothing anywhere. Its one
+ * input names a completed content plan on the run's own project; the reader
+ * (`@/lib/content/draft-grounding`) checks that the plan is this project's,
+ * completed, model-generated over recorded evidence, and written over the
+ * crawl that is still the newest, and refuses before any provider call
+ * otherwise. The plan is quoted as a proposal, never as evidence; the
+ * records it was written over are re-read through the evidence-pack reader,
+ * unchanged. One section per run, chosen by the reader, so that the whole
+ * draft stays under the runtime's output ceiling. Operator-triggered only;
+ * nothing queues it automatically, and its completed run is not a hand-off
+ * source.
+ */
+const sectionDraft: TaskTypeDefinition = {
+  id: "section-draft",
+  label: "Section draft",
+  description:
+    "Draft one section of a planned page from a completed content plan and the records it was written over, every claim traced to a record.",
+  agents: ["writer"],
+  policy: "draft",
+  evidence: "content-draft",
+  instructions: SECTION_DRAFT_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, ["planRunId"]);
+    if (!object.ok) return object;
+    const planRunId = object.value.planRunId;
+    if (typeof planRunId !== "string" || !UUID.test(planRunId)) {
+      return { ok: false, error: "planRunId must be the id of a completed content plan on this project." };
+    }
+    return { ok: true, value: { planRunId: planRunId.toLowerCase() } };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -474,6 +516,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   competitorComparisonReview,
   evidencePackReview,
   contentPlanReview,
+  sectionDraft,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {
