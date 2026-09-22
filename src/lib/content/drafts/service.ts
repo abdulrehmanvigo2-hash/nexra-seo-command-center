@@ -18,9 +18,14 @@ import {
   writerRunEligibility,
   type DraftEligibilityRefusal,
 } from "@/lib/content/drafts/eligibility";
+import {
+  factCheckRunEligibility,
+  type FactCheckEligibilityRefusal,
+} from "@/lib/content/drafts/fact-check-eligibility";
+import { buildFactCheck, readFactCheck, type FactCheckOutputRefusal } from "@/lib/content/drafts/parse-fact-check-output";
 import type { WriterOutputRefusal } from "@/lib/content/drafts/parse-writer-output";
 import type { AgentRun } from "@/types/agent-run";
-import type { DraftHistory, DraftWithCurrentVersion } from "@/types/content-draft";
+import type { DraftFactCheck, DraftHistory, DraftWithCurrentVersion } from "@/types/content-draft";
 
 /** The run store itself satisfies this; a test hands in a map. */
 export type DraftRunReader = {
@@ -78,6 +83,45 @@ export type SaveVersionResult =
   /** The store wrote the version but its history could not then be read. */
   | { readonly ok: false; readonly reason: "failed" };
 
+export type RecordFactCheckRequest = {
+  readonly projectId: string;
+  readonly draftId: string;
+  /** The exact version the check was run on, and the only one it can be recorded on. */
+  readonly version: number;
+  /** The completed Research & Evidence run to record. */
+  readonly runId: string;
+  /** The operator's Supabase Auth user id, confirmed by the caller. */
+  readonly operatorId: string;
+};
+
+export type RecordFactCheckResult =
+  /**
+   * The result is on the version. `recorded: false` means this same run's
+   * result was already there, so nothing was written. `draftStatusAdvanced`
+   * says whether the parent moved to `fact-checked`: only when the check
+   * passed and the checked version was still current at that moment.
+   */
+  | {
+      readonly ok: true;
+      readonly recorded: boolean;
+      readonly factCheck: DraftFactCheck;
+      readonly draftStatusAdvanced: boolean;
+      readonly saved: DraftHistory;
+    }
+  | { readonly ok: false; readonly reason: "invalid" }
+  | { readonly ok: false; readonly reason: "unavailable" }
+  /** No such draft in this project. */
+  | { readonly ok: false; readonly reason: "not-found" }
+  /** The draft has no version with that number. */
+  | { readonly ok: false; readonly reason: "version-not-found" }
+  /** The version already carries a fact-check from another run; a version is checked once. */
+  | { readonly ok: false; readonly reason: "already-checked" }
+  /** No run with that id. */
+  | { readonly ok: false; readonly reason: "run-not-found" }
+  | { readonly ok: false; readonly reason: "ineligible"; readonly refusal: FactCheckEligibilityRefusal; readonly detail?: FactCheckOutputRefusal }
+  /** The store wrote the result but the history could not then be read. */
+  | { readonly ok: false; readonly reason: "failed" };
+
 export type DraftService = {
   saveWriterRun(request: SaveWriterRunRequest): Promise<SaveWriterRunResult>;
   findForWriterRun(projectId: string, writerRunId: string): Promise<FindDraftResult>;
@@ -85,6 +129,8 @@ export type DraftService = {
   saveVersion(request: SaveVersionRequest): Promise<SaveVersionResult>;
   /** One draft with every version, by project and id, or null. */
   getHistory(projectId: string, draftId: string): Promise<FindDraftResult>;
+  /** Records one completed fact-check run's result on the exact version it checked. */
+  recordFactCheck(request: RecordFactCheckRequest): Promise<RecordFactCheckResult>;
 };
 
 /** How many versions are read back for the history list. */
@@ -210,6 +256,90 @@ export function createDraftService(dependencies: {
       if (!store.storesDrafts) return { ok: false, reason: "unavailable" };
       const saved = await store.getByProjectAndId(projectId, draftId.toLowerCase());
       return { ok: true, saved: saved === null ? null : await history(saved) };
+    },
+
+    // Recording is bound three ways before anything is written: the draft
+    // by project and id, the version by number, and the run by its own
+    // metadata naming that draft and that version. The result is built here
+    // from the run's text and its evidence summary — every tag verified,
+    // the status derived — and written onto the version only while its
+    // fact_check is still null. The parent's status moves only if the
+    // checked version is still current, in one conditional statement.
+    async recordFactCheck(request) {
+      if (
+        !isProjectId(request.projectId) ||
+        !isUuid(request.draftId) ||
+        !isUuid(request.runId) ||
+        !isUuid(request.operatorId) ||
+        !Number.isInteger(request.version) ||
+        request.version < 1
+      ) {
+        return { ok: false, reason: "invalid" };
+      }
+      if (!store.storesDrafts) return { ok: false, reason: "unavailable" };
+      const projectId = request.projectId;
+      const draftId = request.draftId.toLowerCase();
+      const runId = request.runId.toLowerCase();
+
+      const existing = await store.getByProjectAndId(projectId, draftId);
+      if (existing === null) return { ok: false, reason: "not-found" };
+      const version = await store.getVersion(existing.draft.id, request.version);
+      if (version === null) return { ok: false, reason: "version-not-found" };
+
+      // Already recorded: the same run's result is answered as is; another
+      // run's is refused, because a version is checked once.
+      const stored = readFactCheck(version.factCheck);
+      if (version.factCheck !== null) {
+        if (stored !== null && stored.checkedByRunId === runId) {
+          return { ok: true, recorded: false, factCheck: stored, draftStatusAdvanced: false, saved: await history(existing) };
+        }
+        return { ok: false, reason: "already-checked" };
+      }
+
+      const run = await runs.getById(runId);
+      if (run === null) return { ok: false, reason: "run-not-found" };
+      const eligibility = factCheckRunEligibility(run, { projectId, draftId, version: request.version });
+      if (!eligibility.ok) {
+        return { ok: false, reason: "ineligible", refusal: eligibility.reason, ...(eligibility.detail ? { detail: eligibility.detail } : {}) };
+      }
+      const { source } = eligibility;
+
+      const factCheck = buildFactCheck({
+        output: source.output,
+        evidence: source.evidence,
+        draftId,
+        version: request.version,
+        checkedAt: source.checkedAt,
+        checkedByRunId: run.id,
+        recordedAt: new Date().toISOString(),
+        recordedBy: request.operatorId.toLowerCase(),
+      });
+
+      const outcome = await store.recordFactCheck({ draftId, version: request.version, factCheck });
+      if (outcome.status === "not-found") return { ok: false, reason: "version-not-found" };
+      if (outcome.status === "already-checked") {
+        // Lost a race with another recording of the same version.
+        const theirs = readFactCheck(outcome.version.factCheck);
+        if (theirs !== null && theirs.checkedByRunId === run.id) {
+          const now = await store.getByProjectAndId(projectId, draftId);
+          return now === null
+            ? { ok: false, reason: "failed" }
+            : { ok: true, recorded: false, factCheck: theirs, draftStatusAdvanced: false, saved: await history(now) };
+        }
+        return { ok: false, reason: "already-checked" };
+      }
+
+      // The parent moves to fact-checked only for a pass, and only if the
+      // checked version is still the current one at this moment.
+      let draftStatusAdvanced = false;
+      if (factCheck.status === "passed") {
+        const marked = await store.markFactChecked({ projectId, draftId, version: request.version });
+        draftStatusAdvanced = marked.status === "updated";
+      }
+
+      const now = await store.getByProjectAndId(projectId, draftId);
+      if (now === null) return { ok: false, reason: "failed" };
+      return { ok: true, recorded: true, factCheck, draftStatusAdvanced, saved: await history(now) };
     },
   };
 }

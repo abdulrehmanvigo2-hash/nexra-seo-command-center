@@ -11,6 +11,9 @@ import { createAgentRunService, type AgentRunService } from "@/lib/agent-runs/se
 import type { AgentRunsDatabase } from "@/lib/agent-runs/supabase/schema";
 import { createSupabaseAgentRunStore } from "@/lib/agent-runs/supabase/store";
 import { createTaskGrounding } from "@/lib/agent-runs/task-grounding";
+import { unavailableDraftStore, type ContentDraftStore } from "@/lib/content/drafts/contract";
+import type { ContentDraftsDatabase } from "@/lib/content/drafts/supabase/schema";
+import { createSupabaseDraftStore } from "@/lib/content/drafts/supabase/store";
 import { logEvent } from "@/lib/observability/log";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
 import { INVENTORY_RANGE_ID, RUN_INVENTORY_LIMIT } from "@/lib/projects/grounding";
@@ -44,6 +47,18 @@ import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supa
 
 const MOCK_TIMEOUT_MS = 30_000;
 const AI_TIMEOUT_MS = 120_000;
+
+/**
+ * The draft store the fact-check reader reads versions from: the same two
+ * tables the draft service writes, through a client of their own. Built
+ * here rather than imported from the draft service, which depends on this
+ * module for the run reads.
+ */
+function draftStoreForRuntime(): ContentDraftStore {
+  return storesInSupabase()
+    ? createSupabaseDraftStore(createSupabaseServerClient<ContentDraftsDatabase>(readSupabaseServerConfig(process.env)))
+    : unavailableDraftStore;
+}
 
 function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; timeoutMs: number } {
   if (selectExecutor(process.env) === "mock") {
@@ -132,6 +147,11 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
           crawls: crawlService(),
           links: { listLinks: (crawlId, limit) => crawlService().listCrawlLinks(crawlId, limit) },
         },
+        // The Research & Evidence fact-check reads one saved draft version
+        // from the draft tables — by project, id and number, checked against
+        // the run's project before a word of it is quoted — and re-reads the
+        // pack it rests on through the same readers.
+        factCheck: { drafts: draftStoreForRuntime(), evidencePack: evidencePackReaders },
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

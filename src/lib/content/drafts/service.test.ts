@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import type { AgentRun } from "../../../types/agent-run.ts";
+import type { AgentRun, JsonObject } from "../../../types/agent-run.ts";
 import type { ContentDraftVersion, CreateDraftFromWriterInput, DraftWithCurrentVersion, SaveVersionInput } from "../../../types/content-draft.ts";
 import type { ContentDraftStore } from "./contract.ts";
 import { MAX_DRAFT_BODY_LENGTH, MAX_DRAFT_TITLE_LENGTH } from "./edit-rules.ts";
@@ -102,6 +102,29 @@ function memoryStore(options: { storesDrafts?: boolean; raceOnce?: boolean; race
       if (current.draft.currentVersion !== input.expectedVersion) return { status: "stale", currentVersion: current.draft.currentVersion };
       writeVersion(current, input);
       return { status: "created", saved: drafts.find((candidate) => candidate.draft.id === input.draftId)! };
+    },
+    async getVersion(draftId, version) {
+      calls.push("get-version");
+      return versions.find((entry) => entry.draftId === draftId && entry.version === version) ?? null;
+    },
+    async recordFactCheck(input) {
+      calls.push("record");
+      const index = versions.findIndex((entry) => entry.draftId === input.draftId && entry.version === input.version);
+      if (index === -1) return { status: "not-found" };
+      if (versions[index].factCheck !== null) return { status: "already-checked", version: versions[index] };
+      // Only fact_check changes: the row is otherwise the same object's fields.
+      versions[index] = { ...versions[index], factCheck: input.factCheck as unknown as JsonObject };
+      const entry = drafts.find((candidate) => candidate.draft.id === input.draftId);
+      if (entry && entry.version.version === input.version) drafts[drafts.indexOf(entry)] = { ...entry, version: versions[index] };
+      return { status: "recorded", version: versions[index] };
+    },
+    async markFactChecked(input) {
+      calls.push("mark");
+      const entry = drafts.find((candidate) => candidate.draft.projectId === input.projectId && candidate.draft.id === input.draftId);
+      if (!entry || entry.draft.currentVersion !== input.version || entry.draft.status !== "drafting") return { status: "unchanged" };
+      const draft = { ...entry.draft, status: "fact-checked" as const, updatedAt: "2026-09-22T13:00:00.000Z" };
+      drafts[drafts.indexOf(entry)] = { ...entry, draft };
+      return { status: "updated", draft };
     },
   };
   return { store, drafts, versions, calls };
@@ -274,7 +297,7 @@ describe("draftService.saveWriterRun", () => {
 
   test("the service has no provider, crawler or publisher to call: its only dependencies are the store and the run reader", () => {
     const service = createDraftService({ store: memoryStore().store, runs: runReader([]).reader });
-    assert.deepEqual(Object.keys(service).sort(), ["findForWriterRun", "getHistory", "saveVersion", "saveWriterRun"]);
+    assert.deepEqual(Object.keys(service).sort(), ["findForWriterRun", "getHistory", "recordFactCheck", "saveVersion", "saveWriterRun"]);
   });
 });
 
@@ -546,5 +569,289 @@ describe("draftService.getHistory", () => {
     assert.equal(again.saved.version.version, 2);
     assert.deepEqual(again.saved.versions.map((version) => version.version), [1, 2]);
     assert.equal(versions.length, 2);
+  });
+});
+
+/**
+ * Stage 3: one completed Research & Evidence check recorded on the exact
+ * version it checked. These tests read the store's own version log after
+ * every recording to show that only that version's fact_check changed, that
+ * no text moved, and that the parent's status moved only when the checked
+ * version was still current and the check passed.
+ */
+
+const CHECK_RUN_ID = "11111111-0000-4000-8000-000000000080";
+
+const CHECK_OUTPUT = [
+  "SUPPORTED",
+  '- "Nexra Agency\'s home page presents automated lead follow-up" [crawl /]',
+  "PARTIAL",
+  "none",
+  "UNSUPPORTED",
+  "none",
+  "UNVERIFIABLE",
+  "none",
+  "EDITORIAL",
+  "none",
+  "SUMMARY",
+  "One sentence: one supported; none partial, unsupported, unverifiable or editorial; none unchecked.",
+  "This check compares the text with the records this product holds; it approves nothing and publishes nothing.",
+].join("\n");
+
+function factCheckRun(target: { draftId: string; version: number }, overrides: Partial<AgentRun> = {}, summary = CHECK_OUTPUT): AgentRun {
+  return {
+    ...writerRun(),
+    id: CHECK_RUN_ID,
+    agentId: "research-evidence",
+    taskType: "draft-fact-check",
+    input: { draftId: target.draftId, version: target.version },
+    resultSummary: summary,
+    resultMetadata: {
+      simulated: false,
+      grounded: true,
+      taskType: "draft-fact-check",
+      evidence: {
+        source: "draft-version",
+        projectId: "nexra-agency",
+        projectHost: "nexraagency.com",
+        draftId: target.draftId,
+        version: target.version,
+        versionOrigin: "operator",
+        wasCurrent: true,
+        crawlId: CRAWL_ID,
+        searchWindow: "2026-08-19 to 2026-09-17",
+        recordPaths: ["/", "/services"],
+        textTruncated: false,
+      },
+      provider: "anthropic",
+      model: "test-model",
+    },
+    finishedAt: "2026-09-22T14:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** A draft with version 1 (the Writer's) and version 2 (an edit), version 2 current, and a completed check run bound to version 2. */
+async function checkable(options: { runs?: readonly AgentRun[] } = {}) {
+  const memory = memoryStore();
+  const runList: AgentRun[] = [writerRun()];
+  const service = createDraftService({
+    store: memory.store,
+    runs: { async getById(id) { return runList.find((run) => run.id === id) ?? null; } },
+  });
+  const created = await service.saveWriterRun(REQUEST);
+  assert.ok(created.ok);
+  if (!created.ok) throw new Error("unreachable");
+  const draftId = created.saved.draft.id;
+  const edited = await service.saveVersion(edit(draftId, 1, { body: "Nexra Agency's home page presents automated lead follow-up. Clients love it." }));
+  assert.ok(edited.ok && edited.created);
+  runList.push(...(options.runs ?? [factCheckRun({ draftId, version: 2 })]));
+  memory.calls.length = 0;
+  const before = JSON.parse(JSON.stringify(memory.versions)) as ContentDraftVersion[];
+  return { ...memory, service, draftId, runList, before };
+}
+
+const record = (draftId: string, version: number, runId = CHECK_RUN_ID, projectId = "nexra-agency") => ({
+  projectId,
+  draftId,
+  version,
+  runId,
+  operatorId: OPERATOR_ID,
+});
+
+/** Every field of every version with fact_check blanked, for comparing before and after. */
+function textOf(versions: readonly ContentDraftVersion[]) {
+  return versions.map((version) => ({ ...version, factCheck: null }));
+}
+
+describe("draftService.recordFactCheck", () => {
+  test("records the check on version 2 only: version 1 stays untouched, no text changes, no version is created, and only fact_check was written", async () => {
+    const { service, versions, drafts, calls, draftId, before } = await checkable();
+    const result = await service.recordFactCheck(record(draftId, 2));
+    assert.ok(result.ok);
+    if (!result.ok) return;
+    assert.equal(result.recorded, true);
+    assert.equal(result.factCheck.version, 2);
+    assert.equal(result.factCheck.draftId, draftId);
+    assert.equal(result.factCheck.checkedByRunId, CHECK_RUN_ID);
+    assert.equal(result.factCheck.checkedAt, "2026-09-22T14:00:00.000Z");
+    assert.equal(result.factCheck.recordedBy, OPERATOR_ID);
+    assert.equal(result.factCheck.status, "passed");
+    assert.deepEqual(result.factCheck.supported, [{ text: "Nexra Agency's home page presents automated lead follow-up", evidence: "crawl /", note: null }]);
+    assert.equal(result.saved.version.version, 2);
+    assert.deepEqual(result.saved.version.factCheck, result.factCheck);
+    // The store's log: two versions, the same texts, version 1's fact_check still null.
+    assert.equal(versions.length, 2);
+    assert.deepEqual(textOf(versions), textOf(before));
+    assert.equal(versions[0].version, 1);
+    assert.equal(versions[0].factCheck, null);
+    assert.deepEqual(versions[1].factCheck, result.factCheck);
+    assert.deepEqual(calls, ["get", "get-version", "record", "mark", "get", "list"]);
+    assert.ok(!calls.includes("save") && !calls.includes("create"), "a version was created by a fact-check");
+    // The parent moved to fact-checked because the passed version was still current; nothing else moved.
+    assert.equal(result.draftStatusAdvanced, true);
+    assert.equal(drafts[0].draft.status, "fact-checked");
+    assert.equal(drafts[0].draft.currentVersion, 2);
+    assert.equal(drafts[0].draft.approvedVersion, null);
+    assert.equal(drafts[0].draft.approvedBy, null);
+    assert.equal(drafts[0].draft.publishedVersion, null);
+    assert.equal(drafts[0].draft.remoteContentId, null);
+    assert.deepEqual(result.saved.versions.map((version) => [version.version, version.factCheck === null]), [[1, true], [2, false]]);
+  });
+
+  test("a supported claim with a record in the evidence is supported; a missing or unknown record is unverifiable, partial support is kept apart, and editorial text is no claim", async () => {
+    const output = [
+      "SUPPORTED",
+      '- "The home page presents automated lead follow-up" [crawl /]',
+      '- "The about page names the founders" [crawl /about]',
+      '- "The home page has one h1"',
+      "PARTIAL",
+      '- "The home page declares Organization and Service schema" — Organization is recorded [crawl /]',
+      "UNSUPPORTED",
+      "none",
+      "UNVERIFIABLE",
+      '- "Clients love it" — a client result the records cannot hold',
+      "EDITORIAL",
+      '- "Get in touch today"',
+      "SUMMARY",
+      "Six sentences placed; none unchecked.",
+    ].join("\n");
+    const { service, draftId, runList } = await checkable({ runs: [] });
+    runList.push(factCheckRun({ draftId, version: 2 }, {}, output));
+    const result = await service.recordFactCheck(record(draftId, 2));
+    assert.ok(result.ok);
+    if (!result.ok) return;
+    const check = result.factCheck;
+    assert.deepEqual(check.supported.map((item) => [item.text, item.evidence]), [["The home page presents automated lead follow-up", "crawl /"]]);
+    assert.deepEqual(check.partial.map((item) => [item.text, item.evidence, item.note]), [["The home page declares Organization and Service schema", "crawl /", "Organization is recorded"]]);
+    assert.deepEqual(check.unverifiable.map((item) => item.text), ["Clients love it", "The about page names the founders", "The home page has one h1"]);
+    assert.deepEqual(check.unsupported, []);
+    assert.deepEqual(check.editorial.map((item) => item.text), ["Get in touch today"]);
+    assert.equal(check.status, "needs-review");
+    assert.equal(result.draftStatusAdvanced, false, "a needs-review check moved the parent");
+    assert.equal(result.saved.draft.status, "drafting");
+  });
+
+  test("a statement no record holds is recorded as unsupported in the check's own words, the check fails, and nothing is invented or approved", async () => {
+    const output = CHECK_OUTPUT.replace("UNSUPPORTED\nnone", 'UNSUPPORTED\n- "The agency has fifty clients" — no record holds this');
+    const { service, draftId, runList, drafts } = await checkable({ runs: [] });
+    runList.push(factCheckRun({ draftId, version: 2 }, {}, output));
+    const result = await service.recordFactCheck(record(draftId, 2));
+    assert.ok(result.ok);
+    if (!result.ok) return;
+    assert.equal(result.factCheck.status, "failed");
+    assert.deepEqual(result.factCheck.unsupported, [{ text: "The agency has fifty clients", evidence: null, note: "no record holds this" }]);
+    assert.doesNotMatch(JSON.stringify(result.factCheck), /false|untrue/i);
+    assert.equal(result.draftStatusAdvanced, false);
+    assert.equal(drafts[0].draft.status, "drafting");
+    assert.equal(drafts[0].draft.approvedVersion, null);
+  });
+
+  test("recording the same run twice writes once; a different run for the same version is refused because a version is checked once", async () => {
+    const { service, versions, calls, draftId, runList } = await checkable();
+    const first = await service.recordFactCheck(record(draftId, 2));
+    assert.ok(first.ok && first.recorded);
+    calls.length = 0;
+    const again = await service.recordFactCheck(record(draftId, 2));
+    assert.ok(again.ok);
+    if (!again.ok) return;
+    assert.equal(again.recorded, false);
+    assert.deepEqual(again.factCheck, first.ok ? first.factCheck : null);
+    assert.deepEqual(calls, ["get", "get-version", "list"], "a second recording reached the store's write");
+    const other = "11111111-0000-4000-8000-000000000081";
+    runList.push(factCheckRun({ draftId, version: 2 }, { id: other }));
+    assert.deepEqual(await service.recordFactCheck(record(draftId, 2, other)), { ok: false, reason: "already-checked" });
+    assert.equal(versions[1].factCheck !== null && (versions[1].factCheck as { checkedByRunId?: unknown }).checkedByRunId, CHECK_RUN_ID);
+  });
+
+  test("the check is bound to its version: a run that checked version 2 cannot be recorded on version 1 or version 3, and a draft of another project is not found", async () => {
+    const { service, versions, calls, draftId } = await checkable();
+    assert.deepEqual(await service.recordFactCheck(record(draftId, 1)), { ok: false, reason: "ineligible", refusal: "version-mismatch" });
+    assert.deepEqual(await service.recordFactCheck(record(draftId, 3)), { ok: false, reason: "version-not-found" });
+    assert.deepEqual(await service.recordFactCheck(record(draftId, 2, CHECK_RUN_ID, "halcyon-fintech")), { ok: false, reason: "not-found" });
+    assert.deepEqual(await service.recordFactCheck(record("00000000-0000-4000-8000-000000000999", 2)), { ok: false, reason: "not-found" });
+    assert.ok(versions.every((version) => version.factCheck === null));
+    assert.ok(!calls.includes("record") && !calls.includes("mark"));
+  });
+
+  test("when version 3 becomes current before version 2's check is recorded, version 2 keeps its result and the parent's status is not advanced", async () => {
+    const { service, versions, drafts, draftId } = await checkable();
+    const third = await service.saveVersion(edit(draftId, 2, { body: "Third text, written while the check ran." }));
+    assert.ok(third.ok && third.created && third.saved.draft.currentVersion === 3);
+    const result = await service.recordFactCheck(record(draftId, 2));
+    assert.ok(result.ok);
+    if (!result.ok) return;
+    assert.equal(result.recorded, true);
+    assert.equal(result.factCheck.version, 2);
+    assert.equal(result.factCheck.status, "passed");
+    assert.equal(result.draftStatusAdvanced, false, "the parent advanced on a check of a version that is no longer current");
+    assert.equal(drafts[0].draft.status, "drafting");
+    assert.equal(drafts[0].draft.currentVersion, 3);
+    assert.deepEqual(versions.map((version) => [version.version, version.factCheck === null]), [[1, true], [2, false], [3, true]]);
+    // The historical version keeps its result, readable through the history.
+    const history = await service.getHistory("nexra-agency", draftId);
+    assert.ok(history.ok && history.saved !== null);
+    if (!history.ok || history.saved === null) return;
+    assert.deepEqual(history.saved.versions[1].factCheck, result.factCheck);
+    assert.equal(history.saved.versions[2].factCheck, null);
+  });
+
+  test("an edit after a passed check returns the parent to drafting, and the new version carries no fact-check of its own", async () => {
+    const { service, drafts, versions, draftId } = await checkable();
+    const checked = await service.recordFactCheck(record(draftId, 2));
+    assert.ok(checked.ok && checked.draftStatusAdvanced);
+    assert.equal(drafts[0].draft.status, "fact-checked");
+    const next = await service.saveVersion(edit(draftId, 2, { body: "Edited after the check." }));
+    assert.ok(next.ok && next.created);
+    if (!next.ok) return;
+    assert.equal(next.saved.draft.status, "drafting");
+    assert.equal(next.saved.version.factCheck, null);
+    assert.deepEqual(versions[1].factCheck, checked.ok ? checked.factCheck : null, "version 2's result was lost");
+  });
+
+  test("a run that is another project's, another agent's, another task, unfinished, failed, simulated, ungrounded, without provenance, or malformed is refused before any write", async () => {
+    const cases: [Partial<AgentRun>, string][] = [
+      [{ projectId: "halcyon-fintech" }, "run-not-in-project"],
+      [{ agentId: "writer" }, "wrong-agent"],
+      [{ taskType: "evidence-pack-review", input: {} }, "wrong-task"],
+      [{ status: "running" }, "run-unfinished"],
+      [{ status: "failed" }, "run-not-completed"],
+      [{ resultSummary: "" }, "run-no-result"],
+      [{ executor: "mock", resultMetadata: { simulated: true, grounded: false } }, "run-simulated"],
+      [{ resultMetadata: { simulated: false, grounded: false } }, "run-not-grounded"],
+      [{ resultMetadata: { simulated: false, grounded: true } }, "provenance-missing"],
+      [{ resultMetadata: { simulated: false, grounded: true, evidence: { source: "content-draft", planRunId: PLAN_ID, crawlId: CRAWL_ID } } }, "provenance-missing"],
+      [{ resultSummary: "Simulated draft fact-check. Nothing was checked." }, "output-malformed"],
+    ];
+    for (const [overrides, refusal] of cases) {
+      const { service, versions, calls, draftId, runList } = await checkable({ runs: [] });
+      runList.push(factCheckRun({ draftId, version: 2 }, overrides));
+      const result = await service.recordFactCheck(record(draftId, 2));
+      assert.equal(result.ok, false, refusal);
+      assert.equal(result.ok ? null : result.reason, "ineligible", refusal);
+      assert.equal(result.ok || result.reason !== "ineligible" ? null : result.refusal, refusal);
+      assert.ok(versions.every((version) => version.factCheck === null), `${refusal}: something was written`);
+      assert.ok(!calls.includes("record") && !calls.includes("mark"), refusal);
+    }
+    const { service, draftId } = await checkable({ runs: [] });
+    assert.deepEqual(await service.recordFactCheck(record(draftId, 2)), { ok: false, reason: "run-not-found" });
+  });
+
+  test("an invalid id or version is refused before anything is read, and with no draft store nothing is written", async () => {
+    const { service, calls, draftId } = await checkable();
+    const base = record(draftId, 2);
+    for (const request of [
+      { ...base, operatorId: "operator" },
+      { ...base, runId: "not-a-uuid" },
+      { ...base, draftId: "nope" },
+      { ...base, projectId: "Nexra Agency" },
+      { ...base, version: 0 },
+      { ...base, version: 1.5 },
+    ]) {
+      assert.deepEqual(await service.recordFactCheck(request), { ok: false, reason: "invalid" }, JSON.stringify(request));
+    }
+    assert.deepEqual(calls, []);
+    const unavailable = createDraftService({ store: unavailableDraftStore, runs: runReader([]).reader });
+    assert.deepEqual(await unavailable.recordFactCheck(record("00000000-0000-4000-8000-000000000001", 1)), { ok: false, reason: "unavailable" });
   });
 });

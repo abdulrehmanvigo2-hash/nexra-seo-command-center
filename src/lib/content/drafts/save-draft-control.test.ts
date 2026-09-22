@@ -117,7 +117,7 @@ describe("the draft panel's editing and history path", () => {
     assert.match(control, /Not verified\. This version was edited by a person/);
     assert.match(control, /require re-verification before any approval/);
     assert.match(control, /Recorded for version 1, not for this text/);
-    assert.match(control, /Fact-checking, approval and\s+publishing are not available yet/);
+    assert.match(control, /A fact-check belongs to the\s+exact version it was run on\. Approval and publishing are not available yet/);
   });
 
   test("the client imports no provider, crawl, publishing or agent-run action", async () => {
@@ -125,14 +125,77 @@ describe("the draft panel's editing and history path", () => {
     const imports = [...control.matchAll(/^(?:import\b[^;]*?|\} )from "([^"]+)";$/gm)].map((match) => match[1]);
     assert.deepEqual(imports.sort(), [
       "@/app/(app)/projects/draft-actions",
+      "@/components/agent-runs/queued-review",
       "@/components/ui/badge",
       "@/components/ui/button",
       "@/components/ui/field",
       "@/lib/content/drafts/edit-rules",
+      "@/lib/content/drafts/fact-check-eligibility",
+      "@/lib/content/drafts/parse-fact-check-output",
+      "@/lib/crawl/review-request",
       "@/lib/format",
       "@/types/agent-run",
       "@/types/content-draft",
       "react",
     ]);
+  });
+});
+
+/**
+ * Stage 3: the fact-check on the same panel. Checked at the source, as the
+ * editing path is: the check is queued and started through the shared
+ * review control's own clicks, its result is recorded by one explicit click
+ * bound to the version on screen, nothing runs or records on its own, and
+ * no approve or publish control exists.
+ */
+describe("the draft panel's fact-check path", () => {
+  test("the fact-check section is keyed to one draft and one version, asks the shared control for exactly that version, and records only on its own click", async () => {
+    const control = await readFile(PANEL, "utf8");
+    assert.match(control, /<FactCheckSection\s+key=\{`\$\{draft\.id\}:\$\{viewing\.version\}`\}/);
+    assert.match(control, /const request = factCheckRequest\(projectId, draft, version\);/);
+    assert.match(control, /useQueuedReview\(request, `\$\{draft\.id\}:\$\{version\.version\}`, DRAFT_FACT_CHECK, projectId\)/);
+    assert.equal((control.match(/recordDraftFactCheck\(/g) ?? []).length, 1, "the record action is invoked from exactly one place");
+    assert.match(control, /async function record\(\) \{\s*if \(recording \|\| run === null \|\| !recordable\) return;/);
+    assert.match(control, /recordDraftFactCheck\(projectId, draft\.id, version\.version, run\.id\)/);
+    assert.match(control, /onClick=\{\(\) => void record\(\)\} disabled=\{!recordable \|\| recording\}/);
+    // The button is offered only for a completed run whose own metadata names this version.
+    assert.match(control, /const recordable = run !== null && offersRecordFactCheck\(run, draft\.id, version\.version\);/);
+    // Still the one restore effect in the file: nothing checks or records on mount, and no timer.
+    assert.equal((control.match(/useEffect\(/g) ?? []).length, 1);
+    assert.doesNotMatch(control, /setInterval|setTimeout|debounce/);
+  });
+
+  test("an unchecked version says so; the control is offered for the current version of a live draft only; a recorded result is shown with its groups and its wording", async () => {
+    const control = await readFile(PANEL, "utf8");
+    assert.match(control, /<Badge tone="neutral">Not fact-checked<\/Badge>/);
+    assert.match(control, /Only the current version \(\$\{draft\.currentVersion\}\) can be checked\./);
+    assert.match(control, /\{isCurrent && draft\.status !== "archived" && \(/);
+    assert.match(control, /if \(stored !== null\) return <FactCheckResult check=\{stored\} \/>;/);
+    assert.match(control, /const stored = readFactCheck\(version\.factCheck\);/);
+    for (const label of ["Supported", "Partly supported", "Unsupported — no record holds this", "Unverifiable from these records", "Editorial — no factual claim"]) {
+      assert.ok(control.includes(`<FactCheckGroup label="${label}"`), label);
+    }
+    assert.match(control, /Version \{check\.version\} checked/);
+    assert.match(control, /Unsupported means no record holds\s+the statement, not that it is false\. This is not an approval, and nothing was published\./);
+    assert.match(control, /passed: \{ tone: "positive", label: "Passed" \}/);
+    assert.match(control, /"needs-review": \{ tone: "warning", label: "Needs review" \}/);
+    assert.match(control, /failed: \{ tone: "critical", label: "Failed" \}/);
+  });
+
+  test("no approve, publish or delete control exists on the panel", async () => {
+    const control = await readFile(PANEL, "utf8");
+    const buttonLabels = [...control.matchAll(/<Button[^>]*>\s*([^<{]+?)\s*<\/Button>/g)].map((match) => match[1].trim());
+    for (const label of buttonLabels) assert.doesNotMatch(label, /approve|publish|delete/i, label);
+    assert.doesNotMatch(control, /onClick=\{[^}]*(approve|publish|delete)[^}]*\}/i);
+    assert.match(control, /Approval and publishing are not available yet/);
+  });
+
+  test("the record control's failure wording covers every server answer and treats a mismatched version as a refusal, not a retry", async () => {
+    const control = await readFile(PANEL, "utf8");
+    for (const reason of ["unauthorized", '"rate-limited"', "invalid", "unavailable", '"not-found"', '"version-not-found"', '"already-checked"', '"run-not-found"', "failed"]) {
+      assert.ok(control.includes(`${reason}:`), reason);
+    }
+    assert.match(control, /result\.refusal === "version-mismatch"\s*\? "This run checked a different version, so its result cannot be recorded here\."/);
+    assert.match(control, /a version is checked once/);
   });
 });

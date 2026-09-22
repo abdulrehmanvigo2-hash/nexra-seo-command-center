@@ -46,7 +46,8 @@ export type ReviewTaskType =
   | "evidence-pack-review"
   | "content-plan-review"
   | "section-draft"
-  | "outbound-link-review";
+  | "outbound-link-review"
+  | "draft-fact-check";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
@@ -298,6 +299,22 @@ export const SECTION_DRAFT: ReviewSpec = {
     "a completed content plan (a proposal) and the records it was written over — a draft for operator review, not a measurement and not published",
 };
 
+/**
+ * The Research & Evidence agent's fact-check of one saved draft version.
+ * Nested beneath the version it checks; its result is recorded on that
+ * version by a separate, explicit click, never by the run itself.
+ */
+export const DRAFT_FACT_CHECK: ReviewSpec = {
+  taskType: "draft-fact-check",
+  agentId: "research-evidence",
+  agentName: "Research & Evidence",
+  action: "Run fact-check with Research & Evidence Agent",
+  summary:
+    "Queues a fact-check of this exact version. The Research & Evidence agent reads the version's text as the thing under check — never as evidence — beside the records this product holds, and places every sentence as supported, partly supported, unsupported or unverifiable, each supported one with its record. Absence from the records is reported as absence, never as falsehood. The check approves nothing and publishes nothing; recording its result on the version is a separate click.",
+  groundedIn:
+    "one saved draft version (the thing under check) and the records this product holds, re-read — a check for operator review, not a measurement, and not an approval",
+};
+
 export type ReviewPayload = {
   readonly projectId: string;
   readonly agentId: ReviewSpec["agentId"];
@@ -310,6 +327,8 @@ export type ReviewPayload = {
     | { readonly competitorDomain: string }
     /** The section draft names the completed content plan it drafts from. */
     | { readonly planRunId: string }
+    /** The fact-check names one saved draft and the exact version to check. */
+    | { readonly draftId: string; readonly version: number }
     /** The intake review and the evidence pack name nothing: the project is the run's own. */
     | Record<string, never>;
 };
@@ -491,6 +510,38 @@ export function draftRequest(projectId: string | null, plan: AgentRun | null): Q
       agentId: SECTION_DRAFT.agentId,
       taskType: SECTION_DRAFT.taskType,
       input: { planRunId: plan.id },
+    },
+  };
+}
+
+/**
+ * Whether one saved draft version can be fact-checked, and the body that
+ * would ask for it.
+ *
+ * Offered for the current version of a live draft that carries no result
+ * yet — the same conditions the server's reader refuses on, checked here so
+ * the control explains itself. The server remains the gate: it re-reads
+ * the draft and the exact version at execution time.
+ */
+export function factCheckRequest(
+  projectId: string | null,
+  draft: { readonly id: string; readonly status: string; readonly currentVersion: number } | null,
+  version: { readonly version: number; readonly factCheck: JsonObject | null } | null,
+): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  if (draft === null || version === null) return { ok: false, why: "Save a draft first: there is nothing to check." };
+  if (draft.status === "archived") return { ok: false, why: "This draft is archived, so it is not checked." };
+  if (version.factCheck !== null) return { ok: false, why: "This version already carries a fact-check; a version is checked once." };
+  if (version.version !== draft.currentVersion) {
+    return { ok: false, why: `Only the current version can be checked; version ${draft.currentVersion} is current.` };
+  }
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: DRAFT_FACT_CHECK.agentId,
+      taskType: DRAFT_FACT_CHECK.taskType,
+      input: { draftId: draft.id, version: version.version },
     },
   };
 }
@@ -765,6 +816,15 @@ export function evidenceDescription(metadata: JsonObject): string | null {
     }
     return OUTBOUND_LINK_REVIEW.groundedIn;
   }
+  if (evidence.source === "draft-version") {
+    const draftId = typeof evidence.draftId === "string" ? evidence.draftId : null;
+    const version = typeof evidence.version === "number" ? evidence.version : null;
+    const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
+    if (draftId && version !== null && crawlId) {
+      return `one saved draft version (draft ${draftId}, version ${version}, the thing under check) and the records this product holds, re-read: crawl ${crawlId} (a check for operator review, not a measurement, and not an approval)`;
+    }
+    return DRAFT_FACT_CHECK.groundedIn;
+  }
   if (evidence.source === "content-draft") {
     const planRunId = typeof evidence.planRunId === "string" ? evidence.planRunId : null;
     const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
@@ -941,7 +1001,7 @@ export type ReviewInput = ReviewPayload["input"];
 
 /** True when a stored run's input names exactly this evidence and nothing else. */
 function sameInput(stored: JsonObject, input: ReviewInput): boolean {
-  const wanted = input as Readonly<Record<string, string>>;
+  const wanted = input as Readonly<Record<string, string | number>>;
   const keys = Object.keys(wanted);
   return Object.keys(stored).length === keys.length && keys.every((key) => stored[key] === wanted[key]);
 }

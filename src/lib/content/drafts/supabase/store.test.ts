@@ -440,3 +440,110 @@ describe("version rows are permanent", () => {
     assert.doesNotMatch(statements, /nexra_content_draft_save_version|guard_update|fkey|cascade/);
   });
 });
+
+/**
+ * Stage 3: the fact-check written onto one exact version, once, with
+ * nothing else in the patch; and the parent's one conditional transition.
+ */
+describe("createSupabaseDraftStore — fact-check", () => {
+  const CHECK = {
+    status: "passed" as const,
+    draftId: "",
+    version: 2,
+    checkedAt: "2026-09-22T14:00:00.000Z",
+    checkedByRunId: "11111111-0000-4000-8000-000000000080",
+    recordedAt: "2026-09-22T14:05:00.000Z",
+    recordedBy: INPUT.createdBy,
+    crawlId: "8f1c0d2e-0000-4000-8000-000000000001",
+    searchWindow: null,
+    summary: "One sentence, supported.",
+    supported: [{ text: "The home page title names automation.", evidence: "crawl /", note: null }],
+    partial: [],
+    unsupported: [],
+    unverifiable: [],
+    editorial: [],
+  };
+
+  async function withEdit() {
+    const { db, store } = storeWith();
+    const created = await store.createFromWriterRun(INPUT);
+    assert.ok(created.status === "created");
+    const draftId = created.saved.draft.id;
+    const edited = await store.saveVersion({ projectId: "nexra-agency", draftId, expectedVersion: 1, title: "Edited", body: "An operator rewrote this.", createdBy: INPUT.createdBy });
+    assert.ok(edited.status === "created");
+    db.writes.length = 0;
+    return { db, store, draftId, factCheck: { ...CHECK, draftId } };
+  }
+
+  test("getVersion reads one exact version by draft and number, and null otherwise", async () => {
+    const { store, draftId } = await withEdit();
+    assert.equal((await store.getVersion(draftId, 1))?.origin, "writer");
+    assert.equal((await store.getVersion(draftId, 2))?.origin, "operator");
+    assert.equal(await store.getVersion(draftId, 3), null);
+    assert.equal(await store.getVersion("00000000-0000-4000-8000-000000000999", 1), null);
+  });
+
+  test("recordFactCheck writes fact_check onto version 2 and nothing else, once; the second recording is answered already-checked without a write", async () => {
+    const { db, store, draftId, factCheck } = await withEdit();
+    const before = db.rows.nexra_content_draft_versions.map((row) => ({ ...row }));
+    const outcome = await store.recordFactCheck({ draftId, version: 2, factCheck });
+    assert.equal(outcome.status, "recorded");
+    if (outcome.status !== "recorded") return;
+    assert.deepEqual(outcome.version.factCheck, factCheck);
+    assert.equal(outcome.version.version, 2);
+    assert.deepEqual(db.writes, [{ table: "nexra_content_draft_versions", operation: "update" }]);
+    const after = db.rows.nexra_content_draft_versions;
+    for (const [index, row] of after.entries()) {
+      const { fact_check: was, ...restBefore } = before[index];
+      const { fact_check: now, ...restAfter } = row;
+      assert.deepEqual(restAfter, restBefore, `version ${String(row.version)}: a column other than fact_check changed`);
+      assert.equal(was, null);
+      assert.deepEqual(now, row.version === 2 ? factCheck : null);
+    }
+    db.writes.length = 0;
+    const again = await store.recordFactCheck({ draftId, version: 2, factCheck: { ...factCheck, summary: "A second check." } });
+    assert.equal(again.status, "already-checked");
+    if (again.status === "already-checked") assert.deepEqual(again.version.factCheck, factCheck);
+    assert.equal((db.rows.nexra_content_draft_versions[1].fact_check as { summary: string }).summary, "One sentence, supported.");
+    assert.deepEqual(await store.recordFactCheck({ draftId, version: 9, factCheck }), { status: "not-found" });
+    assert.deepEqual(await store.recordFactCheck({ draftId: "00000000-0000-4000-8000-000000000999", version: 1, factCheck }), { status: "not-found" });
+    // Version 1 can still be checked on its own, independently.
+    assert.equal((await store.recordFactCheck({ draftId, version: 1, factCheck: { ...factCheck, version: 1 } })).status, "recorded");
+  });
+
+  test("markFactChecked moves the parent only while the checked version is current and the parent is drafting, and touches no version", async () => {
+    const { db, store, draftId } = await withEdit();
+    assert.deepEqual(await store.markFactChecked({ projectId: "nexra-agency", draftId, version: 1 }), { status: "unchanged" }, "a check of an earlier version advanced the parent");
+    assert.deepEqual(await store.markFactChecked({ projectId: "halcyon-fintech", draftId, version: 2 }), { status: "unchanged" }, "another project reached the parent");
+    assert.equal(db.rows.nexra_content_drafts[0].status, "drafting");
+    const marked = await store.markFactChecked({ projectId: "nexra-agency", draftId, version: 2 });
+    assert.equal(marked.status, "updated");
+    if (marked.status === "updated") {
+      assert.equal(marked.draft.status, "fact-checked");
+      assert.equal(marked.draft.currentVersion, 2);
+      assert.equal(marked.draft.approvedVersion, null);
+      assert.equal(marked.draft.publishedVersion, null);
+    }
+    assert.deepEqual(await store.markFactChecked({ projectId: "nexra-agency", draftId, version: 2 }), { status: "unchanged" }, "a second mark changed something");
+    assert.deepEqual(db.writes.map((write) => write.table), ["nexra_content_drafts", "nexra_content_drafts", "nexra_content_drafts", "nexra_content_drafts"]);
+    assert.ok(db.rows.nexra_content_draft_versions.every((row) => row.fact_check === null));
+    // An edit afterwards returns the parent to drafting through the save function, as before.
+    const next = await store.saveVersion({ projectId: "nexra-agency", draftId, expectedVersion: 2, title: "Edited", body: "Third.", createdBy: INPUT.createdBy });
+    assert.ok(next.status === "created" && next.saved.draft.status === "drafting");
+  });
+
+  test("a failed update is a ContentDraftStoreError that quotes no row, and nothing is recorded", async () => {
+    const { db, store, draftId, factCheck } = await withEdit();
+    db.failNext({ table: "nexra_content_draft_versions", operation: "update", error: postgrestError("23514", "a version is immutable", "secret row content") });
+    await assert.rejects(() => store.recordFactCheck({ draftId, version: 2, factCheck }), (error: unknown) => {
+      assert.ok(error instanceof ContentDraftStoreError);
+      assert.match(error.message, /record fact-check failed \(23514\)/);
+      assert.ok(!error.message.includes("secret row content"));
+      return true;
+    });
+    assert.ok(db.rows.nexra_content_draft_versions.every((row) => row.fact_check === null));
+    db.failNext({ table: "nexra_content_drafts", operation: "update", error: postgrestError("42501", "permission denied", "secret row content") });
+    await assert.rejects(() => store.markFactChecked({ projectId: "nexra-agency", draftId, version: 2 }), /mark draft fact-checked failed \(42501\)/);
+    assert.equal(db.rows.nexra_content_drafts[0].status, "drafting");
+  });
+});

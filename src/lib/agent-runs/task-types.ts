@@ -10,6 +10,7 @@ import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
 import { SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
+import { FACT_CHECK_INSTRUCTIONS } from "@/lib/content/drafts/fact-check-grounding";
 import { CONTENT_PLAN_INSTRUCTIONS } from "@/lib/content/plan-instructions";
 import { INTAKE_REVIEW_INSTRUCTIONS } from "@/lib/projects/grounding";
 import { EVIDENCE_PACK_INSTRUCTIONS } from "@/lib/research/evidence-pack";
@@ -78,6 +79,11 @@ export type TaskTypeDefinition = {
    * own site recorded — what its pages link to, grouped by target host,
    * recorded and never fetched — and no backlink, referring domain or
    * authority record, because this product holds none.
+   * `draft-version` tasks are given one saved draft version — text a model
+   * or a person wrote, quoted as data and named as the thing under check,
+   * never a source — beside the evidence pack, re-read now; the reader
+   * refuses when the draft is not this project's, is archived, has no such
+   * version, or that version already carries a recorded check.
    */
   readonly evidence:
     | "none"
@@ -88,7 +94,8 @@ export type TaskTypeDefinition = {
     | "competitor-comparison"
     | "evidence-pack"
     | "content-draft"
-    | "crawl-links";
+    | "crawl-links"
+    | "draft-version";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -536,6 +543,48 @@ const outboundLinkReview: TaskTypeDefinition = {
   parseInput: parseCrawlIdInput,
 };
 
+/**
+ * The Research & Evidence agent's second task: one saved draft version
+ * checked against the records this product holds.
+ *
+ * Two inputs name the version exactly — the draft's id and the version
+ * number — and the reader (`@/lib/content/drafts/fact-check-grounding`)
+ * reads that version by project, id and number, so a check of version 2 is
+ * a check of version 2's text whatever is saved afterwards, and a draft of
+ * another project is not found. The version is quoted as the thing under
+ * check, never as evidence; the records are re-read through the evidence
+ * pack reader, unchanged; and the answer places every sentence under one
+ * of five headings, a supported one ending with the record it rests on.
+ * Read-only, like every review here: the run writes nothing to the draft.
+ * Recording its result on the version is the operator's separate, explicit
+ * action, and that recording re-reads this run and verifies every tag.
+ * Operator-triggered only; nothing queues it automatically, its completed
+ * run is not a hand-off source, and nothing here approves or publishes.
+ */
+const draftFactCheck: TaskTypeDefinition = {
+  id: "draft-fact-check",
+  label: "Draft fact-check",
+  description:
+    "Check one saved draft version, sentence by sentence, against the records this product holds: what they support, support in part, do not hold, or cannot reach.",
+  agents: ["research-evidence"],
+  policy: "read-only",
+  evidence: "draft-version",
+  instructions: FACT_CHECK_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, ["draftId", "version"]);
+    if (!object.ok) return object;
+    const draftId = object.value.draftId;
+    const version = object.value.version;
+    if (typeof draftId !== "string" || !UUID.test(draftId)) {
+      return { ok: false, error: "draftId must be the id of a saved content draft on this project." };
+    }
+    if (typeof version !== "number" || !Number.isInteger(version) || version < 1 || version > 32_767) {
+      return { ok: false, error: "version must be the number of one of the draft's saved versions." };
+    }
+    return { ok: true, value: { draftId: draftId.toLowerCase(), version } };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -551,6 +600,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   contentPlanReview,
   sectionDraft,
   outboundLinkReview,
+  draftFactCheck,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

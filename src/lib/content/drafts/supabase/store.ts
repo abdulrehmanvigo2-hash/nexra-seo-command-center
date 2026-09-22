@@ -145,6 +145,45 @@ export function createSupabaseDraftStore(client: SupabaseClient<ContentDraftsDat
       return data.map(versionRowToVersion);
     },
 
+    async getVersion(draftId, version) {
+      return versionOf(draftId, version);
+    },
+
+    // One statement, conditional on the column still being null: a second
+    // recording, or a concurrent one, matches no row and is answered as
+    // already checked after a re-read. Nothing but fact_check is in the
+    // patch, so the version's guard trigger has nothing to refuse.
+    async recordFactCheck(input) {
+      const { data, error } = await client
+        .from("nexra_content_draft_versions")
+        .update({ fact_check: input.factCheck })
+        .eq("draft_id", input.draftId)
+        .eq("version", input.version)
+        .is("fact_check", null)
+        .select(CONTENT_DRAFT_VERSION_READ_COLUMNS);
+      if (error) throw new ContentDraftStoreError("record fact-check", error);
+      if (data.length === 1) return { status: "recorded", version: versionRowToVersion(data[0]) };
+      const existing = await versionOf(input.draftId, input.version);
+      if (existing === null) return { status: "not-found" };
+      return { status: "already-checked", version: existing };
+    },
+
+    // One statement, conditional on the checked version still being current
+    // and the parent still drafting: a draft that advanced meanwhile matches
+    // no row and is left as it is. Only the status is in the patch.
+    async markFactChecked(input) {
+      const { data, error } = await client
+        .from("nexra_content_drafts")
+        .update({ status: "fact-checked" })
+        .eq("id", input.draftId)
+        .eq("project_id", input.projectId)
+        .eq("current_version", input.version)
+        .eq("status", "drafting")
+        .select(CONTENT_DRAFT_READ_COLUMNS);
+      if (error) throw new ContentDraftStoreError("mark draft fact-checked", error);
+      return data.length === 1 ? { status: "updated", draft: draftRowToDraft(data[0]) } : { status: "unchanged" };
+    },
+
     // Saving an edit is a Postgres function: one transaction under a row
     // lock on the parent, so the version number and the parent's pointer
     // move together and a concurrent save is answered stale, never combined.

@@ -150,6 +150,7 @@ describe("same-project acceptance", () => {
       "content-plan-review",
       "section-draft",
       "outbound-link-review",
+      "draft-fact-check",
     ];
     for (const taskType of disallowed) {
       const result = await read({ ...UPSTREAM, taskType });

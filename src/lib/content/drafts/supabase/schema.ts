@@ -74,15 +74,18 @@ export type ContentDraftsDatabase = {
       nexra_content_drafts: {
         Row: ContentDraftRow;
         Insert: ContentDraftInsert;
-        // State transitions belong to later milestones; this one only creates.
-        Update: { [_ in never]: never };
+        // The one transition the application makes directly: the parent's
+        // status, after a fact-check of its current version. Every other
+        // transition is a later milestone's, and provenance is guarded.
+        Update: Pick<ContentDraftRow, "status">;
         Relationships: [];
       };
       nexra_content_draft_versions: {
         Row: ContentDraftVersionRow;
         Insert: ContentDraftVersionInsert;
-        // Versions are immutable; fact_check is written by a later milestone.
-        Update: { [_ in never]: never };
+        // Versions are immutable; fact_check is the one column written later,
+        // once, by the fact-check milestone. The guard trigger enforces it.
+        Update: Pick<ContentDraftVersionRow, "fact_check">;
         Relationships: [];
       };
     };

@@ -3,6 +3,7 @@ import { readRunGrounding, type AgentRunReader } from "@/lib/agent-runs/run-grou
 import { getTaskType } from "@/lib/agent-runs/task-types";
 import { readLinkGrounding, type LinkGroundingReaders } from "@/lib/authority/link-grounding";
 import { readDraftGrounding, type DraftGroundingReaders } from "@/lib/content/draft-grounding";
+import { readFactCheckGrounding, type FactCheckGroundingReaders } from "@/lib/content/drafts/fact-check-grounding";
 import { readComparisonGrounding, type ComparisonGroundingReaders } from "@/lib/crawl/comparison-grounding";
 import { readCrawlGrounding, type CrawlGroundingReader } from "@/lib/crawl/grounding";
 import { readProjectGrounding, type ProjectGroundingReaders } from "@/lib/projects/grounding";
@@ -53,6 +54,8 @@ export type TaskGroundingReaders = {
   readonly draft: DraftGroundingReaders;
   /** `crawl-links` tasks: one crawl record, and the edges it recorded, read bounded. */
   readonly links: LinkGroundingReaders;
+  /** `draft-version` tasks: one saved draft version by project, id and number, and the pack it rests on, re-read. */
+  readonly factCheck: FactCheckGroundingReaders;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -190,6 +193,33 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
           grounding: {
             text: result.grounding.text,
             summary: { ...result.grounding.summary, records: { ...result.grounding.summary.records } },
+            source: result.grounding.source,
+          },
+        };
+      }
+
+      case "draft-version": {
+        // The input names a draft and a version number; the project is the
+        // run's own, and the reader finds the draft by project and id
+        // together, then that exact version, before a word of it is quoted.
+        const draftId = task.input.draftId;
+        const version = task.input.version;
+        if (typeof draftId !== "string") return { ok: false, reason: "draft-id-missing" };
+        if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
+          return { ok: false, reason: "version-missing" };
+        }
+        const result = await readFactCheckGrounding(readers.factCheck, { draftId, version, projectId: task.project.id });
+        if (!result.ok) return { ok: false, reason: result.reason };
+
+        return {
+          ok: true,
+          grounding: {
+            text: result.grounding.text,
+            summary: {
+              ...result.grounding.summary,
+              recordPaths: [...result.grounding.summary.recordPaths],
+              records: { ...result.grounding.summary.records },
+            },
             source: result.grounding.source,
           },
         };

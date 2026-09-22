@@ -179,6 +179,23 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "draft-fact-check": {
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no draft and no record. `grounded:
+          // false`, as for every simulated result: it looked at nothing and
+          // checked nothing, so nothing here can be recorded on a version.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+          draftId: typeof task.input.draftId === "string" ? task.input.draftId : null,
+          version: typeof task.input.version === "number" ? task.input.version : null,
+        };
+        return {
+          summary: `Simulated draft fact-check by ${subject}. The mock executor read no draft version and no record, and checked nothing; this is placeholder output, not a fact-check.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {
