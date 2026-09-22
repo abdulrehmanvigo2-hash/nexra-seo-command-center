@@ -802,6 +802,59 @@ simulated or model-generated, fixed error message, next retry time, and
 expandable attempts. 25 runs per page with "Load older runs"
 (`GET /api/agent-runs?…&offset=n`, offset ≤ 1,000).
 
+## Content drafts
+
+The first durable content-production record: one Writer section draft,
+saved by an operator as draft version 1. Two tables, `nexra_content_drafts`
+and `nexra_content_draft_versions` (the `nexra_` prefix for the same reason
+as the crawl tables), RLS enabled with no policies, `service_role` only
+(`20260922120000_create_content_drafts.sql`,
+`20260922120100_grant_content_drafts_to_service_role.sql`).
+
+The parent row records provenance and state: project, the Writer run whose
+output became version 1 (unique — one run seeds at most one draft, which is
+what makes "Save as draft" idempotent), the content plan run and outline
+section that run drafted, `status` (`drafting` until a later milestone
+stores a fact-check), `current_version`, and null pointers reserved for
+later milestones: approved version, approver and time; published version
+and time; remote content id and target. A guard trigger refuses any change
+to a draft's provenance after creation.
+
+The version row is the text, written once. Version 1 is `origin = writer`:
+the Writer's SECTION line as the title, its DRAFT prose as the body exactly
+as generated apart from surrounding whitespace, and its CLAIMS USED and
+PLACEHOLDERS lines as JSON arrays ("none" becomes `[]`). The status sentence
+and the closing sentence are never part of the body. A guard trigger refuses
+any update to a version's identity or text; `fact_check` is the one column a
+later milestone may fill, once, for the exact version it checked, and it
+stays null (never "passed") until then.
+
+Saving is one Server Action (`app/(app)/projects/draft-actions.ts`,
+`saveWriterRunAsDraft`): operator confirmed with the Auth server, both
+arguments treated as `unknown`, 30 saves per ten minutes per operator
+counted in Postgres. The service (`src/lib/content/drafts`) re-reads the
+Writer run from the runtime's own store and accepts it only when it is this
+project's, the Writer's `section-draft`, completed with a result, executed
+by a model and not simulated, grounded, carrying the plan and crawl it was
+written over in its metadata, and parseable as the Writer's five fixed
+sections; the Writer's evidence-needed answer ("SECTION none") is refused
+because there is no draft in it. Nothing from the browser about the text is
+used. The same run saved again returns the same draft; a concurrent save
+that loses the unique key re-reads the winner; a version insert that fails
+after its parent was written removes the parent again. The action calls no
+provider, queues no run, crawls nothing and publishes nothing.
+
+The control is "Save as draft", beneath a completed grounded Writer result
+wherever the shared review control renders one; it is offered for nothing
+else. On a page load the control reads `GET /api/content-drafts?project=…&
+writerRun=…` (operators only, a read) and shows the saved draft instead of
+the button, so nothing is saved twice and nothing saves on its own. The
+draft panel shows version 1, "AI-generated original", the section, body,
+claims used, placeholders and creation time, and says that editing,
+fact-checking, approval and publishing do not exist yet. There is no edit,
+fact-check, approve, publish or delete control. The Content Studio remains
+fixture-only: no real draft row reaches it and no fixture reaches a draft.
+
 ## Crawl foundation
 
 An operator asks for a crawl of a stored project; the engine walks that
@@ -1134,7 +1187,10 @@ it. The deployment plan was not verifiable from this repository.
   outbound link review reads only the edges one own-site crawl recorded:
   no backlink data provider, verified inbound link, referring-domain,
   anchor-text or placement record exists, none is derived from outbound
-  edges, and the Backlinks & Authority screen remains fixtures. A crawl
+  edges, and the Backlinks & Authority screen remains fixtures. A saved
+  content draft is version 1 only: no editing, fact-check, approval or
+  publishing exists, the Content Studio does not show it, and a fixture
+  data source cannot keep it. A crawl
   completed before `internal_links_out` was derived from recorded edges
   keeps the raw anchor count it stored, which reads high; no backfill was
   performed, and a fresh crawl records the corrected count. The comparison control checks
