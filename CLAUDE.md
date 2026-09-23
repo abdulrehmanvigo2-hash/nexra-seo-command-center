@@ -3,14 +3,15 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Stage 5 (publication) of the content workflow. Milestones A and B are
-complete; next planned is Milestone C1 (see §0).**
+**Current stage: Stage 5 (publication) of the content workflow. Milestones A, B and C1 are
+complete; next planned is Milestone C2 (see §0).**
 
 ---
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `6331f359ff0cb0be03c3efb55f0183a3e6520133`
+GitHub `master`: the Milestone C1 merge (`claude/article-contract-c1-final`), on top of
+`368fc5531638698e47a390d973d081ae5ea9491a`
 
 **Completed content-workflow stages:**
 
@@ -20,9 +21,10 @@ GitHub `master`: `6331f359ff0cb0be03c3efb55f0183a3e6520133`
 - Stage 4: exact-version approval gate
 - Stage 5A: publication proposal + exact-version preview
 - Stage 5B: website artifact dry-run
+- Stage 5 / Complete Article Assembly — Milestone C1: Pure Article Contract
 
 **Next planned work (not started):** Stage 5 / Complete Article Assembly —
-Milestone C1: Pure Article Contract.
+Milestone C2: Article Persistence.
 
 **Current safety boundaries:**
 
@@ -299,10 +301,11 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 4 | Exact-version approval gate | Complete |
 | Stage 5A | Publication proposal + exact-version preview | Complete |
 | Stage 5B | Website artifact dry-run | Complete |
-| Stage 5 / C1 | Complete Article Assembly: Pure Article Contract | Next, not started |
+| Stage 5 / C1 | Complete Article Assembly: Pure Article Contract | Complete |
+| Stage 5 / C2 | Complete Article Assembly: Article Persistence | Next, not started |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Work beyond C1 is decided
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Work beyond C2 is decided
 with the user and is not planned here.
 
 ## 15. Definition of Done
