@@ -9,6 +9,7 @@ import {
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
+import { ARTICLE_CHECK_UNIT_INSTRUCTIONS } from "@/lib/content/article-check-prompt";
 import { MAX_SECTION_INDEX, SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
 import { FACT_CHECK_INSTRUCTIONS } from "@/lib/content/drafts/fact-check-grounding";
 import { CONTENT_PLAN_INSTRUCTIONS } from "@/lib/content/plan-instructions";
@@ -84,6 +85,13 @@ export type TaskTypeDefinition = {
    * never a source — beside the evidence pack, re-read now; the reader
    * refuses when the draft is not this project's, is archived, has no such
    * version, or that version already carries a recorded check.
+   * `article-unit` tasks are given one check unit of one saved article
+   * version — regenerated on the server from the version's stored canonical
+   * text, quoted as data and named as the thing under check, never a source
+   * — beside the evidence pack, re-read now; the reader refuses when the
+   * article is not this project's or is archived, the version number and
+   * row id disagree, the unit index is missing or out of range, the unit is
+   * over its size bounds, or the unit already carries a final result.
    */
   readonly evidence:
     | "none"
@@ -95,7 +103,8 @@ export type TaskTypeDefinition = {
     | "evidence-pack"
     | "content-draft"
     | "crawl-links"
-    | "draft-version";
+    | "draft-version"
+    | "article-unit";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -599,6 +608,69 @@ const draftFactCheck: TaskTypeDefinition = {
   },
 };
 
+/** The largest check unit index an article can yield: the 150-unit cap, less one (`MAX_ARTICLE_UNITS`). */
+const MAX_ARTICLE_UNIT_INDEX = 149;
+
+/**
+ * The Research & Evidence agent's third task: one check unit of one saved
+ * article version, checked against the records this product holds (Stage 5,
+ * milestone C4).
+ *
+ * An article is never checked as one prompt. Four inputs name one unit
+ * exactly — the article's id, the version number, that version's immutable
+ * row id, and the zero-based unit index, all required and none defaulted —
+ * and no text or hash: the reader
+ * (`@/lib/content/articles/checks/grounding`) re-reads the article by
+ * project and id, the version by number, checks the row id, regenerates the
+ * units from the stored canonical text, and resolves the index among them,
+ * refusing a missing or out-of-range unit, or a version refused whole (one
+ * statement too large for a unit, or more than 150 units), with no fallback to
+ * another. The unit is quoted as the thing under check, never as evidence;
+ * the records are re-read through the evidence pack reader, unchanged; the
+ * answer uses the draft fact-check's six headings. Read-only, like every
+ * review here: the run writes nothing to the article. Recording its result
+ * on the unit is the operator's separate, explicit action, and nothing here
+ * approves or publishes. Operator-triggered only; nothing queues it
+ * automatically, and its completed run is not a hand-off source.
+ */
+const articleCheckUnit: TaskTypeDefinition = {
+  id: "article-check-unit",
+  label: "Article check unit",
+  description:
+    "Check one unit of one saved article version, sentence by sentence, against the records this product holds: what they support, support in part, do not hold, or cannot reach.",
+  agents: ["research-evidence"],
+  policy: "read-only",
+  evidence: "article-unit",
+  instructions: ARTICLE_CHECK_UNIT_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, ["articleId", "articleVersion", "articleVersionId", "unitIndex"]);
+    if (!object.ok) return object;
+    const { articleId, articleVersion, articleVersionId, unitIndex } = object.value;
+    if (typeof articleId !== "string" || !UUID.test(articleId)) {
+      return { ok: false, error: "articleId must be the id of a stored article on this project." };
+    }
+    if (typeof articleVersion !== "number" || !Number.isInteger(articleVersion) || articleVersion < 1 || articleVersion > 32_767) {
+      return { ok: false, error: "articleVersion must be the number of one of the article's saved versions." };
+    }
+    if (typeof articleVersionId !== "string" || !UUID.test(articleVersionId)) {
+      return { ok: false, error: "articleVersionId must be the id of that saved article version." };
+    }
+    // Required, and never defaulted: the operator chooses which unit to
+    // check. Whether the version has that unit is the reader's question,
+    // answered against the version's own text before execution.
+    if (unitIndex === undefined) {
+      return { ok: false, error: "unitIndex is required: choose the check unit of the article version to check." };
+    }
+    if (typeof unitIndex !== "number" || !Number.isInteger(unitIndex) || unitIndex < 0 || unitIndex > MAX_ARTICLE_UNIT_INDEX) {
+      return { ok: false, error: `unitIndex must be a whole number from 0 to ${MAX_ARTICLE_UNIT_INDEX}: the zero-based position of one check unit.` };
+    }
+    return {
+      ok: true,
+      value: { articleId: articleId.toLowerCase(), articleVersion, articleVersionId: articleVersionId.toLowerCase(), unitIndex },
+    };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -615,6 +687,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   sectionDraft,
   outboundLinkReview,
   draftFactCheck,
+  articleCheckUnit,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

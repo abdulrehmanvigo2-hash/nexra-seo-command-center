@@ -47,7 +47,8 @@ export type ReviewTaskType =
   | "content-plan-review"
   | "section-draft"
   | "outbound-link-review"
-  | "draft-fact-check";
+  | "draft-fact-check"
+  | "article-check-unit";
 
 /** One review an operator can queue: which agent, which task, and how the control reads. */
 export type ReviewSpec = {
@@ -315,6 +316,23 @@ export const DRAFT_FACT_CHECK: ReviewSpec = {
     "one saved draft version (the thing under check) and the records this product holds, re-read — a check for operator review, not a measurement, and not an approval",
 };
 
+/**
+ * The Research & Evidence agent's check of one unit of one saved article
+ * version (Stage 5, milestone C4). Nested beneath the unit it checks; its
+ * outcome is recorded on that unit by a separate, explicit click, never by
+ * the run itself.
+ */
+export const ARTICLE_CHECK_UNIT: ReviewSpec = {
+  taskType: "article-check-unit",
+  agentId: "research-evidence",
+  agentName: "Research & Evidence",
+  action: "Check this unit with Research & Evidence Agent",
+  summary:
+    "Queues a check of this one unit of this exact article version. The Research & Evidence agent reads the unit's text as the thing under check — never as evidence — beside the records this product holds, and places every sentence as supported, partly supported, unsupported, unverifiable or editorial. Absence from the records is reported as absence, never as falsehood. The check approves nothing and publishes nothing; recording its outcome on the unit is a separate click.",
+  groundedIn:
+    "one check unit of one saved article version (the thing under check) and the records this product holds, re-read — a check for operator review, not a measurement, and not an approval",
+};
+
 export type ReviewPayload = {
   readonly projectId: string;
   readonly agentId: ReviewSpec["agentId"];
@@ -329,6 +347,8 @@ export type ReviewPayload = {
     | { readonly planRunId: string; readonly sectionIndex: number }
     /** The fact-check names one saved draft and the exact version to check. */
     | { readonly draftId: string; readonly version: number }
+    /** The article check names one article, the exact version and its row id, and one unit index. */
+    | { readonly articleId: string; readonly articleVersion: number; readonly articleVersionId: string; readonly unitIndex: number }
     /** The intake review and the evidence pack name nothing: the project is the run's own. */
     | Record<string, never>;
 };
@@ -556,6 +576,44 @@ export function factCheckRequest(
       agentId: DRAFT_FACT_CHECK.agentId,
       taskType: DRAFT_FACT_CHECK.taskType,
       input: { draftId: draft.id, version: version.version },
+    },
+  };
+}
+
+/**
+ * Whether one unit of one article version can be checked, and the body that
+ * would ask for it.
+ *
+ * Offered for a unit of a live article whose version the packer did not
+ * refuse, and that carries no final result yet — the same conditions the server's reader
+ * refuses on, checked here so the control explains itself. The unit is the
+ * operator's explicit choice and is never replaced by another. The server
+ * remains the gate: it re-reads the article and the exact version and
+ * regenerates the units at execution time.
+ */
+export function articleCheckRequest(
+  projectId: string | null,
+  article: { readonly id: string; readonly status: string } | null,
+  version: { readonly version: number; readonly versionId: string; readonly refusal: string | null } | null,
+  unit: { readonly index: number; readonly record: { readonly status: string } | null } | null,
+): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  if (article === null || version === null) return { ok: false, why: "Save an article first: there is nothing to check." };
+  if (article.status === "archived") return { ok: false, why: "This article is archived, so it is not checked." };
+  if (version.refusal !== null) {
+    return { ok: false, why: "This version cannot be checked: a statement is too large for one unit, or it yields more than 150 units. Nothing is cut." };
+  }
+  if (unit === null) return { ok: false, why: "Choose a unit to check." };
+  if (unit.record !== null && (unit.record.status === "passed" || unit.record.status === "needs-review")) {
+    return { ok: false, why: "This unit already carries a result for this version; a unit is checked once per version." };
+  }
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: ARTICLE_CHECK_UNIT.agentId,
+      taskType: ARTICLE_CHECK_UNIT.taskType,
+      input: { articleId: article.id, articleVersion: version.version, articleVersionId: version.versionId, unitIndex: unit.index },
     },
   };
 }
@@ -838,6 +896,16 @@ export function evidenceDescription(metadata: JsonObject): string | null {
       return `one saved draft version (draft ${draftId}, version ${version}, the thing under check) and the records this product holds, re-read: crawl ${crawlId} (a check for operator review, not a measurement, and not an approval)`;
     }
     return DRAFT_FACT_CHECK.groundedIn;
+  }
+  if (evidence.source === "article-unit") {
+    const articleId = typeof evidence.articleId === "string" ? evidence.articleId : null;
+    const version = typeof evidence.articleVersion === "number" ? evidence.articleVersion : null;
+    const unitKey = typeof evidence.unitKey === "string" ? evidence.unitKey : null;
+    const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
+    if (articleId && version !== null && unitKey && crawlId) {
+      return `one check unit of one saved article version (article ${articleId}, version ${version}, unit ${unitKey}, the thing under check) and the records this product holds, re-read: crawl ${crawlId} (a check for operator review, not a measurement, and not an approval)`;
+    }
+    return ARTICLE_CHECK_UNIT.groundedIn;
   }
   if (evidence.source === "content-draft") {
     const planRunId = typeof evidence.planRunId === "string" ? evidence.planRunId : null;

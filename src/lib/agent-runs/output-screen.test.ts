@@ -470,6 +470,17 @@ describe("the competitor comparison review through the worker's output screen", 
         crawls: { getCrawl: notHere("a crawl") },
         links: { listLinks: notHere("link edges") },
       },
+      articleCheck: {
+        checks: { getArticle: notHere("an article"), getVersion: notHere("an article version"), listUnitRecords: notHere("article check units") },
+        evidencePack: {
+          getProjectById: notHere("the project record"),
+          getProjectIntake: notHere("the intake"),
+          listProjectCrawls: notHere("own-site crawls"),
+          listCompetitorCrawls: notHere("competitor crawls"),
+          crawls: { getCrawl: notHere("a crawl") },
+          searchConsole: notHere("Search Console"),
+        },
+      },
       factCheck: {
         drafts: { getByProjectAndId: notHere("a draft"), getVersion: notHere("a draft version") },
         evidencePack: {
@@ -713,6 +724,17 @@ describe("the Research & Evidence pack through the worker's output screen", () =
       links: {
         crawls: { getCrawl: notHere("a crawl") },
         links: { listLinks: notHere("link edges") },
+      },
+      articleCheck: {
+        checks: { getArticle: notHere("an article"), getVersion: notHere("an article version"), listUnitRecords: notHere("article check units") },
+        evidencePack: {
+          getProjectById: notHere("the project record"),
+          getProjectIntake: notHere("the intake"),
+          listProjectCrawls: notHere("own-site crawls"),
+          listCompetitorCrawls: notHere("competitor crawls"),
+          crawls: { getCrawl: notHere("a crawl") },
+          searchConsole: notHere("Search Console"),
+        },
       },
       factCheck: {
         drafts: { getByProjectAndId: notHere("a draft"), getVersion: notHere("a draft version") },

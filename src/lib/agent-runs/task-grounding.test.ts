@@ -542,6 +542,8 @@ function readers(
     draft: draft.reader,
     links: links.reader,
     factCheck: factCheck.reader,
+    // The article check reader is exercised in its own tests (src/lib/content/articles/checks); here it finds nothing.
+    articleCheck: { checks: { getArticle: async () => null, getVersion: async () => null, listUnitRecords: async () => [] }, evidencePack: evidencePack.reader },
     factCheckDraftReads: factCheck.draftReads,
     factCheckVersionReads: factCheck.versionReads,
     factCheckPackCalls: factCheck.packCalls,

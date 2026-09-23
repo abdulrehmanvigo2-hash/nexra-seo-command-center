@@ -11,6 +11,9 @@ import { createAgentRunService, type AgentRunService } from "@/lib/agent-runs/se
 import type { AgentRunsDatabase } from "@/lib/agent-runs/supabase/schema";
 import { createSupabaseAgentRunStore } from "@/lib/agent-runs/supabase/store";
 import { createTaskGrounding } from "@/lib/agent-runs/task-grounding";
+import { unavailableArticleCheckStore, type ArticleCheckStore } from "@/lib/content/articles/checks/contract";
+import type { ArticleChecksDatabase } from "@/lib/content/articles/checks/supabase/schema";
+import { createSupabaseArticleCheckStore } from "@/lib/content/articles/checks/supabase/store";
 import { unavailableDraftStore, type ContentDraftStore } from "@/lib/content/drafts/contract";
 import type { ContentDraftsDatabase } from "@/lib/content/drafts/supabase/schema";
 import { createSupabaseDraftStore } from "@/lib/content/drafts/supabase/store";
@@ -58,6 +61,17 @@ function draftStoreForRuntime(): ContentDraftStore {
   return storesInSupabase()
     ? createSupabaseDraftStore(createSupabaseServerClient<ContentDraftsDatabase>(readSupabaseServerConfig(process.env)))
     : unavailableDraftStore;
+}
+
+/**
+ * The article check store the article-check reader reads versions and unit
+ * rows from: the article tables and `nexra_article_check_units`, read only,
+ * through a client of its own — for the same reason as the draft store.
+ */
+function articleCheckStoreForRuntime(): ArticleCheckStore {
+  return storesInSupabase()
+    ? createSupabaseArticleCheckStore(createSupabaseServerClient<ArticleChecksDatabase>(readSupabaseServerConfig(process.env)))
+    : unavailableArticleCheckStore;
 }
 
 function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; timeoutMs: number } {
@@ -152,6 +166,10 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // the run's project before a word of it is quoted — and re-reads the
         // pack it rests on through the same readers.
         factCheck: { drafts: draftStoreForRuntime(), evidencePack: evidencePackReaders },
+        // The Research & Evidence article check reads one article version by
+        // project, id and number, regenerates its check units from the stored
+        // text, and re-reads the pack through the same readers. Reads only.
+        articleCheck: { checks: articleCheckStoreForRuntime(), evidencePack: evidencePackReaders },
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

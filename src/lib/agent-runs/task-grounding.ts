@@ -2,6 +2,7 @@ import { CRAWL_SOURCE, type GroundingReader } from "@/lib/agent-runs/ai-executor
 import { readRunGrounding, type AgentRunReader } from "@/lib/agent-runs/run-grounding";
 import { getTaskType } from "@/lib/agent-runs/task-types";
 import { readLinkGrounding, type LinkGroundingReaders } from "@/lib/authority/link-grounding";
+import { readArticleCheckGrounding, type ArticleCheckGroundingReaders } from "@/lib/content/articles/checks/grounding";
 import { readDraftGrounding, type DraftGroundingReaders } from "@/lib/content/draft-grounding";
 import { readFactCheckGrounding, type FactCheckGroundingReaders } from "@/lib/content/drafts/fact-check-grounding";
 import { readComparisonGrounding, type ComparisonGroundingReaders } from "@/lib/crawl/comparison-grounding";
@@ -56,6 +57,8 @@ export type TaskGroundingReaders = {
   readonly links: LinkGroundingReaders;
   /** `draft-version` tasks: one saved draft version by project, id and number, and the pack it rests on, re-read. */
   readonly factCheck: FactCheckGroundingReaders;
+  /** `article-unit` tasks: one article version by project, id and number, its units regenerated, and the pack, re-read. */
+  readonly articleCheck: ArticleCheckGroundingReaders;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -212,6 +215,44 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
           return { ok: false, reason: "version-missing" };
         }
         const result = await readFactCheckGrounding(readers.factCheck, { draftId, version, projectId: task.project.id });
+        if (!result.ok) return { ok: false, reason: result.reason };
+
+        return {
+          ok: true,
+          grounding: {
+            text: result.grounding.text,
+            summary: {
+              ...result.grounding.summary,
+              recordPaths: [...result.grounding.summary.recordPaths],
+              records: { ...result.grounding.summary.records },
+            },
+            source: result.grounding.source,
+          },
+        };
+      }
+
+      case "article-unit": {
+        // The input names an article, a version number, that version's row
+        // id and a unit index; the project is the run's own, and the reader
+        // finds the article by project and id together, the exact version,
+        // then regenerates the units from its stored text and resolves the
+        // index — refusing, never substituting another unit — before a word
+        // of it is quoted.
+        const articleId = task.input.articleId;
+        const articleVersion = task.input.articleVersion;
+        const articleVersionId = task.input.articleVersionId;
+        if (typeof articleId !== "string") return { ok: false, reason: "article-id-missing" };
+        if (typeof articleVersion !== "number" || !Number.isInteger(articleVersion) || articleVersion < 1) {
+          return { ok: false, reason: "version-missing" };
+        }
+        if (typeof articleVersionId !== "string") return { ok: false, reason: "version-id-missing" };
+        const result = await readArticleCheckGrounding(readers.articleCheck, {
+          projectId: task.project.id,
+          articleId,
+          articleVersion,
+          articleVersionId,
+          unitIndex: task.input.unitIndex,
+        });
         if (!result.ok) return { ok: false, reason: result.reason };
 
         return {

@@ -197,6 +197,24 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "article-check-unit": {
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no article and no record. `grounded:
+          // false`, as for every simulated result: it looked at nothing and
+          // checked nothing, so nothing here can be recorded on a unit.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+          articleId: typeof task.input.articleId === "string" ? task.input.articleId : null,
+          articleVersion: typeof task.input.articleVersion === "number" ? task.input.articleVersion : null,
+          unitIndex: typeof task.input.unitIndex === "number" ? task.input.unitIndex : null,
+        };
+        return {
+          summary: `Simulated article check unit by ${subject}. The mock executor read no article version and no record, and checked nothing; this is placeholder output, not a fact-check.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {
