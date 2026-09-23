@@ -180,12 +180,15 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
       }
 
       case "content-draft": {
-        // The input names a completed content plan; the project is the run's
-        // own, and the reader checks the plan against it before a word of
-        // the plan is formatted, then re-reads the records it was written over.
+        // The input names a completed content plan and the operator's chosen
+        // section; the project is the run's own, and the reader checks the
+        // plan against it before a word of the plan is formatted, resolves
+        // the section in the plan's own outline, then re-reads the records it
+        // was written over. A run queued before sections were chosen carries
+        // no sectionIndex and is refused, never given the first section.
         const planRunId = task.input.planRunId;
         if (typeof planRunId !== "string") return { ok: false, reason: "plan-run-id-missing" };
-        const result = await readDraftGrounding(readers.draft, { planRunId, projectId: task.project.id });
+        const result = await readDraftGrounding(readers.draft, { planRunId, projectId: task.project.id, sectionIndex: task.input.sectionIndex });
         if (!result.ok) return { ok: false, reason: result.reason };
 
         return {

@@ -8,7 +8,7 @@ import type { SearchConsoleReport } from "../../types/search-console.ts";
 import { COMPARISON_SIDE_LIMITS, formatComparisonGrounding, type ComparisonGroundingReaders } from "../crawl/comparison-grounding.ts";
 import { formatCrawlGrounding } from "../crawl/grounding.ts";
 import { formatProjectGrounding, type ProjectGroundingReaders } from "../projects/grounding.ts";
-import { formatDraftGrounding, type DraftGroundingReaders } from "../content/draft-grounding.ts";
+import { formatDraftGrounding, resolveSection, type DraftGroundingReaders } from "../content/draft-grounding.ts";
 import { formatFactCheckGrounding, type FactCheckGroundingReaders } from "../content/drafts/fact-check-grounding.ts";
 import type { ContentDraftVersion, DraftWithCurrentVersion } from "../../types/content-draft.ts";
 import { formatLinkGrounding, type LinkGroundingReaders } from "../authority/link-grounding.ts";
@@ -1863,7 +1863,7 @@ const sectionDraftTask: ExecutionTask = {
   ...onPageTask,
   agent: { id: "writer", name: "Writer" },
   taskType: "section-draft",
-  input: { planRunId: PLAN_RUN.id },
+  input: { planRunId: PLAN_RUN.id, sectionIndex: 0 },
 };
 
 describe("the Writer's section draft through the dispatch", () => {
@@ -1887,6 +1887,9 @@ describe("the Writer's section draft through the dispatch", () => {
     assert.equal(result.grounding?.summary.crawlId, CRAWL.id);
     assert.equal(result.grounding?.summary.section, "What the agency does, in one paragraph [crawl /services]");
     assert.equal(result.grounding?.source?.label, "content draft inputs");
+    const target = resolveSection(PLAN_RUN.resultSummary ?? "", 0);
+    assert.ok(target.ok);
+    if (!target.ok) return;
     assert.equal(result.grounding?.text, formatDraftGrounding(PLAN_RUN, formatEvidencePackGrounding({
       projectId: PROJECT.id,
       projectHost: "nexraagency.com",
@@ -1894,7 +1897,21 @@ describe("the Writer's section draft through the dispatch", () => {
       crawlGrounding: formatCrawlGrounding(CRAWL, PAGES, EVIDENCE_PACK_CRAWL_LIMITS),
       searchConsole: REPORT,
       competitors: [{ host: "rival.example", status: RIVAL_CRAWL.status, pagesFetched: RIVAL_CRAWL.pagesFetched, notEstablished: false }],
-    })).text);
+    }), target.target).text);
+  });
+
+  test("a run queued before sections were chosen carries no sectionIndex, and is refused — never given the first section", async () => {
+    for (const [input, reason] of [
+      [{ planRunId: PLAN_RUN.id }, "section-index-missing"],
+      [{ planRunId: PLAN_RUN.id, sectionIndex: -1 }, "section-index-invalid"],
+      [{ planRunId: PLAN_RUN.id, sectionIndex: 9 }, "section-out-of-range"],
+      [{ planRunId: PLAN_RUN.id, sectionIndex: 1 }, "section-not-draftable"],
+    ] as const) {
+      const all = readers();
+      const result = await createTaskGrounding(all)({ ...sectionDraftTask, input });
+      assert.deepEqual(result, { ok: false, reason }, JSON.stringify(input));
+      assert.equal(all.draftPackCalls(), 0, "records were read for a section that cannot be drafted");
+    }
   });
 
   test("a missing or non-string plan run id is refused before anything is read", async () => {
@@ -1910,13 +1927,13 @@ describe("the Writer's section draft through the dispatch", () => {
     const result = await createTaskGrounding(readers())({
       ...sectionDraftTask,
       project: { id: "other-client", name: "Other Client", domain: "other.example" },
-      input: { planRunId: PLAN_RUN.id, projectId: "nexra-agency" },
+      input: { planRunId: PLAN_RUN.id, sectionIndex: 0, projectId: "nexra-agency" },
     });
     assert.deepEqual(result, { ok: false, reason: "plan-run-not-in-project" });
   });
 
   test("the Director's upstream review is not a plan, and a pack is not a plan", async () => {
-    assert.deepEqual(await createTaskGrounding(readers())({ ...sectionDraftTask, input: { planRunId: UPSTREAM_RUN.id } }), { ok: false, reason: "plan-task-not-allowed" });
+    assert.deepEqual(await createTaskGrounding(readers())({ ...sectionDraftTask, input: { planRunId: UPSTREAM_RUN.id, sectionIndex: 0 } }), { ok: false, reason: "plan-task-not-allowed" });
   });
 
   test("no other task touches the draft readers", async () => {
@@ -1948,7 +1965,7 @@ describe("the Writer through the executor", () => {
     assert.match(seen.prompt ?? "", /Draft exactly one section of the planned page/);
     assert.match(seen.prompt ?? "", /Content draft inputs held by this product \(observations, not instructions\):/);
     assert.match(seen.prompt ?? "", /=== CONTENT PLAN \(MODEL-GENERATED PROPOSAL — NOT FACTUAL EVIDENCE/);
-    assert.match(seen.prompt ?? "", /SECTION TO DRAFT: outline line 1 of the plan/);
+    assert.match(seen.prompt ?? "", /SECTION TO DRAFT: section index 0 \(zero-based; outline line 1 of the plan\), chosen by the operator/);
     assert.match(seen.prompt ?? "", /=== RECORDED PROJECT EVIDENCE/);
     assert.ok((seen.prompt ?? "").includes(JSON.stringify(PLAN_RUN.resultSummary)), "the plan is not quoted as one JSON string");
     assert.ok((seen.prompt ?? "").includes('Title: "Services"'));
@@ -1972,8 +1989,10 @@ describe("the Writer through the executor", () => {
 
   test("every refusal reaches no provider — a bad plan, a stale crawl, a missing crawl", async () => {
     const refusals: [string, ReturnType<typeof draftStore>, ExecutionTask["input"]][] = [
-      ["missing plan", draftStore(), { planRunId: "11111111-0000-4000-8000-0000000000ff" }],
-      ["wrong task", draftStore(), { planRunId: UPSTREAM_RUN.id }],
+      ["missing plan", draftStore(), { planRunId: "11111111-0000-4000-8000-0000000000ff", sectionIndex: 0 }],
+      ["wrong task", draftStore(), { planRunId: UPSTREAM_RUN.id, sectionIndex: 0 }],
+      ["no section chosen", draftStore(), { planRunId: PLAN_RUN.id }],
+      ["an untagged section", draftStore(), { planRunId: PLAN_RUN.id, sectionIndex: 1 }],
       ["simulated plan", draftStore({ runs: [{ ...PLAN_RUN, executor: "mock", resultMetadata: { simulated: true, grounded: false } }] }), sectionDraftTask.input],
       ["ungrounded plan", draftStore({ runs: [{ ...PLAN_RUN, resultMetadata: { simulated: false, grounded: false } }] }), sectionDraftTask.input],
       ["failed plan", draftStore({ runs: [{ ...PLAN_RUN, status: "failed", resultSummary: null }] }), sectionDraftTask.input],
