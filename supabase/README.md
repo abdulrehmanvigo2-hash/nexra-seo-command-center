@@ -287,6 +287,28 @@ publication proposals are not touched. Apply it after `20260923120000`
 schema';`. It has been applied only to a throwaway local PostgreSQL 16 for
 validation.
 
+`20260924120000_create_article_approvals.sql` adds the article approval
+gate (Stage 5, milestone C5): `nexra_article_approvals`, append-only
+history with one row per approved article version — article, version
+number, the version's immutable row id and content hash, the check-unit
+count and the SHA-256 of the ordered unit set, the operator and the time;
+unique per article version. An insert trigger binds each row to the stored
+version and its hash; guard triggers refuse every update, delete and
+truncate. It adds one constraint to the existing `nexra_articles`
+(`nexra_articles_approved_is_current`: `approved` requires
+`approved_version` to be the current version), which every existing row
+and every legal transition satisfies; nothing else existing is changed.
+The one write is `public.nexra_article_approve_version(...)` (`security
+definer`, `search_path` pinned empty, under the parent article's row
+lock): it re-checks the project, archive state, current version, version
+row, content hash, the exact stored check-unit set (all passed and
+complete, digest equal), the topic decision and unresolved placeholders,
+then writes the approval row and the parent's `approved` status and
+pointer together. `service_role` gets SELECT on the table and EXECUTE on
+that function, nothing else; `anon` and `authenticated` get nothing. Apply
+it after `20260923180000`, then `NOTIFY pgrst, 'reload schema';`. It has
+been applied only to a throwaway local PostgreSQL 16 for validation.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

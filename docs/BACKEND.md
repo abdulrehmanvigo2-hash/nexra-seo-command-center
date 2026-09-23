@@ -1322,6 +1322,70 @@ the version is refused; for one chosen unit it offers the shared queue/run
 control and one explicit record click. It is labelled "Article fact-check
 only — this does not approve or publish the article."
 
+### Article approval (Stage 5, Complete Article Assembly, milestone C5)
+
+An operator approves the article's current, exact version — and only when
+every check unit of that version passed. Approval is not publication:
+nothing here proposes, renders, publishes or reaches a repository or site.
+
+Eligibility (`approvals/eligibility.ts`, pure, shared by the panel and the
+server) fails closed and reports every reason that applies, in a fixed
+order: archived; not the current version; stored text that does not read
+as C1 content or verify against its hash; a version the C4 plan refuses; a
+stored check row matching no regenerated unit; any unit unchecked,
+checking, failed or needs-review; an article not `checked`; a topic
+decision other than `update-existing` or `different-angle`; and a
+`[NEEDS EVIDENCE` placeholder anywhere in the stored text
+(case-insensitive). There is no override. A version already approved is
+reported as approved, not eligible again.
+
+Service (`approvals/service.ts`): the browser names the project, the
+article and the version number it saw — nothing else. The server reads the
+article and its current version, re-verifies the text and hash,
+regenerates the units and matches them to the stored rows through the C4
+check service, applies the rule, and only then calls the database with its
+own version row id, content hash, unit identities and unit-set digest
+(`approvals/units-digest.ts`: SHA-256 over
+`nexra-article-approval-units/1\n` then `<index> <key> <unit sha256>\n` per
+unit in index order). A version that is no longer current is refused
+`stale` before anything is sent; a repeated request returns the existing
+approval without a write.
+
+Table and gate (`20260924120000_create_article_approvals.sql`):
+`nexra_article_approvals` — append-only history, one row per approved
+version: article, version number, version row id, content hash, unit count,
+unit-set digest, operator, time; unique per article version; an insert
+trigger binds the row to the stored version and its hash; update, delete
+and truncate are refused. The parent's existing `approved_version`,
+`approved_by` and `approved_at` stay the current-approval pointer, and a
+new constraint requires `approved` to name the current version. The one
+write is `nexra_article_approve_version` (`security definer`, empty
+`search_path`), one transaction under the parent's row lock — the lock the
+save and check-record functions take, so approval, edit and check
+recording are serialised. It refuses, in order: not in the project;
+archived; stale; another version row; another content hash; then answers
+`exists` for a version already approved; then refuses a parent not
+`checked`; a unit list that is not exactly the stored rows (index, key,
+hash, count) or whose digest differs; any unit not `passed`; a unit set
+the C4 completeness rule rejects; an unapprovable topic decision; a
+placeholder. Then it writes the history row and sets the parent to
+`approved` with the pointer, together. Saving a new version returns the
+article to `drafting` and leaves the pointer and history naming the older
+version; the new version inherits nothing. service_role holds SELECT on
+the table and EXECUTE on the gate only; `anon` and `authenticated` hold
+nothing; RLS is enabled with no policies.
+
+Server Action `approveArticleVersion`
+(`app/(app)/projects/article-approval-actions.ts`: operator first, every
+argument `unknown`, 30 approvals per ten minutes per operator, one in
+flight) and `GET /api/content-article-approvals?project=…&article=…`
+(operators only, read-only). The panel section
+(`src/components/content/article-approval-section.tsx`) shows the current
+version, its check state and unit counts, the topic decision, the
+approved-version pointer, every blocking reason and the approval history;
+the Approve control appears only when eligible and asks for an explicit
+confirmation. It is labelled "Approval only — nothing is published."
+
 ## Crawl foundation
 
 An operator asks for a crawl of a stored project; the engine walks that
