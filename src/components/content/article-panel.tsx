@@ -7,6 +7,7 @@ import {
   type CreateArticleActionResult,
   type SaveArticleVersionActionResult,
 } from "@/app/(app)/projects/article-actions";
+import { ArticleApprovalSection } from "@/components/content/article-approval-section";
 import { ArticleCheckSection } from "@/components/content/article-check-section";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,12 +47,14 @@ import type {
  * itself, and re-reads every source; the database checks all of it again.
  *
  * Milestone C4 adds, per viewed version, the article's own fact-check in
- * bounded units (`./article-check-section`). There is no approval,
+ * bounded units (`./article-check-section`). Milestone C5 adds the
+ * approval of the current, exact version (`./article-approval-section`),
+ * offered only when every unit of that version passed. There is no
  * proposal, publish or delete control here, and a source draft's check or
  * approval is never shown as the article's.
  */
 
-export const ARTICLE_PERSISTENCE_NOTICE = "Article persistence and article fact-check only — no approval or publication occurs here.";
+export const ARTICLE_PERSISTENCE_NOTICE = "Article persistence, article fact-check and approval only — no publication occurs here.";
 
 type Load =
   | { readonly status: "loading" }
@@ -340,6 +343,13 @@ function ArticleDetail({
           </Button>
         )}
       </div>
+
+      <ArticleApprovalSection
+        key={`${article.id}:${article.currentVersion}:${article.status}:${article.approvedVersion ?? ""}`}
+        projectId={projectId}
+        articleId={article.id}
+        onArticleChanged={onArticleChanged}
+      />
 
       {viewing === null ? (
         <p className="text-xs text-critical">This version could not be read.</p>
