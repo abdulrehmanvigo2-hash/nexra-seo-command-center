@@ -6,6 +6,7 @@ import {
 } from "@/components/projects/project-chrome";
 import { CrawlPanel } from "@/components/crawl/crawl-panel";
 import { CompetitorDomainsSection } from "@/components/projects/competitor-domains-section";
+import { ArticlePanel } from "@/components/content/article-panel";
 import { ContentPlanPanel } from "@/components/projects/content-plan-panel";
 import { EvidencePackPanel } from "@/components/projects/evidence-pack-panel";
 import { IntakeReviewPanel } from "@/components/projects/intake-review-panel";
@@ -178,6 +179,13 @@ export function ProjectUnmeasured({
         output — and needs only the project id here.
       */}
       <ContentPlanPanel projectId={project.id} />
+
+      {/*
+        Complete articles assembled from a completed content plan and exact
+        section-draft versions (Stage 5, milestone C2). Persistence only: no
+        fact-check, approval or publication control.
+      */}
+      <ArticlePanel projectId={project.id} />
 
       {/*
         Competitor domains and competitor sites, beneath the project's own

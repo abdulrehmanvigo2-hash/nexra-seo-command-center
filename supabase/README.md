@@ -236,6 +236,28 @@ nothing. No existing table, column, function or grant is changed. Apply it
 after `20260922130100`, then `NOTIFY pgrst, 'reload schema';`. It has been
 applied only to a throwaway local PostgreSQL 16 for validation.
 
+`20260923120000_create_articles.sql` adds article-level persistence for
+Complete Article Assembly (Stage 5, milestone C2): `nexra_articles` (one
+article per completed content plan run), `nexra_article_versions`
+(immutable versions holding the C1 canonical text `nexra-article-content/1`
+and its SHA-256, which a CHECK constraint recomputes from the stored text)
+and `nexra_article_version_sources` (the exact draft versions each article
+version cites: draft id, number, row id and content hash; provenance only).
+Writes go through `public.nexra_article_create(...)` and
+`public.nexra_article_save_version(...)` alone: `security definer`,
+`search_path` pinned empty, one transaction each, the save under a row lock
+on the parent. They re-check the project, the completed content plan run,
+the canonical text's format and hash, and every source against the stored
+draft rows, and answer refusals as JSON. Guard triggers refuse every
+update, delete and truncate of versions and sources, any change to an
+article's provenance, and any move of `current_version` backwards; an
+article is archived, never deleted. `service_role` gets SELECT on the three
+tables and EXECUTE on the two functions, nothing else; `anon` and
+`authenticated` get nothing. No existing table, column, function or grant
+is changed. Apply it after `20260922140000`, then `NOTIFY pgrst, 'reload
+schema';`. It has been applied only to a throwaway local PostgreSQL 16 for
+validation.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

@@ -3,15 +3,17 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Stage 5 (publication) of the content workflow. Milestones A, B and C1 are
-complete; next planned is Milestone C2 (see §0).**
+**Current stage: Stage 5 (publication) of the content workflow. Milestones A, B, C1 and C2
+are complete; next planned is Milestone C3 (see §0).**
 
 ---
 
 ## 0. Current Checkpoint
 
 GitHub `master`: the Milestone C1 merge (`claude/article-contract-c1-final`), on top of
-`368fc5531638698e47a390d973d081ae5ea9491a`
+`368fc5531638698e47a390d973d081ae5ea9491a`. Milestone C2 is on
+`claude/article-persistence-c2-final` and is not merged until its production migration is
+reviewed and applied.
 
 **Completed content-workflow stages:**
 
@@ -22,9 +24,10 @@ GitHub `master`: the Milestone C1 merge (`claude/article-contract-c1-final`), on
 - Stage 5A: publication proposal + exact-version preview
 - Stage 5B: website artifact dry-run
 - Stage 5 / Complete Article Assembly — Milestone C1: Pure Article Contract
+- Stage 5 / Complete Article Assembly — Milestone C2: Article Persistence
 
 **Next planned work (not started):** Stage 5 / Complete Article Assembly —
-Milestone C2: Article Persistence.
+Milestone C3: Writer Section Choice.
 
 **Current safety boundaries:**
 
@@ -34,6 +37,8 @@ Milestone C2: Article Persistence.
 - There is no active publication proposal for Version 2.
 - The content workflow has no Create PR, Merge, Deploy or Publish control.
 - Any external write requires explicit user approval (§6).
+- The C2 production migration (`20260923120000_create_articles.sql`) is **not yet applied**.
+- C2 is **not yet live-verified** in a browser.
 
 Update this section at every Git checkpoint that changes the stage, the next planned
 milestone, or a safety boundary.
@@ -302,10 +307,11 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5A | Publication proposal + exact-version preview | Complete |
 | Stage 5B | Website artifact dry-run | Complete |
 | Stage 5 / C1 | Complete Article Assembly: Pure Article Contract | Complete |
-| Stage 5 / C2 | Complete Article Assembly: Article Persistence | Next, not started |
+| Stage 5 / C2 | Complete Article Assembly: Article Persistence | Complete (migration not yet applied) |
+| Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Next, not started |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Work beyond C2 is decided
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Work beyond C3 is decided
 with the user and is not planned here.
 
 ## 15. Definition of Done
