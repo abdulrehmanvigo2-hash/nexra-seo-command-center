@@ -258,6 +258,28 @@ is changed. Apply it after `20260922140000`, then `NOTIFY pgrst, 'reload
 schema';`. It has been applied only to a throwaway local PostgreSQL 16 for
 validation.
 
+`20260923180000_create_article_check_units.sql` adds article-level
+fact-check results for Complete Article Assembly (Stage 5, milestone C4):
+`nexra_article_check_units`, one row per check unit of one exact article
+version — unit index, kind, key and hash, status (`pending`, `passed`,
+`needs-review`, `failed`), the structured result and the Research &
+Evidence run behind it; no article text. An insert trigger binds each row
+to the article's version with that number and to the unit identity that
+version's stored content yields at that index; guard triggers keep
+identity fixed, let a row move only forward (pending → final with the same
+run, failed → a new run) and refuse every delete and truncate. The one
+write is `public.nexra_article_check_unit_record(...)` (`security
+definer`, `search_path` pinned empty, under the parent article's row
+lock); it re-checks the article, version, unit, run and result, and moves
+the article from `drafting` to `checked` only when every unit of its
+current version is passed — never to `approved`. `service_role` gets
+SELECT on the table and EXECUTE on that function, nothing else; `anon` and
+`authenticated` get nothing. No existing table, column, function or grant
+is changed; the draft fact-check and the publication proposals are not
+touched. Apply it after `20260923120000` (applied in production as
+`20260923043554`), then `NOTIFY pgrst, 'reload schema';`. It has been
+applied only to a throwaway local PostgreSQL 16 for validation.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

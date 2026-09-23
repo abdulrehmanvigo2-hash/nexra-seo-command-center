@@ -88,7 +88,7 @@ input carries a range and nothing else.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Fourteen task types exist, thirteen read-only and one `draft`: `project-review` (any agent),
+project. Sixteen task types exist, fifteen read-only and one `draft`: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -102,7 +102,10 @@ project's own recorded crawl and one recorded competitor's crawl) and
 holds for the project), `content-plan-review` (Content Strategist, from
 the same records), `section-draft` (Writer, from one completed content
 plan and the records it was written over) and `outbound-link-review`
-(Authority & Backlink, from the link edges one own-site crawl recorded). The
+(Authority & Backlink, from the link edges one own-site crawl recorded),
+`draft-fact-check` (Research & Evidence, one saved draft version) and
+`article-check-unit` (Research & Evidence, one check unit of one saved
+article version; see *Article check units* below). The
 three crawl reviews take one input, a crawl id, and are grounded in the same
 recorded crawl; the two Search Console reviews take one input, a range id, and
 are grounded in the project's own Search Console report; the priority review
@@ -1165,9 +1168,10 @@ An article is one complete page assembled from a completed content plan
 run and from exact, immutable section-draft versions. Its content is the C1
 contract (`src/lib/content/articles/validate.ts`) serialised canonically
 (`nexra-article-content/1`) and stored once, as text, with its SHA-256.
-Nothing here fact-checks, approves, proposes or publishes, and the panel
-says so: "Article persistence only — no fact-check, approval or
-publication occurs here."
+Nothing here fact-checks, approves, proposes or publishes. (The panel's
+notice now reads "Article persistence and article fact-check only — no
+approval or publication occurs here.", since C4 adds the article's own
+check.)
 
 Tables (`20260923120000_create_articles.sql`): `nexra_articles` — project,
 source plan run (unique: one article per plan, so a repeated create answers
@@ -1209,8 +1213,81 @@ operators only.
 Panel (`src/components/content/article-panel.tsx`), on the project
 workspace below the content plan: status, current version, version
 history, each version's content and source provenance, "New article"
-(version 1) and "Edit as version N+1". There is no fact-check, approval,
-proposal, publish or delete control.
+(version 1) and "Edit as version N+1". Milestone C4 adds the article's own
+fact-check beneath each version (below). There is no approval, proposal,
+publish or delete control.
+
+### Article check units (Stage 5, Complete Article Assembly, milestone C4)
+
+An article version is fact-checked in bounded units, never as one prompt.
+`src/lib/content/articles/checks/units.ts` cuts one validated version into
+units in a fixed order: `metadata` (topic, search intent, title, meta
+title, meta description, excerpt, category, keywords), `lead-introduction`,
+one `section:<id>` per H2 (its heading, paragraphs and own H3 subsections),
+one `faq` unit when the article has FAQs, and `cta`. The slug, topic
+decision and internal links are not checked by a model; C1 validates their
+syntax. A unit's text is its canonical `nexra-article-check-unit/1` JSON —
+its kind, key and its own content only — and its hash is SHA-256 over that
+text (server-only), so editing one section changes only that unit's hash.
+A unit is bounded to 12 statements (one per sentence, one per heading,
+field or keyword list) and 6,000 bytes, so one answer places every
+statement under the runtime's output ceiling; a larger unit is refused as
+`unit-too-large`, never cut.
+
+Task `article-check-unit` (Research & Evidence, read-only, evidence
+`article-unit`): input `{articleId, articleVersion, articleVersionId,
+unitIndex}`, all required, no text or hash. The reader
+(`checks/grounding.ts`) re-reads the article by project and id (archived
+refused), the version by number (its row id must match), verifies the
+stored text against its hash, regenerates the units, resolves the index
+with no fallback, refuses an oversized unit or one already carrying a
+final result, then re-reads the evidence pack — all before any provider
+call. The prompt (`src/lib/content/article-check-prompt.ts`) quotes the
+unit as the thing under check, never evidence, and uses the draft
+fact-check's six headings and closing sentence, so the same parser reads
+it; the draft fact-check itself is unchanged.
+
+Result (`checks/result.ts`): tags are verified against the run's own
+evidence, and a supported or partial line whose tag names nothing there is
+moved to unverifiable. A unit is `passed` only when nothing is partial,
+unsupported or unverifiable, at least one line was placed, and at least as
+many lines were placed as the unit holds statements; editorial lines never
+count against it, so an editorial-only CTA passes. Otherwise it
+`needs-review`. `failed` is only an execution failure (the run failed, was
+cancelled, or answered outside the fixed form). A simulated or ungrounded
+run records nothing. The version's state is derived from its unit rows,
+never stored: `checking` while any unit is pending, `passed` when every
+unit passed, `needs-review` when every unit finished and one did not pass,
+`unchecked` otherwise.
+
+Table (`20260923180000_create_article_check_units.sql`):
+`nexra_article_check_units` — per article version and unit: index, kind,
+key, unit hash, status (`pending`, `passed`, `needs-review`, `failed`), the
+structured result, the run, and the recording operator. No article text.
+An insert trigger requires the version to be the article's version with
+that number and the unit identity to be what that version's stored
+content yields at that index. Rows move only forward (pending → final with
+the same run; failed → a new run); passed and needs-review are final for
+the version; identity never changes and nothing is deleted. Rows never
+carry to a newer version. The one write is `nexra_article_check_unit_record`
+(`security definer`, empty `search_path`, under the parent's row lock),
+which re-checks the article, version, unit identity, the run (this
+project's Research & Evidence `article-check-unit` run whose input names
+exactly this unit; its state must agree with the status) and the result,
+and — only for a pass of the current version whose every unit is now
+passed — moves the article from `drafting` to `checked`. Never to
+`approved`. service_role holds SELECT on the table and EXECUTE on that
+function only.
+
+Service (`checks/service.ts`), Server Action `recordArticleCheckUnit`
+(`app/(app)/projects/article-check-actions.ts`: operator first, every
+argument `unknown`, 120 records per ten minutes per operator, one in
+flight) and `GET /api/content-article-checks?project=…&article=…&version=…`
+(operators only, read-only). The panel section
+(`src/components/content/article-check-section.tsx`) shows the version's
+units, status, counts and run provenance; for one chosen unit it offers the
+shared queue/run control and one explicit record click. It is labelled
+"Article fact-check only — this does not approve or publish the article."
 
 ## Crawl foundation
 

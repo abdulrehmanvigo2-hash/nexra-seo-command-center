@@ -7,6 +7,7 @@ import {
   type CreateArticleActionResult,
   type SaveArticleVersionActionResult,
 } from "@/app/(app)/projects/article-actions";
+import { ArticleCheckSection } from "@/components/content/article-check-section";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
@@ -44,12 +45,13 @@ import type {
  * content with the C1 contract, computes the canonical text and its hash
  * itself, and re-reads every source; the database checks all of it again.
  *
- * Persistence only. There is no fact-check, approval, proposal, publish or
- * delete control here, and a source draft's check or approval is never
- * shown as the article's.
+ * Milestone C4 adds, per viewed version, the article's own fact-check in
+ * bounded units (`./article-check-section`). There is no approval,
+ * proposal, publish or delete control here, and a source draft's check or
+ * approval is never shown as the article's.
  */
 
-export const ARTICLE_PERSISTENCE_NOTICE = "Article persistence only — no fact-check, approval or publication occurs here.";
+export const ARTICLE_PERSISTENCE_NOTICE = "Article persistence and article fact-check only — no approval or publication occurs here.";
 
 type Load =
   | { readonly status: "loading" }
@@ -232,6 +234,8 @@ export function ArticlePanel({ projectId }: { projectId: string }) {
             {selected !== null && (
               <ArticleDetail
                 key={`${selected.article.id}:${selected.article.currentVersion}`}
+                projectId={projectId}
+                onArticleChanged={() => void reload()}
                 history={selected}
                 sourceCandidates={workspace.sourceCandidates}
                 onEdit={(from) => {
@@ -286,10 +290,14 @@ function ArticleList({
 }
 
 function ArticleDetail({
+  projectId,
+  onArticleChanged,
   history,
   sourceCandidates,
   onEdit,
 }: {
+  projectId: string;
+  onArticleChanged: () => void;
   history: ArticleHistory;
   sourceCandidates: readonly ArticleSourceCandidate[];
   onEdit: (from: ArticleVersionView) => void;
@@ -347,6 +355,9 @@ function ArticleDetail({
             )}
           </div>
           <SourceList version={viewing} candidates={sourceCandidates} />
+          {viewing.content !== null && viewing.verified ? (
+            <ArticleCheckSection projectId={projectId} article={article} version={viewing.version} onArticleChanged={onArticleChanged} />
+          ) : null}
           {viewing.content !== null ? <ArticleContentView content={viewing.content} /> : null}
         </>
       )}

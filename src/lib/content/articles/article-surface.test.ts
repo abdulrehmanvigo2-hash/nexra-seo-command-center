@@ -118,8 +118,8 @@ describe("migration", () => {
 });
 
 describe("article panel and server surface", () => {
-  test("says plainly that nothing is checked, approved or published", () => {
-    assert.ok(PANEL.includes('"Article persistence only — no fact-check, approval or publication occurs here."'));
+  test("says plainly that nothing is approved or published (C4 adds the article's own fact-check)", () => {
+    assert.ok(PANEL.includes('"Article persistence and article fact-check only — no approval or publication occurs here."'));
   });
 
   test("offers no fact-check, approval, proposal or publish control", () => {
