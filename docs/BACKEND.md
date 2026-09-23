@@ -1063,6 +1063,59 @@ text, and "Withdraw proposal" with a confirmation. An ineligible version
 shows the reason and no button. There is no publish, merge, deploy or
 pull-request control.
 
+### Website artifact dry-run (Stage 5, milestone B)
+
+For an active publication proposal the panel renders, offline, exactly what
+the Nexra Agency website's repository would need. Nothing is written
+anywhere: no GitHub read or write happens at runtime, no credential exists,
+and no branch, commit, pull request, deployment or publication is created.
+The panel says so in every state.
+
+Template contract (`src/lib/content/publications/website/template.ts`,
+`nexra-ai-blog-tsx/1`): pinned to the audited commit
+`a4a572296eca5944dc29a436048a6fff68c33d5d` of
+`abdulrehmanvigo2-hash/nexra-ai`, default branch `main`. An article is a new
+TSX route file `app/blog/<slug>/page.tsx` and one `Article` record appended
+to `lib/blog.ts`; the route is `/blog/<slug>`; the blog index and sitemap
+derive from the registry. The contract is kept apart from the destination
+registry on purpose: Milestone A's preview document prints the content path
+as "unresolved", and every stored proposal's preview hash depends on it.
+
+Completeness (`article-contract.ts`): 15 required fields — the nine registry
+fields, the lead paragraph, at least one H2 section with a body, the
+canonical route, `ArticleJsonLd`, and the CTA title and body — and six
+optional ones. A proposal supplies only its slug and the bound version's
+title and body (one section); the canonical route is derived from the slug,
+`ArticleJsonLd` is the template's component, and the table of contents is
+derived from the section headings. Everything else is reported missing and
+is never invented, so the current draft renders as "INCOMPLETE — NOT
+PUBLISHABLE" with 11 missing required fields.
+
+Renderer (`render.ts`, `tsx-literal.ts`): pure and deterministic. Both
+artifacts are assembled line by line from fixed code following the pinned
+article; content enters only as string literals (`JSON.stringify`, with `<`,
+`>`, `&`, U+2028 and U+2029 escaped), never as JSX text, identifiers,
+comments or code, and ids, hashes and the slug are validated before they
+reach a comment or path. A missing field is rendered as an undeclared
+`MISSING_REQUIRED_FIELD_<name>` identifier, so an incomplete artifact cannot
+typecheck or build. Each artifact carries a SHA-256 of its bytes.
+
+Topic overlap (`topic-overlap.ts`): a fixed phrase check against the live
+articles the contract lists, with no search and no model. The current draft
+matches `/blog/ai-lead-follow-up-automation`; the warning says a different
+slug does not make a new page safe, and that updating the existing article,
+taking a materially different angle or creating a new article is an
+operator decision for a later milestone. It does not block the dry-run; the
+live article's own slug is a collision and keeps it incomplete.
+
+Eligibility (`website/service.ts`,
+`GET /api/content-publications/dry-run?project=…&draft=…&proposal=…`,
+operators only): only the draft's active proposal, and only while the
+proposal service reports it current (same approved current version, same
+approval moment) and verified (bound row, content hash and preview hash
+match). Withdrawn, stale, unverified, foreign and unknown proposals are
+refused. Nothing is written to the proposal or the draft.
+
 The Server Action (`saveDraftVersion`, same file as the save action) takes
 every argument as `unknown`, confirms the operator with the Auth server,
 counts 60 saves per ten minutes per operator, and hands the request to the
@@ -1430,6 +1483,8 @@ it. The deployment plan was not verifiable from this repository.
   current version proposed for publication to the one registered
   destination; no publishing exists, a proposal and an approval send
   nothing anywhere, the destination's content path is unresolved, the
+  website dry-run renders offline from a pinned template and is incomplete
+  for a draft that is only one section, the
   Content Studio does not
   show drafts, and a fixture data source cannot keep them. A crawl
   completed before `internal_links_out` was derived from recorded edges

@@ -29,7 +29,12 @@ export function contentSha256(version: { readonly title: string; readonly body: 
 
 /** SHA-256 of the preview document's UTF-8 bytes. */
 export function previewSha256(document: string): string {
-  return createHash("sha256").update(Buffer.from(document, "utf8")).digest("hex");
+  return utf8Sha256(document);
+}
+
+/** SHA-256 of any text's UTF-8 bytes, lowercase hex: the website dry-run's artifact hashes. */
+export function utf8Sha256(text: string): string {
+  return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
