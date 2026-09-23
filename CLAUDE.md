@@ -3,15 +3,16 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Stage 5 (publication) of the content workflow. Milestones A, B, C1, C2 and C3
-are complete; C4 is implemented and deployed, with new-parser live verification pending (see §0).**
+**Current stage: Stage 5 (publication) of the content workflow. Milestones A, B, C1, C2, C3 and C5
+are complete; C4 is implemented and deployed, with new-parser live verification pending; C6 is
+defined and not started (see §0).**
 
 ---
 
 ## 0. Current Checkpoint
 
-GitHub `master`: the C4 counting-fix merge (`claude/c4-result-counting-fix`),
-`c23ed0bb3e7582de719027a340195fb866ce5c2c`.
+GitHub `master`: the C5 merge (PR #2, `claude/article-approval-c5`),
+`304ac1461860119f7a4fd47f94369de0a0894d9a`.
 
 **Completed content-workflow stages:**
 
@@ -27,6 +28,8 @@ GitHub `master`: the C4 counting-fix merge (`claude/c4-result-counting-fix`),
 - Stage 5 / Complete Article Assembly — Milestone C4: Article Check Units, Option A
   (implementation complete; deployment and existing-result browser verification complete;
   new-parser live verification pending)
+- Stage 5 / Complete Article Assembly — Milestone C5: Article Approval Gate (complete, merged,
+  deployed, production verified)
 
 **C2 notes:** production migration applied (Supabase `20260923043554_create_articles`);
 production deployment verified; live Version 1 creation and Version 2 immutable save verified
@@ -72,18 +75,60 @@ approved, not published. **Pending:** the corrected counting behaviour is covere
 tests (focused C4 87 passed; full suite 1,367 passed), but a NEW result produced with the
 corrected parser has not been live-tested.
 
-**Next planned work:** Milestone C5 — Article Approval Gate. It has not started and starts only
-with explicit user approval.
+**C5 notes:** an operator approves one exact, immutable article version, and only when every C4
+check unit of that exact version passed, the article is `checked`, the topic decision is
+`update-existing` or `different-angle`, and no `[NEEDS EVIDENCE` placeholder remains; there is no
+override. `nexra_article_approvals` (append-only history) binds the article, version number,
+version row id, content SHA-256, unit count and ordered unit-set digest, operator and time; the
+parent's `approved_version` / `approved_by` / `approved_at` stay the current-approval pointer, and
+`nexra_articles_approved_is_current` requires `approved` to name the current version. The one
+write is `nexra_article_approve_version` (`security definer`, under the parent's row lock). A later
+version inherits nothing. Approval is not publication. Feature commit `57284d6`, merged as
+`304ac14` (PR #2); production migration `20260924120000` applied and recorded in migration history;
+production deployment `dpl_6HUTVPgTSZN2VWkoDGYW39RDnYEo` READY; production verified by the
+operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not eligible** with no
+Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
+has been approved.
+
+**Next planned work:** Milestone C6 — Article Publication Proposal (record-only). It has not
+started and starts only with explicit user approval. Work beyond C6 is undecided.
+
+C6 records an operator's intention to publish one exact approved article version. It records
+proposal state only.
+
+C6 adds:
+
+- one record-only proposal for one exact approved current article version;
+- exact binding to article id, version, version row id, content hash and the C5 approval;
+- a registered destination;
+- a slug;
+- preview/document hash metadata only;
+- an explicit operator-triggered "Record proposal";
+- withdraw support.
+
+C6 reuses:
+
+- the C5 approval gate and approval history;
+- the C1 canonical article content and content hash;
+- the existing destination registry;
+- the existing preview/completeness logic where appropriate.
+
+C6 does NOT include: TSX publishing; GitHub writes; Vercel writes; `nexra-ai` writes; pull
+request creation; merge; deployment; live publishing; C7. It never approves or publishes anything
+automatically. Real rendering and publishing remain a later, separately approved milestone.
 
 **Current safety boundaries:**
 
 - No automatic publishing.
+- No automatic approval.
 - No write path to the `abdulrehmanvigo2-hash/nexra-ai` GitHub repository exists.
 - The current production draft, Version 2, remains **Needs review**.
 - There is no active publication proposal for Version 2.
-- The content workflow has no Create PR, Merge, Deploy or Publish control.
+- The content workflow has no Create PR, Merge, Deploy or Publish control, and C6 adds none: C6
+  records proposal state only.
 - Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `drafting`: one check unit needs review,
-  three are unchecked, and it is neither checked, approved nor published.
+  three are unchecked, and it is neither checked, approved nor published. Its Version 2 can never
+  be approved (a needs-review result is final for its version), so it cannot receive a C6 proposal.
 - Vercel deploys every push to `master` to production automatically.
 - Any external write requires explicit user approval (§6).
 
@@ -357,10 +402,12 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C2 | Complete Article Assembly: Article Persistence | Complete, live verified |
 | Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Complete, live verified |
 | Stage 5 / C4 | Complete Article Assembly: Article Check Units | Implementation complete; deployment and existing-result browser verification complete; new-parser live verification pending |
+| Stage 5 / C5 | Complete Article Assembly: Article Approval Gate | Complete, merged, deployed, production verified |
+| Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Defined; not started |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Next planned: C5 — Article Approval Gate (not started). Work beyond C5 is decided
-with the user and is not planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Next planned: C6 — Article Publication Proposal (record-only) (not started). Work beyond C6 is
+undecided and is not planned here.
 
 ## 15. Definition of Done
 
