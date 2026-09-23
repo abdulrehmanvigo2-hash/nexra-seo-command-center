@@ -4,14 +4,14 @@ Professional, agency-grade AI SEO platform. This file defines the operating rule
 project. Read it before writing any code.
 
 **Current stage: Stage 5 (publication) of the content workflow. Milestones A, B, C1, C2 and C3
-are complete; next planned is Milestone C4 (see §0).**
+are complete; C4 is merged to `master` but not yet released to production (see §0).**
 
 ---
 
 ## 0. Current Checkpoint
 
-GitHub `master`: the Milestone C3 merge (`claude/writer-section-choice-c3-final`),
-`e00251c5c263a6f37ba71f9e69580256b2a022a7`.
+GitHub `master`: the Milestone C4 merge (`claude/article-check-units-c4`),
+`17cae81a7820e39c3d49f4123307473c8e461d64`.
 
 **Completed content-workflow stages:**
 
@@ -24,6 +24,8 @@ GitHub `master`: the Milestone C3 merge (`claude/writer-section-choice-c3-final`
 - Stage 5 / Complete Article Assembly — Milestone C1: Pure Article Contract (live verified)
 - Stage 5 / Complete Article Assembly — Milestone C2: Article Persistence (live verified)
 - Stage 5 / Complete Article Assembly — Milestone C3: Writer Section Choice (live verified)
+- Stage 5 / Complete Article Assembly — Milestone C4: Article Check Units, Option A (merged to
+  `master`; not deployed, not production-verified)
 
 **C2 notes:** production migration applied (Supabase `20260923043554_create_articles`);
 production deployment verified; live Version 1 creation and Version 2 immutable save verified
@@ -38,8 +40,21 @@ selected; the Writer drafted exactly that section, with no fallback to section 0
 stayed active and unsupported details were marked NEEDS EVIDENCE; the selected section saved
 successfully as draft Version 1. No fact-check, approval or publication side effect occurred.
 
-**Next planned work (not started):** Stage 5 / Complete Article Assembly —
-Milestone C4: Article Check Units.
+**C4 notes:** an article version is fact-checked in bounded units, never as one prompt: blocks
+(metadata, lead-introduction, each H2 section, FAQs, CTA) cut into parts of at most 10 numbered
+statements and 6,000 bytes, at most 150 units per version, keys `<block>:<part>`; heading context
+is never checked twice; a unit passes only when every statement S1 … Sn is placed exactly once and
+nothing is partial, unsupported or unverifiable. Results bind to one exact article version; the
+article moves from `drafting` to `checked` only when its current version's unit set is complete
+and all passed — never to `approved`. Verified locally: full test suite 1,354 passed; focused C4
+tests 74 passed; typecheck, lint and production build passed; migration
+`20260923180000_create_article_check_units.sql` validated with 60 assertions on an isolated
+PostgreSQL 16. **Pending:** the production migration has not been applied; the application has
+not been deployed; no browser verification and no live AI verification have been performed.
+
+**Next planned work:** the C4 production release — apply the C4 migration, then deploy, then
+read-only verification — each step only with explicit user approval. Milestone C5 has not
+started and is not planned here.
 
 **Current safety boundaries:**
 
@@ -48,6 +63,8 @@ Milestone C4: Article Check Units.
 - The current production draft, Version 2, remains **Needs review**.
 - There is no active publication proposal for Version 2.
 - The content workflow has no Create PR, Merge, Deploy or Publish control.
+- The C4 migration (`20260923180000_create_article_check_units.sql`) is not applied in
+  production; it must be applied before the C4 application code is deployed.
 - Any external write requires explicit user approval (§6).
 
 Update this section at every Git checkpoint that changes the stage, the next planned
@@ -319,7 +336,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C1 | Complete Article Assembly: Pure Article Contract | Complete, live verified |
 | Stage 5 / C2 | Complete Article Assembly: Article Persistence | Complete, live verified |
 | Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Complete, live verified |
-| Stage 5 / C4 | Complete Article Assembly: Article Check Units | Next, not started |
+| Stage 5 / C4 | Complete Article Assembly: Article Check Units | Merged to `master`; production migration and deployment pending |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Work beyond C4 is decided
