@@ -10,8 +10,8 @@ are complete; next planned is Milestone C4 (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: the Milestone C3 merge (`claude/writer-section-choice-c3-final`), on top of
-`8c0ef1e72cf7779c461b66cbd338636ce01e0288`.
+GitHub `master`: the Milestone C3 merge (`claude/writer-section-choice-c3-final`),
+`e00251c5c263a6f37ba71f9e69580256b2a022a7`.
 
 **Completed content-workflow stages:**
 
@@ -23,8 +23,7 @@ GitHub `master`: the Milestone C3 merge (`claude/writer-section-choice-c3-final`
 - Stage 5B: website artifact dry-run
 - Stage 5 / Complete Article Assembly — Milestone C1: Pure Article Contract (live verified)
 - Stage 5 / Complete Article Assembly — Milestone C2: Article Persistence (live verified)
-- Stage 5 / Complete Article Assembly — Milestone C3: Writer Section Choice (awaiting live
-  verification)
+- Stage 5 / Complete Article Assembly — Milestone C3: Writer Section Choice (live verified)
 
 **C2 notes:** production migration applied (Supabase `20260923043554_create_articles`);
 production deployment verified; live Version 1 creation and Version 2 immutable save verified
@@ -33,7 +32,11 @@ source provenance verified. No approval, fact-check, proposal or publication is 
 
 **C3 notes:** the Writer's `section-draft` task requires an operator-chosen, zero-based
 `sectionIndex`; there is no fallback to the first section, and a run queued without one is
-refused at execution. No migration. Not yet verified live in a browser.
+refused at execution. No migration. Live verification: the explicit section chooser was
+verified in production; the non-first section index 2 ("Where a person still belongs") was
+selected; the Writer drafted exactly that section, with no fallback to section 0; grounding rules
+stayed active and unsupported details were marked NEEDS EVIDENCE; the selected section saved
+successfully as draft Version 1. No fact-check, approval or publication side effect occurred.
 
 **Next planned work (not started):** Stage 5 / Complete Article Assembly —
 Milestone C4: Article Check Units.
@@ -315,7 +318,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5B | Website artifact dry-run | Complete |
 | Stage 5 / C1 | Complete Article Assembly: Pure Article Contract | Complete, live verified |
 | Stage 5 / C2 | Complete Article Assembly: Article Persistence | Complete, live verified |
-| Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Complete, awaiting live verification |
+| Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Complete, live verified |
 | Stage 5 / C4 | Complete Article Assembly: Article Check Units | Next, not started |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
