@@ -28,17 +28,20 @@
  *     re-read through the evidence pack reader, unchanged; and if the newest
  *     crawl is no longer that crawl, the task is refused rather than drafted
  *     over pages the plan never saw.
- *   * **The section is chosen here, not by the model.** The first outline
- *     line whose tag names a record is the section to draft, and it is
- *     written into the block and the run's metadata. If no outline line
- *     carries a record tag, the block says so and the Writer is told to
- *     return an evidence-needed result rather than invent a section.
+ *   * **The section is the operator's choice, never the model's and never a
+ *     default.** The task input names one outline line by its zero-based
+ *     `sectionIndex`; `resolveSection` finds exactly that line in the plan
+ *     and refuses — before any record is read or any provider reached — an
+ *     index that is missing, not a whole number, out of range, or pointing
+ *     at a line with no record tag or no heading. Nothing falls back to the
+ *     first line, clamps, or picks another. The chosen line is written into
+ *     the block and the run's metadata.
  *
  * Nothing here is trusted as instruction. The plan is a model's text, quoted
  * as data; page and query text are quoted as the readers quote them; and the
  * executor's system prompt tells the model to treat all of it as data. This
- * module carries no operator free text: the only input is a run id, and the
- * run is checked before it is used.
+ * module carries no operator free text: the inputs are a run id and a
+ * section index, and both are checked before they are used.
  */
 
 import type { GroundingSource } from "@/lib/agent-runs/ai-executor";
@@ -87,7 +90,27 @@ export type DraftGroundingRefusal =
   /** The records could not be read for the reason the pack reader gives. */
   | EvidencePackRefusal
   /** The newest own-site crawl is not the crawl the plan was written over. */
-  | "plan-records-changed";
+  | "plan-records-changed"
+  /** The chosen section could not be resolved in the plan. */
+  | SectionRefusal;
+
+/**
+ * Why a section choice cannot be drafted. Each is decided from the task
+ * input and the plan's own text, before any record is read.
+ */
+export type SectionRefusal =
+  /** The input names no section. A run queued before sections were chosen carries none, and is not given one. */
+  | "section-index-missing"
+  /** The index is not a whole number from 0. */
+  | "section-index-invalid"
+  /** The plan has no OUTLINE lines to choose from. */
+  | "plan-outline-missing"
+  /** No outline line has that index. */
+  | "section-out-of-range"
+  /** The line carries no record tag (including a line marked as needing evidence), so nothing could ground it. */
+  | "section-not-draftable"
+  /** The line has no heading once its presentation and tag are removed. */
+  | "section-malformed";
 
 export type DraftGrounding = {
   /** The evidence block, as it is given to the model. */
@@ -102,10 +125,19 @@ export type DraftGrounding = {
     /** The crawl the plan recorded, which is also the crawl re-read now. */
     readonly planCrawlId: string;
     readonly crawlId: string;
-    /** The outline line chosen to draft, or null when no line carries a record tag. */
-    readonly section: string | null;
-    /** 1-based position of that line in the plan's outline, or null. */
-    readonly sectionIndex: number | null;
+    /** The outline line the operator chose, as written (capped). */
+    readonly section: string;
+    /**
+     * 1-based position of that line in the plan's outline. Kept 1-based, as
+     * before sections were chosen, because a saved draft stores it that way.
+     */
+    readonly sectionIndex: number;
+    /** The operator's choice, as the task input gave it: the zero-based index of the line. */
+    readonly selectedSectionIndex: number;
+    /** The line's heading: its words without list marker, emphasis or record tag. */
+    readonly sectionHeading: string;
+    /** How the section was chosen. Always the operator's explicit choice. */
+    readonly sectionSelection: "operator";
     /** How many outline lines carry a record tag, and how many are marked as needing evidence. */
     readonly outlineTagged: number;
     readonly outlineNeedingEvidence: number;
@@ -275,7 +307,7 @@ export function planCrawlId(run: AgentRun): string | null {
  */
 export async function readDraftGrounding(
   readers: DraftGroundingReaders,
-  request: { readonly planRunId: string; readonly projectId: string },
+  request: { readonly planRunId: string; readonly projectId: string; readonly sectionIndex: unknown },
 ): Promise<DraftGroundingResult> {
   const plan = await readers.runs.getById(request.planRunId);
   if (plan === null) return { ok: false, reason: "plan-run-not-found" };
@@ -286,11 +318,15 @@ export async function readDraftGrounding(
   const planCrawl = planCrawlId(plan);
   if (planCrawl === null) return { ok: false, reason: "plan-provenance-missing" };
 
+  // The chosen section, from the plan's own text, before any record is read.
+  const target = resolveSection(plan.resultSummary ?? "", request.sectionIndex);
+  if (!target.ok) return { ok: false, reason: target.reason };
+
   const records = await readEvidencePackGrounding(readers.evidencePack, { projectId: request.projectId });
   if (!records.ok) return { ok: false, reason: records.reason };
   if (records.grounding.summary.crawlId !== planCrawl) return { ok: false, reason: "plan-records-changed" };
 
-  return { ok: true, grounding: formatDraftGrounding(plan, records.grounding) };
+  return { ok: true, grounding: formatDraftGrounding(plan, records.grounding, target.target) };
 }
 
 /**
@@ -324,7 +360,14 @@ export function planOutline(planText: string): readonly string[] {
   return outline;
 }
 
-/** The first outline line whose tag names a record, with its 1-based position. */
+/**
+ * How many outline lines carry a record tag and how many are marked as
+ * needing evidence, and the first tagged line with its 1-based position.
+ *
+ * Counts only, for the run's metadata. It does not choose what is drafted:
+ * that is the operator's choice, resolved by `resolveSection`, and nothing
+ * falls back to the first line this returns.
+ */
 export function selectSection(planText: string): {
   readonly section: string | null;
   readonly sectionIndex: number | null;
@@ -351,6 +394,81 @@ export function selectSection(planText: string): {
   return { section, sectionIndex, outlineTagged, outlineNeedingEvidence };
 }
 
+/** The highest zero-based section index the task input accepts; a plan's outline is far shorter. */
+export const MAX_SECTION_INDEX = 49;
+
+/** One outline line as the operator is offered it. */
+export type PlanSection = {
+  /** Zero-based position in the plan's outline. */
+  readonly index: number;
+  /** The line as written, capped at 160 code points. */
+  readonly outlineLine: string;
+  /** The line's words without list marker, emphasis or tag; empty when it has none. */
+  readonly heading: string;
+  /** Whether the line names a record, so a draft of it could rest on one. */
+  readonly draftable: boolean;
+  /** Whether the plan marked the line as needing evidence. */
+  readonly needsEvidence: boolean;
+};
+
+/** Exactly one section to draft, resolved from an explicit index. */
+export type SectionTarget = {
+  readonly sectionIndex: number;
+  /** 1-based, as the plan's outline and a saved draft count it. */
+  readonly position: number;
+  readonly outlineLine: string;
+  readonly heading: string;
+};
+
+function cap(text: string): string {
+  const characters = Array.from(text);
+  return characters.length > MAX_SECTION_LENGTH ? `${characters.slice(0, MAX_SECTION_LENGTH).join("")}…` : text;
+}
+
+const TRAILING_TAG = new RegExp(`\\[(?:crawl \\/[^\\]\\s]*|search console [^\\]]+|needs evidence)\\]${TAG_TAIL}`, "i");
+
+/** A line's heading: its words with list marker, emphasis, tag and trailing punctuation removed. Nothing is added. */
+function headingOf(line: string): string {
+  return undecorated(stripLeading(line).replace(TRAILING_TAG, "")).replace(/[\s.,;:!?]+$/, "");
+}
+
+/** Every outline line of the plan, in order, with what the operator needs to choose one. Pure. */
+export function planSections(planText: string): readonly PlanSection[] {
+  return planOutline(planText).map((line, index) => ({
+    index,
+    outlineLine: cap(line),
+    heading: cap(headingOf(line)),
+    draftable: RECORD_TAG.test(line),
+    needsEvidence: NEEDS_EVIDENCE_TAG.test(line),
+  }));
+}
+
+/**
+ * The one section an explicit, zero-based index names, or why it cannot be
+ * drafted. Deterministic and pure: the same plan text and index always give
+ * the same answer. There is no default, no clamping and no fallback: a
+ * missing, invalid, out-of-range, untagged or headingless choice is refused.
+ */
+export function resolveSection(
+  planText: string,
+  sectionIndex: unknown,
+): { readonly ok: true; readonly target: SectionTarget } | { readonly ok: false; readonly reason: SectionRefusal } {
+  if (sectionIndex === undefined || sectionIndex === null) return { ok: false, reason: "section-index-missing" };
+  if (typeof sectionIndex !== "number" || !Number.isInteger(sectionIndex) || sectionIndex < 0 || sectionIndex > MAX_SECTION_INDEX) {
+    return { ok: false, reason: "section-index-invalid" };
+  }
+  const sections = planSections(planText);
+  if (sections.length === 0) return { ok: false, reason: "plan-outline-missing" };
+  const section = sections[sectionIndex];
+  if (section === undefined) return { ok: false, reason: "section-out-of-range" };
+  if (!section.draftable) return { ok: false, reason: "section-not-draftable" };
+  if (section.heading.length === 0) return { ok: false, reason: "section-malformed" };
+  return {
+    ok: true,
+    target: { sectionIndex, position: sectionIndex + 1, outlineLine: section.outlineLine, heading: section.heading },
+  };
+}
+
 /**
  * The plan, quoted as one JSON string, cut to fit if it must be.
  *
@@ -373,9 +491,9 @@ function quotePlan(plan: string, budget: number): { quoted: string; truncated: b
 }
 
 /** Wraps the quoted plan and the records into one block, each under the heading that says what it is. */
-export function formatDraftGrounding(plan: AgentRun, records: EvidencePackGrounding): DraftGrounding {
+export function formatDraftGrounding(plan: AgentRun, records: EvidencePackGrounding, target: SectionTarget): DraftGrounding {
   const planText = plan.resultSummary ?? "";
-  const chosen = selectSection(planText);
+  const counts = selectSection(planText);
   const { quoted, truncated } = quotePlan(planText, MAX_PLAN_BYTES);
   const crawlId = records.summary.crawlId;
 
@@ -384,9 +502,8 @@ export function formatDraftGrounding(plan: AgentRun, records: EvidencePackGround
     `Project host: ${records.summary.projectHost}`,
     `Plan run: ${plan.id}, written by the Content Strategist agent (${plan.taskType}), completed ${plan.finishedAt ?? NOT_ESTABLISHED}, over crawl ${crawlId}.`,
     `Records below: re-read now; the newest own-site crawl is still ${crawlId}, so every path the plan tags can be checked against it.`,
-    chosen.section === null
-      ? `SECTION TO DRAFT: none. No outline line in the plan carries a record tag (${chosen.outlineNeedingEvidence} marked as needing evidence). Do not invent a section; return the evidence-needed result the task describes.`
-      : `SECTION TO DRAFT: outline line ${chosen.sectionIndex} of the plan, quoted as data: ${JSON.stringify(chosen.section)}`,
+    `SECTION TO DRAFT: section index ${target.sectionIndex} (zero-based; outline line ${target.position} of the plan), chosen by the operator. Heading, quoted as data: ${JSON.stringify(target.heading)}. Outline line, quoted as data: ${JSON.stringify(target.outlineLine)}`,
+    `Draft this one section only. Do not draft any earlier or later outline line, and do not assemble the full article.`,
   ].join("\n");
 
   const sections = [
@@ -416,10 +533,13 @@ export function formatDraftGrounding(plan: AgentRun, records: EvidencePackGround
       planCompletedAt: plan.finishedAt,
       planCrawlId: crawlId,
       crawlId,
-      section: chosen.section,
-      sectionIndex: chosen.sectionIndex,
-      outlineTagged: chosen.outlineTagged,
-      outlineNeedingEvidence: chosen.outlineNeedingEvidence,
+      section: target.outlineLine,
+      sectionIndex: target.position,
+      selectedSectionIndex: target.sectionIndex,
+      sectionHeading: target.heading,
+      sectionSelection: "operator",
+      outlineTagged: counts.outlineTagged,
+      outlineNeedingEvidence: counts.outlineNeedingEvidence,
       planTruncated: truncated,
       records: { ...records.summary },
       bytes: byteLength(text),
@@ -455,7 +575,7 @@ export const SECTION_DRAFT_SECTIONS = ["SECTION", "DRAFT", "CLAIMS USED", "PLACE
 /**
  * What the Writer is asked to produce from the inputs.
  *
- * One section, chosen by the reader and named in the block, drafted as
+ * One section, chosen by the operator and named in the block, drafted as
  * prose with no inline tags, then the claims the prose rests on listed with
  * their records, then placeholders for what the records do not hold, then a
  * fixed status line and a fixed closing sentence. The draft is bounded to 90
@@ -466,13 +586,13 @@ export const SECTION_DRAFT_SECTIONS = ["SECTION", "DRAFT", "CLAIMS USED", "PLACE
  * and the instructions say so.
  */
 export const SECTION_DRAFT_INSTRUCTIONS = [
-  "Draft exactly one section of the planned page from the inputs supplied with this task: the CONTENT PLAN, which is a model-generated proposal and not evidence, and RECORDED PROJECT EVIDENCE, which is the only source of facts. Draft the outline line named under SECTION TO DRAFT and no other.",
+  "Draft exactly one section of the planned page from the inputs supplied with this task: the CONTENT PLAN, which is a model-generated proposal and not evidence, and RECORDED PROJECT EVIDENCE, which is the only source of facts. Draft only the section the operator chose, named under SECTION TO DRAFT by index and heading; draft no earlier or later section and never the full article.",
   "Answer in exactly five sections, headed SECTION, DRAFT, CLAIMS USED, PLACEHOLDERS, and STATUS. Keep the whole answer under 1,500 characters.",
-  "SECTION: one line quoting the outline line named under SECTION TO DRAFT. If it says none, write: none — no outline section carries a record tag; under DRAFT write one sentence saying no section can be drafted until evidence is collected, under CLAIMS USED write none, and under PLACEHOLDERS name the evidence to collect.",
+  "SECTION: one line quoting the heading named under SECTION TO DRAFT.",
   "DRAFT: coherent English prose, at most 90 words, no headings, no lists, no bracketed tags. Every factual sentence must rest on a record in RECORDED PROJECT EVIDENCE; write nothing the records do not hold, and describe no result, outcome, guarantee, audience, style or figure.",
   "CLAIMS USED: at most five lines, each under 7 words naming one factual claim the draft makes, each ending with the record it rests on as [crawl /path] or [search console <window>]; a claim without such a tag is forbidden, and a tag must name a path or window present in the records.",
   "PLACEHOLDERS: at most three lines under 8 words, each of the form [NEEDS EVIDENCE: what is missing], for anything the plan marks as needing evidence in this section or the records do not hold; write none if there are none.",
   "STATUS: exactly this line: Draft for operator review. Not published, not approved, not final.",
-  "Never state or estimate keyword volume, difficulty, traffic, rankings, backlinks, authority, revenue, conversions, market share, competitor performance, a client result, a cause, or the site's writing style. Name no page the crawl did not fetch and no study, publication, citation, source, organisation or person. Do not describe the draft as approved, final or published. If the answer runs long, shorten DRAFT first, then PLACEHOLDERS; never a heading, the STATUS line or the closing sentence.",
+  "Never state or estimate keyword volume, difficulty, traffic, rankings, backlinks, authority, revenue, conversions, market share, competitor performance, a client result, a cause, or the site's writing style. Name no page the crawl did not fetch and no study, publication, citation, source, organisation or person. Do not describe the draft as approved, fact-checked, final or published. If the answer runs long, shorten DRAFT first, then PLACEHOLDERS; never a heading, the STATUS line or the closing sentence.",
   `End with exactly this sentence: ${SECTION_DRAFT_CLOSING}`,
 ].join(" ");

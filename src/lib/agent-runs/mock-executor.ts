@@ -157,6 +157,7 @@ export const mockAgentExecutor: AgentExecutor = {
           taskType: task.taskType,
           attempt: task.attempt,
           planRunId: typeof task.input.planRunId === "string" ? task.input.planRunId : null,
+          sectionIndex: typeof task.input.sectionIndex === "number" ? task.input.sectionIndex : null,
         };
         return {
           summary: `Simulated section draft by ${subject}. The mock executor read no plan and no record, and drafted nothing; this is placeholder output, not a draft.`,

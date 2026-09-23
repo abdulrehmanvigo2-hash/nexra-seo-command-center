@@ -650,7 +650,9 @@ Director's reader and the panel refuse it as `source-task-not-allowed`.
 `section-draft` is the Writer's first task, the first to declare the
 `draft` policy, and the second path by which one agent's output reaches
 another agent's prompt. The input names one completed content plan by run
-id and nothing else. The Writer-specific reader
+id and, as a required zero-based `sectionIndex` (0–49), the one outline
+section the operator chose (Stage 5, milestone C3); nothing else. The
+Writer-specific reader
 (`src/lib/content/draft-grounding.ts`) reads the plan by id and checks its
 project against the Writer's run before its task, state, provenance or text
 is looked at (`plan-run-not-found`, `plan-run-not-in-project`); then that it
@@ -659,7 +661,15 @@ kept apart from the Director's), completed (`plan-run-unfinished`,
 `plan-run-not-completed`), with a result (`plan-run-no-result`), executed by
 a model and not simulated (`plan-run-simulated`), grounded
 (`plan-run-not-grounded`), and carrying the evidence-pack crawl it was
-written over (`plan-provenance-missing`). Only then are the records read,
+written over (`plan-provenance-missing`). Then the chosen section is
+resolved in the plan's own outline by `resolveSection`, with no default, no
+clamping and no fallback to the first line: a missing index
+(`section-index-missing` — which is also how a run queued before sections
+were chosen is answered), an invalid one (`section-index-invalid`), a plan
+with no outline (`plan-outline-missing`), an index past its end
+(`section-out-of-range`), a line with no record tag, including one marked
+as needing evidence (`section-not-draftable`), and a line with no heading
+(`section-malformed`) are all refused. Only then are the records read,
 through the evidence pack reader unchanged, with its refusals propagated;
 and if the newest own-site crawl is no longer the crawl the plan recorded,
 the task is refused as `plan-records-changed` rather than drafted over pages
@@ -667,11 +677,16 @@ the plan never saw. Every refusal is decided before anything is formatted
 and before any provider is reached.
 
 The block is headed as content draft inputs and names the project host, the
-plan run and its crawl, and the section to draft: the first outline line of
-the plan whose tag names a record (`[crawl /path]` or `[search console
-<window>]`), chosen by the reader and quoted as data, or "none" with an
-instruction to return an evidence-needed result rather than invent a
-section. The reader finds the outline by its heading's words, not its
+plan run and its crawl, and the section to draft: the operator's chosen
+outline line, by zero-based index, 1-based outline position and heading,
+each quoted as data, with the instruction to draft that section only — no
+earlier or later line and never the full article. Only a line whose tag
+names a record (`[crawl /path]` or `[search console <window>]`) can be
+chosen. The run's metadata keeps `section` and the 1-based `sectionIndex` a
+saved draft reads, and adds `selectedSectionIndex` (zero-based),
+`sectionHeading` and `sectionSelection: "operator"`. The Writer control
+lists the plan's outline lines by index and heading and starts with none
+chosen. The reader finds the outline by its heading's words, not its
 presentation: a markdown hash or list marker before `OUTLINE`, emphasis
 around it, a colon or dash after it, its letter case, and a first item
 sharing its line are all tolerated, as are blank lines between items,
