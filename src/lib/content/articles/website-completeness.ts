@@ -13,6 +13,11 @@
  * to the article's own later fact-check and approval, of its own exact
  * version, and are reported here as not established.
  *
+ * Pinned to `nexra-ai-blog-tsx/1`, the one audited template: the field
+ * lists and the mapping below are that template's, so the function takes no
+ * template argument and cannot label a report with any other. Another
+ * template would need its own audit and its own mapping.
+ *
  * Nothing is rendered: C1 produces no TSX and changes nothing about the
  * Milestone B dry-run.
  *
@@ -24,7 +29,9 @@ import { validateArticleContent } from "@/lib/content/articles/validate";
 import { OPTIONAL_FIELDS, REQUIRED_FIELDS } from "@/lib/content/publications/website/article-contract";
 import { NEXRA_AI_BLOG_TEMPLATE, routeFor } from "@/lib/content/publications/website/template";
 import type { ValidatedArticleContent, WebsiteCompletenessReport, WebsiteFieldCoverage, WebsiteOptionalCoverage } from "@/types/content-article";
-import type { WebsiteTemplate } from "@/types/website-artifact";
+
+/** The only template this mapping describes. */
+const TEMPLATE = NEXRA_AI_BLOG_TEMPLATE;
 
 type RequiredMapping =
   | { readonly kind: "present"; readonly source: string }
@@ -72,8 +79,13 @@ function optionalCoverage(article: ValidatedArticleContent, key: string, label: 
   }
 }
 
-/** The coverage report for validated content against a pinned website template. */
-export function websiteCompleteness(article: ValidatedArticleContent, template: WebsiteTemplate = NEXRA_AI_BLOG_TEMPLATE): WebsiteCompletenessReport {
+/** Every section and subsection id the article has. */
+function sectionIds(article: ValidatedArticleContent): Set<string> {
+  return new Set(article.sections.flatMap((s) => [s.id, ...s.subsections.map((sub) => sub.id)]));
+}
+
+/** The coverage report for validated content against `nexra-ai-blog-tsx/1`. */
+export function websiteCompleteness(article: ValidatedArticleContent): WebsiteCompletenessReport {
   const checked = validateArticleContent(article);
   if (!checked.ok) throw new Error("websiteCompleteness: content is not valid article content");
   const content = checked.article;
@@ -84,7 +96,7 @@ export function websiteCompleteness(article: ValidatedArticleContent, template: 
   const publicationTime: WebsiteFieldCoverage[] = [];
   for (const field of REQUIRED_FIELDS) {
     const mapping = REQUIRED_MAPPING[field.key] ?? { kind: "missing", source: "No mapping from the article content model" };
-    const source = field.key === "canonical" ? `${mapping.source}: ${routeFor(template, content.slug)}` : mapping.source;
+    const source = field.key === "canonical" ? `${mapping.source}: ${routeFor(TEMPLATE, content.slug)}` : mapping.source;
     const coverage: WebsiteFieldCoverage = { key: field.key, label: field.label, source };
     if (mapping.kind === "present") presentRequired.push(coverage);
     else if (mapping.kind === "derived") derived.push(coverage);
@@ -93,7 +105,7 @@ export function websiteCompleteness(article: ValidatedArticleContent, template: 
   }
 
   return {
-    templateId: template.id,
+    templateId: TEMPLATE.id,
     presentRequired,
     missingRequired,
     derived,
@@ -103,6 +115,6 @@ export function websiteCompleteness(article: ValidatedArticleContent, template: 
     factCheck: "not-established",
     approval: "not-established",
     topicDecision: content.topicDecision,
-    internalLinks: checkInternalLinks(content.internalLinks),
+    internalLinks: checkInternalLinks(content.internalLinks, sectionIds(content)),
   };
 }

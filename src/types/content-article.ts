@@ -114,6 +114,8 @@ export type ArticleIssueCode =
   | "control-character"
   /** Text containing an unpaired UTF-16 surrogate. */
   | "invalid-unicode"
+  /** Text containing an invisible or direction-changing format character (Unicode Cf, U+2060–U+206F, U+034F). Refused, never stripped. */
+  | "invisible-character"
   /** Text that is not in Unicode Normalisation Form C. Refused, never normalised. */
   | "not-nfc"
   /** A slug, id or path that does not match its pattern. */
@@ -185,13 +187,19 @@ export type ArticleRecordMetadata = {
  */
 export type InternalLinkDestinationState = "verified" | "unverified";
 
+/**
+ * One link, checked. `syntaxValid` is true only when the path matches the
+ * internal-path syntax and the section id is one the article has; `issue`
+ * names the first rule broken otherwise.
+ */
 export type InternalLinkCheck = {
   readonly path: string;
   readonly sectionId: string;
-  /** Always true for a link in validated content: syntax is checked before this point. */
-  readonly syntaxValid: true;
   readonly destination: InternalLinkDestinationState;
-};
+} & (
+  | { readonly syntaxValid: true; readonly issue: null }
+  | { readonly syntaxValid: false; readonly issue: "path-format" | "unknown-section" }
+);
 
 /** How one field of the pinned website contract is covered by validated content. */
 export type WebsiteFieldCoverage = {

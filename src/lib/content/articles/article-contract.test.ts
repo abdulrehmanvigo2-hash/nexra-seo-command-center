@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import type { ArticleIssue, ValidatedArticleContent } from "../../../types/content-article.ts";
 import { REQUIRED_FIELDS } from "../publications/website/article-contract.ts";
+import { NEXRA_AI_BLOG_TEMPLATE } from "../publications/website/template.ts";
 import { ARTICLE_CANONICAL_FORMAT, canonicalArticleJson, readCanonicalArticle } from "./canonical.ts";
 import { articleContentSha256 } from "./content-hash.ts";
 import { checkInternalLinks, isInternalPathSyntax } from "./internal-links.ts";
@@ -291,8 +292,33 @@ describe("internal links", () => {
 
   test("valid syntax is never reported as a verified destination", () => {
     const article = valid();
-    assert.deepEqual(checkInternalLinks(article.internalLinks), [{ path: "/services#automation", sectionId: "where-it-stops", syntaxValid: true, destination: "unverified" }]);
-    assert.ok(websiteCompleteness(article).internalLinks.every((l) => l.destination === "unverified"));
+    assert.deepEqual(websiteCompleteness(article).internalLinks, [{ path: "/services#automation", sectionId: "where-it-stops", syntaxValid: true, issue: null, destination: "unverified" }]);
+  });
+});
+
+describe("checkInternalLinks checks its own input", () => {
+  const ids = new Set(["contact-us", "section-id"]);
+  const check = (path: string, sectionId = "contact-us") => checkInternalLinks([{ path, anchorText: "text", sectionId }], ids)[0];
+
+  test("an external URL, a protocol-relative URL and a relative path are not syntax-valid", () => {
+    for (const path of ["https://evil.example/x", "//example.com", "relative/path"]) {
+      assert.deepEqual(check(path), { path, sectionId: "contact-us", syntaxValid: false, issue: "path-format", destination: "unverified" }, path);
+    }
+  });
+
+  test("an unknown section id is not syntax-valid", () => {
+    assert.deepEqual(check("/contact", "nowhere"), { path: "/contact", sectionId: "nowhere", syntaxValid: false, issue: "unknown-section", destination: "unverified" });
+    assert.equal(checkInternalLinks([{ path: "/contact", anchorText: "text", sectionId: "contact-us" }], new Set())[0].syntaxValid, false, "with no ids, nothing is placed");
+  });
+
+  test("valid paths in a known section are syntax-valid and still unverified", () => {
+    assert.deepEqual(check("/contact"), { path: "/contact", sectionId: "contact-us", syntaxValid: true, issue: null, destination: "unverified" });
+    assert.deepEqual(check("/blog/example#section-id", "section-id"), { path: "/blog/example#section-id", sectionId: "section-id", syntaxValid: true, issue: null, destination: "unverified" });
+  });
+
+  test("malformed runtime values are refused, not assumed", () => {
+    const forged = [{ path: 42, anchorText: "x", sectionId: null }] as unknown as Parameters<typeof checkInternalLinks>[0];
+    assert.deepEqual(checkInternalLinks(forged, ids), [{ path: "", sectionId: "", syntaxValid: false, issue: "path-format", destination: "unverified" }]);
   });
 });
 
@@ -336,6 +362,97 @@ describe("text is never rewritten", () => {
     assertIssue(withField("title", "Café"), "title", "not-nfc");
     assertIssue(withField("title", "bad \ud800 text"), "title", "invalid-unicode");
     assert.equal(valid(withField("title", "Café")).title, "Café");
+  });
+});
+
+describe("invisible and direction-changing characters", () => {
+  const FORMAT_CHARACTERS: readonly (readonly [name: string, char: string])[] = [
+    ["U+00AD soft hyphen", "\u00ad"],
+    ["U+200B zero-width space", "\u200b"],
+    ["U+200C zero-width non-joiner", "\u200c"],
+    ["U+200D zero-width joiner", "\u200d"],
+    ["U+200E left-to-right mark", "\u200e"],
+    ["U+200F right-to-left mark", "\u200f"],
+    ["U+202A left-to-right embedding", "\u202a"],
+    ["U+202B right-to-left embedding", "\u202b"],
+    ["U+202C pop directional formatting", "\u202c"],
+    ["U+202D left-to-right override", "\u202d"],
+    ["U+202E right-to-left override", "\u202e"],
+    ["U+2060 word joiner", "\u2060"],
+    ["U+2061 function application", "\u2061"],
+    ["U+2064 invisible plus", "\u2064"],
+    ["U+2065 (unassigned, inside the refused range)", "\u2065"],
+    ["U+2066 left-to-right isolate", "\u2066"],
+    ["U+2069 pop directional isolate", "\u2069"],
+    ["U+206F nominal digit shapes", "\u206f"],
+    ["U+FEFF zero-width no-break space", "\ufeff"],
+    ["U+034F combining grapheme joiner", "\u034f"],
+    ["U+061C Arabic letter mark (Cf)", "\u061c"],
+    ["U+E0041 tag Latin capital A (Cf)", "\u{e0041}"],
+  ];
+
+  test("are refused in titles, never stripped", () => {
+    for (const [name, char] of FORMAT_CHARACTERS) {
+      assert.deepEqual(issuesOf(withField("title", `Missed${char}call`)), [{ path: "title", code: "invisible-character" }], name);
+    }
+  });
+
+  test("are refused in H2 and H3 headings", () => {
+    for (const [, char] of FORMAT_CHARACTERS) {
+      assertIssue(withSections([{ id: "one", heading: `One${char}`, paragraphs: ["Body."] }]), "sections[0].heading", "invisible-character");
+      const withSub = [{ id: "one", heading: "One", paragraphs: ["Body."], subsections: [{ id: "two", heading: `T${char}wo`, paragraphs: ["Body."] }] }];
+      assertIssue(withSections(withSub), "sections[0].subsections[0].heading", "invisible-character");
+    }
+  });
+
+  test("are refused in keywords and FAQ text", () => {
+    for (const [, char] of FORMAT_CHARACTERS) {
+      assertIssue(withField("keywords", ["missed call", `text${char}back`]), "keywords[1]", "invisible-character");
+      assertIssue(withField("faqs", [{ question: `Does it${char} work?`, answer: "Yes." }]), "faqs[0].question", "invisible-character");
+      assertIssue(withField("faqs", [{ question: "Does it work?", answer: `Y${char}es.` }]), "faqs[0].answer", "invisible-character");
+    }
+  });
+
+  test("are refused in every other text field, paragraphs and anchor text included", () => {
+    assertIssue(withField("lead", "A\u200blead."), "lead", "invisible-character");
+    assertIssue(withField("introduction", ["An\u202eintro."]), "introduction[0]", "invisible-character");
+    assertIssue(withSections([{ id: "one", heading: "One", paragraphs: ["Bo\ufeffdy."] }]), "sections[0].paragraphs[0]", "invisible-character");
+    assertIssue(withField("internalLinks", [{ path: "/", anchorText: "ho\u00adme", sectionId: "timing" }]), "internalLinks[0].anchorText", "invisible-character");
+  });
+
+  test("visible text is unaffected: single emoji, variation selectors, accents, other scripts", () => {
+    for (const text of ["Ready \u2705", "Love \u2764\ufe0f", "Caf\u00e9", "\u0645\u0631\u062d\u0628\u0627", "\u4e2d\u6587"]) assert.equal(valid(withField("title", text)).title, text);
+  });
+
+  test("a hidden character cannot make a duplicate look distinct", () => {
+    // Without the rule each pair would pass the duplicate check while looking identical.
+    assertIssue(withField("keywords", ["lead follow up", "lead\u200b follow up"]), "keywords[1]", "invisible-character");
+    const sections = [
+      { id: "one", heading: "Pricing", paragraphs: ["a."] },
+      { id: "two", heading: "Pri\u200dcing", paragraphs: ["b."] },
+    ];
+    assertIssue(withSections(sections), "sections[1].heading", "invisible-character");
+    assertIssue(withField("faqs", [{ question: "Is it fast?", answer: "Yes." }, { question: "Is it\u2060 fast?", answer: "Yes." }]), "faqs[1].question", "invisible-character");
+  });
+
+  test("case and compatibility forms count as the same text in duplicate checks", () => {
+    assertIssue(withField("keywords", ["lead", "\uff4c\uff45\uff41\uff44"]), "keywords[1]", "duplicate");
+    assertIssue(withField("keywords", ["office", "o\ufb03ce"]), "keywords[1]", "duplicate");
+    const sections = [
+      { id: "one", heading: "Pricing", paragraphs: ["a."] },
+      { id: "two", heading: "PRICING", paragraphs: ["b."] },
+    ];
+    assertIssue(withSections(sections), "sections[1].heading", "duplicate");
+    assertIssue(withField("faqs", [{ question: "Is it fast?", answer: "A." }, { question: "IS IT FAST?", answer: "B." }]), "faqs[1].question", "duplicate");
+  });
+
+  test("the comparison key never rewrites content", () => {
+    assert.deepEqual(valid(withField("keywords", ["\uff46\uff55\uff4c\uff4c width", "plain"])).keywords, ["\uff46\uff55\uff4c\uff4c width", "plain"]);
+  });
+
+  test("look-alike letters from another script are not detected (documented limit)", () => {
+    // Cyrillic U+0430 in place of Latin "a": different code points, accepted as written.
+    assert.deepEqual(valid(withField("keywords", ["lead", "le\u0430d"])).keywords, ["lead", "le\u0430d"]);
   });
 });
 
@@ -392,7 +509,7 @@ describe("canonical serialisation", () => {
 
 describe("Unicode and special characters", () => {
   test("are written as themselves and survive the round trip", () => {
-    const tricky = `Quotes " and \\ backslash, <script>alert('x')</script> & emoji 😀, Arabic مرحبا, café, 中文, zero-width\u200bjoin`;
+    const tricky = `Quotes " and \\ backslash, <script>alert('x')</script> & emoji 😀, Arabic مرحبا, café, 中文, Hebrew \u05e9\u05dc\u05d5\u05dd`;
     const article = valid({ ...withField("lead", tricky), title: "Ünïcödé — “smart” quotes" });
     const text = canonicalArticleJson(article);
     assert.ok(text.includes("😀"));
@@ -477,6 +594,17 @@ describe("source provenance", () => {
 });
 
 describe("website completeness mapping", () => {
+  test("is pinned to nexra-ai-blog-tsx/1: another template cannot get a report in its name", () => {
+    assert.equal(websiteCompleteness.length, 1, "the function takes the article only");
+    const other = { ...NEXRA_AI_BLOG_TEMPLATE, id: "other-site-blog/1", routeTemplate: "/articles/<slug>" };
+    const loose = websiteCompleteness as unknown as (article: ValidatedArticleContent, template: unknown) => ReturnType<typeof websiteCompleteness>;
+    const report = loose(valid(), other);
+    assert.equal(report.templateId, "nexra-ai-blog-tsx/1");
+    assert.ok(report.derived[0].source.endsWith("/blog/missed-call-text-back"));
+    assert.equal(JSON.stringify(report).includes("other-site-blog"), false);
+    assert.equal(JSON.stringify(report).includes("/articles/"), false);
+  });
+
   test("covers every required field of the pinned contract exactly once", () => {
     const report = websiteCompleteness(valid());
     const covered = [...report.presentRequired, ...report.missingRequired, ...report.derived, ...report.publicationTime].map((f) => f.key).sort();

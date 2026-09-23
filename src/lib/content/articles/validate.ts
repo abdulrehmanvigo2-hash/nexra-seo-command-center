@@ -12,10 +12,26 @@
  * - no leading or trailing whitespace (refused, not trimmed);
  * - no control characters, line breaks included (U+0000–U+001F, U+007F–U+009F,
  *   U+2028, U+2029): paragraphs are separate list entries, never embedded lines;
- * - well-formed Unicode (no unpaired surrogate) in Normalisation Form C, so the
- *   same visible text always has the same bytes;
+ * - no invisible or direction-changing formatting: every Unicode format
+ *   character (general category Cf — soft hyphen U+00AD, zero-width U+200B–
+ *   U+200D, direction marks U+200E/U+200F, embeddings and overrides U+202A–
+ *   U+202E, U+2060–U+206F, U+FEFF and the rest of Cf) and the combining
+ *   grapheme joiner U+034F. This also refuses the zero-width joiner inside
+ *   emoji sequences such as family emoji; single emoji and variation
+ *   selectors are unaffected;
+ * - well-formed Unicode (no unpaired surrogate) in Normalisation Form C, so a
+ *   character written precomposed or decomposed has one byte form;
  * - lengths are counted in Unicode code points, as PostgreSQL's
  *   `char_length` counts them.
+ *
+ * Nothing here detects look-alike characters from different scripts (a
+ * Cyrillic "а" for a Latin "a"): they are different code points, accepted
+ * as written, and give different bytes.
+ *
+ * Duplicate checks for keywords, headings and FAQ questions compare a key
+ * folded with NFKC and lowercasing, so compatibility forms (full-width
+ * letters, ligatures) and case differences count as the same text. The key
+ * is used only for comparison; the content keeps the author's text.
  *
  * Optional lists (`introduction`, `faqs`, `internalLinks`, a section's
  * `subsections`) may be omitted, which means empty; `null` is refused. Any
@@ -100,6 +116,7 @@ const SECTION_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const SURROUNDING_WHITESPACE = /^\s|\s$/;
+const INVISIBLE = /[\p{Cf}\u034F\u2060-\u206F]/u;
 
 type Record_ = Readonly<Record<string, unknown>>;
 
@@ -119,6 +136,7 @@ export function textIssue(value: unknown, max: number): ArticleIssueCode | null 
   if (typeof value !== "string") return "type";
   if (LONE_SURROGATE.test(value)) return "invalid-unicode";
   if (CONTROL.test(value)) return "control-character";
+  if (INVISIBLE.test(value)) return "invisible-character";
   if (SURROUNDING_WHITESPACE.test(value)) return "surrounding-whitespace";
   if (value.normalize("NFC") !== value) return "not-nfc";
   if (codePoints(value) > max) return "too-long";
@@ -179,6 +197,11 @@ class Collector {
     else if (!(allowed as readonly string[]).includes(value)) this.add(path, "unsupported-value");
     return value as T;
   }
+}
+
+/** The comparison key for duplicate checks. Never written back into content. */
+function sameTextKey(value: string): string {
+  return value.normalize("NFKC").toLowerCase();
 }
 
 function join(path: string, key: string): string {
@@ -246,7 +269,7 @@ function section(collector: Collector, value: unknown, path: string, ids: Set<st
   const subsections = collector
     .list(raw.subsections, ARTICLE_LIMITS.subsectionsPerSection, subsectionsPath, false)
     .map((entry, index) => subsection(collector, entry, `${subsectionsPath}[${index}]`, ids));
-  duplicates(collector, subsections, (s) => s.heading, (index) => `${subsectionsPath}[${index}].heading`);
+  duplicates(collector, subsections, (s) => sameTextKey(s.heading), (index) => `${subsectionsPath}[${index}].heading`);
   return { id, heading: h2, paragraphs: body, subsections };
 }
 
@@ -300,7 +323,7 @@ export function validateArticleContent(input: unknown): ArticleValidationResult 
   collector.onlyKeys(input, ARTICLE_KEYS, "");
 
   const keywords = collector.list(input.keywords, ARTICLE_LIMITS.keywords, "keywords", true).map((keyword, index) => collector.text(keyword, ARTICLE_LIMITS.keyword, `keywords[${index}]`));
-  duplicates(collector, keywords, (k) => k.toLowerCase(), (index) => `keywords[${index}]`);
+  duplicates(collector, keywords, sameTextKey, (index) => `keywords[${index}]`);
 
   const introduction = collector
     .list(input.introduction, ARTICLE_LIMITS.introduction, "introduction", false)
@@ -308,10 +331,10 @@ export function validateArticleContent(input: unknown): ArticleValidationResult 
 
   const ids = new Set<string>();
   const sections = collector.list(input.sections, ARTICLE_LIMITS.sections, "sections", true).map((entry, index) => section(collector, entry, `sections[${index}]`, ids));
-  duplicates(collector, sections, (s) => s.heading, (index) => `sections[${index}].heading`);
+  duplicates(collector, sections, (s) => sameTextKey(s.heading), (index) => `sections[${index}].heading`);
 
   const faqs = collector.list(input.faqs, ARTICLE_LIMITS.faqs, "faqs", false).map((entry, index) => faq(collector, entry, `faqs[${index}]`));
-  duplicates(collector, faqs, (f) => f.question, (index) => `faqs[${index}].question`);
+  duplicates(collector, faqs, (f) => sameTextKey(f.question), (index) => `faqs[${index}].question`);
 
   const internalLinks = collector.list(input.internalLinks, ARTICLE_LIMITS.internalLinks, "internalLinks", false).map((entry, index) => internalLink(collector, entry, `internalLinks[${index}]`, ids));
   duplicates(collector, internalLinks, (l) => (l.path === "" ? "" : `${l.sectionId}\u0000${l.path}`), (index) => `internalLinks[${index}]`);

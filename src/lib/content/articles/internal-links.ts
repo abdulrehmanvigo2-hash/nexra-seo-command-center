@@ -8,8 +8,8 @@
  * else is refused, not repaired.
  *
  * Syntax is all C1 can know. This product holds no inventory of the
- * destination's routes or anchors and does not invent one, so every link in
- * validated content is reported as `unverified`.
+ * destination's routes or anchors and does not invent one, so every link is
+ * reported as `unverified`, whether or not its syntax is valid.
  *
  * Pure.
  */
@@ -26,7 +26,19 @@ export function isInternalPathSyntax(value: unknown): value is string {
   return typeof value === "string" && value.length <= MAX_INTERNAL_PATH_LENGTH && INTERNAL_PATH.test(value);
 }
 
-/** Every link, in content order, as syntactically valid and destination-unverified. */
-export function checkInternalLinks(links: readonly ArticleInternalLink[]): InternalLinkCheck[] {
-  return links.map((link) => ({ path: link.path, sectionId: link.sectionId, syntaxValid: true, destination: "unverified" }));
+/**
+ * Checks every link, in order, against the path syntax and the article's own
+ * section and subsection ids. `syntaxValid` is true only when both hold; it
+ * is computed here from the input, never assumed from where the links came
+ * from. The destination is `unverified` in every case.
+ */
+export function checkInternalLinks(links: readonly ArticleInternalLink[], sectionIds: ReadonlySet<string>): InternalLinkCheck[] {
+  return links.map((link): InternalLinkCheck => {
+    const path: unknown = link.path;
+    const sectionId: unknown = link.sectionId;
+    const shown = { path: typeof path === "string" ? path : "", sectionId: typeof sectionId === "string" ? sectionId : "" };
+    if (!isInternalPathSyntax(path)) return { ...shown, syntaxValid: false, issue: "path-format", destination: "unverified" };
+    if (typeof sectionId !== "string" || !sectionIds.has(sectionId)) return { ...shown, syntaxValid: false, issue: "unknown-section", destination: "unverified" };
+    return { ...shown, syntaxValid: true, issue: null, destination: "unverified" };
+  });
 }

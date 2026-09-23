@@ -17,12 +17,19 @@
  *   There is no `null`, no absent key, no number, no boolean.
  * - Strings are written by `JSON.stringify`, whose output ECMAScript fixes:
  *   `"` and `\` are escaped, and every other character is written as itself.
- *   Validation has already refused control characters, unpaired surrogates
- *   and non-NFC text, so no `\u` escape and no lossy character can occur,
- *   and the same visible text always yields the same code points.
+ *   Validation has already refused control characters and unpaired
+ *   surrogates, so no `\u` escape and no lossy character can occur.
  * - The bytes are the text's UTF-8 encoding.
  * - Nothing else goes in: no id, version, status, actor, timestamp,
  *   publication date, provenance, randomness or environment value.
+ *
+ * The guarantee, precisely: equal validated content gives identical bytes,
+ * and any difference in content — one code point — gives different bytes.
+ * Because validation requires NFC and refuses invisible and direction-
+ * changing format characters, a precomposed/decomposed pair or a hidden
+ * character cannot make two visually identical texts differ. Look-alike
+ * characters from different scripts are not detected: they are different
+ * code points and give different bytes.
  *
  * PostgreSQL can recompute the hash from the stored text alone:
  * `encode(sha256(convert_to(canonical, 'UTF8')), 'hex')`. The text must be
