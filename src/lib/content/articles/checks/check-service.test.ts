@@ -108,6 +108,55 @@ describe("recording one unit", () => {
     assert.equal(again.record.checkedByRunId, retry.id);
   });
 
+  test("an answer that does not classify each statement exactly once is failed (coverage-incomplete), and a new run may check the unit again", async () => {
+    const { service, runs, store } = setup();
+    const n = unitsOf(V1)[2].statementCount;
+    const missing = checkRun({ version: V1, unitIndex: 2, summary: answer({ supported: n - 1, editorialExtra: ["- Observation: a note about no statement"] }) });
+    runs.push(missing);
+    const first = await record(service, missing);
+    assert.ok(first.ok, JSON.stringify(first));
+    assert.equal(first.record.status, "failed");
+    const failure = first.record.result;
+    assert.ok(failure !== null && failure.status === "failed" && failure.reason === "coverage-incomplete");
+    assert.deepEqual([failure.coverage?.missingStatements, failure.coverage?.observationCount], [[n], 1]);
+    assert.equal(store.writes[0].status, "failed", "the database is asked to store failed, which it accepts from a completed run");
+    assert.equal(store.articles[0].status, "drafting");
+
+    const retry = checkRun({ version: V1, unitIndex: 2, summary: answer({ supported: n }) });
+    runs.push(retry);
+    const again = await record(service, retry);
+    assert.ok(again.ok, JSON.stringify(again));
+    assert.equal(again.record.status, "passed");
+    assert.equal(again.record.checkedByRunId, retry.id);
+    assert.equal(store.rows.length, 1, "the same row moved forward");
+  });
+
+  test("the production metadata case: S6 unverifiable, seven editorial, one observation — needs-review, final, article still drafting and never approved", async () => {
+    const { service, runs, store } = setup();
+    assert.equal(unitsOf(V1)[0].statementCount, 8);
+    const numbers = [6, 1, 2, 3, 4, 5, 7, 8];
+    const run = checkRun({
+      version: V1,
+      unitIndex: 0,
+      summary: answer({ unverifiable: 1, editorial: 7, numberOf: (line) => numbers[line - 1], editorialExtra: ["- Observation: the unit reads as marketing copy"] }),
+    });
+    runs.push(run);
+    const result = await record(service, run);
+    assert.ok(result.ok, JSON.stringify(result));
+    assert.equal(result.record.status, "needs-review");
+    const verdict = result.record.result;
+    assert.ok(verdict !== null && verdict.status === "needs-review");
+    assert.deepEqual([verdict.classifiedCount, verdict.counts.editorial, verdict.counts.unverifiable, verdict.observations?.length, verdict.coverageComplete], [8, 7, 1, 1, true]);
+    assert.equal(result.articleStatusAdvanced, false);
+    assert.equal(store.articles[0].status, "drafting");
+    assert.equal(store.articles[0].approvedVersion, null);
+
+    const later = checkRun({ version: V1, unitIndex: 0, summary: answer({ supported: 8 }) });
+    runs.push(later);
+    const refused = await record(service, later);
+    assert.ok(!refused.ok && refused.reason === "already-recorded", "a needs-review result is final for its version");
+  });
+
   test("a simulated or ungrounded run records nothing", async () => {
     const { service, runs, store } = setup();
     const simulated = checkRun({ version: V1, unitIndex: 2, simulated: true });
@@ -119,7 +168,7 @@ describe("recording one unit", () => {
 
   test("a passed or needs-review unit is final for its version", async () => {
     const { service, runs } = setup();
-    const first = checkRun({ version: V1, unitIndex: 2, summary: answer({ supported: 1, unsupported: 1 }) });
+    const first = checkRun({ version: V1, unitIndex: 2, summary: answer({ supported: unitsOf(V1)[2].statementCount - 1, unsupported: 1 }) });
     const second = checkRun({ version: V1, unitIndex: 2, summary: answer({ supported: 5 }) });
     runs.push(first, second);
     assert.ok((await record(service, first)).ok);
@@ -133,7 +182,7 @@ describe("recording one unit", () => {
 describe("task validation at record time: exact unit, no fallback", () => {
   test("a run for a middle section records on that section only", async () => {
     const { service, runs } = setup();
-    const run = checkRun({ version: V1, unitIndex: 3, summary: answer({ supported: 1 }) });
+    const run = checkRun({ version: V1, unitIndex: 3, summary: answer({ supported: unitsOf(V1)[3].statementCount }) });
     runs.push(run);
     const result = await record(service, run);
     assert.ok(result.ok);
@@ -196,7 +245,7 @@ describe("version safety and the derived article state", () => {
   test("a needs-review unit keeps the article drafting", async () => {
     const { service, runs, store } = setup();
     const all = passAll(runs, V1);
-    all[4] = checkRun({ version: V1, unitIndex: 4, summary: answer({ supported: 1, partial: 1 }) });
+    all[4] = checkRun({ version: V1, unitIndex: 4, summary: answer({ supported: unitsOf(V1)[4].statementCount - 1, partial: 1 }) });
     runs.push(all[4]);
     for (const run of all) assert.ok((await record(service, run)).ok);
     assert.equal(store.articles[0].status, "drafting");

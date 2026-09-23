@@ -129,6 +129,13 @@ describe("panel", () => {
     assert.match(PANEL, /<ArticleCheckSection projectId=\{projectId\} article=\{article\} version=\{viewing\.version\}/);
   });
 
+  test("shows numbered statements classified, observations apart, and a coverage-incomplete failure with its detail", () => {
+    assert.match(SECTION, /numbered statements classified/);
+    assert.match(SECTION, /Observations — notes about no statement; not a classification and not evidence/);
+    assert.match(SECTION, /"coverage-incomplete": "the answer did not classify each numbered statement exactly once"/);
+    assert.match(SECTION, /the unit can be checked again with a new run/);
+  });
+
   test("offers no approval, proposal, publish, merge, deploy or delete control", () => {
     for (const source of [SECTION, PANEL]) {
       for (const forbidden of [/approveDraftVersion|approveArticle/, /preparePublicationProposal|PublicationProposalSection/, />\s*(Approve|Publish|Create PR|Merge|Deploy|Delete)\b/]) {

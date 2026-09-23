@@ -87,7 +87,10 @@ export type ArticleCheckUnitVerdict = {
   readonly counts: ArticleCheckCounts;
   /** Statements the unit holds, S1 … Sn. */
   readonly statementCount: number;
-  /** Lines the check placed under a heading. */
+  /**
+   * Statements the check classified: lines that name one of S1 … Sn. Never
+   * more than `statementCount`; observations are not counted.
+   */
   readonly classifiedCount: number;
   /** True only when every S1 … Sn was placed exactly once and no line was unnumbered or out of range. */
   readonly coverageComplete: boolean;
@@ -103,6 +106,12 @@ export type ArticleCheckUnitVerdict = {
   readonly unsupported: readonly FactCheckItem[];
   readonly unverifiable: readonly FactCheckItem[];
   readonly editorial: readonly FactCheckItem[];
+  /**
+   * Notes the check wrote under EDITORIAL as `Observation: …`, about no
+   * statement: never a classification, never evidence, never coverage.
+   * Absent on results recorded before observations were kept apart.
+   */
+  readonly observations?: readonly FactCheckItem[];
   readonly crawlId: string;
   readonly searchWindow: string | null;
   readonly checkedByRunId: string;
@@ -111,8 +120,27 @@ export type ArticleCheckUnitVerdict = {
   readonly recordedAt: string;
 };
 
-/** Why a unit's check did not produce a verdict. */
-export type ArticleCheckFailureReason = "run-failed" | "run-cancelled" | "output-malformed";
+/**
+ * Why a unit's check did not produce a verdict. `coverage-incomplete`: the
+ * answer did not classify each numbered statement exactly once, or carried
+ * a line that is neither a numbered classification nor an EDITORIAL
+ * observation — the check did not do its job, so it is no verdict.
+ */
+export type ArticleCheckFailureReason = "run-failed" | "run-cancelled" | "output-malformed" | "coverage-incomplete";
+
+/** What a `coverage-incomplete` answer got wrong, kept so an operator can see it. */
+export type ArticleCheckCoverageDefect = {
+  /** Statement numbers no line placed. */
+  readonly missingStatements: readonly number[];
+  /** Statement numbers more than one line placed. */
+  readonly duplicateStatements: readonly number[];
+  /** Lines that were neither a classification of S1 … Sn nor an EDITORIAL observation, as quoted: the first few, shortened. */
+  readonly invalidLines: readonly string[];
+  /** How many such lines there were in all. */
+  readonly invalidLineCount: number;
+  /** How many `Observation:` lines the answer carried. */
+  readonly observationCount: number;
+};
 
 export type ArticleCheckUnitFailure = {
   readonly status: "failed";
@@ -120,6 +148,8 @@ export type ArticleCheckUnitFailure = {
   readonly checkedByRunId: string;
   readonly recordedBy: string;
   readonly recordedAt: string;
+  /** Present only for `coverage-incomplete`. */
+  readonly coverage?: ArticleCheckCoverageDefect;
 };
 
 export type ArticleCheckUnitResult = ArticleCheckUnitVerdict | ArticleCheckUnitFailure;

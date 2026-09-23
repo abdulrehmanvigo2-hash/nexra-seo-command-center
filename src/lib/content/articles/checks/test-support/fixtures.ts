@@ -273,6 +273,10 @@ export function answer(lines: {
   editorial?: number;
   supportedTag?: string;
   numberOf?: (line: number) => number | null;
+  /** Raw lines written under EDITORIAL after its numbered lines, verbatim: observations or stray text. */
+  editorialExtra?: readonly string[];
+  /** Raw lines written under SUPPORTED after its numbered lines, verbatim. */
+  supportedExtra?: readonly string[];
 }): string {
   let line = 0;
   const label = () => {
@@ -280,12 +284,14 @@ export function answer(lines: {
     const n = lines.numberOf ? lines.numberOf(line) : line;
     return n === null ? "" : `S${n}: `;
   };
-  const list = (n: number | undefined, make: (prefix: string, i: number) => string) =>
-    n ? Array.from({ length: n }, (_, i) => make(label(), i)).join("\n") : "none";
+  const list = (n: number | undefined, make: (prefix: string, i: number) => string, extra: readonly string[] = []) => {
+    const out = [...(n ? Array.from({ length: n }, (_, i) => make(label(), i)) : []), ...extra];
+    return out.length > 0 ? out.join("\n") : "none";
+  };
   const tag = lines.supportedTag ?? "[crawl /services]";
   return [
     "SUPPORTED",
-    list(lines.supported, (p, i) => `- "${p}Supported statement ${i}." ${tag}`),
+    list(lines.supported, (p, i) => `- "${p}Supported statement ${i}." ${tag}`, lines.supportedExtra),
     "PARTIAL",
     list(lines.partial, (p, i) => `- "${p}Partial statement ${i}." — the page title holds part [crawl /services]`),
     "UNSUPPORTED",
@@ -293,7 +299,7 @@ export function answer(lines: {
     "UNVERIFIABLE",
     list(lines.unverifiable, (p, i) => `- "${p}Unverifiable statement ${i}." — an outcome these records cannot hold`),
     "EDITORIAL",
-    list(lines.editorial, (p, i) => `- "${p}Editorial line ${i}."`),
+    list(lines.editorial, (p, i) => `- "${p}Editorial line ${i}."`, lines.editorialExtra),
     "SUMMARY",
     "Counted lines under each heading.",
     FACT_CHECK_CLOSING,
