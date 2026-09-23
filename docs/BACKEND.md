@@ -1144,6 +1144,59 @@ any approval. `GET /api/content-drafts?project=…&draft=…` reads one draft
 with its versions (newest 100), so a page refresh shows the latest version
 without creating one.
 
+### Article persistence (Stage 5, Complete Article Assembly, milestone C2)
+
+An article is one complete page assembled from a completed content plan
+run and from exact, immutable section-draft versions. Its content is the C1
+contract (`src/lib/content/articles/validate.ts`) serialised canonically
+(`nexra-article-content/1`) and stored once, as text, with its SHA-256.
+Nothing here fact-checks, approves, proposes or publishes, and the panel
+says so: "Article persistence only — no fact-check, approval or
+publication occurs here."
+
+Tables (`20260923120000_create_articles.sql`): `nexra_articles` — project,
+source plan run (unique: one article per plan, so a repeated create answers
+`exists`), status (`drafting`, `checked`, `approved`, `archived`; no
+published state), current version, and approval columns that a later
+milestone may fill and that are never carried to a newer version;
+`nexra_article_versions` — canonical text and hash, bound by a CHECK
+constraint that recomputes the hash; `nexra_article_version_sources` — per
+version, 1–20 exact draft versions by id, number, row id and
+`nexra-content-draft-version/1` hash. An insert trigger re-checks every
+source row against the stored draft text and the article's project for any
+writer. Versions and sources are never updated or deleted; an article's
+project, plan run, creator and creation time never change, and it is
+archived, not deleted.
+
+Writes: `nexra_article_create` (parent, version 1 and its sources) and
+`nexra_article_save_version` (version N+1 and its sources, `current_version`
+advanced and status set to `drafting`, under the parent's row lock; a
+stale expected version is answered `stale` and an archived article
+`archived`). Both re-check the project, the plan run (this project's,
+completed, `content-plan-review` by the Content Strategist), the canonical
+text's format and hash, and every source, and write nothing when anything
+differs. service_role holds SELECT on the tables and EXECUTE on these two
+functions only.
+
+Service (`src/lib/content/articles/service.ts`): content and sources arrive
+as `unknown` and are validated with the C1 contract; the canonical text and
+hash are computed on the server; the plan run is read from the runtime;
+every source is read back by project, draft and number and its row id and
+hash compared. An edit identical to the current version, content and
+sources alike, is answered `unchanged`. A stored version is shown only
+after its text parses as canonical content and hashes to the stored value.
+Server Actions `createArticle` and `saveArticleVersion`
+(`app/(app)/projects/article-actions.ts`): operator confirmed first, every
+argument `unknown`, 10 creates and 60 saves per ten minutes per operator,
+one write in flight. Reads: `GET /api/content-articles?project=…`,
+operators only.
+
+Panel (`src/components/content/article-panel.tsx`), on the project
+workspace below the content plan: status, current version, version
+history, each version's content and source provenance, "New article"
+(version 1) and "Edit as version N+1". There is no fact-check, approval,
+proposal, publish or delete control.
+
 ## Crawl foundation
 
 An operator asks for a crawl of a stored project; the engine walks that
