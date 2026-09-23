@@ -608,8 +608,8 @@ const draftFactCheck: TaskTypeDefinition = {
   },
 };
 
-/** The largest check unit index an article can yield: 2 + 30 sections + FAQ + CTA, less one. */
-const MAX_ARTICLE_UNIT_INDEX = 33;
+/** The largest check unit index an article can yield: the 150-unit cap, less one (`MAX_ARTICLE_UNITS`). */
+const MAX_ARTICLE_UNIT_INDEX = 149;
 
 /**
  * The Research & Evidence agent's third task: one check unit of one saved
@@ -623,7 +623,8 @@ const MAX_ARTICLE_UNIT_INDEX = 33;
  * (`@/lib/content/articles/checks/grounding`) re-reads the article by
  * project and id, the version by number, checks the row id, regenerates the
  * units from the stored canonical text, and resolves the index among them,
- * refusing a missing, out-of-range or oversized unit with no fallback to
+ * refusing a missing or out-of-range unit, or a version refused whole (one
+ * statement too large for a unit, or more than 150 units), with no fallback to
  * another. The unit is quoted as the thing under check, never as evidence;
  * the records are re-read through the evidence pack reader, unchanged; the
  * answer uses the draft fact-check's six headings. Read-only, like every

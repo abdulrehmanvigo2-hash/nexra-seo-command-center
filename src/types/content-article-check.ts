@@ -5,39 +5,70 @@
  *
  * A unit is derived, never stored as content: its text is regenerated from
  * the version's stored canonical text every time, and only its identity
- * (index, kind, key), its hash and its check result are stored. Nothing here
- * is an approval or a publication.
+ * (index, kind, key, part), its hash and its check result are stored.
+ * Nothing here is an approval or a publication.
  */
 
 import type { FactCheckItem } from "@/types/content-draft";
 
-/** The five unit kinds, in the order they appear in an article. */
+/** The five block kinds, in the order they appear in an article. */
 export type ArticleCheckUnitKind = "metadata" | "lead-introduction" | "section" | "faq" | "cta";
 
+/** One statement under check, numbered from 1 within its unit. */
+export type ArticleCheckStatement = {
+  /** S1 … Sn within the unit. */
+  readonly n: number;
+  /** Where in the article it comes from, e.g. `paragraphs[1]` or `faqs[0].answer`. */
+  readonly field: string;
+  /** The statement's text, verbatim: one sentence, heading, question or field value. */
+  readonly text: string;
+};
+
+/** A heading shown for orientation only: checked in an earlier part of the same block, never in this one. */
+export type ArticleCheckContext = {
+  readonly field: string;
+  readonly text: string;
+};
+
 /**
- * One check unit of one article version.
+ * One check unit of one article version: one part of one block.
  *
- * `index` is the unit's zero-based position in the deterministic order
- * (metadata, lead-introduction, each H2 section in article order, faq when
- * the article has FAQs, cta). `key` is `metadata`, `lead-introduction`,
- * `section:<section id>`, `faq` or `cta`: derived from the content, never
- * from a database id.
+ * `index` is the unit's zero-based position across the whole article, in
+ * the fixed block order (metadata, lead-introduction, each H2 section in
+ * article order, faq when the article has FAQs, cta) and part order within
+ * each block. `block` is `metadata`, `lead-introduction`, `section:<id>`,
+ * `faq` or `cta`; `key` is `<block>:<part>`. All derived from the content,
+ * never from a database id.
  */
 export type ArticleCheckUnit = {
   readonly index: number;
   readonly kind: ArticleCheckUnitKind;
+  readonly block: string;
   readonly key: string;
-  /** What the operator reads: the section heading, or a fixed label. */
+  /** 1-based within the block. */
+  readonly part: number;
+  readonly partCount: number;
+  /** What the operator reads: the section heading, or a fixed label. Not part of the text or hash. */
   readonly label: string;
   /** The exact text under check: the unit's canonical `nexra-article-check-unit/1` serialisation. */
   readonly text: string;
-  /** How many statements the unit holds, as the check counts them. */
+  readonly statements: readonly ArticleCheckStatement[];
+  readonly context: readonly ArticleCheckContext[];
+  /** The number of statements, S1 … Sn. */
   readonly statementCount: number;
   /** The text's size in UTF-8 bytes. */
   readonly bytes: number;
-  /** Null when the unit fits one bounded check; otherwise why it is refused. Never truncated. */
-  readonly oversize: "too-many-statements" | "too-many-bytes" | null;
 };
+
+/**
+ * Why an article version cannot be checked at all. Deterministic, and never
+ * worked around by cutting text: every unit of such a version is refused.
+ */
+export type ArticleCheckPlanRefusal =
+  /** One statement, with its context, is larger than one unit may be. */
+  | "statement-too-large"
+  /** The version yields more units than one article may have. */
+  | "too-many-units";
 
 /** A stored unit's check status. `failed` is an execution or system failure, never a content verdict. */
 export type ArticleCheckUnitStatus = "pending" | "passed" | "needs-review" | "failed";
@@ -54,12 +85,18 @@ export type ArticleCheckCounts = {
 export type ArticleCheckUnitVerdict = {
   readonly status: "passed" | "needs-review";
   readonly counts: ArticleCheckCounts;
-  /** Statements the unit holds, as counted by the server. */
+  /** Statements the unit holds, S1 … Sn. */
   readonly statementCount: number;
   /** Lines the check placed under a heading. */
   readonly classifiedCount: number;
-  /** Whether every statement was placed: classifiedCount >= statementCount. */
+  /** True only when every S1 … Sn was placed exactly once and no line was unnumbered or out of range. */
   readonly coverageComplete: boolean;
+  /** Statement numbers no line placed. */
+  readonly missingStatements: readonly number[];
+  /** Statement numbers more than one line placed. */
+  readonly duplicateStatements: readonly number[];
+  /** Lines that named no statement number, or one outside S1 … Sn. */
+  readonly unnumberedLines: number;
   readonly summary: string;
   readonly supported: readonly FactCheckItem[];
   readonly partial: readonly FactCheckItem[];
@@ -96,6 +133,9 @@ export type ArticleCheckUnitRecord = {
   readonly unitIndex: number;
   readonly unitKind: ArticleCheckUnitKind;
   readonly unitKey: string;
+  readonly part: number;
+  readonly partCount: number;
+  readonly unitCount: number;
   readonly unitSha256: string;
   readonly status: ArticleCheckUnitStatus;
   /** Null while pending. */
@@ -120,12 +160,14 @@ export type ArticleCheckState = "unchecked" | "checking" | "needs-review" | "pas
 export type ArticleCheckUnitView = {
   readonly index: number;
   readonly kind: ArticleCheckUnitKind;
+  readonly block: string;
   readonly key: string;
+  readonly part: number;
+  readonly partCount: number;
   readonly label: string;
   readonly sha256: string;
   readonly statementCount: number;
   readonly bytes: number;
-  readonly oversize: ArticleCheckUnit["oversize"];
   /** The stored row for this unit of this version, or null when none was recorded. */
   readonly record: ArticleCheckUnitRecord | null;
 };
@@ -137,6 +179,8 @@ export type ArticleVersionChecks = {
   readonly version: number;
   readonly versionId: string;
   readonly contentSha256: string;
+  /** Non-null when no unit of this version can be checked. */
+  readonly refusal: ArticleCheckPlanRefusal | null;
   readonly units: readonly ArticleCheckUnitView[];
   readonly state: ArticleCheckState;
   readonly counts: { readonly total: number; readonly passed: number; readonly needsReview: number; readonly failed: number; readonly pending: number; readonly unchecked: number };

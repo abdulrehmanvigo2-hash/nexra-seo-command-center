@@ -584,8 +584,8 @@ export function factCheckRequest(
  * Whether one unit of one article version can be checked, and the body that
  * would ask for it.
  *
- * Offered for a unit of a live article that fits one bounded check and
- * carries no final result yet — the same conditions the server's reader
+ * Offered for a unit of a live article whose version the packer did not
+ * refuse, and that carries no final result yet — the same conditions the server's reader
  * refuses on, checked here so the control explains itself. The unit is the
  * operator's explicit choice and is never replaced by another. The server
  * remains the gate: it re-reads the article and the exact version and
@@ -594,16 +594,16 @@ export function factCheckRequest(
 export function articleCheckRequest(
   projectId: string | null,
   article: { readonly id: string; readonly status: string } | null,
-  version: { readonly version: number; readonly versionId: string } | null,
-  unit: { readonly index: number; readonly oversize: string | null; readonly record: { readonly status: string } | null } | null,
+  version: { readonly version: number; readonly versionId: string; readonly refusal: string | null } | null,
+  unit: { readonly index: number; readonly record: { readonly status: string } | null } | null,
 ): Queueability {
   if (!projectId) return { ok: false, why: "No project is selected." };
   if (article === null || version === null) return { ok: false, why: "Save an article first: there is nothing to check." };
-  if (unit === null) return { ok: false, why: "Choose a unit to check." };
   if (article.status === "archived") return { ok: false, why: "This article is archived, so it is not checked." };
-  if (unit.oversize !== null) {
-    return { ok: false, why: "This unit is larger than one check can cover; it is refused rather than cut. Split it in a new version to check it." };
+  if (version.refusal !== null) {
+    return { ok: false, why: "This version cannot be checked: a statement is too large for one unit, or it yields more than 150 units. Nothing is cut." };
   }
+  if (unit === null) return { ok: false, why: "Choose a unit to check." };
   if (unit.record !== null && (unit.record.status === "passed" || unit.record.status === "needs-review")) {
     return { ok: false, why: "This unit already carries a result for this version; a unit is checked once per version." };
   }

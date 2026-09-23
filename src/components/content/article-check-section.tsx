@@ -70,6 +70,11 @@ const FAILURE_LABEL = {
   "output-malformed": "the answer was not in the check's fixed form",
 } as const;
 
+const REFUSAL_MESSAGE: Readonly<Record<NonNullable<ArticleVersionChecks["refusal"]>, string>> = {
+  "statement-too-large": "This version cannot be checked: one statement is larger than a check unit may be.",
+  "too-many-units": "This version cannot be checked: it yields more than 150 check units.",
+};
+
 async function readChecks(projectId: string, articleId: string, version: number, signal?: AbortSignal): Promise<Load> {
   const url = `/api/content-article-checks?project=${encodeURIComponent(projectId)}&article=${encodeURIComponent(articleId)}&version=${version}`;
   const response = await fetch(url, { cache: "no-store", signal });
@@ -165,7 +170,13 @@ export function ArticleCheckSection({
         </p>
       )}
 
-      {checks !== null && (
+      {checks !== null && checks.refusal !== null && (
+        <p className="text-xs text-warning" role="status">
+          {REFUSAL_MESSAGE[checks.refusal]} Nothing is cut or skipped to make it fit; save a new version to check it.
+        </p>
+      )}
+
+      {checks !== null && checks.refusal === null && (
         <>
           <p className="text-[11px] text-fg-subtle">
             {checks.counts.passed} of {checks.counts.total} units passed · {checks.counts.needsReview} need review · {checks.counts.failed} failed ·{" "}
@@ -219,14 +230,18 @@ function UnitRow({ unit, active, onSelect }: { unit: ArticleCheckUnitView; activ
       <td className="py-1.5 pr-2 align-top">
         <span className="font-medium text-fg">{KIND_LABEL[unit.kind]}</span>
         {unit.kind === "section" && <span className="text-fg-muted"> · {unit.label}</span>}
+        {unit.partCount > 1 && (
+          <span className="text-fg-muted">
+            {" "}
+            · part {unit.part} of {unit.partCount}
+          </span>
+        )}
         <span className="block text-[11px] text-fg-subtle">
           {unit.key} · {unit.statementCount} statements · hash {unit.sha256.slice(0, 12)}…
         </span>
       </td>
       <td className="py-1.5 pr-2 align-top">
-        {unit.oversize !== null ? (
-          <Badge tone="warning">Too large to check</Badge>
-        ) : meta === null ? (
+        {meta === null ? (
           <Badge tone="neutral">Unchecked</Badge>
         ) : (
           <Badge tone={meta.tone}>{meta.label}</Badge>
@@ -271,7 +286,7 @@ function UnitCheck({
   unit: ArticleCheckUnitView;
   onRecorded: (checks: ArticleVersionChecks, message: string, advanced: boolean) => void;
 }) {
-  const request = articleCheckRequest(projectId, article, { version: checks.version, versionId: checks.versionId }, unit);
+  const request = articleCheckRequest(projectId, article, { version: checks.version, versionId: checks.versionId, refusal: checks.refusal }, unit);
   const check = useQueuedReview(request, `${checks.articleId}:${checks.version}:${unit.index}`, ARTICLE_CHECK_UNIT, projectId);
   const [recording, setRecording] = useState(false);
   const [recordNote, setRecordNote] = useState<string | null>(null);
@@ -321,9 +336,10 @@ function UnitCheck({
         <span className="font-medium text-fg">
           Unit {unit.index} · {KIND_LABEL[unit.kind]}
           {unit.kind === "section" ? ` · ${unit.label}` : ""}
+          {unit.partCount > 1 ? ` · part ${unit.part} of ${unit.partCount}` : ""}
         </span>
         <span className="text-fg-subtle">
-          {unit.statementCount} statements · {unit.bytes} bytes · hash {unit.sha256}
+          {unit.key} · {unit.statementCount} statements (S1–S{unit.statementCount}) · {unit.bytes} bytes · hash {unit.sha256}
         </span>
       </div>
 
@@ -381,7 +397,12 @@ function UnitResult({ result }: { result: ArticleCheckUnitResult }) {
         <span className="text-fg-subtle">
           Checked {stamp(result.checkedAt)} by run {result.checkedByRunId} against crawl {result.crawlId}
           {result.searchWindow ? ` and Search Console ${result.searchWindow}` : ""} · recorded {stamp(result.recordedAt)} · {result.classifiedCount} of{" "}
-          {result.statementCount} statements placed{result.coverageComplete ? "" : " (not every statement was placed)"}
+          {result.statementCount} statements placed
+          {result.coverageComplete
+            ? " (each exactly once)"
+            : ` (coverage incomplete${result.missingStatements.length > 0 ? `; missing S${result.missingStatements.join(", S")}` : ""}${
+                result.duplicateStatements.length > 0 ? `; repeated S${result.duplicateStatements.join(", S")}` : ""
+              }${result.unnumberedLines > 0 ? `; ${result.unnumberedLines} unnumbered line${result.unnumberedLines === 1 ? "" : "s"}` : ""})`}
         </span>
       </div>
       <p className="text-sm text-fg-muted">{result.summary}</p>

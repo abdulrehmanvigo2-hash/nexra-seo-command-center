@@ -18,11 +18,12 @@ import "server-only";
  *     parse as canonical C1 content and hash to its stored value.
  *   * **One exact unit.** The units are regenerated from that text and the
  *     index resolved among them. A missing, negative, fractional or
- *     out-of-range index is refused — never replaced by another unit — and
- *     so is a unit over the size bounds, which is never truncated. A unit
- *     already carrying a final result for this version is refused, and a
- *     stored row whose key or hash differs from the regenerated unit is
- *     refused as a mismatch.
+ *     out-of-range index is refused — never replaced by another unit. A
+ *     version the packer refuses whole (one statement too large for a unit,
+ *     or more than 150 units) has no unit to check; nothing is truncated. A
+ *     unit already carrying a final result for this version is refused, and
+ *     a stored row whose key, part counts or hash differ from the
+ *     regenerated unit is refused as a mismatch.
  *   * **The records are the evidence pack**, re-read now through the same
  *     reader, unchanged. Absence from them is reported as absence.
  *
@@ -37,7 +38,7 @@ import { readCanonicalArticle } from "@/lib/content/articles/canonical";
 import type { ArticleCheckStore } from "@/lib/content/articles/checks/contract";
 import { ARTICLE_CHECK_LIMITS_NOTE, ARTICLE_CHECK_SOURCE } from "@/lib/content/article-check-prompt";
 import { unitSha256 } from "@/lib/content/articles/checks/unit-hash";
-import { articleCheckUnits } from "@/lib/content/articles/checks/units";
+import { articleCheckPlan, MAX_ARTICLE_UNITS } from "@/lib/content/articles/checks/units";
 import { recordPathsOf, searchWindowOf } from "@/lib/content/drafts/fact-check-grounding";
 import { utf8Sha256 } from "@/lib/content/publications/content-hash";
 import {
@@ -46,7 +47,7 @@ import {
   type EvidencePackReaders,
   type EvidencePackRefusal,
 } from "@/lib/research/evidence-pack";
-import type { ArticleCheckUnit } from "@/types/content-article-check";
+import type { ArticleCheckPlanRefusal, ArticleCheckUnit } from "@/types/content-article-check";
 import type { Article } from "@/types/content-article-record";
 import type { StoredArticleVersion } from "@/lib/content/articles/checks/contract";
 
@@ -67,9 +68,11 @@ export type ArticleUnitRefusal =
   | "unit-index-missing"
   | "unit-index-invalid"
   | "unit-out-of-range"
-  /** The unit holds more statements or bytes than one check answers for; it is never cut. */
-  | "unit-too-large"
-  /** A stored row for this index names another key or hash than the regenerated unit. */
+  /** One statement of the version, with its context, is larger than a unit may be; nothing is cut. */
+  | "article-statement-too-large"
+  /** The version yields more units than one article may have. */
+  | "article-too-many-units"
+  /** A stored row for this index names another key, part counts or hash than the regenerated unit. */
   | "unit-hash-mismatch"
   /** The unit already carries a passed or needs-review result for this version. */
   | "unit-already-checked";
@@ -91,7 +94,10 @@ export type ArticleCheckGrounding = {
     readonly unitIndex: number;
     readonly unitCount: number;
     readonly unitKind: ArticleCheckUnit["kind"];
+    readonly unitBlock: string;
     readonly unitKey: string;
+    readonly part: number;
+    readonly partCount: number;
     readonly unitLabel: string;
     readonly unitSha256: string;
     readonly statementCount: number;
@@ -116,8 +122,8 @@ export type ResolvedUnit = {
   readonly sha256: string;
 };
 
-/** The largest unit index an article can have: 2 + 30 sections + FAQ + CTA − 1. */
-export const MAX_UNIT_INDEX = 33;
+/** The largest unit index an article can have. */
+export const MAX_UNIT_INDEX = MAX_ARTICLE_UNITS - 1;
 
 /**
  * The article and one exact version with its units, regenerated from the
@@ -129,7 +135,7 @@ export async function readArticleVersionUnits(
   checks: Pick<ArticleCheckStore, "getArticle" | "getVersion">,
   request: { readonly projectId: string; readonly articleId: string; readonly articleVersion: number; readonly articleVersionId: string | null },
 ): Promise<
-  | { readonly ok: true; readonly article: Article; readonly version: StoredArticleVersion; readonly units: readonly ArticleCheckUnit[] }
+  | { readonly ok: true; readonly article: Article; readonly version: StoredArticleVersion; readonly units: readonly ArticleCheckUnit[]; readonly refusal: ArticleCheckPlanRefusal | null; readonly unitCount: number }
   | { readonly ok: false; readonly reason: "article-not-found" | "version-not-found" | "version-id-mismatch" | "version-unreadable" }
 > {
   const article = await checks.getArticle(request.projectId, request.articleId);
@@ -141,16 +147,17 @@ export async function readArticleVersionUnits(
   }
   const content = readCanonicalArticle(version.canonicalContent);
   if (content === null || utf8Sha256(version.canonicalContent) !== version.contentSha256) return { ok: false, reason: "version-unreadable" };
-  return { ok: true, article, version, units: articleCheckUnits(content) };
+  const plan = articleCheckPlan(content);
+  return { ok: true, article, version, units: plan.units, refusal: plan.refusal, unitCount: plan.unitCount };
 }
 
 /**
  * The article, the exact version and the exact unit, or the reason there is
  * none. Shared by the reader below and by the recording service, so both
- * resolve a unit by the same rule: an archived article is refused, and a
- * missing, invalid or out-of-range index is refused — never replaced by
- * another unit. Whether the unit is oversized or already carries a result
- * is the caller's question.
+ * resolve a unit by the same rule: an archived article is refused, a
+ * version the packer refuses whole has no unit, and a missing, invalid or
+ * out-of-range index is refused — never replaced by another unit. Whether
+ * the unit already carries a result is the caller's question.
  */
 export async function resolveArticleUnit(
   checks: Pick<ArticleCheckStore, "getArticle" | "getVersion">,
@@ -159,6 +166,8 @@ export async function resolveArticleUnit(
   const read = await readArticleVersionUnits(checks, request);
   if (!read.ok) return read;
   if (read.article.status === "archived") return { ok: false, reason: "article-archived" };
+  if (read.refusal === "statement-too-large") return { ok: false, reason: "article-statement-too-large" };
+  if (read.refusal === "too-many-units") return { ok: false, reason: "article-too-many-units" };
 
   const index = request.unitIndex;
   if (index === undefined || index === null) return { ok: false, reason: "unit-index-missing" };
@@ -180,12 +189,13 @@ export async function readArticleCheckGrounding(
 ): Promise<ArticleCheckGroundingResult> {
   const resolved = await resolveArticleUnit(readers.checks, request);
   if (!resolved.ok) return resolved;
-  const { unit, sha256, version } = resolved.resolved;
-  if (unit.oversize !== null) return { ok: false, reason: "unit-too-large" };
+  const { unit, units, sha256, version } = resolved.resolved;
 
   const stored = (await readers.checks.listUnitRecords(version.id)).find((row) => row.unitIndex === unit.index);
   if (stored !== undefined) {
-    if (stored.unitKey !== unit.key || stored.unitSha256 !== sha256) return { ok: false, reason: "unit-hash-mismatch" };
+    if (stored.unitKey !== unit.key || stored.unitSha256 !== sha256 || stored.part !== unit.part || stored.partCount !== unit.partCount || stored.unitCount !== units.length) {
+      return { ok: false, reason: "unit-hash-mismatch" };
+    }
     if (stored.status === "passed" || stored.status === "needs-review") return { ok: false, reason: "unit-already-checked" };
   }
 
@@ -210,7 +220,9 @@ export function formatArticleCheckGrounding(resolved: ResolvedUnit, records: Evi
     `Article ${article.id}, version ${version.version} of ${article.currentVersion} (content hash ${version.contentSha256}). ${
       wasCurrent ? "This is the article's current version." : `Version ${article.currentVersion} is current; this earlier version is checked as it was written.`
     }`,
-    `UNIT UNDER CHECK: unit index ${unit.index} (zero-based) of ${units.length}, kind ${unit.kind}, key ${unit.key}. Label, quoted as data: ${JSON.stringify(unit.label)}. It holds ${unit.statementCount} statements; place every one. Check this unit only.`,
+    `UNIT UNDER CHECK: unit index ${unit.index} (zero-based) of ${units.length}, key ${unit.key} — part ${unit.part} of ${unit.partCount} of block ${unit.block}. It holds ${unit.statementCount} numbered statements, S1 to S${unit.statementCount}; place each exactly once, its number inside the quotation. ${
+      unit.context.length === 0 ? "It carries no context." : `Its ${unit.context.length} context heading${unit.context.length === 1 ? " is" : "s are"} for orientation only and are not checked here.`
+    } Check this unit only.`,
     `Records below: re-read now; the newest own-site crawl is ${records.summary.crawlId}. A record tag in the answer must name one of the fetched paths under RECORDED PAGE EVIDENCE${
       searchWindow === null ? "" : `, or the window ${searchWindow}`
     }.`,
@@ -241,7 +253,10 @@ export function formatArticleCheckGrounding(resolved: ResolvedUnit, records: Evi
       unitIndex: unit.index,
       unitCount: units.length,
       unitKind: unit.kind,
+      unitBlock: unit.block,
       unitKey: unit.key,
+      part: unit.part,
+      partCount: unit.partCount,
       unitLabel: unit.label,
       unitSha256: sha256,
       statementCount: unit.statementCount,

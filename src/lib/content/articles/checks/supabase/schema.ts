@@ -20,6 +20,9 @@ export type ArticleCheckUnitRow = {
   unit_index: number;
   unit_kind: string;
   unit_key: string;
+  part: number;
+  part_count: number;
+  unit_count: number;
   unit_sha256: string;
   status: string;
   result: unknown;
@@ -49,6 +52,9 @@ export type ArticleChecksDatabase = {
           p_unit_index: number;
           p_unit_kind: string;
           p_unit_key: string;
+          p_part: number;
+          p_part_count: number;
+          p_unit_count: number;
           p_unit_sha256: string;
           p_status: string;
           p_result: unknown;
@@ -65,7 +71,7 @@ export const CHECK_ARTICLE_READ_COLUMNS =
   "id, project_id, source_plan_run_id, status, current_version, approved_version, approved_by, approved_at, created_by, created_at, updated_at";
 export const CHECK_VERSION_READ_COLUMNS = "id, article_id, version, origin, canonical_content, content_sha256, created_by, created_at";
 export const CHECK_UNIT_READ_COLUMNS =
-  "id, article_id, article_version_id, article_version, unit_index, unit_kind, unit_key, unit_sha256, status, result, checked_by_run_id, recorded_by, created_at, updated_at";
+  "id, article_id, article_version_id, article_version, unit_index, unit_kind, unit_key, part, part_count, unit_count, unit_sha256, status, result, checked_by_run_id, recorded_by, created_at, updated_at";
 
 const KINDS: readonly ArticleCheckUnitKind[] = ["metadata", "lead-introduction", "section", "faq", "cta"];
 const STATUSES: readonly ArticleCheckUnitStatus[] = ["pending", "passed", "needs-review", "failed"];
@@ -106,6 +112,9 @@ export function unitRowToRecord(row: unknown): ArticleCheckUnitRecord {
     unitIndex: integer(r.unit_index, "unit_index"),
     unitKind: kind,
     unitKey: text(r.unit_key, "unit_key"),
+    part: integer(r.part, "part"),
+    partCount: integer(r.part_count, "part_count"),
+    unitCount: integer(r.unit_count, "unit_count"),
     unitSha256: text(r.unit_sha256, "unit_sha256"),
     status,
     result,
@@ -135,6 +144,7 @@ export function recordResultToOutcome(data: unknown): RecordUnitOutcome {
     case "version-not-found":
     case "version-mismatch":
     case "unit-mismatch":
+    case "count-mismatch":
     case "run-mismatch":
     case "run-state-mismatch":
     case "invalid-result":

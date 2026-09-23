@@ -55,10 +55,28 @@ describe("migration", () => {
 
   test("every function pins an empty search_path; only the record function is security definer", () => {
     const functions = SQL.split(/create function /).slice(1);
-    assert.equal(functions.length, 5);
+    assert.equal(functions.length, 7);
     for (const fn of functions) assert.match(fn, /set search_path = ''/);
     const definers = functions.filter((fn) => /security definer/.test(fn)).map((fn) => fn.slice(0, fn.indexOf("(")));
     assert.deepEqual(definers, ["public.nexra_article_check_unit_record"]);
+  });
+
+  test("parts, part counts and the unit count are columns bound by the 150-unit cap, and the key carries the part", () => {
+    assert.match(SQL, /unit_index smallint not null\s+constraint nexra_article_check_units_unit_index_range check \(unit_index between 0 and 149\)/);
+    assert.match(SQL, /check \(unit_count between 1 and 150 and unit_index < unit_count and part_count <= unit_count\)/);
+    assert.match(SQL, /check \(part >= 1 and part <= part_count and part_count <= 150\)/);
+    assert.match(SQL, /:\[1-9\]\[0-9\]\{0,2\}\$'/);
+    assert.match(SQL, /right\(unit_key, char_length\(part::text\) \+ 1\) = ':' \|\| part::text/);
+    for (const column of ["part", "part_count", "unit_count"]) assert.match(SQL, new RegExp(`new\\.${column} is distinct from old\\.${column}`), `${column} is immutable`);
+  });
+
+  test("the article moves to checked only through the completeness rule", () => {
+    const record = SQL.slice(SQL.indexOf("create function public.nexra_article_check_unit_record"));
+    assert.match(record, /public\.nexra_article_check_version_complete\(p_article_version_id, v_version\.canonical_content, p_unit_count\)\s+then\s+update public\.nexra_articles/);
+    const complete = SQL.slice(SQL.indexOf("create function public.nexra_article_check_version_complete"), SQL.indexOf("create function public.nexra_article_check_units_check_insert"));
+    for (const rule of ["u.status <> 'passed' or u.unit_count <> p_unit_count", "<> p_unit_count", "s.n = 0 or s.lo <> s.hi or s.n <> s.lo", "row_number() over (order by b.ordinality, u.part) - 1"]) {
+      assert.ok(complete.includes(rule), rule);
+    }
   });
 
   test("rows bind one exact version and unit, identity is immutable, and nothing is deleted", () => {
@@ -73,7 +91,18 @@ describe("migration", () => {
 
   test("the record function re-reads the run and binds it to this exact unit", () => {
     const fn = SQL.slice(SQL.indexOf("create function public.nexra_article_check_unit_record"));
-    for (const clause of ["agent_id = 'research-evidence'", "task_type = 'article-check-unit'", "input -> 'articleVersionId'", "input -> 'unitIndex'", "->> 'unitSha256' = p_unit_sha256", "for update"]) {
+    for (const clause of [
+      "agent_id = 'research-evidence'",
+      "task_type = 'article-check-unit'",
+      "input -> 'articleVersionId'",
+      "input -> 'unitIndex'",
+      "->> 'unitSha256' = p_unit_sha256",
+      "v_evidence -> 'part' = to_jsonb(p_part::integer)",
+      "v_evidence -> 'partCount' = to_jsonb(p_part_count::integer)",
+      "v_evidence -> 'unitCount' = to_jsonb(p_unit_count::integer)",
+      "'count-mismatch'",
+      "for update",
+    ]) {
       assert.ok(fn.includes(clause), clause);
     }
   });

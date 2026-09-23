@@ -10,11 +10,14 @@
  *     evidence actually carried; a supported or partial line whose tag names
  *     nothing in that evidence is moved to unverifiable, because a citation
  *     that cannot be checked is not support;
- *   * the unit is `passed` only when no line is partial, unsupported or
- *     unverifiable, at least one line was placed, and the check placed at
- *     least as many lines as the unit holds statements (every statement
- *     accounted for). Editorial lines never count against a unit, so a unit
- *     with no factual claim — a call to action, say — passes;
+ *   * every line must open its quotation with a statement number, `S1:` …
+ *     `Sn:`; the check's coverage is complete only when each of S1 … Sn is
+ *     placed exactly once and no line is unnumbered or out of range — so a
+ *     statement left out and another placed twice cannot pass by count;
+ *   * the unit is `passed` only when coverage is complete and no line is
+ *     partial, unsupported or unverifiable. Editorial lines never count
+ *     against a unit, so a unit with no factual claim — a call to action,
+ *     say — passes;
  *   * otherwise the unit `needs-review`. An unsupported statement is a
  *     finding for a person to review, not a failure: absence from the
  *     records is not falsehood.
@@ -48,22 +51,46 @@ function verified(item: ParsedFactCheckItem, evidence: FactCheckEvidence): strin
   return item.evidence !== null && tagNamesRecord(item.evidence, evidence) ? item.evidence : null;
 }
 
-/** The unit's status from its groups and its statement count: the pass rule above, and nothing else. */
+/** The statement number a line's quotation opens with, `S3: …`, or null. */
+export function statementNumberOf(text: string): number | null {
+  const match = /^S([1-9][0-9]?)\s*:/.exec(text.trim());
+  return match === null ? null : Number(match[1]);
+}
+
+/** Which of S1 … Sn the lines placed, once, twice or not at all, and how many lines named none in range. */
+export function statementCoverage(
+  texts: readonly string[],
+  statementCount: number,
+): { readonly complete: boolean; readonly missing: readonly number[]; readonly duplicate: readonly number[]; readonly unnumbered: number } {
+  const seen = new Map<number, number>();
+  let unnumbered = 0;
+  for (const text of texts) {
+    const n = statementNumberOf(text);
+    if (n === null || n > statementCount) unnumbered += 1;
+    else seen.set(n, (seen.get(n) ?? 0) + 1);
+  }
+  const missing: number[] = [];
+  const duplicate: number[] = [];
+  for (let n = 1; n <= statementCount; n += 1) {
+    const times = seen.get(n) ?? 0;
+    if (times === 0) missing.push(n);
+    if (times > 1) duplicate.push(n);
+  }
+  return { complete: statementCount > 0 && missing.length === 0 && duplicate.length === 0 && unnumbered === 0, missing, duplicate, unnumbered };
+}
+
+/** The unit's status: the pass rule above, and nothing else. */
 export function deriveUnitStatus(groups: {
-  readonly supported: readonly unknown[];
   readonly partial: readonly unknown[];
   readonly unsupported: readonly unknown[];
   readonly unverifiable: readonly unknown[];
-  readonly editorial: readonly unknown[];
-  readonly statementCount: number;
+  readonly coverageComplete: boolean;
 }): "passed" | "needs-review" {
-  const classified = groups.supported.length + groups.partial.length + groups.unsupported.length + groups.unverifiable.length + groups.editorial.length;
   if (groups.partial.length > 0 || groups.unsupported.length > 0 || groups.unverifiable.length > 0) return "needs-review";
-  if (classified === 0 || classified < groups.statementCount) return "needs-review";
-  return "passed";
+  return groups.coverageComplete ? "passed" : "needs-review";
 }
 
-/** A completed check's verdict: tags verified, the status derived. */
+/** A completed check's verdict: tags verified, coverage counted by statement number, the status derived. */
 export function buildUnitVerdict(input: {
   readonly output: ParsedFactCheckOutput;
   readonly evidence: FactCheckEvidence;
@@ -97,13 +124,17 @@ export function buildUnitVerdict(input: {
     unverifiable: unverifiable.length,
     editorial: editorial.length,
   };
-  const classifiedCount = counts.supported + counts.partial + counts.unsupported + counts.unverifiable + counts.editorial;
+  const all = [...supported, ...partial, ...unsupported, ...unverifiable, ...editorial];
+  const coverage = statementCoverage(all.map((item) => item.text), input.statementCount);
   return {
-    status: deriveUnitStatus({ supported, partial, unsupported, unverifiable, editorial, statementCount: input.statementCount }),
+    status: deriveUnitStatus({ partial, unsupported, unverifiable, coverageComplete: coverage.complete }),
     counts,
     statementCount: input.statementCount,
-    classifiedCount,
-    coverageComplete: classifiedCount >= input.statementCount,
+    classifiedCount: all.length,
+    coverageComplete: coverage.complete,
+    missingStatements: coverage.missing,
+    duplicateStatements: coverage.duplicate,
+    unnumberedLines: coverage.unnumbered,
     summary: output.summary,
     supported,
     partial,
@@ -159,9 +190,15 @@ export function readUnitResult(value: unknown): ArticleCheckUnitResult | null {
   const counts = typeof r.counts === "object" && r.counts !== null && !Array.isArray(r.counts) ? (r.counts as Record<string, unknown>) : null;
   const statementCount = count(r.statementCount);
   const classifiedCount = count(r.classifiedCount);
+  const unnumberedLines = count(r.unnumberedLines);
+  const numbers = (list: unknown): readonly number[] | null =>
+    Array.isArray(list) && list.every((n) => typeof n === "number" && Number.isInteger(n) && n >= 1) ? (list as number[]) : null;
+  const missingStatements = numbers(r.missingStatements);
+  const duplicateStatements = numbers(r.duplicateStatements);
   if (
     supported === null || partial === null || unsupported === null || unverifiable === null || editorial === null || counts === null ||
-    statementCount === null || classifiedCount === null || typeof r.coverageComplete !== "boolean" || typeof r.summary !== "string" ||
+    statementCount === null || classifiedCount === null || unnumberedLines === null || missingStatements === null || duplicateStatements === null ||
+    typeof r.coverageComplete !== "boolean" || typeof r.summary !== "string" ||
     typeof r.crawlId !== "string" || typeof r.checkedAt !== "string"
   ) {
     return null;
@@ -180,6 +217,9 @@ export function readUnitResult(value: unknown): ArticleCheckUnitResult | null {
     statementCount,
     classifiedCount,
     coverageComplete: r.coverageComplete,
+    missingStatements,
+    duplicateStatements,
+    unnumberedLines,
     summary: r.summary,
     supported,
     partial,

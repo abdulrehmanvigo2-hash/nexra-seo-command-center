@@ -9,7 +9,8 @@
  *   * queued or running → `pending`;
  *   * failed → `failed` (run-failed); cancelled → `failed` (run-cancelled);
  *   * completed, model-executed and grounded, whose metadata names this
- *     unit's key and hash → a verdict, built from its parsed answer; an
+ *     unit's key, hash, part, part count and the version's unit count → a
+ *     verdict, built from its parsed answer; an
  *     answer outside the fixed form → `failed` (output-malformed).
  *
  * A simulated or ungrounded completed run records nothing at all: it
@@ -34,6 +35,9 @@ export type ArticleCheckTarget = {
   readonly unitIndex: number;
   readonly unitKey: string;
   readonly unitSha256: string;
+  readonly part: number;
+  readonly partCount: number;
+  readonly unitCount: number;
 };
 
 export type ArticleCheckRunRefusal =
@@ -45,7 +49,7 @@ export type ArticleCheckRunRefusal =
   | "run-simulated"
   | "run-not-grounded"
   | "provenance-missing"
-  /** The run's own evidence names another unit key or hash than the regenerated unit. */
+  /** The run's own evidence names another unit key, hash, part or count than the regenerated unit. */
   | "unit-mismatch";
 
 export type ArticleCheckRunDisposition =
@@ -100,6 +104,9 @@ export function articleCheckRunDisposition(run: AgentRun, target: ArticleCheckTa
   if (
     evidence.unitKey !== target.unitKey ||
     evidence.unitSha256 !== target.unitSha256 ||
+    evidence.part !== target.part ||
+    evidence.partCount !== target.partCount ||
+    evidence.unitCount !== target.unitCount ||
     evidence.unitIndex !== target.unitIndex ||
     evidence.articleVersion !== target.articleVersion ||
     typeof evidence.articleVersionId !== "string" ||

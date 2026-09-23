@@ -1,7 +1,7 @@
 import { canonicalArticleJson, readCanonicalArticle } from "@/lib/content/articles/canonical";
 import type { ArticleCheckStore, RecordUnitInput, RecordUnitOutcome, StoredArticleVersion } from "@/lib/content/articles/checks/contract";
 import { unitSha256 } from "@/lib/content/articles/checks/unit-hash";
-import { articleCheckUnits } from "@/lib/content/articles/checks/units";
+import { articleCheckPlan } from "@/lib/content/articles/checks/units";
 import { completeArticle } from "@/lib/content/articles/test-support/fixtures";
 import { validateArticleContent } from "@/lib/content/articles/validate";
 import { FACT_CHECK_CLOSING } from "@/lib/content/drafts/fact-check-grounding";
@@ -180,7 +180,7 @@ export function article(overrides: Partial<Article> = {}): Article {
 export function unitsOf(version: StoredArticleVersion): readonly ArticleCheckUnit[] {
   const parsed = readCanonicalArticle(version.canonicalContent);
   if (parsed === null) throw new Error("stored version does not parse");
-  return articleCheckUnits(parsed);
+  return articleCheckPlan(parsed).units;
 }
 
 let runSequence = 0;
@@ -219,6 +219,9 @@ export function checkRun(options: {
             unitIndex: options.unitIndex,
             unitKey: unit?.key ?? "missing",
             unitSha256: unit ? unitSha256(unit) : "0".repeat(64),
+            part: unit?.part ?? 0,
+            partCount: unit?.partCount ?? 0,
+            unitCount: units.length,
             crawlId: CRAWL.id,
             searchWindow: null,
             recordPaths: ["/services"],
@@ -242,7 +245,7 @@ export function checkRun(options: {
     executor: status === "queued" ? null : (options.executor ?? (simulated ? "mock" : "ai")),
     attemptCount: status === "queued" ? 0 : 1,
     maxAttempts: 3,
-    resultSummary: status === "completed" ? (options.summary === undefined ? answer({ supported: 1 }) : options.summary) : null,
+    resultSummary: status === "completed" ? (options.summary === undefined ? answer({ supported: unit?.statementCount ?? 1 }) : options.summary) : null,
     resultMetadata: metadata,
     error: status === "failed" ? { code: "execution-failed", message: "failed" } : null,
     createdBy: OPERATOR,
@@ -256,25 +259,75 @@ export function checkRun(options: {
   };
 }
 
-/** An answer in the fixed six-heading form, with the given number of lines per heading. */
-export function answer(lines: { supported?: number; partial?: number; unsupported?: number; unverifiable?: number; editorial?: number; supportedTag?: string }): string {
-  const list = (n: number | undefined, make: (i: number) => string) => (n ? Array.from({ length: n }, (_, i) => make(i)).join("\n") : "none");
+/**
+ * An answer in the fixed six-heading form, with the given number of lines
+ * per heading. Lines are numbered S1, S2 … in order across the headings,
+ * inside the quotation, as the prompt asks; `numberOf` rewrites a line's
+ * number (null leaves it unnumbered), for coverage tests.
+ */
+export function answer(lines: {
+  supported?: number;
+  partial?: number;
+  unsupported?: number;
+  unverifiable?: number;
+  editorial?: number;
+  supportedTag?: string;
+  numberOf?: (line: number) => number | null;
+}): string {
+  let line = 0;
+  const label = () => {
+    line += 1;
+    const n = lines.numberOf ? lines.numberOf(line) : line;
+    return n === null ? "" : `S${n}: `;
+  };
+  const list = (n: number | undefined, make: (prefix: string, i: number) => string) =>
+    n ? Array.from({ length: n }, (_, i) => make(label(), i)).join("\n") : "none";
   const tag = lines.supportedTag ?? "[crawl /services]";
   return [
     "SUPPORTED",
-    list(lines.supported, (i) => `- "Supported statement ${i}." ${tag}`),
+    list(lines.supported, (p, i) => `- "${p}Supported statement ${i}." ${tag}`),
     "PARTIAL",
-    list(lines.partial, (i) => `- "Partial statement ${i}." — the page title holds part [crawl /services]`),
+    list(lines.partial, (p, i) => `- "${p}Partial statement ${i}." — the page title holds part [crawl /services]`),
     "UNSUPPORTED",
-    list(lines.unsupported, (i) => `- "Unsupported statement ${i}." — no record holds this`),
+    list(lines.unsupported, (p, i) => `- "${p}Unsupported statement ${i}." — no record holds this`),
     "UNVERIFIABLE",
-    list(lines.unverifiable, (i) => `- "Unverifiable statement ${i}." — an outcome these records cannot hold`),
+    list(lines.unverifiable, (p, i) => `- "${p}Unverifiable statement ${i}." — an outcome these records cannot hold`),
     "EDITORIAL",
-    list(lines.editorial, (i) => `- "Editorial line ${i}."`),
+    list(lines.editorial, (p, i) => `- "${p}Editorial line ${i}."`),
     "SUMMARY",
     "Counted lines under each heading.",
     FACT_CHECK_CLOSING,
   ].join("\n");
+}
+
+/** The blocks a stored version has, as the database's `nexra_article_check_blocks` lists them. */
+function blocksOfVersion(version: StoredArticleVersion): readonly { readonly block: string; readonly kind: string }[] {
+  const parsed = readCanonicalArticle(version.canonicalContent);
+  if (parsed === null) throw new Error("stored version does not parse");
+  return [
+    { block: "metadata", kind: "metadata" },
+    { block: "lead-introduction", kind: "lead-introduction" },
+    ...parsed.sections.map((s) => ({ block: `section:${s.id}`, kind: "section" })),
+    ...(parsed.faqs.length > 0 ? [{ block: "faq", kind: "faq" }] : []),
+    { block: "cta", kind: "cta" },
+  ];
+}
+
+const blockOf = (key: string, part: number) => key.slice(0, key.length - String(part).length - 1);
+
+/** The database's completeness rule, in memory. */
+export function versionComplete(rows: readonly ArticleCheckUnitRecord[], version: StoredArticleVersion, unitCount: number): boolean {
+  const blocks = blocksOfVersion(version);
+  const mine = rows.filter((r) => r.articleVersionId === version.id);
+  if (unitCount < blocks.length || unitCount > 150) return false;
+  if (mine.some((r) => r.status !== "passed" || r.unitCount !== unitCount) || mine.length !== unitCount) return false;
+  for (const b of blocks) {
+    const inBlock = mine.filter((r) => blockOf(r.unitKey, r.part) === b.block);
+    const counts = new Set(inBlock.map((r) => r.partCount));
+    if (inBlock.length === 0 || counts.size !== 1 || inBlock.length !== inBlock[0].partCount) return false;
+  }
+  const ordered = blocks.flatMap((b) => mine.filter((r) => blockOf(r.unitKey, r.part) === b.block).sort((x, y) => x.part - y.part));
+  return ordered.every((r, i) => r.unitIndex === i);
 }
 
 export type MemoryCheckStore = ArticleCheckStore & {
@@ -329,9 +382,30 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
       const version = versions.find((v) => v.articleId === input.articleId && v.version === input.articleVersion);
       if (version === undefined) return { status: "version-not-found" };
       if (version.id !== input.articleVersionId) return { status: "version-mismatch" };
-      const units = unitsOf(version);
-      const expected = units[input.unitIndex];
-      if (expected === undefined || expected.kind !== input.unitKind || expected.key !== input.unitKey) return { status: "unit-mismatch" };
+      const blocks = blocksOfVersion(version);
+      const block = blockOf(input.unitKey, input.part);
+      if (
+        input.part < 1 ||
+        input.part > input.partCount ||
+        input.partCount > input.unitCount ||
+        input.unitCount > 150 ||
+        input.unitCount < blocks.length ||
+        input.unitIndex < 0 ||
+        input.unitIndex >= input.unitCount ||
+        !input.unitKey.endsWith(`:${input.part}`) ||
+        !blocks.some((b) => b.block === block && b.kind === input.unitKind)
+      ) {
+        return { status: "unit-mismatch" };
+      }
+      if (
+        rows.some(
+          (r) =>
+            r.articleVersionId === input.articleVersionId &&
+            (r.unitCount !== input.unitCount || (blockOf(r.unitKey, r.part) === block && r.partCount !== input.partCount)),
+        )
+      ) {
+        return { status: "count-mismatch" };
+      }
 
       const run = options.runs.find(
         (r) =>
@@ -346,17 +420,24 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
       );
       if (run === undefined) return { status: "run-mismatch" };
       const evidence = run.resultMetadata?.evidence as JsonObject | undefined;
+      const evidenceMatches =
+        evidence?.source === "article-unit" &&
+        evidence?.unitKey === input.unitKey &&
+        evidence?.unitSha256 === input.unitSha256 &&
+        evidence?.unitIndex === input.unitIndex &&
+        evidence?.part === input.part &&
+        evidence?.partCount === input.partCount &&
+        evidence?.unitCount === input.unitCount;
       const stateOk =
         (input.status === "pending" && (run.status === "queued" || run.status === "running")) ||
-        ((input.status === "passed" || input.status === "needs-review") &&
-          run.status === "completed" &&
-          run.executor === "ai" &&
-          run.resultMetadata?.simulated === false &&
-          run.resultMetadata?.grounded === true &&
-          evidence?.source === "article-unit" &&
-          evidence?.unitKey === input.unitKey &&
-          evidence?.unitSha256 === input.unitSha256) ||
-        (input.status === "failed" && (run.status === "failed" || run.status === "cancelled" || run.status === "completed"));
+        (input.status === "failed" && (run.status === "failed" || run.status === "cancelled")) ||
+        (run.status === "completed" &&
+          evidenceMatches &&
+          (input.status === "failed" ||
+            ((input.status === "passed" || input.status === "needs-review") &&
+              run.executor === "ai" &&
+              run.resultMetadata?.simulated === false &&
+              run.resultMetadata?.grounded === true)));
       if (!stateOk) return { status: "run-state-mismatch" };
       if ((input.status === "pending") !== (input.result === null) || (input.result !== null && (input.result.status !== input.status || input.result.checkedByRunId !== input.runId))) {
         return { status: "invalid-result" };
@@ -364,6 +445,9 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
 
       sequence += 1;
       const now = `2026-09-23T13:00:${String(sequence).padStart(2, "0")}.000Z`;
+      if (rows.some((r) => r.articleVersionId === input.articleVersionId && r.unitKey === input.unitKey && r.unitIndex !== input.unitIndex)) {
+        return { status: "unit-mismatch" };
+      }
       const existing = find(input);
       let row: ArticleCheckUnitRecord;
       if (existing === undefined) {
@@ -375,6 +459,9 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
           unitIndex: input.unitIndex,
           unitKind: input.unitKind,
           unitKey: input.unitKey,
+          part: input.part,
+          partCount: input.partCount,
+          unitCount: input.unitCount,
           unitSha256: input.unitSha256,
           status: input.status,
           result: input.result,
@@ -384,7 +471,15 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
         };
         rows.push(row);
       } else {
-        if (existing.unitSha256 !== input.unitSha256) return { status: "unit-mismatch" };
+        if (
+          existing.unitSha256 !== input.unitSha256 ||
+          existing.unitKey !== input.unitKey ||
+          existing.part !== input.part ||
+          existing.partCount !== input.partCount ||
+          existing.unitCount !== input.unitCount
+        ) {
+          return { status: "unit-mismatch" };
+        }
         if (existing.checkedByRunId === input.runId && existing.status === input.status) return { status: "exists", record: existing, article: parent };
         const forward =
           (existing.status === "pending" && input.status !== "pending" && existing.checkedByRunId === input.runId) ||
@@ -397,8 +492,7 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
       let advanced = false;
       let current = parent;
       if (input.status === "passed" && parent.status === "drafting" && parent.currentVersion === input.articleVersion) {
-        const passed = rows.filter((r) => r.articleVersionId === input.articleVersionId && r.status === "passed").length;
-        if (passed === units.length) {
+        if (versionComplete(rows, version, input.unitCount)) {
           current = { ...parent, status: "checked", updatedAt: now };
           articles[index] = current;
           advanced = true;

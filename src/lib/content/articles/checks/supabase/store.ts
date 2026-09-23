@@ -68,7 +68,7 @@ export function createSupabaseArticleCheckStore(client: SupabaseClient<ArticleCh
         .select(CHECK_UNIT_READ_COLUMNS)
         .eq("article_version_id", articleVersionId)
         .order("unit_index", { ascending: true })
-        .limit(64);
+        .limit(200);
       if (error) throw new ArticleStoreError("list article check units", error);
       return data.map(unitRowToRecord);
     },
@@ -83,6 +83,9 @@ export function createSupabaseArticleCheckStore(client: SupabaseClient<ArticleCh
         p_unit_index: input.unitIndex,
         p_unit_kind: input.unitKind,
         p_unit_key: input.unitKey,
+        p_part: input.part,
+        p_part_count: input.partCount,
+        p_unit_count: input.unitCount,
         p_unit_sha256: input.unitSha256,
         p_status: input.status,
         p_result: input.result,

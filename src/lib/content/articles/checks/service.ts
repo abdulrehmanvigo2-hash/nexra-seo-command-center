@@ -85,21 +85,32 @@ export function createArticleCheckService(dependencies: { readonly store: Articl
     if (!read.ok) {
       return { ok: false, reason: read.reason === "article-not-found" ? "not-found" : read.reason === "version-not-found" ? "version-not-found" : "version-unreadable" };
     }
-    const { article, version: stored, units } = read;
+    const { article, version: stored, units, refusal } = read;
 
     const rows = await store.listUnitRecords(stored.id);
     const views = units.map((unit) => {
       const sha256 = unitSha256(unit);
-      const row = rows.find((r) => r.unitIndex === unit.index && r.unitKey === unit.key && r.unitSha256 === sha256) ?? null;
+      const row =
+        rows.find(
+          (r) =>
+            r.unitIndex === unit.index &&
+            r.unitKey === unit.key &&
+            r.unitSha256 === sha256 &&
+            r.part === unit.part &&
+            r.partCount === unit.partCount &&
+            r.unitCount === units.length,
+        ) ?? null;
       return {
         index: unit.index,
         kind: unit.kind,
+        block: unit.block,
         key: unit.key,
+        part: unit.part,
+        partCount: unit.partCount,
         label: unit.label,
         sha256,
         statementCount: unit.statementCount,
         bytes: unit.bytes,
-        oversize: unit.oversize,
         record: row,
       };
     });
@@ -113,6 +124,7 @@ export function createArticleCheckService(dependencies: { readonly store: Articl
         version: stored.version,
         versionId: stored.id,
         contentSha256: stored.contentSha256,
+        refusal,
         units: views,
         state,
         counts: tally,
@@ -154,7 +166,7 @@ export function createArticleCheckService(dependencies: { readonly store: Articl
         unitIndex: request.unitIndex,
       });
       if (!resolved.ok) return { ok: false, reason: "unit", refusal: resolved.reason };
-      const { version, unit, sha256 } = resolved.resolved;
+      const { version, unit, units, sha256 } = resolved.resolved;
 
       const run = await runs.getById(runId);
       if (run === null) return { ok: false, reason: "run-not-found" };
@@ -166,6 +178,9 @@ export function createArticleCheckService(dependencies: { readonly store: Articl
         unitIndex: unit.index,
         unitKey: unit.key,
         unitSha256: sha256,
+        part: unit.part,
+        partCount: unit.partCount,
+        unitCount: units.length,
       });
       if (!disposition.ok) return { ok: false, reason: "ineligible", refusal: disposition.reason };
 
@@ -205,6 +220,9 @@ export function createArticleCheckService(dependencies: { readonly store: Articl
         unitIndex: unit.index,
         unitKind: unit.kind,
         unitKey: unit.key,
+        part: unit.part,
+        partCount: unit.partCount,
+        unitCount: units.length,
         unitSha256: sha256,
         status,
         result,

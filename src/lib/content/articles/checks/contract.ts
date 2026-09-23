@@ -26,6 +26,10 @@ export type RecordUnitInput = {
   readonly unitIndex: number;
   readonly unitKind: ArticleCheckUnitKind;
   readonly unitKey: string;
+  /** The unit's part within its block, the block's part count, and the version's unit count — all computed by the server. */
+  readonly part: number;
+  readonly partCount: number;
+  readonly unitCount: number;
   /** Computed by the server from the stored version's text. */
   readonly unitSha256: string;
   readonly status: ArticleCheckUnitStatus;
@@ -49,6 +53,8 @@ export type RecordUnitOutcome =
         | "version-not-found"
         | "version-mismatch"
         | "unit-mismatch"
+        /** The part count or unit count disagrees with the version's other rows. */
+        | "count-mismatch"
         | "run-mismatch"
         | "run-state-mismatch"
         | "invalid-result";

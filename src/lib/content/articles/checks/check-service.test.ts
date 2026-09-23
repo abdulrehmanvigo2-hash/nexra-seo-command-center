@@ -137,7 +137,8 @@ describe("task validation at record time: exact unit, no fallback", () => {
     runs.push(run);
     const result = await record(service, run);
     assert.ok(result.ok);
-    assert.equal(result.record.unitKey, "section:where-it-stops");
+    assert.equal(result.record.unitKey, "section:where-it-stops:1");
+    assert.deepEqual([result.record.part, result.record.partCount, result.record.unitCount], [1, 1, 6]);
     assert.deepEqual(result.checks.units.filter((u) => u.record !== null).map((u) => u.index), [3]);
   });
 
@@ -240,6 +241,78 @@ describe("version safety and the derived article state", () => {
     assert.deepEqual(await record(service, run), { ok: false, reason: "unit", refusal: "article-archived" });
     const read = await service.getVersionChecks(PROJECT_ID, ARTICLE_ID, 1);
     assert.ok(read.ok);
+  });
+});
+
+describe("a long article: parts, counts and completeness", () => {
+  const sentences = (n: number, word: string) => Array.from({ length: n }, (_, i) => `${word} ${i + 1} is here.`).join(" ");
+  const LONG = storedVersion(
+    1,
+    content((raw) => {
+      raw.sections = [
+        { id: "what-it-does", heading: "What a text-back does", paragraphs: [sentences(6, "Alpha"), sentences(12, "Beta"), sentences(4, "Gamma")], subsections: [] },
+        { id: "where-it-stops", heading: "Where it stops", paragraphs: [sentences(3, "Stop")], subsections: [] },
+      ];
+      raw.faqs = Array.from({ length: 7 }, (_, i) => ({ question: `Question ${i + 1}?`, answer: sentences(3, `Answer${i}`) }));
+    }),
+  );
+
+  function long(runs: AgentRun[] = []) {
+    const store = memoryCheckStore({ articles: [article()], versions: [LONG], runs });
+    const service = createArticleCheckService({ store, runs: { getById: async (id) => runs.find((r) => r.id === id) ?? null } });
+    return { store, runs, service };
+  }
+
+  test("a long section and many FAQs are checkable: split into parts, every unit within bounds", () => {
+    const units = unitsOf(LONG);
+    assert.ok(units.filter((u) => u.block === "section:what-it-does").length >= 3);
+    assert.ok(units.filter((u) => u.block === "faq").length >= 2);
+    assert.ok(units.every((u) => u.statementCount <= 10 && u.bytes <= 6_000));
+  });
+
+  test("the article is checked only when every part of every block passes", async () => {
+    const { service, runs, store } = long();
+    const all = passAll(runs, LONG);
+    const lastSection = all.findIndex((r) => r.input.unitIndex === unitsOf(LONG).filter((u) => u.block === "section:what-it-does").at(-1)!.index);
+    for (const [i, run] of all.entries()) {
+      if (i === lastSection) continue;
+      const result = await record(service, run, run.input.unitIndex as number, 1);
+      assert.ok(result.ok && !result.articleStatusAdvanced, JSON.stringify(result));
+    }
+    assert.equal(store.articles[0].status, "drafting", "one part of one section missing: not checked");
+    const checks = await service.getVersionChecks(PROJECT_ID, ARTICLE_ID, 1);
+    assert.ok(checks.ok && checks.checks.state === "unchecked" && checks.checks.counts.unchecked === 1);
+
+    const failed = checkRun({ version: LONG, unitIndex: all[lastSection].input.unitIndex as number, status: "failed" });
+    runs.push(failed);
+    assert.ok((await record(service, failed, failed.input.unitIndex as number, 1)).ok);
+    assert.equal(store.articles[0].status, "drafting", "a failed part: not checked");
+
+    const retry = passAll([], LONG)[lastSection];
+    runs.push(retry);
+    const done = await record(service, retry, retry.input.unitIndex as number, 1);
+    assert.ok(done.ok && done.articleStatusAdvanced, "the last part passes: checked");
+    assert.equal(store.articles[0].status, "checked");
+  });
+
+  test("the store refuses inconsistent counts, a duplicated key, and evidence naming other counts", async () => {
+    const { store, runs, service } = long();
+    const units = unitsOf(LONG);
+    const part2 = units.find((u) => u.block === "section:what-it-does" && u.part === 2)!;
+    const first = checkRun({ version: LONG, unitIndex: part2.index, status: "queued" });
+    runs.push(first);
+    assert.ok((await record(service, first, part2.index, 1)).ok, "pending recorded with the server's counts");
+    const base = { projectId: PROJECT_ID, articleId: ARTICLE_ID, articleVersion: 1, articleVersionId: LONG.id, status: "pending" as const, result: null, recordedBy: OPERATOR };
+    const part3 = units.find((u) => u.block === "section:what-it-does" && u.part === 3)!;
+    const other = checkRun({ version: LONG, unitIndex: part3.index, status: "queued" });
+    runs.push(other);
+    const identity = { unitIndex: part3.index, unitKind: part3.kind, unitKey: part3.key, part: part3.part, unitSha256: "a".repeat(64), runId: other.id };
+    assert.equal((await store.record({ ...base, ...identity, partCount: part3.partCount + 1, unitCount: units.length })).status, "count-mismatch");
+    assert.equal((await store.record({ ...base, ...identity, partCount: part3.partCount, unitCount: units.length + 1 })).status, "count-mismatch");
+    assert.equal((await store.record({ ...base, ...identity, unitKey: part2.key, part: 2, partCount: part3.partCount, unitCount: units.length })).status, "unit-mismatch", "a key already recorded at another index");
+    const lying = checkRun({ version: LONG, unitIndex: part3.index, evidence: { unitCount: units.length - 1 } });
+    runs.push(lying);
+    assert.deepEqual(await record(service, lying, part3.index, 1), { ok: false, reason: "ineligible", refusal: "unit-mismatch" });
   });
 });
 
