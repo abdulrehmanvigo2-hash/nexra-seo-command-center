@@ -9,7 +9,7 @@ import {
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
-import { SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
+import { MAX_SECTION_INDEX, SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
 import { FACT_CHECK_INSTRUCTIONS } from "@/lib/content/drafts/fact-check-grounding";
 import { CONTENT_PLAN_INSTRUCTIONS } from "@/lib/content/plan-instructions";
 import { INTAKE_REVIEW_INSTRUCTIONS } from "@/lib/projects/grounding";
@@ -484,14 +484,18 @@ const contentPlanReview: TaskTypeDefinition = {
 /**
  * The Writer's first task, and the first task here whose policy is `draft`
  * rather than `read-only`: it produces text a person may later use, but it
- * publishes nothing, edits nothing, and sends nothing anywhere. Its one
- * input names a completed content plan on the run's own project; the reader
+ * publishes nothing, edits nothing, and sends nothing anywhere. Its input
+ * names a completed content plan on the run's own project and, as a
+ * required zero-based `sectionIndex`, the one outline section the operator
+ * chose to draft; the reader
  * (`@/lib/content/draft-grounding`) checks that the plan is this project's,
  * completed, model-generated over recorded evidence, and written over the
  * crawl that is still the newest, and refuses before any provider call
  * otherwise. The plan is quoted as a proposal, never as evidence; the
  * records it was written over are re-read through the evidence-pack reader,
- * unchanged. One section per run, chosen by the reader, so that the whole
+ * unchanged, and resolves the chosen section in the plan's own outline,
+ * refusing a missing, out-of-range or untagged choice with no fallback to
+ * the first line. One section per run, chosen by the operator, so that the whole
  * draft stays under the runtime's output ceiling. Operator-triggered only;
  * nothing queues it automatically, and its completed run is not a hand-off
  * source.
@@ -506,13 +510,23 @@ const sectionDraft: TaskTypeDefinition = {
   evidence: "content-draft",
   instructions: SECTION_DRAFT_INSTRUCTIONS,
   parseInput(input): TaskInputResult {
-    const object = objectWithOnly(input, ["planRunId"]);
+    const object = objectWithOnly(input, ["planRunId", "sectionIndex"]);
     if (!object.ok) return object;
     const planRunId = object.value.planRunId;
     if (typeof planRunId !== "string" || !UUID.test(planRunId)) {
       return { ok: false, error: "planRunId must be the id of a completed content plan on this project." };
     }
-    return { ok: true, value: { planRunId: planRunId.toLowerCase() } };
+    // Required, and never defaulted: the operator chooses which outline
+    // section to draft. Whether the plan has that section is the reader's
+    // question, answered against the plan's own text before execution.
+    const sectionIndex = object.value.sectionIndex;
+    if (sectionIndex === undefined) {
+      return { ok: false, error: "sectionIndex is required: choose the outline section of the plan to draft." };
+    }
+    if (typeof sectionIndex !== "number" || !Number.isInteger(sectionIndex) || sectionIndex < 0 || sectionIndex > MAX_SECTION_INDEX) {
+      return { ok: false, error: `sectionIndex must be a whole number from 0 to ${MAX_SECTION_INDEX}: the zero-based position of one outline section.` };
+    }
+    return { ok: true, value: { planRunId: planRunId.toLowerCase(), sectionIndex } };
   },
 };
 

@@ -1768,7 +1768,7 @@ describe("the section draft request", () => {
     id: "11111111-0000-4000-8000-000000000070",
     agentId: "writer",
     taskType: "section-draft",
-    input: { planRunId: plan().id },
+    input: { planRunId: plan().id, sectionIndex: 0 },
     status: "completed",
     executor: "ai",
     attemptCount: 1,
@@ -1784,16 +1784,26 @@ describe("the section draft request", () => {
     ...overrides,
   });
 
-  test("names the Writer and the draft task, with the plan's id and nothing else", () => {
-    assert.deepEqual(draftRequest("nexra-agency", plan()), {
+  test("names the Writer and the draft task, with the plan's id and the chosen section, and nothing else", () => {
+    assert.deepEqual(draftRequest("nexra-agency", plan(), 0), {
       ok: true,
-      payload: { projectId: "nexra-agency", agentId: "writer", taskType: "section-draft", input: { planRunId: plan().id } },
+      payload: { projectId: "nexra-agency", agentId: "writer", taskType: "section-draft", input: { planRunId: plan().id, sectionIndex: 0 } },
     });
   });
 
+  test("with no section chosen, or one the plan does not support, nothing is chosen for the operator", () => {
+    assert.deepEqual(draftRequest("nexra-agency", plan(), null), { ok: false, why: "Choose the outline section of the plan to draft." });
+    assert.deepEqual(draftRequest("nexra-agency", plan(), 1), { ok: false, why: "This plan has no outline section at that position." });
+    assert.deepEqual(draftRequest("nexra-agency", plan(), -1), { ok: false, why: "That section choice is not a valid outline position." });
+    const mixed = plan({ resultSummary: "OUTLINE\nWho the agency has worked with [needs evidence]\nWhat the agency does [crawl /services]" });
+    assert.match(draftRequest("nexra-agency", mixed, 0).ok ? "" : (draftRequest("nexra-agency", mixed, 0) as { why: string }).why, /names no record/);
+    assert.deepEqual(draftRequest("nexra-agency", mixed, 1).ok, true);
+    assert.deepEqual(draftRequest("nexra-agency", plan({ resultSummary: "PAGE AND GOAL\n/services." }), 0), { ok: false, why: "This plan has no outline sections to choose from." });
+  });
+
   test("is refused, with the reader's own reason worded for the operator, for every plan the Writer may not draft from", () => {
-    assert.deepEqual(draftRequest(null, plan()), { ok: false, why: "No project is selected." });
-    assert.deepEqual(draftRequest("nexra-agency", null), { ok: false, why: "Complete a content plan first: there is nothing to draft from." });
+    assert.deepEqual(draftRequest(null, plan(), 0), { ok: false, why: "No project is selected." });
+    assert.deepEqual(draftRequest("nexra-agency", null, 0), { ok: false, why: "Complete a content plan first: there is nothing to draft from." });
     const cases: [Partial<AgentRun>, RegExp][] = [
       [{ projectId: "halcyon-fintech" }, /belongs to a different project/],
       [{ taskType: "evidence-pack-review", agentId: "research-evidence" }, /drafts from a completed content plan only/],
@@ -1807,7 +1817,7 @@ describe("the section draft request", () => {
       [{ resultMetadata: { simulated: false, grounded: true } }, /recorded no crawl it was written over/],
     ];
     for (const [overrides, why] of cases) {
-      const result = draftRequest("nexra-agency", plan(overrides));
+      const result = draftRequest("nexra-agency", plan(overrides), 0);
       assert.equal(result.ok, false, JSON.stringify(overrides));
       assert.match(result.ok ? "" : result.why, why, JSON.stringify(overrides));
     }
@@ -1821,7 +1831,7 @@ describe("the section draft request", () => {
     assert.equal(offersDraft(plan({ taskType: "evidence-pack-review", agentId: "research-evidence" })), false);
     // A completed plan offers the Writer, never the Director; a simulated plan still shows the control, which then refuses with the reason.
     assert.equal(offersHandoff(plan()), false);
-    assert.equal(draftRequest("nexra-agency", plan({ executor: "mock", resultMetadata: { simulated: true, grounded: false } })).ok, false);
+    assert.equal(draftRequest("nexra-agency", plan({ executor: "mock", resultMetadata: { simulated: true, grounded: false } }), 0).ok, false);
   });
 
   test("the spec matches what the server allows, calls the plan a proposal, and promises no publishing", () => {
@@ -1829,7 +1839,9 @@ describe("the section draft request", () => {
     assert.equal(SECTION_DRAFT.taskType, "section-draft");
     assert.equal(SECTION_DRAFT.agentName, "Writer");
     assert.equal(SECTION_DRAFT.action, "Draft one section with Writer Agent");
-    assert.match(SECTION_DRAFT.summary, /^Queues a draft of one section/);
+    assert.match(SECTION_DRAFT.summary, /^Queues a draft of the one outline section you choose/);
+    assert.match(SECTION_DRAFT.summary, /drafts that section only/);
+    assert.doesNotMatch(SECTION_DRAFT.summary, /first outline section/);
     assert.match(SECTION_DRAFT.summary, /as a proposal — never as evidence/);
     assert.match(SECTION_DRAFT.summary, /it is not published, not approved, and changes nothing/);
     assert.match(SECTION_DRAFT.groundedIn, /a draft for operator review, not a measurement and not published/);
@@ -1862,12 +1874,14 @@ describe("the section draft request", () => {
     assert.match(refusal.ok ? "" : refusal.why, /takes hand-offs from crawl reviews, on-page reviews, answer-readiness reviews, search query reviews and performance reviews only/);
   });
 
-  test("is restored by project, agent and plan id: the newest draft of this plan, never another plan's, the plan itself, or the pack", async () => {
+  test("is restored by project, agent, plan id and section: the newest draft of this plan's section, never another section's, another plan's, the plan itself, or the pack", async () => {
     const older = completedDraft({ id: "11111111-0000-4000-8000-000000000071", createdAt: "2026-09-21T09:00:00.000Z" });
     const newest = completedDraft({ id: "11111111-0000-4000-8000-000000000072", createdAt: "2026-09-21T12:00:00.000Z", status: "queued", executor: null, resultSummary: null, resultMetadata: null });
-    const otherPlan = completedDraft({ id: "11111111-0000-4000-8000-000000000073", input: { planRunId: "11111111-0000-4000-8000-000000000061" }, createdAt: "2026-09-21T13:00:00.000Z" });
-    const input = { planRunId: plan().id };
-    assert.equal(latestReviewRun([older, otherPlan, newest, plan()], SECTION_DRAFT, input)?.id, newest.id);
+    const otherPlan = completedDraft({ id: "11111111-0000-4000-8000-000000000073", input: { planRunId: "11111111-0000-4000-8000-000000000061", sectionIndex: 0 }, createdAt: "2026-09-21T13:00:00.000Z" });
+    const otherSection = completedDraft({ id: "11111111-0000-4000-8000-000000000074", input: { planRunId: plan().id, sectionIndex: 2 }, createdAt: "2026-09-21T14:00:00.000Z" });
+    const input = { planRunId: plan().id, sectionIndex: 0 };
+    assert.equal(latestReviewRun([older, otherPlan, otherSection, newest, plan()], SECTION_DRAFT, input)?.id, newest.id);
+    assert.equal(latestReviewRun([otherSection], SECTION_DRAFT, input), null, "another section's draft is never restored for this one");
     assert.equal(latestReviewRun([otherPlan, plan()], SECTION_DRAFT, input), null);
     assert.equal(latestReviewRun([older, newest], PRIORITY_REVIEW, { sourceRunId: plan().id }), null);
     assert.equal(latestReviewRun([older, newest], EVIDENCE_PACK_REVIEW, {}), null);

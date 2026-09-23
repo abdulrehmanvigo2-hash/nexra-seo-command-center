@@ -23,7 +23,7 @@ import {
   isUpstreamTaskType,
   type RunGroundingRefusal,
 } from "@/lib/agent-runs/run-grounding";
-import { DRAFT_SOURCE_TASK_TYPE, draftSourceRefusal, type DraftGroundingRefusal } from "@/lib/content/draft-grounding";
+import { DRAFT_SOURCE_TASK_TYPE, draftSourceRefusal, resolveSection, type DraftGroundingRefusal } from "@/lib/content/draft-grounding";
 import { resolveCompetitorTarget, type CompetitorTargetRefusal } from "@/lib/crawl/competitor-target";
 import { AGENT_NAMES } from "@/lib/mock/agents/registry";
 import type { AgentRun, AgentRunStatus, JsonObject } from "@/types/agent-run";
@@ -294,7 +294,7 @@ export const SECTION_DRAFT: ReviewSpec = {
   agentName: "Writer",
   action: "Draft one section with Writer Agent",
   summary:
-    "Queues a draft of one section of the planned page. The Writer reads the completed plan above as a proposal — never as evidence — beside the records it was written over, drafts the first outline section that carries a record tag, lists every claim with its record, and marks anything unsupported as a placeholder. The draft is for you to review; it is not published, not approved, and changes nothing.",
+    "Queues a draft of the one outline section you choose. The Writer reads the completed plan above as a proposal — never as evidence — beside the records it was written over, drafts that section only, lists every claim with its record, and marks anything unsupported as a placeholder. The draft is for you to review; it is not published, not approved, and changes nothing.",
   groundedIn:
     "a completed content plan (a proposal) and the records it was written over — a draft for operator review, not a measurement and not published",
 };
@@ -325,8 +325,8 @@ export type ReviewPayload = {
     | { readonly sourceRunId: string }
     /** The comparison names a recorded competitor's hostname; the crawls are found on the server. */
     | { readonly competitorDomain: string }
-    /** The section draft names the completed content plan it drafts from. */
-    | { readonly planRunId: string }
+    /** The section draft names the completed content plan it drafts from and the operator's chosen section, zero-based. */
+    | { readonly planRunId: string; readonly sectionIndex: number }
     /** The fact-check names one saved draft and the exact version to check. */
     | { readonly draftId: string; readonly version: number }
     /** The intake review and the evidence pack name nothing: the project is the run's own. */
@@ -482,6 +482,12 @@ const DRAFT_REFUSAL: Readonly<Record<Exclude<DraftGroundingRefusal, "plan-run-no
   "project-crawl-unfinished": "This project's newest site crawl is still running.",
   "project-crawl-not-reviewable": "This project's newest site crawl recorded no pages to draft over.",
   "crawl-not-readable": "This project's newest site crawl could not be read.",
+  "section-index-missing": "Choose the outline section of the plan to draft.",
+  "section-index-invalid": "That section choice is not a valid outline position.",
+  "plan-outline-missing": "This plan has no outline sections to choose from.",
+  "section-out-of-range": "This plan has no outline section at that position.",
+  "section-not-draftable": "That outline section names no record, so a draft of it would rest on nothing. Choose a section with a record tag.",
+  "section-malformed": "That outline section has no heading to draft.",
 };
 
 /**
@@ -494,8 +500,13 @@ const DRAFT_REFUSAL: Readonly<Record<Exclude<DraftGroundingRefusal, "plan-run-no
  * the control explains itself. The server remains the gate: it re-reads the
  * plan and the records at execution time, and refuses a plan whose crawl is
  * no longer the newest.
+ *
+ * The section is the operator's explicit choice, zero-based. Nothing is
+ * chosen for them: with no choice the control explains itself and asks for
+ * one, and a choice the plan does not support is refused with the reader's
+ * own reason, never replaced by another section.
  */
-export function draftRequest(projectId: string | null, plan: AgentRun | null): Queueability {
+export function draftRequest(projectId: string | null, plan: AgentRun | null, sectionIndex: number | null): Queueability {
   if (!projectId) return { ok: false, why: "No project is selected." };
   if (plan === null) return { ok: false, why: "Complete a content plan first: there is nothing to draft from." };
   if (plan.projectId !== projectId) return { ok: false, why: DRAFT_REFUSAL["plan-run-not-in-project"] };
@@ -503,13 +514,16 @@ export function draftRequest(projectId: string | null, plan: AgentRun | null): Q
   const refusal = draftSourceRefusal(plan);
   if (refusal !== null && refusal !== "plan-run-not-found") return { ok: false, why: DRAFT_REFUSAL[refusal] };
 
+  const section = resolveSection(plan.resultSummary ?? "", sectionIndex);
+  if (!section.ok) return { ok: false, why: DRAFT_REFUSAL[section.reason] };
+
   return {
     ok: true,
     payload: {
       projectId,
       agentId: SECTION_DRAFT.agentId,
       taskType: SECTION_DRAFT.taskType,
-      input: { planRunId: plan.id },
+      input: { planRunId: plan.id, sectionIndex: section.target.sectionIndex },
     },
   };
 }
@@ -829,7 +843,9 @@ export function evidenceDescription(metadata: JsonObject): string | null {
     const planRunId = typeof evidence.planRunId === "string" ? evidence.planRunId : null;
     const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
     if (planRunId && crawlId) {
-      return `the Content Strategist's completed plan (run ${planRunId}, a proposal) and the records it was written over, re-read: crawl ${crawlId} (a draft for operator review, not a measurement and not published)`;
+      const heading = typeof evidence.sectionHeading === "string" ? evidence.sectionHeading : null;
+      const chosen = typeof evidence.selectedSectionIndex === "number" && heading ? `, section ${evidence.selectedSectionIndex} "${heading}"` : "";
+      return `the Content Strategist's completed plan (run ${planRunId}, a proposal${chosen}) and the records it was written over, re-read: crawl ${crawlId} (a draft for operator review, not a measurement and not published)`;
     }
     return SECTION_DRAFT.groundedIn;
   }

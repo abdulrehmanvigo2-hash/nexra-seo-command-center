@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { SaveDraftControl } from "@/components/content/draft-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import {
   type ReviewSpec,
   type Tone,
 } from "@/lib/crawl/review-request";
+import { planSections } from "@/lib/content/draft-grounding";
 import { offersSaveAsDraft } from "@/lib/content/drafts/eligibility";
 import type { AgentRun } from "@/types/agent-run";
 
@@ -387,15 +388,45 @@ function DirectorHandoff({ projectId, source }: { projectId: string; source: Age
  *
  * The same control as every other review, nested beneath the completed plan
  * that is its input: it queues, it runs now, and it reconciles against the
- * persisted Writer run for this plan. It is offered under a plan the Writer
- * may draft from and refuses, with the reader's own reason, for one it may
- * not. The draft's own result offers nothing further — no publish, no edit,
- * no approval, because the product has no such action — and nothing queues
- * on its own.
+ * persisted Writer run for this plan and the chosen section. Above it, the
+ * plan's outline sections in order, by zero-based index and heading; the
+ * operator must choose one, and nothing is chosen for them — until they do,
+ * the control says so and stays disabled. A section with no record tag is
+ * listed but refused with the reader's own reason. The draft's own result
+ * offers nothing further — no publish, no edit, no approval, because the
+ * product has no such action — and nothing queues on its own.
  */
 function WriterDraft({ projectId, plan }: { projectId: string; plan: AgentRun }) {
-  const draft = useQueuedReview(draftRequest(projectId, plan), plan.id, SECTION_DRAFT, projectId);
-  // The project goes with it: the Writer's own result carries the Save-as-draft
-  // control, and that control renders only for a run whose project is known.
-  return <QueuedReview review={SECTION_DRAFT} nested projectId={projectId} {...draft} />;
+  const selectId = useId();
+  const sections = planSections(plan.resultSummary ?? "");
+  const [chosen, setChosen] = useState<number | null>(null);
+  const draft = useQueuedReview(
+    draftRequest(projectId, plan, chosen),
+    chosen === null ? null : `${plan.id}:${chosen}`,
+    SECTION_DRAFT,
+    projectId,
+  );
+  return (
+    <div className="space-y-2">
+      <label htmlFor={selectId} className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+        <span>Section to draft</span>
+        <select
+          id={selectId}
+          value={chosen === null ? "" : String(chosen)}
+          onChange={(event) => setChosen(event.target.value === "" ? null : Number(event.target.value))}
+          className="h-8 max-w-full rounded border border-border bg-surface-raised px-2 text-xs text-fg"
+        >
+          <option value="">Choose a section…</option>
+          {sections.map((section) => (
+            <option key={section.index} value={String(section.index)}>
+              {`${section.index} · ${section.heading || section.outlineLine}${section.draftable ? "" : section.needsEvidence ? " (needs evidence)" : " (no record tag)"}`}
+            </option>
+          ))}
+        </select>
+      </label>
+      {/* The project goes with it: the Writer's own result carries the Save-as-draft
+          control, and that control renders only for a run whose project is known. */}
+      <QueuedReview review={SECTION_DRAFT} nested projectId={projectId} {...draft} />
+    </div>
+  );
 }

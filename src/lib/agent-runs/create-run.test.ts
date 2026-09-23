@@ -1057,37 +1057,40 @@ describe("queueing a section draft — the Writer", () => {
     projectId: PROJECT.id,
     agentId: "writer",
     taskType: "section-draft",
-    input: { planRunId: PLAN_ID },
+    input: { planRunId: PLAN_ID, sectionIndex: 0 },
   };
 
-  test("creates one queued run for the Writer under the draft policy, with the plan id lowercased, and touches no executor", async () => {
+  test("creates one queued run for the Writer under the draft policy, with the plan id lowercased and the chosen section kept, and touches no executor", async () => {
     const { store, runs } = memoryStore();
     const forbidden = forbiddenExecutor();
-    const result = await service(store, forbidden.executor).createRun(OPERATOR, { ...DRAFT_REQUEST, input: { planRunId: PLAN_ID.toUpperCase() } });
+    const result = await service(store, forbidden.executor).createRun(OPERATOR, { ...DRAFT_REQUEST, input: { planRunId: PLAN_ID.toUpperCase(), sectionIndex: 0 } });
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.equal(result.duplicate, false);
     assert.equal(result.run.status, "queued");
     assert.equal(result.run.agentId, "writer");
     assert.equal(result.run.taskType, "section-draft");
-    assert.deepEqual(result.run.input, { planRunId: PLAN_ID });
+    assert.deepEqual(result.run.input, { planRunId: PLAN_ID, sectionIndex: 0 });
     assert.equal(result.run.projectId, PROJECT.id);
     assert.equal(runs.length, 1);
     assert.equal(forbidden.calls(), 0);
   });
 
-  test("asking twice for the same plan returns the first run; another plan is another run", async () => {
+  test("asking twice for the same plan and section returns the first run; another plan, or another section of the same plan, is another run", async () => {
     const { store, inserts } = memoryStore();
     const runtime = service(store, forbiddenExecutor().executor);
     const first = await runtime.createRun(OPERATOR, DRAFT_REQUEST);
     const second = await runtime.createRun(OPERATOR, DRAFT_REQUEST);
-    const other = await runtime.createRun(OPERATOR, { ...DRAFT_REQUEST, input: { planRunId: "11111111-0000-4000-8000-000000000061" } });
-    assert.ok(first.ok && second.ok && other.ok);
-    if (!first.ok || !second.ok || !other.ok) return;
+    const other = await runtime.createRun(OPERATOR, { ...DRAFT_REQUEST, input: { planRunId: "11111111-0000-4000-8000-000000000061", sectionIndex: 0 } });
+    const otherSection = await runtime.createRun(OPERATOR, { ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, sectionIndex: 2 } });
+    assert.ok(first.ok && second.ok && other.ok && otherSection.ok);
+    if (!first.ok || !second.ok || !other.ok || !otherSection.ok) return;
     assert.equal(second.duplicate, true);
     assert.equal(second.run.id, first.run.id);
     assert.equal(other.duplicate, false);
-    assert.equal(inserts(), 2);
+    assert.equal(otherSection.duplicate, false);
+    assert.deepEqual(otherSection.run.input, { planRunId: PLAN_ID, sectionIndex: 2 });
+    assert.equal(inserts(), 3);
   });
 
   test("is found under the Writer, which is what the nested control restores from", async () => {
@@ -1102,14 +1105,21 @@ describe("queueing a section draft — the Writer", () => {
     assert.ok(theirs.ok && theirs.runs.length === 0);
   });
 
-  test("is refused before anything is written for a missing or malformed plan id, any extra field, a string or array input, any other agent, or an unknown project", async () => {
+  test("is refused before anything is written for a missing or malformed plan id, a missing or malformed section index, any extra field, a string or array input, any other agent, or an unknown project", async () => {
     const attempts: [unknown, string][] = [
       [{ ...DRAFT_REQUEST, input: {} }, "invalid"],
       [{ ...DRAFT_REQUEST, input: undefined }, "invalid"],
-      [{ ...DRAFT_REQUEST, input: { planRunId: "not-a-uuid" } }, "invalid"],
-      [{ ...DRAFT_REQUEST, input: { planRunId: 42 } }, "invalid"],
-      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, crawlId: CRAWL_ID } }, "invalid"],
-      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, section: 2 } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: "not-a-uuid", sectionIndex: 0 } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: 42, sectionIndex: 0 } }, "invalid"],
+      // The section is required and never defaulted.
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, sectionIndex: null } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, sectionIndex: -1 } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, sectionIndex: 1.5 } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, sectionIndex: "1" } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, sectionIndex: 50 } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, sectionIndex: 0, crawlId: CRAWL_ID } }, "invalid"],
+      [{ ...DRAFT_REQUEST, input: { planRunId: PLAN_ID, sectionIndex: 0, section: 2 } }, "invalid"],
       [{ ...DRAFT_REQUEST, input: { sourceRunId: PLAN_ID } }, "invalid"],
       [{ ...DRAFT_REQUEST, input: PLAN_ID }, "invalid"],
       [{ ...DRAFT_REQUEST, input: [PLAN_ID] }, "invalid"],
