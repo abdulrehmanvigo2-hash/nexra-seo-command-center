@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { parseFactCheckOutput } from "../../drafts/parse-fact-check-output.ts";
-import { buildUnitVerdict, deriveArticleCheckState, deriveUnitStatus, readUnitResult, statementCoverage, statementNumberOf, unitFailure } from "./result.ts";
+import { buildUnitVerdict, deriveArticleCheckState, deriveUnitStatus, MAX_UNIT_OBSERVATIONS, readUnitResult, statementCoverage, statementNumberOf, unitFailure } from "./result.ts";
 import { answer, content } from "./test-support/fixtures.ts";
 import { unitSha256 } from "./unit-hash.ts";
 import {
@@ -238,44 +238,128 @@ describe("determinism, hashes and refusals", () => {
 });
 
 describe("the pass rule: exact statement coverage", () => {
+  const OBSERVATION = "- Observation: a passage of the unit addresses the reader of this check.";
+  const verdictOf = (v: ReturnType<typeof verdict>) => {
+    assert.ok(v.status !== "failed", `expected a verdict, got ${JSON.stringify(v)}`);
+    return v;
+  };
+  const failureOf = (v: ReturnType<typeof verdict>) => {
+    assert.ok(v.status === "failed", `expected a failure, got ${v.status}`);
+    assert.equal(v.reason, "coverage-incomplete");
+    assert.ok(v.coverage !== undefined);
+    return v;
+  };
+
   test("every statement once, all supported: passed", () => {
-    const v = verdict({ supported: 3 }, 3);
+    const v = verdictOf(verdict({ supported: 3 }, 3));
     assert.equal(v.status, "passed");
-    assert.deepEqual([v.coverageComplete, v.missingStatements, v.duplicateStatements, v.unnumberedLines], [true, [], [], 0]);
+    assert.deepEqual([v.coverageComplete, v.missingStatements, v.duplicateStatements, v.unnumberedLines, v.classifiedCount], [true, [], [], 0, 3]);
+    assert.deepEqual(v.observations, []);
   });
 
-  test("a statement left out while another is placed twice cannot pass by count", () => {
-    const v = verdict({ supported: 3, numberOf: (line) => (line === 3 ? 2 : line) }, 3);
-    assert.equal(v.classifiedCount, 3, "the line count alone would have matched");
+  test("the production case: 8 statements, S6 unverifiable, 7 editorial, one explicit observation — needs-review, counted by statement", () => {
+    const numbers = [6, 1, 2, 3, 4, 5, 7, 8];
+    const v = verdictOf(verdict({ unverifiable: 1, editorial: 7, numberOf: (line) => numbers[line - 1], editorialExtra: [OBSERVATION] }, 8));
     assert.equal(v.status, "needs-review");
-    assert.deepEqual([v.missingStatements, v.duplicateStatements], [[3], [2]]);
+    assert.equal(v.classifiedCount, 8);
+    assert.equal(v.statementCount, 8);
+    assert.equal(v.coverageComplete, true);
+    assert.deepEqual(v.counts, { supported: 0, partial: 0, unsupported: 0, unverifiable: 1, editorial: 7 });
+    assert.equal(v.observations?.length, 1);
+    assert.match(v.observations?.[0].text ?? "", /^Observation: a passage of the unit/);
+    assert.equal(v.observations?.[0].evidence, null, "an observation is never evidence");
+    assert.match(v.unverifiable[0].text, /^S6:/);
   });
 
-  test("an unnumbered or out-of-range line is not coverage", () => {
-    assert.equal(verdict({ supported: 3, numberOf: (line) => (line === 2 ? null : line) }, 3).unnumberedLines, 1);
-    assert.equal(verdict({ supported: 3, numberOf: (line) => (line === 3 ? 7 : line) }, 3).status, "needs-review");
-    assert.deepEqual(statementCoverage(["S1: a", "S2: b"], 2), { complete: true, missing: [], duplicate: [], unnumbered: 0 });
+  test("valid statements plus one explicit observation are not a false failure", () => {
+    assert.equal(verdictOf(verdict({ supported: 2, editorial: 1, editorialExtra: [OBSERVATION] }, 3)).status, "passed");
+    // An observation carrying a record tag is still no evidence.
+    const tagged = verdictOf(verdict({ supported: 1, editorialExtra: ["- Observation: see the page [crawl /services]"] }, 1));
+    assert.equal(tagged.status, "passed");
+    assert.equal(tagged.observations?.[0].evidence, null);
+    assert.equal(tagged.classifiedCount, 1, "observations never raise the classified count");
+  });
+
+  test("a missing statement: failed, coverage-incomplete, never passed", () => {
+    const f = failureOf(verdict({ supported: 2 }, 3));
+    assert.deepEqual(f.coverage?.missingStatements, [3]);
+    const withObservation = failureOf(verdict({ supported: 2, editorialExtra: [OBSERVATION] }, 3));
+    assert.deepEqual([withObservation.coverage?.missingStatements, withObservation.coverage?.observationCount], [[3], 1], "an observation never stands in for a statement");
+  });
+
+  test("a duplicate or contradictory statement: failed", () => {
+    const dup = failureOf(verdict({ supported: 3, numberOf: (line) => (line === 3 ? 2 : line) }, 3));
+    assert.deepEqual([dup.coverage?.missingStatements, dup.coverage?.duplicateStatements], [[3], [2]]);
+    // S2 both supported and unsupported, with S3 also placed: every number covered, still failed.
+    const contradictory = failureOf(verdict({ supported: 3, unsupported: 1, numberOf: (line) => (line === 4 ? 2 : line) }, 3));
+    assert.deepEqual([contradictory.coverage?.missingStatements, contradictory.coverage?.duplicateStatements], [[], [2]]);
+  });
+
+  test("an out-of-range or malformed number: failed", () => {
+    assert.deepEqual(failureOf(verdict({ supported: 3, numberOf: (line) => (line === 3 ? 7 : line) }, 3)).coverage?.invalidLineCount, 1);
+    for (const bad of ['- "S0: zero." [crawl /services]', '- "S3. dotted." [crawl /services]', '- "s3: lower." [crawl /services]', '- "(S3) bracketed." [crawl /services]', '- "Statement 3: words." [crawl /services]']) {
+      const f = failureOf(verdict({ supported: 2, supportedExtra: [bad] }, 3));
+      assert.deepEqual([f.coverage?.missingStatements, f.coverage?.invalidLineCount], [[3], 1], bad);
+    }
     assert.equal(statementNumberOf("S10: text"), 10);
     assert.equal(statementNumberOf("Text S1: no"), null);
   });
 
-  test("any partial, unsupported or unverifiable line: needs-review, never failed", () => {
+  test("arbitrary unnumbered text is not an observation: failed", () => {
+    for (const stray of ["- The unit reads well overall.", '- "An unnumbered quotation."', "- observation: lower-case prefix", "- Observation:", "- Note: something"]) {
+      const f = failureOf(verdict({ supported: 2, editorialExtra: [stray] }, 2));
+      assert.deepEqual([f.coverage?.missingStatements, f.coverage?.invalidLineCount, f.coverage?.observationCount], [[], 1, 0], stray);
+      assert.equal(f.coverage?.invalidLines.length, 1, "the stray line is kept, not discarded");
+    }
+  });
+
+  test("an unnumbered classification under a factual heading is failed, even when it says Observation", () => {
+    failureOf(verdict({ supported: 2, supportedExtra: ['- "The services page is titled Services" [crawl /services]'] }, 2));
+    failureOf(verdict({ supported: 2, supportedExtra: ["- Observation: placed under a factual heading"] }, 2));
+  });
+
+  test("more observations than allowed is commentary outside the form: failed", () => {
+    const four = Array.from({ length: MAX_UNIT_OBSERVATIONS + 1 }, (_, i) => `- Observation: note ${i}`);
+    assert.equal(failureOf(verdict({ supported: 1, editorialExtra: four }, 1)).coverage?.observationCount, MAX_UNIT_OBSERVATIONS + 1);
+    assert.equal(verdictOf(verdict({ supported: 1, editorialExtra: four.slice(0, MAX_UNIT_OBSERVATIONS) }, 1)).status, "passed");
+  });
+
+  test("a failure keeps the invalid lines, bounded in number and length", () => {
+    const many = Array.from({ length: 15 }, (_, i) => `- Stray ${i} ${"x".repeat(200)}`);
+    const f = failureOf(verdict({ supported: 1, editorialExtra: many }, 1));
+    assert.equal(f.coverage?.invalidLineCount, 15);
+    assert.equal(f.coverage?.invalidLines.length, 10);
+    assert.ok((f.coverage?.invalidLines ?? []).every((line) => Array.from(line).length <= 121));
+  });
+
+  test("the sorting covers every line exactly once: nothing is discarded", () => {
+    const parsed = parseFactCheckOutput(answer({ supported: 2, editorial: 1, editorialExtra: [OBSERVATION, "- stray"] }));
+    assert.ok(parsed.ok);
+    const c = statementCoverage(parsed.output, 3);
+    const placed = Object.values(c.classified).reduce((sum, list) => sum + list.length, 0);
+    assert.equal(placed + c.observations.length + c.invalid.length, 5);
+    assert.equal(c.complete, false);
+  });
+
+  test("any partial, unsupported or unverifiable statement: needs-review, never failed", () => {
     assert.equal(verdict({ supported: 2, partial: 1 }, 3).status, "needs-review");
     assert.equal(verdict({ supported: 2, unsupported: 1 }, 3).status, "needs-review");
     assert.equal(verdict({ supported: 2, unverifiable: 1 }, 3).status, "needs-review");
   });
 
-  test("editorial lines never count against a unit; an editorial-only unit passes", () => {
+  test("editorial statements never count against a unit; an editorial-only unit passes", () => {
     assert.equal(verdict({ supported: 1, editorial: 2 }, 3).status, "passed");
     assert.equal(verdict({ editorial: 2 }, 2).status, "passed");
     assert.equal(deriveUnitStatus({ partial: [], unsupported: [], unverifiable: [], coverageComplete: false }), "needs-review");
   });
 
   test("a supported line whose tag names no record in the evidence is moved to unverifiable, keeping its number", () => {
-    const moved = verdict({ supported: 2, supportedTag: "[crawl /not-fetched]" }, 2);
+    const moved = verdictOf(verdict({ supported: 2, supportedTag: "[crawl /not-fetched]" }, 2));
     assert.equal(moved.status, "needs-review");
     assert.deepEqual(moved.counts, { supported: 0, partial: 0, unsupported: 0, unverifiable: 2, editorial: 0 });
     assert.equal(moved.coverageComplete, true);
+    const untagged = verdictOf(verdict({ supported: 1, supportedTag: "" }, 1));
+    assert.deepEqual([untagged.status, untagged.counts.unverifiable, untagged.unverifiable[0].evidence], ["needs-review", 1, null]);
   });
 
   test("an execution failure is `failed`, and carries no content verdict", () => {
@@ -283,10 +367,47 @@ describe("the pass rule: exact statement coverage", () => {
   });
 
   test("a stored result reads back field by field; anything else is refused", () => {
-    const stored = verdict({ supported: 1, editorial: 1 }, 2);
+    const stored = verdict({ supported: 1, editorial: 1, editorialExtra: [OBSERVATION] }, 2);
     assert.deepEqual(readUnitResult(JSON.parse(JSON.stringify(stored))), stored);
     assert.equal(readUnitResult({ ...stored, status: "approved" }), null);
     assert.equal(readUnitResult({ ...stored, missingStatements: "x" }), null);
+    assert.equal(readUnitResult({ ...stored, observations: "x" }), null);
+    const failure = verdict({ supported: 1, editorialExtra: ["- stray"] }, 2);
+    assert.deepEqual(readUnitResult(JSON.parse(JSON.stringify(failure))), failure);
+    assert.equal(readUnitResult({ ...failure, coverage: undefined }), null, "a coverage-incomplete failure carries its detail");
+    assert.equal(readUnitResult({ ...unitFailure("run-failed", RUN, "op", "2026-09-23T12:06:00.000Z"), coverage: { missingStatements: [] } }), null);
+  });
+
+  test("a result recorded before observations were kept apart reads back exactly as recorded", () => {
+    // The shape of the production metadata:1 row of article version 2: the observation counted as editorial, coverage incomplete.
+    const legacy = {
+      status: "needs-review",
+      counts: { supported: 0, partial: 0, unsupported: 0, unverifiable: 1, editorial: 8 },
+      statementCount: 8,
+      classifiedCount: 9,
+      coverageComplete: false,
+      missingStatements: [],
+      duplicateStatements: [],
+      unnumberedLines: 1,
+      summary: "0 supported, 0 partial, 0 unsupported, 1 unverifiable, 7 editorial.",
+      supported: [],
+      partial: [],
+      unsupported: [],
+      unverifiable: [{ text: "S6: An excerpt…", evidence: null, note: "an outcome" }],
+      editorial: [
+        ...[1, 2, 3, 4, 5, 7, 8].map((n) => ({ text: `S${n}: Line…`, evidence: null, note: null })),
+        { text: "Observation: the unit reads as marketing copy", evidence: null, note: null },
+      ],
+      crawlId: EVIDENCE.crawlId,
+      searchWindow: null,
+      checkedByRunId: "e322fc1d-01b4-478e-9b4e-7726dc5b8644",
+      checkedAt: "2026-09-23T12:05:00.000Z",
+      recordedBy: "op",
+      recordedAt: "2026-09-23T12:06:00.000Z",
+    };
+    const read = readUnitResult(legacy);
+    assert.deepEqual(read, legacy, "nothing added, removed or reclassified");
+    assert.ok(read !== null && read.status === "needs-review" && !("observations" in read));
   });
 });
 

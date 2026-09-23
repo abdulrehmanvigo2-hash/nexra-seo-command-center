@@ -1261,15 +1261,30 @@ check only the numbered statements and to open every line's quotation with
 its number (`"S3: …"`), and uses the draft fact-check's six headings and
 closing sentence, so the draft check's parser reads it unchanged.
 
-Result (`checks/result.ts`): tags are verified against the run's own
-evidence (a supported or partial line naming nothing there is moved to
-unverifiable). Coverage is exact: complete only when each of S1 … Sn is
-placed once and no line is unnumbered or out of range, so a statement left
-out and another placed twice cannot pass by count. A unit is `passed` only
-with complete coverage and nothing partial, unsupported or unverifiable;
-editorial lines never count against it. Otherwise `needs-review`. `failed`
-is only an execution failure. A simulated or ungrounded run records
-nothing. The version's state is derived from its unit rows, never stored.
+Result (`checks/result.ts`): every answer line is sorted by its own
+opening words into a numbered classification (`"S1: …"` … `"Sn: …"`,
+under any heading), an observation (an unnumbered EDITORIAL line opening
+`Observation:`, at most 3), or an invalid line (anything else). Numbered
+statements are counted apart from observations: `classifiedCount` counts
+classifications only and never exceeds the statement count, and
+observations are kept in a separate `observations` list, never counted,
+never evidence, and never contributing to coverage. Coverage is exact:
+each of S1 … Sn must be classified exactly once, with no invalid line. An
+answer that misses, repeats or contradicts a statement, uses an
+out-of-range or malformed number, or carries unexplained unnumbered text is
+no verdict: the unit is recorded `failed` with reason `coverage-incomplete`
+(its missing and repeated numbers and the first invalid lines are kept),
+and a new run may check it again. Nothing is dropped to make coverage
+pass. Tags are verified against the run's own evidence (a supported or
+partial line naming nothing there is moved to unverifiable). A covered
+unit is `passed` only with nothing partial, unsupported or unverifiable;
+editorial statements never count against it. Otherwise `needs-review`.
+`passed` and `needs-review` remain final for their article version; only
+`failed` (an execution failure or `coverage-incomplete`) is re-checked.
+Results stored before observations were kept apart have no `observations`
+field and are read and shown exactly as recorded — none is rewritten or
+reclassified. A simulated or ungrounded run records nothing. The version's
+state is derived from its unit rows, never stored.
 
 Table (`20260923180000_create_article_check_units.sql`):
 `nexra_article_check_units` — per article version and unit: index, kind,

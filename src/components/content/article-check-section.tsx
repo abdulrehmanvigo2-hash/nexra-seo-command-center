@@ -6,6 +6,7 @@ import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-re
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { offersRecordUnit } from "@/lib/content/articles/checks/eligibility";
+import { MAX_UNIT_OBSERVATIONS } from "@/lib/content/articles/checks/result";
 import { ARTICLE_CHECK_UNIT, articleCheckRequest } from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type {
@@ -68,6 +69,7 @@ const FAILURE_LABEL = {
   "run-failed": "the run failed before it produced a check",
   "run-cancelled": "the run was cancelled",
   "output-malformed": "the answer was not in the check's fixed form",
+  "coverage-incomplete": "the answer did not classify each numbered statement exactly once",
 } as const;
 
 const REFUSAL_MESSAGE: Readonly<Record<NonNullable<ArticleVersionChecks["refusal"]>, string>> = {
@@ -380,11 +382,35 @@ function UnitCheck({
 
 function UnitResult({ result }: { result: ArticleCheckUnitResult }) {
   if (result.status === "failed") {
+    const defect = result.coverage;
     return (
-      <p className="text-xs text-critical">
-        Check failed — {FAILURE_LABEL[result.reason]} (run {result.checkedByRunId}, recorded {stamp(result.recordedAt)}). This is not a verdict on the
-        content; the unit can be checked again with a new run.
-      </p>
+      <div className="space-y-1">
+        <p className="text-xs text-critical">
+          Check failed — {FAILURE_LABEL[result.reason]} (run {result.checkedByRunId}, recorded {stamp(result.recordedAt)}). This is not a verdict on the
+          content; the unit can be checked again with a new run.
+        </p>
+        {defect && (
+          <>
+            <p className="text-xs text-fg-subtle">
+              {[
+                defect.missingStatements.length > 0 ? `missing S${defect.missingStatements.join(", S")}` : null,
+                defect.duplicateStatements.length > 0 ? `placed more than once S${defect.duplicateStatements.join(", S")}` : null,
+                defect.invalidLineCount > 0 ? `${defect.invalidLineCount} line${defect.invalidLineCount === 1 ? "" : "s"} naming no statement` : null,
+                defect.observationCount > MAX_UNIT_OBSERVATIONS ? `${defect.observationCount} observations (at most ${MAX_UNIT_OBSERVATIONS})` : null,
+              ]
+                .filter((part) => part !== null)
+                .join(" · ")}
+            </p>
+            {defect.invalidLines.length > 0 && (
+              <ul className="space-y-0.5 text-xs text-fg-muted">
+                {defect.invalidLines.map((line, i) => (
+                  <li key={i}>“{line}”</li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
     );
   }
   const meta = UNIT_META[result.status];
@@ -397,7 +423,7 @@ function UnitResult({ result }: { result: ArticleCheckUnitResult }) {
         <span className="text-fg-subtle">
           Checked {stamp(result.checkedAt)} by run {result.checkedByRunId} against crawl {result.crawlId}
           {result.searchWindow ? ` and Search Console ${result.searchWindow}` : ""} · recorded {stamp(result.recordedAt)} · {result.classifiedCount} of{" "}
-          {result.statementCount} statements placed
+          {result.statementCount} numbered statements classified
           {result.coverageComplete
             ? " (each exactly once)"
             : ` (coverage incomplete${result.missingStatements.length > 0 ? `; missing S${result.missingStatements.join(", S")}` : ""}${
@@ -411,6 +437,9 @@ function UnitResult({ result }: { result: ArticleCheckUnitResult }) {
       <ItemGroup label="Unsupported — no record holds this" items={result.unsupported} />
       <ItemGroup label="Unverifiable from these records" items={result.unverifiable} />
       <ItemGroup label="Editorial — no factual claim" items={result.editorial} />
+      {result.observations && result.observations.length > 0 && (
+        <ItemGroup label="Observations — notes about no statement; not a classification and not evidence" items={result.observations} />
+      )}
       <p className="text-xs text-fg-subtle">
         Unsupported means no record holds the statement, not that it is false. This is not an approval, and nothing was published.
       </p>

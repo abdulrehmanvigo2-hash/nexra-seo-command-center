@@ -244,6 +244,17 @@ describe("the prompt", () => {
     assert.match(ARTICLE_CHECK_LIMITS_NOTE, /Absence from these records is never evidence that a statement is untrue/);
   });
 
+  test("observations: only under EDITORIAL, unnumbered, prefixed Observation:, bounded, never a classification — no conflicting instruction", () => {
+    assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /write it only under EDITORIAL/);
+    assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /the word Observation and a colon, with no statement number and no quotation marks/);
+    assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /Write at most 3 observations/);
+    assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /an observation never classifies a statement and never replaces one/);
+    assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /Write nothing else outside the six sections/);
+    assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /under exactly one heading, once each, and nothing else apart from the observations described below/);
+    assert.doesNotMatch(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /report it as an observation under EDITORIAL and carry on/);
+    assert.doesNotMatch(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /\$\{/, "the template is filled in");
+  });
+
   test("the draft fact-check's own instructions are unchanged", () => {
     assert.equal(getTaskType("draft-fact-check")?.instructions, FACT_CHECK_INSTRUCTIONS);
     assert.doesNotMatch(FACT_CHECK_INSTRUCTIONS, /UNIT UNDER CHECK|article/i);
