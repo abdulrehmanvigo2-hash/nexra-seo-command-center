@@ -4,14 +4,14 @@ Professional, agency-grade AI SEO platform. This file defines the operating rule
 project. Read it before writing any code.
 
 **Current stage: Stage 5 (publication) of the content workflow. Milestones A, B, C1, C2 and C3
-are complete; C4 is merged to `master` but not yet released to production (see §0).**
+are complete; C4 is implemented and deployed, with new-parser live verification pending (see §0).**
 
 ---
 
 ## 0. Current Checkpoint
 
-GitHub `master`: the Milestone C4 merge (`claude/article-check-units-c4`),
-`17cae81a7820e39c3d49f4123307473c8e461d64`.
+GitHub `master`: the C4 counting-fix merge (`claude/c4-result-counting-fix`),
+`c23ed0bb3e7582de719027a340195fb866ce5c2c`.
 
 **Completed content-workflow stages:**
 
@@ -24,8 +24,9 @@ GitHub `master`: the Milestone C4 merge (`claude/article-check-units-c4`),
 - Stage 5 / Complete Article Assembly — Milestone C1: Pure Article Contract (live verified)
 - Stage 5 / Complete Article Assembly — Milestone C2: Article Persistence (live verified)
 - Stage 5 / Complete Article Assembly — Milestone C3: Writer Section Choice (live verified)
-- Stage 5 / Complete Article Assembly — Milestone C4: Article Check Units, Option A (merged to
-  `master`; not deployed, not production-verified)
+- Stage 5 / Complete Article Assembly — Milestone C4: Article Check Units, Option A
+  (implementation complete; deployment and existing-result browser verification complete;
+  new-parser live verification pending)
 
 **C2 notes:** production migration applied (Supabase `20260923043554_create_articles`);
 production deployment verified; live Version 1 creation and Version 2 immutable save verified
@@ -49,12 +50,30 @@ article moves from `drafting` to `checked` only when its current version's unit 
 and all passed — never to `approved`. Verified locally: full test suite 1,354 passed; focused C4
 tests 74 passed; typecheck, lint and production build passed; migration
 `20260923180000_create_article_check_units.sql` validated with 60 assertions on an isolated
-PostgreSQL 16. **Pending:** the production migration has not been applied; the application has
-not been deployed; no browser verification and no live AI verification have been performed.
+PostgreSQL 16.
 
-**Next planned work:** the C4 production release — apply the C4 migration, then deploy, then
-read-only verification — each step only with explicit user approval. Milestone C5 has not
-started and is not planned here.
+**C4 release:** the production migration `20260923180000` was applied previously (history
+recorded and verified). The counting fix (`892ffa0`, merged as `c23ed0b`) counts only numbered
+statements S1 … Sn, each exactly once; keeps `Observation:` lines under EDITORIAL apart as
+non-statement notes that never count toward coverage or evidence; and records an answer with a
+missing, repeated, malformed or unexplained line as `failed` / `coverage-incomplete`, which a new
+run may re-check. `passed` and `needs-review` stay final for their article version; stored
+results are never rewritten. No migration. Production deployment
+`dpl_FA7qMS5BbhWP4ByKzS7R6HAV8H2Z` is READY at `c23ed0b`.
+
+**C4 production browser verification (operator):** article
+`c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, displayed its four check units. Metadata
+Unit 0 (`metadata:1`) was checked by a real Research & Evidence run
+(`e322fc1d-01b4-478e-9b4e-7726dc5b8644`) and recorded as **needs-review**; that saved result
+remained unchanged after the deployment, and the updated UI shows its original coverage
+discrepancy honestly: 9 of 8 numbered statements classified, coverage incomplete, 1 unnumbered
+line. The remaining three units are unchecked. The article remains `drafting` — not checked, not
+approved, not published. **Pending:** the corrected counting behaviour is covered by automated
+tests (focused C4 87 passed; full suite 1,367 passed), but a NEW result produced with the
+corrected parser has not been live-tested.
+
+**Next planned work:** Milestone C5 — Article Approval Gate. It has not started and starts only
+with explicit user approval.
 
 **Current safety boundaries:**
 
@@ -63,8 +82,9 @@ started and is not planned here.
 - The current production draft, Version 2, remains **Needs review**.
 - There is no active publication proposal for Version 2.
 - The content workflow has no Create PR, Merge, Deploy or Publish control.
-- The C4 migration (`20260923180000_create_article_check_units.sql`) is not applied in
-  production; it must be applied before the C4 application code is deployed.
+- Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `drafting`: one check unit needs review,
+  three are unchecked, and it is neither checked, approved nor published.
+- Vercel deploys every push to `master` to production automatically.
 - Any external write requires explicit user approval (§6).
 
 Update this section at every Git checkpoint that changes the stage, the next planned
@@ -336,10 +356,10 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C1 | Complete Article Assembly: Pure Article Contract | Complete, live verified |
 | Stage 5 / C2 | Complete Article Assembly: Article Persistence | Complete, live verified |
 | Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Complete, live verified |
-| Stage 5 / C4 | Complete Article Assembly: Article Check Units | Merged to `master`; production migration and deployment pending |
+| Stage 5 / C4 | Complete Article Assembly: Article Check Units | Implementation complete; deployment and existing-result browser verification complete; new-parser live verification pending |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Work beyond C4 is decided
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Next planned: C5 — Article Approval Gate (not started). Work beyond C5 is decided
 with the user and is not planned here.
 
 ## 15. Definition of Done
