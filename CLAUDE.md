@@ -3,7 +3,38 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current milestone: Premium Frontend Foundation Only.**
+**Current stage: Stage 5 (publication) of the content workflow. Milestones A and B are
+complete; next planned is Milestone C1 (see §0).**
+
+---
+
+## 0. Current Checkpoint
+
+GitHub `master`: `6331f359ff0cb0be03c3efb55f0183a3e6520133`
+
+**Completed content-workflow stages:**
+
+- Stage 1: durable Writer draft persistence
+- Stage 2: immutable operator version history
+- Stage 3: exact-version fact-check
+- Stage 4: exact-version approval gate
+- Stage 5A: publication proposal + exact-version preview
+- Stage 5B: website artifact dry-run
+
+**Next planned work (not started):** Stage 5 / Complete Article Assembly —
+Milestone C1: Pure Article Contract.
+
+**Current safety boundaries:**
+
+- No automatic publishing.
+- No write path to the `abdulrehmanvigo2-hash/nexra-ai` GitHub repository exists.
+- The current production draft, Version 2, remains **Needs review**.
+- There is no active publication proposal for Version 2.
+- The content workflow has no Create PR, Merge, Deploy or Publish control.
+- Any external write requires explicit user approval (§6).
+
+Update this section at every Git checkpoint that changes the stage, the next planned
+milestone, or a safety boundary.
 
 ---
 
@@ -22,41 +53,58 @@ Plan → Build One Bounded Feature → Test → Fix → Git Commit → Next Feat
 - **Git commit** — one checkpoint per completed feature (see §10).
 - **Next feature** — only after the previous cycle is closed.
 
-## 2. Approach: Frontend-First
+## 2. Current Architecture
 
-Build the product surface first, with realistic mock data. The UI defines the data contracts;
-backend work follows later, and only when explicitly requested. Every screen must look and
-behave as if the data were real.
+A Next.js 16 application (read `AGENTS.md` before writing Next.js code) with a Supabase
+Postgres production backend. `docs/BACKEND.md` is the detailed reference; `supabase/README.md`
+lists the migrations in order.
 
-## 3. Initial Build Scope
+- **Operator authentication** — Supabase Auth. One level: operator or nobody; operators are
+  confirmed users listed in `NEXRA_OPERATOR_EMAILS`. `src/proxy.ts` gates every page, and every
+  write and data endpoint re-checks the operator server-side.
+- **Database** — Row level security with no policies on every table; the server alone uses
+  `service_role`. Lifecycle and immutability rules are enforced in Postgres (triggers,
+  `security definer` functions).
+- **Live agent execution** — the agent runtime (`src/lib/agent-runs`, `/api/agent-runs/*`,
+  `/api/worker/*`) queues and runs tasks for the twelve registry agents, with attempts, leases,
+  retries and a scheduled worker. The executor is `mock` by default or `ai` (Anthropic).
+- **Crawl grounding** — the crawl foundation (`src/lib/crawl`, `/api/crawls/*`) records own-site
+  and competitor crawls; crawl-grounded agent tasks read those records.
+- **Google Search Console grounding** — a read-only service account (`src/lib/search-console`);
+  the Search Console panel and two agent tasks read the project's own report.
+- **Content workflow** (`src/lib/content`, `/api/content-drafts`, `/api/content-publications`):
+  - immutable content drafts and operator versions;
+  - version-bound fact-check of one exact version;
+  - exact-version approval;
+  - publication proposals for one exact approved version, which publish nothing;
+  - website artifact dry-run, rendered offline, which writes nothing anywhere.
 
-The initial build focuses **only** on:
+Everything else on screen (rankings, technical, competitor, backlink, AI-visibility and
+reporting figures) is still modelled fixture data from `src/lib/mock`. It must stay labelled as
+such (`src/config/build-status.ts`). Never present fixture data as live, or live data as a
+fixture.
 
-- Premium application shell
-- Sidebar
-- Header
-- Dashboard
-- Main routes/pages
-- Working navigation
-- Responsive layout
-- Reusable UI components
-- Realistic mock SEO data
-- Mock AI agent activity
+## 3. Build Principles
 
-## 4. Explicitly Out of Scope (Until Requested)
+- Extend the existing modules and patterns; do not introduce a parallel implementation.
+- Server-side first: validation, authorisation and state rules live on the server and, where
+  they protect data, in the database.
+- Grounded, not invented: agents and renderers use only records the product holds. A missing
+  value is reported as missing, never filled in.
+- Every screen keeps real states (loading, empty, error, not connected) and honest labels.
+- Every change is additive and reversible unless the user approves otherwise. Existing
+  migrations are never edited; a schema change is a new migration.
+
+## 4. Out of Scope Until Explicitly Requested
 
 Do **NOT** build any of the following until the user explicitly asks:
 
-- Real backend / server logic
-- Database
-- Authentication
-- APIs (real endpoints, real data fetching)
-- AI integrations (LLM calls, agent runtimes)
-- Scraping / crawling
+- Publishing content to any website, or any write to the `nexra-ai` repository (branch,
+  commit, pull request, merge, deployment)
+- Create PR / Merge / Deploy / Publish controls in the product
 - Billing / payments / subscriptions
-- External integrations (GSC, GA4, Ahrefs, Semrush, CMS, webhooks, and similar)
-
-Mock data and mock agent activity stand in for all of the above.
+- New external integrations (GA4, Ahrefs, Semrush, CMS, webhooks, and similar)
+- Replacing a fixture-backed screen with live data, beyond the feature requested
 
 ## 5. Dependency Rules
 
@@ -86,6 +134,11 @@ Ask the user and wait for explicit approval before any of these:
 - Global CLI installs
 - DNS / domain changes
 - Deployment configuration
+- Applying a migration to the production database, or changing production data
+- Switching the agent executor, AI provider or model (`NEXRA_AGENT_EXECUTOR`,
+  `NEXRA_AI_PROVIDER`, `NEXRA_AI_MODEL`)
+- Any write to an external repository or service, including `nexra-ai` (branch, commit,
+  pull request, merge, deployment, publication)
 
 ## 7. Security Rules
 
@@ -113,7 +166,9 @@ Ask the user and wait for explicit approval before any of these:
 - Check the browser console and the terminal for errors and warnings.
 - Verify responsive behaviour at mobile, tablet, and desktop widths.
 - Verify no regressions in previously working screens.
-- Run the available checks (type check, lint, build) before committing.
+- Run the available checks before committing: `npm test`, `npm run typecheck`,
+  `npm run lint`, `npm run build`, and `npm run db:seed:check` when the seed or projects change.
+- Add unit tests beside the code for every new server module, contract or renderer.
 
 ## 10. Git as a Checkpoint System
 
@@ -203,8 +258,10 @@ Every navigation item resolves to a real route. No dead links.
 | 11 | Authority & Backlink | Link opportunities, digital PR, authority signals |
 | 12 | Analytics & Learning | Performance measurement, attribution, learnings fed back into strategy |
 
-Agents are **mocked** in the current milestone: statuses, activity feeds, run history, and
-outputs are realistic fixtures, not live executions.
+Agent profiles, statuses and activity feeds come from the fixture registry
+(`src/lib/mock/agents`). Agent **runs** are real: the runtime executes read-only review tasks,
+grounded in stored projects, crawls, Search Console or earlier runs, plus the Writer's
+`section-draft` task. The full task-type list is in `docs/BACKEND.md` (*Agent runtime*).
 
 ### Long-Term Agent Workflow
 
@@ -230,23 +287,23 @@ the next cycle. The UI should represent this as a continuous cycle, not a one-wa
 
 ## 14. Build Sequence
 
-| Phase | Scope |
-|---|---|
-| Phase 1 | Foundation — app shell, sidebar, header, routing, layout system, UI primitives, mock data layer |
-| Phase 2 | Command Center |
-| Phase 3 | Projects |
-| Phase 4 | AI Agents |
-| Phase 5 | Keyword Intelligence |
-| Phase 6 | Content Studio |
-| Phase 7 | Competitor Intelligence |
-| Phase 8 | Technical SEO |
-| Phase 9 | AI Visibility |
-| Phase 10 | Backlinks & Authority |
-| Phase 11 | Analytics |
-| Phase 12 | Reports |
+The frontend foundation (app shell, navigation, the twelve screens, UI primitives, fixture
+data layer) and the backend foundation (Supabase, operator sign-in, agent runtime, crawl
+foundation, Search Console) are complete. Current work follows the content workflow:
 
-Phases are executed in order. Each phase is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10).
+| Stage | Scope | Status |
+|---|---|---|
+| Stage 1 | Durable Writer draft persistence | Complete |
+| Stage 2 | Immutable operator version history | Complete |
+| Stage 3 | Exact-version fact-check | Complete |
+| Stage 4 | Exact-version approval gate | Complete |
+| Stage 5A | Publication proposal + exact-version preview | Complete |
+| Stage 5B | Website artifact dry-run | Complete |
+| Stage 5 / C1 | Complete Article Assembly: Pure Article Contract | Next, not started |
+
+Stages are executed in order. Each stage is broken into bounded features, and each bounded
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Work beyond C1 is decided
+with the user and is not planned here.
 
 ## 15. Definition of Done
 
