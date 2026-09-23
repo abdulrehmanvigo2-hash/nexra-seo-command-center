@@ -10,6 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextInput } from "@/components/ui/field";
+import { WebsiteDryRunPanel } from "@/components/content/website-dry-run-panel";
 import { DRAFT_SECTION_LABEL, NO_PUBLICATION_STATEMENT } from "@/lib/content/publications/preview";
 import {
   proposalEligibility,
@@ -427,6 +428,7 @@ function ActiveProposal({
       ) : (
         <p className="text-xs text-critical">The bound version could not be read, so no preview is shown.</p>
       )}
+      <WebsiteDryRunPanel key={proposal.id} projectId={projectId} draftId={proposal.draftId} proposalId={proposal.id} />
       <div className="flex flex-wrap items-center gap-2">
         {confirming ? (
           <>
