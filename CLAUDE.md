@@ -4,15 +4,19 @@ Professional, agency-grade AI SEO platform. This file defines the operating rule
 project. Read it before writing any code.
 
 **Current stage: Stage 5 (publication) of the content workflow. Milestones A, B, C1, C2, C3 and C5
-are complete; C4 is implemented and deployed, with new-parser live verification pending; C6 is
-defined and not started (see §0).**
+are complete; C4 is implemented and deployed, with new-parser live verification pending; C6
+Checkpoint 1 (database) and D3 are implemented and verified locally only — not pushed, not applied
+to production; C6 Checkpoint 2 has not started (see §0).**
 
 ---
 
 ## 0. Current Checkpoint
 
-GitHub `master`: the C5 merge (PR #2, `claude/article-approval-c5`),
-`304ac1461860119f7a4fd47f94369de0a0894d9a`.
+GitHub `master`: `7fb652a23266ab312dfa1a65baecfe73c85988f0` (merge of `claude/c6-scope-docs`,
+which defined C6; the C5 merge, PR #2, is `304ac1461860119f7a4fd47f94369de0a0894d9a`).
+
+Local feature branch `claude/c6-article-proposal-db` (not pushed, not merged): C6 Checkpoint 1,
+the PostgreSQL test harness and D3 — see *C6 local checkpoints* below.
 
 **Completed content-workflow stages:**
 
@@ -90,8 +94,9 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Next planned work:** Milestone C6 — Article Publication Proposal (record-only). It has not
-started and starts only with explicit user approval. Work beyond C6 is undecided.
+**Current work:** Milestone C6 — Article Publication Proposal (record-only). Its database
+checkpoint and D3 are implemented and verified locally; C6 is NOT complete and NOT production
+verified. Each further step starts only with explicit user approval. Work beyond C6 is undecided.
 
 C6 records an operator's intention to publish one exact approved article version. It records
 proposal state only.
@@ -116,6 +121,54 @@ C6 reuses:
 C6 does NOT include: TSX publishing; GitHub writes; Vercel writes; `nexra-ai` writes; pull
 request creation; merge; deployment; live publishing; C7. It never approves or publishes anything
 automatically. Real rendering and publishing remain a later, separately approved milestone.
+
+**C6 local checkpoints** (branch `claude/c6-article-proposal-db`, on `master` `7fb652a`; local only):
+
+- `caae5d6` — **C6 Checkpoint 1: database gate, implemented and verified locally.** Migration
+  `20260925120000_create_article_publication_proposals.sql`: `nexra_article_publication_proposals`
+  bound to one exact approved version (version number and row id, content SHA-256, the exact C5
+  approval row with its approver and time), a registered destination, the content's own slug (D1)
+  and a preview hash; `proposed` or `withdrawn` only; insert, update, delete and truncate guards;
+  one active proposal per article and per destination slug; `nexra_article_publication_propose`
+  and `nexra_article_publication_withdraw` (`security definer`, under the article's row lock);
+  service_role gets SELECT and EXECUTE on the two functions only. The pinned destination registry
+  and live slugs (D2) are restated in SQL, with a repository drift test against `destinations.ts`
+  and the pinned website template. It adds a foreign key to `nexra_article_approvals`, so a plain
+  TRUNCATE of approvals is now refused by PostgreSQL (0A000) before the C5 guard.
+- `16e7717` — **PostgreSQL test harness, repository-tracked** under `supabase/tests/`, with one
+  runner, `bash supabase/tests/run.sh`, that builds and deletes a disposable local cluster (Unix
+  socket only, TCP disabled, libpq environment cleared) and never connects to a hosted database.
+  Needs bash and PostgreSQL 16 server binaries (Linux or WSL). Covers C2, C4, C5 (updated for the
+  C6 foreign key and `security definer` inventory) and C6, with two-session races.
+- `ac95fc2` — **D3 Option A, implemented and verified locally.** Migration
+  `20260926120000_publication_proposals_cross_table_slug_lock.sql`: one BEFORE INSERT trigger on
+  the draft proposal table and one on the article proposal table, sharing one function. For a row
+  inserted as `proposed` it refuses a transaction that is not READ COMMITTED (0A000), takes a
+  transaction advisory lock on the destination and slug, and raises unique_violation when the
+  other table holds an active proposal; both propose functions answer `slug-taken`. At most one
+  active proposal per (destination, slug) across both tables. New draft-side behaviour: a draft
+  proposal is refused `slug-taken` while an active article proposal holds its destination and
+  slug. No function body, grant, RLS setting or application code changed. The migration refuses
+  to apply over an existing cross-table duplicate. Adds a draft-proposal regression suite.
+- **Local verification at `ac95fc2`:** every harness suite passed (40 of 40 checks: C2 54, C4 60,
+  C5 69, drafts 40, C6 146, C6-D3 35 assertions; C2, draft, C6 and D3 races; a 12-session stress
+  run with no deadlock; D3 preflight; C6 rollback); `npm test` 1,420 passed; typecheck, lint and
+  production build passed.
+
+**C6 status and pending items:**
+
+- The C6 migration `20260925120000` and the D3 migration `20260926120000` have **not** been
+  applied to production. Applying them is a separate §6 approval. Before it, read-only production
+  checks: `show default_transaction_isolation;` must be `read committed`, and no destination/slug
+  may be active in both proposal tables.
+- The branch `claude/c6-article-proposal-db` has **not** been pushed, and there is no pull request
+  or merge.
+- **C6 Checkpoint 2** (application service, API, Server Actions, UI and preview) has **not**
+  started.
+- No article has been approved, proposed or published by C6.
+- The existing draft UI message for `slug-taken` ("Another draft's active proposal already uses
+  this slug…") is inaccurate once an article proposal can hold the slug; its wording needs a
+  later, separately approved correction.
 
 **Current safety boundaries:**
 
@@ -403,11 +456,12 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Complete, live verified |
 | Stage 5 / C4 | Complete Article Assembly: Article Check Units | Implementation complete; deployment and existing-result browser verification complete; new-parser live verification pending |
 | Stage 5 / C5 | Complete Article Assembly: Article Approval Gate | Complete, merged, deployed, production verified |
-| Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Defined; not started |
+| Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Checkpoint 1 (database) and D3 implemented and verified locally; not pushed; not applied to production; Checkpoint 2 not started |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Next planned: C6 — Article Publication Proposal (record-only) (not started). Work beyond C6 is
-undecided and is not planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: C6 — Article
+Publication Proposal (record-only), with Checkpoint 1 and D3 local only and Checkpoint 2 not
+started. Work beyond C6 is undecided and is not planned here.
 
 ## 15. Definition of Done
 
