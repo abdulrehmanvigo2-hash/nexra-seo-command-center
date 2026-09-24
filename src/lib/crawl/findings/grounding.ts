@@ -69,7 +69,8 @@ function observedText(finding: CrawlFinding): string {
     .join("; ");
 }
 
-function describeFinding(finding: CrawlFinding): string {
+/** One finding as one evidence line: rule id, severity, label, the URLs it names (bounded), the exact observed values, its sentence and its id. */
+export function describeFinding(finding: CrawlFinding): string {
   const shown = finding.urls.slice(0, MAX_URLS_DESCRIBED);
   const more = finding.urlCount - shown.length;
   const urls = `${shown.join(", ")}${more > 0 ? ` (+${more} more of ${finding.urlCount})` : ""}`;

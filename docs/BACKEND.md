@@ -1786,6 +1786,35 @@ not fixture data. The section offers no control — nothing fixes, dispatches
 or writes — and the Technical SEO screen still renders its modelled registry,
 labelled as such; mapping one onto the other remains a separate feature.
 
+### The Director reads the recorded findings (T6)
+
+The SEO Director's `priority-review` still takes one input, a source run id,
+checked against the Director's own project before anything is formatted.
+Since T6, when the upstream review's own evidence summary names a crawl —
+`crawl-review`, `on-page-review` and `answer-readiness-review` record one —
+the dispatch (`src/lib/agent-runs/task-grounding.ts`, `agent-run` case) reads
+the findings recorded for that crawl (T3) through
+`crawlService().getCrawlFindings(projectId, crawlId)` for the Director's
+project and appends them after the quoted review as a second block
+(`src/lib/crawl/findings/director-grounding.ts`): the crawl, when and under
+which rule version the findings were recorded, the coverage, the true count
+per rule, and each finding by rule id, severity, URLs, exact observed values,
+sentence and id — bounded exactly like the T2 block (at most ten per rule,
+under 16,000 bytes, a cut named, the counts always complete) and ending with
+the same limitations. Nothing is recomputed and the crawl itself is not
+re-read. Findings that are unavailable (no store), not recorded (a crawl from
+before T3, or one that never finished) or not the project's are one fixed note
+each that tells the Director to rank nothing on findings; a report with no
+findings says no rule fired and that this is not a clean bill of health. A
+review written over a Search Console report or a performance run gets no
+second block and reads nothing. The Director's evidence summary gains
+`recordedFindings` (status, crawl and report ids, rule version, counts, cuts,
+bytes). The instructions now ask for a BASIS on every item — OBSERVED when it
+rests on a recorded finding cited by rule id and URL, PROPOSED when it rests
+on the review's inference — say the recorded finding wins a disagreement, and
+forbid stating or estimating any ranking, traffic, click, revenue or vitals
+effect. The specialist reviews' prompts are unchanged.
+
 ### More of what a crawl observes (T5)
 
 Migration `20260929120000_extend_crawl_page_signals.sql` adds nullable
