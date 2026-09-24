@@ -141,3 +141,26 @@ export type ArticleProposalPreview = {
   /** The exact UTF-8 text whose SHA-256 a proposal records as `preview_sha256`. LF line endings, no trailing newline. */
   readonly document: string;
 };
+
+/** One stored article publication proposal (`nexra_article_publication_proposals`), as read back. Immutable history. */
+export type ArticlePublicationProposal = {
+  readonly id: string;
+  readonly projectId: string;
+  readonly articleId: string;
+  readonly articleVersion: number;
+  readonly articleVersionId: string;
+  readonly contentSha256: string;
+  readonly approvalId: string;
+  readonly approvedBy: string;
+  readonly approvedAt: string;
+  readonly destination: string;
+  readonly slug: string;
+  readonly previewFormat: ArticleProposalPreviewFormat;
+  readonly previewSha256: string;
+  readonly status: "proposed" | "withdrawn";
+  readonly requestedBy: string;
+  readonly withdrawnBy: string | null;
+  readonly withdrawnAt: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
