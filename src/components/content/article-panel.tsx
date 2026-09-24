@@ -9,6 +9,7 @@ import {
 } from "@/app/(app)/projects/article-actions";
 import { ArticleApprovalSection } from "@/components/content/article-approval-section";
 import { ArticleCheckSection } from "@/components/content/article-check-section";
+import { ArticleProposalSection } from "@/components/content/article-proposal-section";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
@@ -349,6 +350,12 @@ function ArticleDetail({
         projectId={projectId}
         articleId={article.id}
         onArticleChanged={onArticleChanged}
+      />
+
+      <ArticleProposalSection
+        key={`proposal:${article.id}:${article.currentVersion}:${article.status}:${article.approvedVersion ?? ""}`}
+        projectId={projectId}
+        articleId={article.id}
       />
 
       {viewing === null ? (

@@ -64,7 +64,7 @@ const PREPARE_FAILURE: Readonly<Record<Failure<PreparePublicationProposalActionR
   "version-not-found": "This version no longer exists on the server.",
   "destination-unknown": "That destination is not registered for this project.",
   "content-changed": "The version's text on the server is not what was shown here, so nothing was proposed. The preview has been reloaded.",
-  "slug-taken": "Another draft's active proposal already uses this slug at this destination. Choose another slug.",
+  "slug-taken": "Another active publication proposal — a draft's or an article's — already uses this destination and slug. Choose another slug.",
   failed: "The proposal could not be prepared. Nothing is known to have been written.",
 };
 

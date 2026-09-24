@@ -309,6 +309,61 @@ that function, nothing else; `anon` and `authenticated` get nothing. Apply
 it after `20260923180000`, then `NOTIFY pgrst, 'reload schema';`. It has
 been applied only to a throwaway local PostgreSQL 16 for validation.
 
+`20260925120000_create_article_publication_proposals.sql` adds the article
+publication proposal (Stage 5, milestone C6, record-only):
+`nexra_article_publication_proposals`, one row per recorded intention to
+publish one exact approved article version to one registered destination.
+A row binds the project, article, version number and immutable version row
+id, the version's content SHA-256, the exact C5 approval row (its approver
+and time copied from it), the destination, the slug — which must be the
+approved content's own `slug` (decision D1) — the preview format
+(`article-proposal-text/1`) and preview SHA-256, and the operator. The
+only states are `proposed` and `withdrawn`; withdrawal is final, its time
+is the database's, and nothing is ever deleted. An insert trigger checks
+the binding for every writer; guard triggers keep it fixed and refuse
+delete and truncate. Two partial unique indexes allow one active proposal
+per article and one active article proposal per destination and slug. The
+destination registry and the live slugs of the pinned website template
+(`nexra-ai-blog-tsx/1` at nexra-ai commit `a4a5722`, decision D2) are
+restated in two immutable SQL helpers, kept aligned with the TypeScript by
+a repository drift test; they are not live website state, and a new pin is
+a new migration. The writes are `public.nexra_article_publication_propose(...)`
+and `public.nexra_article_publication_withdraw(...)` (`security definer`,
+`search_path` pinned empty, under the parent article's row lock).
+`service_role` gets SELECT on the table and EXECUTE on those two
+functions, nothing else; `anon` and `authenticated` get nothing. It
+depends on `projects`, `nexra_articles`, `nexra_article_versions`,
+`nexra_article_approvals` and `nexra_content_publication_proposals`, and
+its foreign key to `nexra_article_approvals` means a plain TRUNCATE of
+approvals is now refused by PostgreSQL (0A000) before the C5 guard. No
+existing table, column, function or grant is changed. A proposal publishes
+nothing and writes nowhere outside this database. Apply it after
+`20260924120000`, then `NOTIFY pgrst, 'reload schema';`. Its header calls
+the draft/article slug race a known gap; `20260926120000` closes it. It has
+been applied only to disposable local PostgreSQL 16 clusters (the harness in
+`tests/`); it has **not** been applied to production.
+
+`20260926120000_publication_proposals_cross_table_slug_lock.sql` (decision
+D3, Option A) keeps at most one active proposal per destination and slug
+across both proposal tables. One function,
+`nexra_publication_proposals_reserve_slug()` (not `security definer`,
+`search_path` pinned empty), is attached by a BEFORE INSERT trigger to each
+of `nexra_content_publication_proposals` and
+`nexra_article_publication_proposals`, for rows inserted as `proposed`. It
+refuses a transaction that is not READ COMMITTED (0A000, fail closed), takes
+the transaction advisory lock `(20260926, hashtext(destination || '/' ||
+slug))`, and raises unique_violation when the other table holds an active
+proposal with the same destination and slug; both propose functions answer
+that as `slug-taken`. New draft-side behaviour: a draft proposal is refused
+`slug-taken` while an active article proposal holds its destination and
+slug. No table, column, index, function body, grant or row level security
+setting changes. A preflight block refuses to apply the migration while
+any destination and slug is active in both tables. The protection holds
+only while both triggers stay enabled; a superuser who disables triggers
+bypasses it. Apply it after `20260925120000`, then `NOTIFY pgrst, 'reload
+schema';`. It has been applied only to disposable local PostgreSQL 16
+clusters; it has **not** been applied to production.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

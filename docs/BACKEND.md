@@ -1386,6 +1386,120 @@ approved-version pointer, every blocking reason and the approval history;
 the Approve control appears only when eligible and asks for an explicit
 confirmation. It is labelled "Approval only — nothing is published."
 
+### Article publication proposal (Stage 5, Complete Article Assembly, milestone C6)
+
+An operator records an intention to publish the article's current, exact,
+approved version to one registered destination. A proposal is record-only:
+nothing here publishes, renders a deployable website artifact, writes to a
+website or to any repository (including `nexra-ai`), creates a branch,
+commit or pull request, deploys, or approves anything. The only states are
+`proposed` and `withdrawn`; there is no published state.
+
+Eligibility (`proposals/eligibility.ts`, pure, shared by the panel and the
+server) fails closed and reports every reason that applies, in a fixed
+order (`ARTICLE_PROPOSAL_BLOCKS`): an invalid request; not found; archived;
+not approved; not the current version; an approval that does not name the
+current version; a missing or different version row; stored text that
+does not read as C1 content or verify against its hash; a missing or
+different C5 approval row or pointer; an invalid slug or one that is not
+the content's own; a `[NEEDS EVIDENCE` placeholder; an unregistered
+destination; unreadable proposal state; an existing active proposal of
+the article; the destination and slug held by another article's or a
+draft's active proposal; and a live-slug collision. A live-slug collision
+under the `update-existing` topic decision is not a block but a warning.
+
+Decisions. **D1** — the slug is the approved canonical content's own
+`slug`; there is no slug input. **D2** — the destination registry
+(`nexra-agency-website` for `nexra-agency`) and the existing live slugs
+(`ai-lead-follow-up-automation`) are pinned to the website template
+`nexra-ai-blog-tsx/1` at nexra-ai commit `a4a5722`, restated in SQL
+(`nexra_article_publication_destination_allowed`,
+`nexra_article_publication_live_slugs`) and kept equal to
+`destinations.ts` and the template by a drift test
+(`article-proposal-migration.test.ts`). Newer live slugs are not
+discovered; a proposal is never permission to overwrite live content.
+**D3** — one active proposal per destination and slug across the draft
+and article proposal tables (below).
+
+Preview (`proposals/preview.ts`, `proposals/preview-hash.ts`): a
+deterministic text document, format `article-proposal-text/1` — LF line
+endings, no trailing newline, the canonical text verbatim, labelled
+"PROPOSAL ONLY — NOT PUBLISHED". Its SHA-256 is computed on the server
+only; the browser never supplies a hash.
+
+Service (`proposals/service.ts`) composes the C4 check store, the C5
+approval store and the proposal store (`proposals/supabase/store.ts`). The
+browser names only the project, the article, the version number it saw and
+the destination. The server re-reads the article, version, text, hash and
+approval, applies the rule, builds and hashes the preview, and only then
+calls the database with its own identities. A version that is no longer
+current is refused `stale`, and an ineligible one `ineligible`, before
+anything is sent; while the article has an active proposal it is
+ineligible (`proposal-exists`), and if an identical binding still reaches
+the database it answers `exists` without a write. If the re-read after a
+write fails, the action reports `failed` even though the row was written
+(the C5 convention). An active proposal that no longer
+names the current approved version, row, hash or approval is reported
+stale; a new proposal needs it withdrawn first. Without a database
+configuration every call answers `unavailable`.
+
+Table and functions (`20260925120000_create_article_publication_proposals.sql`):
+`nexra_article_publication_proposals` binds project, article, version
+number and row id, content SHA-256, the C5 `approval_id` with its
+`approved_by` and `approved_at`, destination, slug, preview format and
+SHA-256, and `requested_by`. An insert trigger checks the binding; guard
+triggers keep it fixed and refuse delete and truncate; withdrawal
+(`proposed` → `withdrawn`) is final and timed by the database. Partial
+unique indexes allow one active proposal per article and per destination
+and slug within the table. `nexra_article_publication_propose` (`security
+definer`, empty `search_path`, under the parent article's row lock) answers
+`created`, `exists` or `active-exists` with the proposal, or refuses:
+`not-found`, `archived`, `destination-unavailable`, `not-approved`,
+`stale`, `version-not-found`, `version-mismatch`, `content-mismatch`,
+`approval-mismatch`, `slug-mismatch`, `unresolved-placeholder`,
+`invalid-preview`, `slug-live-collision`, `slug-taken`.
+`nexra_article_publication_withdraw` answers `withdrawn`,
+`already-withdrawn` or `not-found`. service_role holds SELECT on the table
+and EXECUTE on those two functions only; `anon` and `authenticated` hold
+nothing; RLS is enabled with no policies. The foreign key to
+`nexra_article_approvals` makes a plain TRUNCATE of approvals fail (0A000).
+
+Cross-table slug lock (`20260926120000_publication_proposals_cross_table_slug_lock.sql`,
+D3 Option A): the function `nexra_publication_proposals_reserve_slug()`
+(not `security definer`, empty `search_path`) runs from a BEFORE INSERT
+trigger on each proposal table for rows inserted as `proposed`. It refuses
+any transaction that is not READ COMMITTED (0A000, fail closed), takes
+`pg_advisory_xact_lock(20260926, hashtext(destination || '/' || slug))`,
+and raises unique_violation when the other table holds an active proposal
+for the same destination and slug; both propose functions answer it as
+`slug-taken`. A draft proposal is therefore refused while an article
+proposal holds its slug. The protection requires both triggers to stay
+enabled; a superuser disabling triggers bypasses it. A preflight block
+refuses to apply the migration over an existing cross-table duplicate.
+This migration supersedes the "known gap" text in the C6 migration's
+header, which is left unedited because existing migrations are never
+changed.
+
+`GET /api/content-article-proposals?project=…&article=…[&destination=…]`
+(operators only, read-only, uncached) answers `{ proposal: state }` —
+eligibility with every reason and warning, the preview and its hash when
+eligible, the active proposal and whether it is current, and the history —
+or 401 unauthorized, 400 invalid, 404 not-found, 503 unavailable, 500
+failed. Server Actions `recordArticleProposal(projectId, articleId,
+articleVersion, destination, confirmation)` and
+`withdrawArticleProposal(projectId, articleId, proposalId, confirmation)`
+(`app/(app)/projects/article-proposal-actions.ts`) check, in order
+(`proposals/requests.ts`): operator; argument types (every argument
+`unknown`); the confirmation token (`record-proposal-only` /
+`withdraw-proposal-only`); one write in flight and 30 per ten minutes per
+operator (`articles.propose`); then the service. The panel section
+(`src/components/content/article-proposal-section.tsx`, after the approval
+section) shows the headline state, every blocking reason, the preview,
+the active proposal and the history; Record and Withdraw appear only when
+allowed and ask for explicit confirmation. It is labelled "PROPOSAL ONLY —
+NOT PUBLISHED". The draft proposal section's `slug-taken` message now
+names both a draft's and an article's active proposal.
+
 ## Crawl foundation
 
 An operator asks for a crawl of a stored project; the engine walks that
