@@ -6,7 +6,9 @@ import { readArticleCheckGrounding, type ArticleCheckGroundingReaders } from "@/
 import { readDraftGrounding, type DraftGroundingReaders } from "@/lib/content/draft-grounding";
 import { readFactCheckGrounding, type FactCheckGroundingReaders } from "@/lib/content/drafts/fact-check-grounding";
 import { readComparisonGrounding, type ComparisonGroundingReaders } from "@/lib/crawl/comparison-grounding";
-import { readCrawlGrounding, type CrawlGroundingReader } from "@/lib/crawl/grounding";
+import { computeCrawlFindings } from "@/lib/crawl/findings/compute";
+import { FINDINGS_LINK_LIMIT, formatCrawlFindingsGrounding, unavailableCrawlFindingsGrounding } from "@/lib/crawl/findings/grounding";
+import { formatCrawlGrounding, readReviewableCrawl, type CrawlGroundingReader } from "@/lib/crawl/grounding";
 import { readProjectGrounding, type ProjectGroundingReaders } from "@/lib/projects/grounding";
 import { readEvidencePackGrounding, type EvidencePackReaders } from "@/lib/research/evidence-pack";
 import {
@@ -88,18 +90,35 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
 
         // The run's own project and its own domain: a crawl of another project
         // or of a competitor's site is refused before a page is described.
-        const result = await readCrawlGrounding(readers.crawls, {
+        const eligible = await readReviewableCrawl(readers.crawls, {
           crawlId,
           projectId: task.project.id,
           projectDomain: task.project.domain,
         });
-        if (!result.ok) return { ok: false, reason: result.reason };
+        if (!eligible.ok) return { ok: false, reason: eligible.reason };
+        const crawlGrounding = formatCrawlGrounding(eligible.crawl, eligible.pages);
+
+        // The two reviews of the project's own pages also get the fixed
+        // rules' findings over the same eligible crawl, appended after the
+        // crawl evidence. The edges come through the one bounded link read;
+        // if that read fails the crawl evidence stands alone and says so.
+        if (task.taskType !== "crawl-review" && task.taskType !== "on-page-review") {
+          return { ok: true, grounding: { text: crawlGrounding.text, summary: { ...crawlGrounding.summary }, source: CRAWL_SOURCE } };
+        }
+        let findings;
+        try {
+          const links = await readers.links.links.listLinks(eligible.crawl.id, FINDINGS_LINK_LIMIT);
+          const report = computeCrawlFindings({ crawl: eligible.crawl, pages: eligible.pages, links });
+          findings = formatCrawlFindingsGrounding(report, { read: links.length, cut: links.length >= FINDINGS_LINK_LIMIT });
+        } catch {
+          findings = unavailableCrawlFindingsGrounding();
+        }
 
         return {
           ok: true,
           grounding: {
-            text: result.grounding.text,
-            summary: { ...result.grounding.summary },
+            text: `${crawlGrounding.text}\n\n${findings.text}`,
+            summary: { ...crawlGrounding.summary, findings: findings.summary },
             source: CRAWL_SOURCE,
           },
         };

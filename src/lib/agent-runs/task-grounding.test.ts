@@ -6,6 +6,8 @@ import type { RangeId } from "../../types/dashboard.ts";
 import type { ProjectIntake, ProjectRecord } from "../../types/project.ts";
 import type { SearchConsoleReport } from "../../types/search-console.ts";
 import { COMPARISON_SIDE_LIMITS, formatComparisonGrounding, type ComparisonGroundingReaders } from "../crawl/comparison-grounding.ts";
+import { computeCrawlFindings } from "../crawl/findings/compute.ts";
+import { FINDINGS_EVIDENCE_LIMITS_NOTE, formatCrawlFindingsGrounding, unavailableCrawlFindingsGrounding } from "../crawl/findings/grounding.ts";
 import { formatCrawlGrounding } from "../crawl/grounding.ts";
 import { formatProjectGrounding, type ProjectGroundingReaders } from "../projects/grounding.ts";
 import { formatDraftGrounding, resolveSection, type DraftGroundingReaders } from "../content/draft-grounding.ts";
@@ -136,6 +138,11 @@ const LINKS: readonly CrawlLink[] = [
   { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false },
   { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false },
 ];
+
+/** The findings block the fixture crawl yields: one short title on /services. */
+function expectedFindings(crawl: Crawl = CRAWL, pages: readonly CrawlPage[] = PAGES, links: readonly CrawlLink[] = LINKS) {
+  return formatCrawlFindingsGrounding(computeCrawlFindings({ crawl, pages, links }), { read: links.length, cut: false });
+}
 
 /** The Authority agent's readers: a crawl record of its own and the crawl's edges. */
 function linkStore(crawl: Crawl = CRAWL, links: readonly CrawlLink[] = LINKS) {
@@ -676,8 +683,8 @@ describe("which tasks are grounded", () => {
     if (!onPage.ok || !technical.ok) return;
     assert.equal(onPage.grounding?.text, technical.grounding?.text);
     assert.deepEqual(onPage.grounding?.summary, technical.grounding?.summary);
-    // And it is the block the grounding module itself would produce.
-    assert.equal(onPage.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
+    // And it is the block the grounding module itself would produce, followed by the fixed rules' findings.
+    assert.equal(onPage.grounding?.text, `${formatCrawlGrounding(CRAWL, PAGES).text}\n\n${expectedFindings().text}`);
   });
 
   test("a task that declares no evidence gets none, and the crawl store is never read", async () => {
@@ -776,7 +783,7 @@ describe("the On-Page SEO agent through the executor", () => {
     assert.equal(output.metadata?.grounded, true);
     assert.equal(output.metadata?.simulated, false);
     assert.equal(output.metadata?.taskType, "on-page-review");
-    assert.deepEqual(output.metadata?.evidence, { ...formatCrawlGrounding(CRAWL, PAGES).summary });
+    assert.deepEqual(output.metadata?.evidence, { ...formatCrawlGrounding(CRAWL, PAGES).summary, findings: expectedFindings().summary });
   });
 
   test("the partial-crawl scope language is in the prompt, so the agent cannot read five pages as a site", async () => {
@@ -1228,7 +1235,7 @@ describe("the AI Visibility answer-readiness review through the dispatch", () =>
     assert.equal(result.grounding?.summary.crawlId, CRAWL.id);
   });
 
-  test("all three crawl-grounded tasks receive byte-identical evidence", async () => {
+  test("all three crawl-grounded tasks receive the byte-identical crawl evidence; the two page reviews add the same findings block after it", async () => {
     const grounding = createTaskGrounding(readers());
     const [technical, onPage, readiness] = await Promise.all([
       grounding(crawlReviewTask),
@@ -1237,9 +1244,9 @@ describe("the AI Visibility answer-readiness review through the dispatch", () =>
     ]);
     assert.ok(technical.ok && onPage.ok && readiness.ok);
     if (!technical.ok || !onPage.ok || !readiness.ok) return;
-    assert.equal(readiness.grounding?.text, technical.grounding?.text);
-    assert.equal(readiness.grounding?.text, onPage.grounding?.text);
-    assert.deepEqual(readiness.grounding?.summary, technical.grounding?.summary);
+    assert.equal(technical.grounding?.text, onPage.grounding?.text);
+    assert.deepEqual(technical.grounding?.summary, onPage.grounding?.summary);
+    assert.ok(technical.grounding?.text.startsWith(readiness.grounding?.text ?? "x"));
     assert.equal(readiness.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
   });
 
@@ -1518,12 +1525,13 @@ describe("a competitor crawl reaches none of the project's own reviews", () => {
     assert.deepEqual(result, { ok: false, reason: "crawl-not-project-site" });
   });
 
-  test("the project's own crawl is still read by all three, byte for byte as before", async () => {
+  test("the project's own crawl is still read by all three, byte for byte as before; the two page reviews then get the findings block", async () => {
     for (const [, task] of reviews) {
       const result = await createTaskGrounding(readers())(task);
       assert.ok(result.ok);
       if (!result.ok) continue;
-      assert.equal(result.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
+      const withFindings = task.taskType === "crawl-review" || task.taskType === "on-page-review";
+      assert.equal(result.grounding?.text, withFindings ? `${formatCrawlGrounding(CRAWL, PAGES).text}\n\n${expectedFindings().text}` : formatCrawlGrounding(CRAWL, PAGES).text);
     }
   });
 });
@@ -2189,14 +2197,15 @@ describe("the Authority agent's prompt", () => {
     }
   });
 
-  test("the eleven existing tasks keep their exact wording — none of them reads an edge", async () => {
+  test("the eleven existing tasks keep their exact wording; only the two page reviews read edges, for their deterministic findings, never as outbound link evidence", async () => {
     for (const task of [crawlReviewTask, onPageTask, answerReadinessTask, searchQueryTask, performanceReviewTask, priorityReviewTask, intakeReviewTask, comparisonTask, evidencePackTask, contentPlanTask, sectionDraftTask]) {
       const links = linkStore();
       const { seen, provider } = capturingProvider();
       await createAiExecutor(provider, createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, links))).execute(task, new AbortController().signal);
       assert.doesNotMatch(seen.prompt ?? "", /OUTBOUND LINK RECORD|OUTBOUND HOSTS|Outbound link review/, task.taskType);
       assert.doesNotMatch(seen.system ?? "", /outbound link evidence/, task.taskType);
-      assert.equal(links.listCalls(), 0, task.taskType);
+      const readsEdges = task.taskType === "crawl-review" || task.taskType === "on-page-review";
+      assert.equal(links.listCalls(), readsEdges ? 1 : 0, task.taskType);
     }
   });
 });
@@ -2370,5 +2379,79 @@ describe("stored Search Console history beside the live report (P4b)", () => {
     const evidence = output.metadata?.evidence as { history?: { history?: string; bytes?: number } };
     assert.equal(evidence.history?.history, "available");
     assert.ok((evidence.history?.bytes ?? 0) > 0);
+  });
+});
+
+describe("deterministic crawl findings beside the crawl evidence (T2)", () => {
+  const crawlText = formatCrawlGrounding(CRAWL, PAGES).text;
+
+  test("crawl-review and on-page-review get the crawl evidence first, then the findings block, and the run's evidence summary carries the counts", async () => {
+    for (const task of [crawlReviewTask, onPageTask]) {
+      const all = readers();
+      const result = await createTaskGrounding(all)(task);
+      assert.ok(result.ok && result.grounding);
+      assert.ok(result.grounding.text.startsWith(crawlText), "the crawl evidence is unchanged and first");
+      const block = result.grounding.text.slice(crawlText.length + 2);
+      assert.match(block, /^DETERMINISTIC CRAWL FINDINGS \(fixed rules/);
+      assert.match(block, /Coverage: 2 pages recorded \(1 fetched and read, 0 not fetched, 1 not reached within the budget\); 5 link edges read; crawl partial, stopped on page-budget/);
+      assert.match(block, /Findings: 1 in total across 1 rule\(s\) — title-short ×1\./);
+      assert.ok(block.includes('- [title-short] low · Short title · https://nexraagency.com/services · observed: title="Services"; titleLength=8 · The title is 8 characters, under 30. (id title-short:'));
+      assert.ok(block.endsWith(FINDINGS_EVIDENCE_LIMITS_NOTE));
+      assert.equal(all.linkListCalls(), 1);
+      const findings = (result.grounding.summary as { findings?: Record<string, unknown> }).findings;
+      assert.deepEqual([findings?.status, findings?.findings, findings?.described, findings?.rules, findings?.linksRead, findings?.linksCut, findings?.cutByBytes], ["available", 1, 1, 1, 5, false, 0]);
+    }
+  });
+
+  test("the AI Visibility, link and comparison tasks are untouched: no findings block, no link read for the readiness review", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)(answerReadinessTask);
+    assert.ok(result.ok && result.grounding);
+    assert.equal(result.grounding.text, crawlText);
+    assert.equal(all.linkListCalls(), 0);
+    assert.equal("findings" in result.grounding.summary, false);
+  });
+
+  test("a wrong-project or unfinished crawl is refused before any finding is computed or any edge read", async () => {
+    const other = crawlStore({ ...CRAWL, projectId: "other-client" });
+    const otherReaders = readers(other);
+    assert.deepEqual(await createTaskGrounding(otherReaders)(crawlReviewTask), { ok: false, reason: "crawl-not-in-project" });
+    assert.equal(otherReaders.linkListCalls(), 0);
+    const running = readers(crawlStore({ ...CRAWL, status: "running", finishedAt: null }));
+    assert.deepEqual(await createTaskGrounding(running)(onPageTask), { ok: false, reason: "crawl-unfinished" });
+    assert.equal(running.linkListCalls(), 0);
+    const failed = readers(crawlStore({ ...CRAWL, status: "failed" }));
+    assert.deepEqual(await createTaskGrounding(failed)(onPageTask), { ok: false, reason: "crawl-not-reviewable" });
+    assert.equal(failed.linkListCalls(), 0);
+  });
+
+  test("a link read that throws leaves the crawl evidence intact with an unavailable note; the run is not refused", async () => {
+    const throwing = linkStore();
+    throwing.reader.links.listLinks = async () => {
+      throw new Error("edges unreadable");
+    };
+    const result = await createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), throwing))(crawlReviewTask);
+    assert.ok(result.ok && result.grounding);
+    assert.equal(result.grounding.text, `${crawlText}\n\n${unavailableCrawlFindingsGrounding().text}`);
+    assert.equal((result.grounding.summary as { findings?: { status?: string } }).findings?.status, "unavailable");
+  });
+
+  test("a crawl with no findings says no rule fired, not that the pages are clean", async () => {
+    const clean: CrawlPage = { ...PAGE, title: "Services at Nexra Agency, London SEO consultancy", titleLength: 47 };
+    const result = await createTaskGrounding(readers(crawlStore(CRAWL, [clean, SKIPPED])))(onPageTask);
+    assert.ok(result.ok && result.grounding);
+    assert.match(result.grounding.text, /Findings: 0 in total across 0 rule\(s\)\.\n\nNo rule fired on the pages this crawl recorded\. That is a statement about these rules over these pages, not a clean bill of health/);
+  });
+
+  test("through the executor, the findings block and the findings instructions reach the prompt", async () => {
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, createTaskGrounding(readers()));
+    const output = await executor.execute(crawlReviewTask, new AbortController().signal);
+    assert.match(seen.prompt ?? "", /DETERMINISTIC CRAWL FINDINGS/);
+    assert.match(seen.prompt ?? "", /\[title-short\] low/);
+    assert.match(seen.prompt ?? "", /Where a DETERMINISTIC CRAWL FINDINGS block follows the crawl evidence/);
+    assert.match(seen.prompt ?? "", /No finding says whether Google has indexed/);
+    const evidence = output.metadata?.evidence as { findings?: { status?: string } };
+    assert.equal(evidence.findings?.status, "available");
   });
 });
