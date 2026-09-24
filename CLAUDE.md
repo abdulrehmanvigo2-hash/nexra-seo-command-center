@@ -98,12 +98,12 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone M1 — Search Console snapshot persistence, Checkpoints 1a (database)
-and 1b (capture module), implemented and verified locally only on branch
-`claude/m1-cp1a-search-console-snapshots` (from `master` `954783e`); not pushed, not merged, not
-applied to production. C6 is complete (merged as
+**Current work:** Milestone M1 — Search Console snapshot persistence, Checkpoints 1a (database),
+1b (capture module) and 1c (worker step), implemented and verified locally on branch
+`claude/m1-cp1a-search-console-snapshots` (from `master` `954783e`); CP1a and CP1b are pushed to
+that branch (`52273fa`), CP1c is a local commit; nothing is merged or applied to production. C6 is complete (merged as
 `f28cd35`, migrations applied, deployed as `dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, production
-verified; see *C6 release* below). Each further M1 step (CP1c worker step, pushing, production
+verified; see *C6 release* below). Each further M1 step (pushing CP1c, a PR, merge, the production
 migration) starts only with explicit user approval.
 
 **M1 CP1a (local only):** migration `20260927120000_create_search_console_snapshots.sql` —
@@ -128,6 +128,16 @@ project, property and window end. A row is written only for a stored project's o
 property, from a fresh answer that names that exact property; a failed read is never a no-data
 row; rows stay within the table's limits; logs carry ids, outcomes and durations only. The worker,
 cron, UI, environment and migrations are unchanged. See `docs/BACKEND.md` (*Search Console*).
+
+**M1 CP1c (local only):** the scheduled `process` job (`src/lib/agent-runs/process-job.ts`,
+`/api/worker/process`) runs the agent-run queue first, unchanged (5 runs, 240 s), then the
+snapshot capture in the time left: at most 45 s, never into a 15 s response margin, skipped as
+`time-budget` when under the capture's 3 s minimum, and cut off at a hard deadline of budget plus
+5 s grace (`timed-out`); a throwing capture answers `failed`. The queue's answer is returned
+whatever the capture does; the response gains one additive `snapshots` field with ids, outcome
+names and counts only. Worker credential, rate limit, cron schedule and `vercel.json` unchanged.
+The production migration is still not applied, so in production the capture would answer
+`store-failed` until it is; applying it is a separate §6 approval.
 
 C6 records an operator's intention to publish one exact approved article version. It records
 proposal state only.
@@ -557,12 +567,13 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C5 | Complete Article Assembly: Article Approval Gate | Complete, merged, deployed, production verified |
 | Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Complete, merged (`f28cd35`), migrations applied, deployed, production verified |
 | M1 / CP1a | Search Console snapshot persistence: database | Implemented and verified locally; not pushed; not applied to production |
-| M1 / CP1b | Search Console snapshot persistence: capture module | Implemented and verified locally; not pushed; not wired to the worker |
+| M1 / CP1b | Search Console snapshot persistence: capture module | Implemented and verified locally; pushed to the feature branch; not merged |
+| M1 / CP1c | Search Console snapshot persistence: worker step | Implemented and verified locally; not pushed; migration not applied to production |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M1 — Search Console
-snapshot persistence, CP1a and CP1b local only; CP1c (worker step) starts only with explicit
-approval. Work beyond M1 is undecided and is not planned here.
+snapshot persistence, CP1a–CP1c on the feature branch; pushing CP1c, a PR, merge and the
+production migration start only with explicit approval. Work beyond M1 is undecided and is not planned here.
 
 ## 15. Definition of Done
 

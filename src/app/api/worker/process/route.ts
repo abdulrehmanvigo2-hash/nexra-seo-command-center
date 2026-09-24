@@ -1,68 +1,74 @@
 import type { NextRequest } from "next/server";
 import { agentRunService } from "@/lib/agent-runs";
 import { errorResponse, failureResponse, json, logFailure } from "@/lib/agent-runs/http";
+import { runProcessJob } from "@/lib/agent-runs/process-job";
 import { admitWorker } from "@/lib/agent-runs/worker-http";
 import { logEvent } from "@/lib/observability/log";
+import { searchConsoleSnapshotCapture } from "@/lib/search-console/snapshots";
 
 /**
- * Scheduled queue processing.
+ * Scheduled queue processing, then the Search Console snapshot capture.
  *
  *   GET or POST /api/worker/process   Authorization: Bearer <CRON_SECRET>
- *     → { job: "process", scheduledRetries: [...], executed: [...], stoppedBy }
+ *     → { job: "process", scheduledRetries: [...], executed: [...], stoppedBy,
+ *         snapshots: { status: "captured" | "skipped" | "timed-out" | "failed", … } }
  *
- * Two steps, in one invocation:
+ * Three steps, in one invocation (`src/lib/agent-runs/process-job.ts`):
  *   1. The retry policy re-queues failed runs whose failure is retryable and
  *      which have attempts left, each with a backoff (2, 4, 8 … minutes).
  *   2. Due queued runs are claimed and executed one at a time — at most five,
  *      and none started once a further attempt could overrun this function's
  *      time limit.
+ *   3. With the time left — at most 45 seconds, never into the response
+ *      margin — one bounded Search Console snapshot capture for the projects
+ *      the server's own configuration maps (milestone M1). Skipped when too
+ *      little time is left; cut off at a hard deadline otherwise. It never
+ *      delays or changes the queue, whose answer is returned as before.
  *
  * Every claim goes through the database lease, so overlapping invocations,
  * operators executing by hand, and a second scheduler never run the same
- * attempt twice. With nothing due, the answer is a 200 with an empty list.
- * Stale-run recovery is a separate job (`/api/worker/recover`).
+ * attempt twice; every snapshot goes through the one database function, so
+ * two captures of one window record it once. With nothing due, the answer is
+ * a 200 with an empty list. Stale-run recovery is a separate job
+ * (`/api/worker/recover`).
  *
  * GET because Vercel Cron sends GET. Authorized only by the worker credential.
  */
 
 export const maxDuration = 300;
 
-const MAX_RUNS_PER_INVOCATION = 5;
-/** Headroom under `maxDuration` for claiming, recording, and responding. */
-const BATCH_BUDGET_MS = 240_000;
-
 export async function GET(request: NextRequest) {
-  return processQueue(request);
+  return processJob(request);
 }
 
 export async function POST(request: NextRequest) {
-  return processQueue(request);
+  return processJob(request);
 }
 
-async function processQueue(request: NextRequest) {
-  const startedAt = performance.now();
+async function processJob(request: NextRequest) {
   try {
-    const refused = await admitWorker(request, "process");
-    if (refused) return refused;
-
-    const result = await agentRunService().processQueue({
-      maxRuns: MAX_RUNS_PER_INVOCATION,
-      budgetMs: BATCH_BUDGET_MS,
+    const outcome = await runProcessJob({
+      admit: () => admitWorker(request, "process"),
+      processQueue: (options) => agentRunService().processQueue(options),
+      capture: (options) => searchConsoleSnapshotCapture().capture(options),
+      log: logEvent,
     });
-    if (!result.ok) return failureResponse(result);
+    if (outcome.kind === "refused") return outcome.response;
+    if (outcome.kind === "queue-failed") return failureResponse(outcome.failure);
 
     logEvent("info", "worker.invocation", {
       job: "process",
-      scheduled: result.scheduled.length,
-      claimed: result.batch.executed.length,
-      stoppedBy: result.batch.stoppedBy,
-      durationMs: Math.round(performance.now() - startedAt),
+      scheduled: outcome.queue.scheduled.length,
+      claimed: outcome.queue.batch.executed.length,
+      stoppedBy: outcome.queue.batch.stoppedBy,
+      durationMs: outcome.durationMs,
     });
     return json({
       job: "process",
-      scheduledRetries: result.scheduled,
-      executed: result.batch.executed,
-      stoppedBy: result.batch.stoppedBy,
+      scheduledRetries: outcome.queue.scheduled,
+      executed: outcome.queue.batch.executed,
+      stoppedBy: outcome.queue.batch.stoppedBy,
+      snapshots: outcome.snapshots,
     });
   } catch (error) {
     logFailure("worker process", error);

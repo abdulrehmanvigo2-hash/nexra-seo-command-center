@@ -85,7 +85,7 @@ reading written as "not established" — and refuses every non-connected state
 before anything is formatted. No caller can name a property or a query: the
 input carries a range and nothing else.
 
-**Snapshot capture (milestone M1, checkpoint 1b; local only, not yet wired).**
+**Snapshot capture (milestone M1, checkpoints 1b and 1c; local only).**
 `src/lib/search-console/snapshots/capture.ts` reads the 30-day window for each
 stored project that `SEARCH_CONSOLE_PROPERTIES` maps to a property and records
 what Google reported through the one CP1a database function,
@@ -109,8 +109,23 @@ and `store-failed`. A failed read is never a no-data row. Logs carry project
 ids, outcomes, reasons and durations only. The provider does not echo the
 window's dates, so the window is bound by the call the capture makes (the
 provider caches by property and exact dates), not by the response; the
-database does not check the project-to-property mapping. Nothing calls the
-capture yet — the worker step is checkpoint 1c.
+database does not check the project-to-property mapping.
+
+The scheduled `process` job runs the capture after the agent-run queue
+(`src/lib/agent-runs/process-job.ts`, checkpoint 1c). The queue is unchanged
+(5 runs, 240 s). The capture then gets the smaller of 45 s and what is left of
+the route's 300 s minus a 15 s response margin; under the capture's 3 s minimum
+it is skipped (`snapshots.status: "skipped"`, reason `time-budget`) with nothing
+started. The whole capture is raced against a hard deadline of its budget plus
+5 s of grace for a write already in flight: past it the job answers `timed-out`
+and returns without waiting (a cut write is one transaction the database
+commits or rolls back whole, and the next capture of that window answers
+`exists` or records it). A capture that throws answers `failed`, logged by
+error name. Whatever the capture does, the queue's answer is returned as
+before; the response gains one additive field, `snapshots`, holding project
+ids, outcome names, counts and durations only. Nominal worst case: 240 + 45 +
+5 = 290 s. The cron schedule, `vercel.json`, the worker credential and its
+rate limit are unchanged.
 
 ## Agent runtime
 
@@ -202,7 +217,7 @@ response.
 | Job | Schedule (UTC) | What it does |
 |---|---|---|
 | `/api/worker/recover` | `0 4 * * *` — daily, 04:00 | fails up to 25 expired attempts |
-| `/api/worker/process` | `30 5 * * *` — daily, 05:30 | re-queues retryable failures, then runs up to 5 due runs within a 240 s budget |
+| `/api/worker/process` | `30 5 * * *` — daily, 05:30 | re-queues retryable failures, then runs up to 5 due runs within a 240 s budget, then the Search Console snapshot capture in the time left (at most 45 s; see *Search Console*) |
 
 Vercel's limits, from its documentation (checked 2026-09-17): Hobby cron jobs
 run at most **once per day**, and a more frequent expression **fails the
