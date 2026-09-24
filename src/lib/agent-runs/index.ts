@@ -24,6 +24,7 @@ import { projectRepository } from "@/lib/projects/repository";
 import { appRateLimiter } from "@/lib/security/app-rate-limit";
 import type { AsyncRateLimiter } from "@/lib/security/shared-rate-limit";
 import { getSearchConsoleReport, searchConsoleProvider } from "@/lib/search-console";
+import { readSearchConsoleHistory } from "@/lib/search-console/history";
 import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supabase/server";
 
 /**
@@ -118,6 +119,10 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // cached provider: a run reads what the screen shows, nothing more.
         searchConsole: (projectId, rangeId) =>
           getSearchConsoleReport(searchConsoleProvider(), projectId, rangeId),
+        // After the live report, the run's own project's stored snapshot
+        // history, read through the one bounded store read and compared by
+        // fixed rules; null where this deployment keeps no snapshots.
+        searchConsoleHistory: (projectId) => readSearchConsoleHistory(projectId),
         // A hand-off reads the upstream run from the same store the runtime
         // keeps its own runs in: one record, read by id, checked against the
         // Director's project before a word of it is formatted.

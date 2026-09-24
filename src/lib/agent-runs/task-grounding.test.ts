@@ -15,6 +15,10 @@ import { formatLinkGrounding, type LinkGroundingReaders } from "../authority/lin
 import type { CrawlLink } from "../../types/crawl.ts";
 import { EVIDENCE_PACK_CRAWL_LIMITS, formatEvidencePackGrounding, type EvidencePackReaders } from "../research/evidence-pack.ts";
 import { formatSearchConsoleGrounding } from "../search-console/grounding.ts";
+import { compareSnapshotHistory, type SnapshotHistoryComparison } from "../search-console/history/compare.ts";
+import { formatSearchConsoleHistory, SEARCH_CONSOLE_HISTORY_LIMITS_NOTE } from "../search-console/history/grounding.ts";
+import type { SearchConsoleSnapshot } from "../search-console/snapshots/contract.ts";
+import type { SearchPerformanceRow } from "../../types/search-console.ts";
 import { createAiExecutor } from "./ai-executor.ts";
 import type { ExecutionTask } from "./executor.ts";
 import { formatRunGrounding } from "./run-grounding.ts";
@@ -181,6 +185,52 @@ function searchConsole(report: SearchConsoleReport = REPORT) {
     },
   };
 }
+
+const srow = (key: string, clicks: number, impressions: number, position: number): SearchPerformanceRow => ({ key, clicks, impressions, ctr: clicks / impressions, position });
+
+let storedCounter = 0;
+function storedSnapshot(endDate: string, lists: { queries?: SearchPerformanceRow[]; pages?: SearchPerformanceRow[] }): SearchConsoleSnapshot {
+  storedCounter += 1;
+  return {
+    id: `stored-${storedCounter}`,
+    projectId: "nexra-agency",
+    property: REPORT.property,
+    rangeId: "30d",
+    days: 30,
+    startDate: endDate,
+    endDate,
+    state: "connected",
+    totals: { clicks: 100, impressions: 3_500, ctr: 0.0286, position: 16.7 },
+    queries: lists.queries ?? [],
+    pages: lists.pages ?? [],
+    partial: [],
+    source: "scheduled",
+    fetchedAt: `${endDate}T12:00:00.000Z`,
+    capturedAt: `${endDate}T12:00:00.000Z`,
+  };
+}
+
+/** An in-memory stored-history reader: null (not kept), a comparison, or a thrown error. */
+function historyStore(answer: SnapshotHistoryComparison | null | Error) {
+  const calls: string[] = [];
+  return {
+    calls,
+    read: async (projectId: string) => {
+      calls.push(projectId);
+      if (answer instanceof Error) throw answer;
+      return answer;
+    },
+  };
+}
+
+/** Two stored windows, two weeks apart, as the P4a comparison answers for them. */
+const HISTORY: SnapshotHistoryComparison = compareSnapshotHistory(
+  [
+    storedSnapshot("2026-09-03", { queries: [srow("nexra agency", 30, 250, 2.6), srow("gone query", 4, 40, 9)], pages: [srow("https://nexraagency.com/", 40, 1_000, 3.4)] }),
+    storedSnapshot("2026-09-17", { queries: [srow("nexra agency", 40, 300, 2.1), srow("seo agency london", 12, 900, 8.4)], pages: [srow("https://nexraagency.com/", 50, 1_200, 3.0), srow("https://nexraagency.com/blog", 1, 400, 14)] }),
+  ],
+  REPORT.property,
+);
 
 /** A completed, grounded, model-executed review the Director may read. */
 const UPSTREAM_RUN: AgentRun = {
@@ -511,6 +561,7 @@ function readers(
   draft: ReturnType<typeof draftStore> = draftStore(),
   links: ReturnType<typeof linkStore> = linkStore(),
   factCheck: ReturnType<typeof factCheckStore> = factCheckStore(),
+  history: ReturnType<typeof historyStore> = historyStore(null),
 ): TaskGroundingReaders & {
   crawls: TaskGroundingReaders["crawls"];
   store: typeof crawls;
@@ -535,6 +586,7 @@ function readers(
   return {
     crawls: crawls.reader,
     searchConsole: console.read,
+    searchConsoleHistory: history.read,
     runs: runs.reader,
     projects: projects.reader,
     comparison: comparison.reader,
@@ -776,7 +828,8 @@ describe("which reader each task reaches", () => {
     if (!result.ok) return;
     assert.deepEqual(both.console.calls, [{ projectId: "nexra-agency", rangeId: "30d" }]);
     assert.equal(both.store.reads(), 0);
-    assert.equal(result.grounding?.text, formatSearchConsoleGrounding(REPORT).text);
+    // The live report, byte for byte, then the stored-history note this deployment answers (none kept).
+    assert.equal(result.grounding?.text, `${formatSearchConsoleGrounding(REPORT).text}\n\n${formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "keyword").text}`);
     assert.equal(result.grounding?.source?.label, "Search Console evidence");
     assert.equal(result.grounding?.summary.source, "search-console");
   });
@@ -851,7 +904,8 @@ describe("the Keyword & Search Intent agent through the executor", () => {
     assert.equal(output.metadata?.grounded, true);
     assert.equal(output.metadata?.simulated, false);
     assert.equal(output.metadata?.taskType, "search-query-review");
-    assert.deepEqual(output.metadata?.evidence, { ...formatSearchConsoleGrounding(REPORT).summary });
+    // No stored history in this deployment: the live summary, plus one note saying so.
+    assert.deepEqual(output.metadata?.evidence, { ...formatSearchConsoleGrounding(REPORT).summary, history: formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "keyword").summary });
   });
 
   test("a refused report reaches no provider", async () => {
@@ -1031,8 +1085,9 @@ describe("the Analytics & Learning performance review through the dispatch", () 
     assert.deepEqual(all.console.calls, [{ projectId: "nexra-agency", rangeId: "30d" }]);
     assert.equal(all.store.reads(), 0);
     assert.equal(all.runReads(), 0);
-    // Byte-identical to what the Keyword agent reads: one report, one serialisation.
-    assert.equal(result.grounding?.text, formatSearchConsoleGrounding(REPORT).text);
+    // The same live report the Keyword agent reads, byte for byte, then the analytics-side history note.
+    assert.ok(result.grounding?.text.startsWith(formatSearchConsoleGrounding(REPORT).text));
+    assert.equal(result.grounding?.text, `${formatSearchConsoleGrounding(REPORT).text}\n\n${formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "analytics").text}`);
     assert.equal(result.grounding?.source?.label, "Search Console evidence");
     assert.equal(result.grounding?.summary.source, "search-console");
   });
@@ -1096,7 +1151,7 @@ describe("the Analytics & Learning agent through the executor", () => {
     assert.equal(output.metadata?.grounded, true);
     assert.equal(output.metadata?.simulated, false);
     assert.equal(output.metadata?.taskType, "performance-review");
-    assert.deepEqual(output.metadata?.evidence, { ...formatSearchConsoleGrounding(REPORT).summary });
+    assert.deepEqual(output.metadata?.evidence, { ...formatSearchConsoleGrounding(REPORT).summary, history: formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "analytics").summary });
   });
 
   test("a refused report reaches no provider", async () => {
@@ -2239,5 +2294,81 @@ describe("the Research & Evidence fact-check through the dispatch", () => {
     assert.match(seen.prompt ?? "", /FACT-CHECK LIMITS/);
     assert.match(seen.system ?? "", /fact-check inputs/);
     assert.doesNotMatch(seen.prompt ?? "", /Draft exactly one section|Plan exactly one page/);
+  });
+});
+
+describe("stored Search Console history beside the live report (P4b)", () => {
+  const liveText = formatSearchConsoleGrounding(REPORT).text;
+
+  test("the Keyword & Search Intent agent gets the live report first, then the query-side history for the run's own project", async () => {
+    const history = historyStore(HISTORY);
+    const result = await createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), linkStore(), factCheckStore(), history))(searchQueryTask);
+    assert.ok(result.ok && result.grounding);
+    assert.deepEqual(history.calls, ["nexra-agency"]);
+    assert.ok(result.grounding.text.startsWith(liveText), "the live report is unchanged and first");
+    const block = result.grounding.text.slice(liveText.length);
+    assert.match(block, /STORED SEARCH CONSOLE HISTORY/);
+    assert.match(block, /Latest window ended 2026-09-17; previous window ended 2026-09-03; 14 days apart/);
+    assert.match(block, /QUERY MOVEMENTS/);
+    assert.ok(block.includes('- Query: "nexra agency" — clicks 30 → 40 (+10; +33.3%)'));
+    assert.ok(block.includes('QUERY ROWS THAT APPEARED') && block.includes('"seo agency london"'));
+    assert.ok(block.includes('QUERY ROWS THAT LEFT the observed top 25') && block.includes('"gone query"'));
+    assert.doesNotMatch(block, /PAGE MOVEMENTS/);
+    assert.ok(block.endsWith(SEARCH_CONSOLE_HISTORY_LIMITS_NOTE));
+    const evidence = result.grounding.summary as { history?: Record<string, unknown> };
+    assert.deepEqual([evidence.history?.history, evidence.history?.audience, evidence.history?.snapshotsUsed, evidence.history?.gapDays, evidence.history?.confidence], ["available", "keyword", 2, 14, "normal"]);
+  });
+
+  test("the Analytics & Learning agent gets the totals and the page-side history, never the query lists", async () => {
+    const result = await createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), linkStore(), factCheckStore(), historyStore(HISTORY)))(performanceReviewTask);
+    assert.ok(result.ok && result.grounding);
+    assert.ok(result.grounding.text.startsWith(liveText));
+    const block = result.grounding.text.slice(liveText.length);
+    assert.match(block, /TOTALS, LATEST VS PREVIOUS/);
+    assert.match(block, /PAGE MOVEMENTS/);
+    assert.ok(block.includes('- Page: "https://nexraagency.com/" — clicks 40 → 50 (+10; +25.0%)'));
+    assert.ok(block.includes('PAGE ROWS THAT APPEARED') && block.includes('"https://nexraagency.com/blog"'));
+    assert.doesNotMatch(block, /QUERY MOVEMENTS/);
+    assert.ok(!block.includes("gone query") && !block.includes("seo agency london"));
+    const evidence = result.grounding.summary as { history?: Record<string, unknown> };
+    assert.deepEqual([evidence.history?.history, evidence.history?.audience], ["available", "analytics"]);
+  });
+
+  test("insufficient history: the live report stands alone with one bounded note, and the run is not refused", async () => {
+    const insufficient = compareSnapshotHistory([storedSnapshot("2026-09-17", {})], REPORT.property);
+    const result = await createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), linkStore(), factCheckStore(), historyStore(insufficient)))(searchQueryTask);
+    assert.ok(result.ok && result.grounding);
+    const block = result.grounding.text.slice(liveText.length + 2);
+    assert.match(block, /^STORED SEARCH CONSOLE HISTORY: insufficient\. 1 stored snapshot\(s\) for this property, the latest ending 2026-09-17; a comparison needs two at least 7 days apart/);
+    assert.ok(!block.includes("MOVEMENTS") && !block.includes("OPPORTUNIT"));
+    assert.equal((result.grounding.summary as { history?: { history?: string } }).history?.history, "insufficient-history");
+  });
+
+  test("a history read that throws never fails the run: the live report is returned with a read-failed note", async () => {
+    const result = await createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), linkStore(), factCheckStore(), historyStore(new Error("store down"))))(performanceReviewTask);
+    assert.ok(result.ok && result.grounding);
+    assert.ok(result.grounding.text.startsWith(liveText));
+    assert.match(result.grounding.text, /STORED SEARCH CONSOLE HISTORY: unavailable\. The stored snapshots could not be read/);
+    assert.equal((result.grounding.summary as { history?: { history?: string } }).history?.history, "read-failed");
+  });
+
+  test("a refused live report never reaches the history reader", async () => {
+    const history = historyStore(HISTORY);
+    const refused = await createTaskGrounding(readers(crawlStore(), searchConsole({ projectId: "nexra-agency", source: "search-console", state: "not-connected", reason: "no-property" }), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), linkStore(), factCheckStore(), history))(searchQueryTask);
+    assert.deepEqual(refused, { ok: false, reason: "search-console-not-connected" });
+    assert.deepEqual(history.calls, []);
+  });
+
+  test("through the executor, both blocks and the history instructions reach the prompt", async () => {
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), linkStore(), factCheckStore(), historyStore(HISTORY))));
+    const output = await executor.execute(searchQueryTask, new AbortController().signal);
+    assert.ok((seen.prompt ?? "").includes('- Query: "nexra agency" — clicks 40, impressions 300'), "live evidence still present");
+    assert.match(seen.prompt ?? "", /STORED SEARCH CONSOLE HISTORY/);
+    assert.match(seen.prompt ?? "", /Where a STORED HISTORY block follows the report/);
+    assert.match(seen.prompt ?? "", /No cannibalisation conclusion can be drawn/);
+    const evidence = output.metadata?.evidence as { history?: { history?: string; bytes?: number } };
+    assert.equal(evidence.history?.history, "available");
+    assert.ok((evidence.history?.bytes ?? 0) > 0);
   });
 });

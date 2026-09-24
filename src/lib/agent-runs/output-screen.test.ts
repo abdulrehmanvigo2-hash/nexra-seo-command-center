@@ -442,6 +442,7 @@ describe("the competitor comparison review through the worker's output screen", 
     const readers: TaskGroundingReaders = {
       crawls: { getCrawl: notHere("a crawl") },
       searchConsole: notHere("Search Console"),
+      searchConsoleHistory: notHere("stored Search Console history"),
       runs: { getById: notHere("a run") },
       projects: {
         getProjectById: notHere("the project record"),
@@ -697,6 +698,7 @@ describe("the Research & Evidence pack through the worker's output screen", () =
     const readers: TaskGroundingReaders = {
       crawls: { getCrawl: notHere("a crawl") },
       searchConsole: notHere("Search Console"),
+      searchConsoleHistory: notHere("stored Search Console history"),
       runs: { getById: notHere("a run") },
       projects: {
         getProjectById: notHere("the project record"),
