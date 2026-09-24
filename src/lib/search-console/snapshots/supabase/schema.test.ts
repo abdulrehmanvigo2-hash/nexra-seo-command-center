@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { recordResultToOutcome, snapshotRowToSnapshot, type SearchConsoleSnapshotsDatabase } from "./schema.ts";
+import { recordResultToOutcome, SNAPSHOT_READ_COLUMNS, snapshotRowToSnapshot, type SearchConsoleSnapshotsDatabase } from "./schema.ts";
 import { createSupabaseSearchConsoleSnapshotStore, SearchConsoleSnapshotStoreError } from "./store.ts";
-import type { RecordSnapshotInput } from "../contract.ts";
+import { unavailableSearchConsoleSnapshotStore, type RecordSnapshotInput } from "../contract.ts";
 
 /**
  * Milestone M1, checkpoint 1b. On trial: that the store calls exactly the
@@ -166,5 +166,58 @@ describe("reading a snapshot row", () => {
     assert.throws(() => recordResultToOutcome({ outcome: "updated", snapshot: ROW }), /does not recognise/);
     assert.throws(() => recordResultToOutcome(null), /not an object/);
     assert.throws(() => recordResultToOutcome({ outcome: "created" }), /snapshot row is not an object/);
+  });
+});
+
+describe("reading snapshots", () => {
+  /** A fake query builder that records the filters and answers with the rows given. */
+  function fakeListClient(rows: unknown[], error: { code: string; message: string } | null = null) {
+    const calls: Record<string, unknown[]> = {};
+    const note = (name: string, ...args: unknown[]) => {
+      (calls[name] ??= []).push(args);
+      return builder;
+    };
+    const builder = {
+      select: (...a: unknown[]) => note("select", ...a),
+      eq: (...a: unknown[]) => note("eq", ...a),
+      order: (...a: unknown[]) => note("order", ...a),
+      limit: (...a: unknown[]) => {
+        note("limit", ...a);
+        return Promise.resolve({ data: error ? null : rows, error });
+      },
+    };
+    const client = { from: (table: string) => note("from", table) && builder } as unknown as SupabaseClient<SearchConsoleSnapshotsDatabase>;
+    return { client, calls };
+  }
+
+  test("selects the project's rows for the range, newest window first, bounded", async () => {
+    const { client, calls } = fakeListClient([ROW, { ...ROW, id: "older", end_date: "2026-09-14", start_date: "2026-08-16" }]);
+    const snapshots = await createSupabaseSearchConsoleSnapshotStore(client).listSnapshots("halcyon-fintech", "30d", 30);
+    assert.deepEqual(calls.from, [["nexra_search_console_snapshots"]]);
+    assert.deepEqual(calls.eq, [["project_id", "halcyon-fintech"], ["range_id", "30d"]]);
+    assert.deepEqual(calls.order, [["end_date", { ascending: false }], ["property", { ascending: true }]]);
+    assert.deepEqual(calls.limit, [[30]]);
+    assert.deepEqual(calls.select, [[SNAPSHOT_READ_COLUMNS]]);
+    assert.deepEqual(snapshots.map((s) => [s.id, s.endDate, s.projectId]), [[ROW.id, "2026-09-21", "halcyon-fintech"], ["older", "2026-09-14", "halcyon-fintech"]]);
+  });
+
+  test("the limit is bounded on both sides and a database error is thrown by code", async () => {
+    const { client } = fakeListClient([]);
+    const store = createSupabaseSearchConsoleSnapshotStore(client);
+    await assert.rejects(() => store.listSnapshots("halcyon-fintech", "30d", 0), /1 to 400/);
+    await assert.rejects(() => store.listSnapshots("halcyon-fintech", "30d", 401), /1 to 400/);
+    await assert.rejects(() => store.listSnapshots("halcyon-fintech", "30d", 2.5), /1 to 400/);
+    const failing = fakeListClient([], { code: "42501", message: "permission denied" });
+    await assert.rejects(() => createSupabaseSearchConsoleSnapshotStore(failing.client).listSnapshots("halcyon-fintech", "30d", 10), (e: unknown) => e instanceof SearchConsoleSnapshotStoreError && e.code === "42501");
+  });
+
+  test("a row the migration would never produce is refused on read", async () => {
+    const { client } = fakeListClient([{ ...ROW, range_id: "7d" }]);
+    await assert.rejects(() => createSupabaseSearchConsoleSnapshotStore(client).listSnapshots("halcyon-fintech", "30d", 10), /range_id/);
+  });
+
+  test("the unavailable store lists nothing", async () => {
+    assert.deepEqual(await unavailableSearchConsoleSnapshotStore.listSnapshots("halcyon-fintech", "30d", 10), []);
+    assert.equal(unavailableSearchConsoleSnapshotStore.storesSnapshots, false);
   });
 });

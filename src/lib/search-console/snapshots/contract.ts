@@ -73,11 +73,21 @@ export type RecordSnapshotOutcome =
   /** The project is not stored (deleted since it was listed). */
   | { readonly status: "not-found" };
 
+/** The most snapshots one read returns; a year of daily captures fits well under it. */
+export const SNAPSHOT_LIST_LIMIT = 400;
+
 export type SearchConsoleSnapshotStore = {
   /** Whether this store keeps snapshots. The fixture data source does not. */
   readonly storesSnapshots: boolean;
   /** One snapshot, in one database transaction, through the one database function. */
   record(input: RecordSnapshotInput): Promise<RecordSnapshotOutcome>;
+  /**
+   * One project's snapshots for one range, newest window first, at most
+   * `limit` (1 to SNAPSHOT_LIST_LIMIT). Every property the project was ever
+   * captured under is returned; the reader decides which property is current.
+   * Never another project's rows.
+   */
+  listSnapshots(projectId: string, rangeId: typeof SNAPSHOT_RANGE_ID, limit: number): Promise<readonly SearchConsoleSnapshot[]>;
 };
 
 /** The store used when projects are not persisted anywhere. It refuses rather than pretends. */
@@ -85,5 +95,8 @@ export const unavailableSearchConsoleSnapshotStore: SearchConsoleSnapshotStore =
   storesSnapshots: false,
   async record() {
     return { status: "not-found" };
+  },
+  async listSnapshots() {
+    return [];
   },
 };

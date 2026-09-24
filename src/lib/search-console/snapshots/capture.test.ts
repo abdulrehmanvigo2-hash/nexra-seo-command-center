@@ -108,6 +108,9 @@ function memoryStore(options: { fail?: (input: RecordSnapshotInput) => Error | n
       rows.set(key, snapshot);
       return { status: "created", snapshot };
     },
+    async listSnapshots(projectId) {
+      return [...rows.values()].filter((s) => s.projectId === projectId);
+    },
   };
   return { store, rows, inputs };
 }
@@ -383,8 +386,9 @@ describe("limits", () => {
   test("a Google read that outlives the budget is unavailable/timeout; nothing is written and the batch ends", async () => {
     const s = setup({ answers: { totals: () => "never" } });
     const began = performance.now();
-    const batch = await run(s, { maxProjects: 10, budgetMs: MIN_PROJECT_BUDGET_MS });
-    assert.ok(performance.now() - began < MIN_PROJECT_BUDGET_MS + 1500, "the deadline ended the wait");
+    // A little above the minimum: at exactly the minimum, the milliseconds spent listing projects would skip the capture.
+    const batch = await run(s, { maxProjects: 10, budgetMs: MIN_PROJECT_BUDGET_MS + 200 });
+    assert.ok(performance.now() - began < MIN_PROJECT_BUDGET_MS + 1700, "the deadline ended the wait");
     assert.deepEqual(statuses(batch), [`${HALCYON}:unavailable`]);
     const [entry] = batch.entries;
     assert.ok(entry.outcome.status === "unavailable" && entry.outcome.reason === "timeout");
