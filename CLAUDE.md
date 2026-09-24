@@ -4,19 +4,21 @@ Professional, agency-grade AI SEO platform. This file defines the operating rule
 project. Read it before writing any code.
 
 **Current stage: Stage 5 (publication) of the content workflow. Milestones A, B, C1, C2, C3 and C5
-are complete; C4 is implemented and deployed, with new-parser live verification pending; C6
-Checkpoints 1–4 and D3 are implemented and verified locally only — not pushed, not merged, not
-deployed, not applied to production, not production verified (see §0).**
+and C6 (with D3) are complete; C4 is implemented and deployed, with new-parser live verification
+pending. C6 is merged, its migrations are applied to production, it is deployed and it is
+production verified. Work beyond C6 is undecided (see §0).**
 
 ---
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `7fb652a23266ab312dfa1a65baecfe73c85988f0` (merge of `claude/c6-scope-docs`,
-which defined C6; the C5 merge, PR #2, is `304ac1461860119f7a4fd47f94369de0a0894d9a`).
+GitHub `master`: `f28cd35e554033aed59b841a200fba8254a905d0` (merge of PR #3,
+`claude/c6-article-proposal-db` at `d6025ce`, which delivered C6 and D3; the previous `master`
+was `7fb652a`, the C6 scope docs; the C5 merge, PR #2, is
+`304ac1461860119f7a4fd47f94369de0a0894d9a`).
 
-Local feature branch `claude/c6-article-proposal-db` (not pushed, not merged): C6 Checkpoints
-1–4, the PostgreSQL test harness and D3 — see *C6 local checkpoints* below.
+Production deployment: `dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, READY, built from `master` at
+`f28cd35`, serving `nexra-seo-command-center.vercel.app`.
 
 **Completed content-workflow stages:**
 
@@ -34,6 +36,8 @@ Local feature branch `claude/c6-article-proposal-db` (not pushed, not merged): C
   new-parser live verification pending)
 - Stage 5 / Complete Article Assembly — Milestone C5: Article Approval Gate (complete, merged,
   deployed, production verified)
+- Stage 5 / Complete Article Assembly — Milestone C6: Article Publication Proposal
+  (record-only), with D3 (complete, merged, migrations applied, deployed, production verified)
 
 **C2 notes:** production migration applied (Supabase `20260923043554_create_articles`);
 production deployment verified; live Version 1 creation and Version 2 immutable save verified
@@ -94,10 +98,10 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone C6 — Article Publication Proposal (record-only). Checkpoints 1–4 and
-D3 are implemented and verified locally; C6 is NOT pushed, merged, deployed or production
-verified, and its migrations are NOT applied to production. Each further step starts only with
-explicit user approval. Work beyond C6 is undecided.
+**Current work:** none in progress. Milestone C6 — Article Publication Proposal (record-only) —
+is complete: merged as `f28cd35`, migrations applied to production, deployed as
+`dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, and production verified by the operator (see *C6 release*
+below). Work beyond C6 is undecided and starts only with explicit user approval.
 
 C6 records an operator's intention to publish one exact approved article version. It records
 proposal state only.
@@ -123,7 +127,7 @@ C6 does NOT include: TSX publishing; GitHub writes; Vercel writes; `nexra-ai` wr
 request creation; merge; deployment; live publishing; C7. It never approves or publishes anything
 automatically. Real rendering and publishing remain a later, separately approved milestone.
 
-**C6 local checkpoints** (branch `claude/c6-article-proposal-db`, on `master` `7fb652a`; local only):
+**C6 checkpoints** (branch `claude/c6-article-proposal-db`, on `master` `7fb652a`; merged as `f28cd35`):
 
 - `caae5d6` — **C6 Checkpoint 1: database gate, implemented and verified locally.** Migration
   `20260925120000_create_article_publication_proposals.sql`: `nexra_article_publication_proposals`
@@ -174,42 +178,56 @@ automatically. Real rendering and publishing remain a later, separately approved
   production build and secret scan passed. It found no code or security defect; it was blocked
   only on documentation, which this checkpoint resolves.
 
-**C6 status and pending items:**
+**C6 release (2026-09-24, each step separately approved by the operator):**
 
-- The C6 migration `20260925120000` and the D3 migration `20260926120000` have **not** been
-  applied to production. Applying them is a separate §6 approval. Before it, read-only production
-  checks: `show default_transaction_isolation;` must be `read committed`, and no destination/slug
-  may be active in both proposal tables.
-- The branch `claude/c6-article-proposal-db` has **not** been pushed, and there is no pull request
-  or merge.
-- The branch stays local until a separate approval to push it.
-- C6 Checkpoints 1–4 and D3 are implemented and locally verified. C6 records proposals only: it
-  never publishes, never generates a deployable artifact, never creates a publishing pull request
-  and never writes to `nexra-ai`.
-- No real production article has been approved, proposed or published by C6.
+- Review-only draft PR #3 opened from `claude/c6-article-proposal-db` at `d6025ce` after fresh
+  gates at that commit (focused C6 142 passed; `npm test` 1,554 passed; PostgreSQL harness 40 of
+  40; typecheck, lint, production build, secret scan and `git diff --check` clean) and a
+  read-only check that every Vercel project variable targets Production only, so a preview
+  deployment holds no Supabase credentials.
+- Read-only production preflight in Supabase project `nmseedcgtxelufewvbvr` (operator-run in
+  the SQL Editor as `postgres`): PostgreSQL 17.6; `default_transaction_isolation` `read
+  committed` with no role or database override; C5 `20260924120000` recorded; C6 and D3 absent
+  from history and schema; every dependency table, key, column and `set_updated_at()` present;
+  `nexra-agency` project row present; 1 article, 0 approvals, 0 active draft reservations.
+- Migration `20260925120000_create_article_publication_proposals.sql` (SHA-256
+  `855da3dd2380e6aa42b72bd67e6d1f8ef3f42ed777bdf8162b7b6bbfe6646871`) applied unmodified as one
+  `BEGIN`/`COMMIT` transaction, then `NOTIFY pgrst, 'reload schema';`. Verified read-only: table
+  with RLS on and no policies, 0 rows, 4 indexes, 5 foreign keys, 5 enabled triggers, 7
+  functions owned by `postgres` (only propose and withdraw `security definer`), `service_role`
+  SELECT on the table and EXECUTE on propose/withdraw only, existing data unchanged. Recorded
+  with `supabase migration repair --status applied 20260925120000 --linked`.
+- Migration `20260926120000_publication_proposals_cross_table_slug_lock.sql` (SHA-256
+  `5a370fb3678384239cdba08f63abfde8fce52881b13ff41d369a1e0afe60f799`) applied the same way after
+  a read-only D3 preflight (0 cross-table duplicates). Verified read-only: the reservation
+  function present, not `security definer`, empty `search_path`, READ COMMITTED guard present,
+  executable by no API role; both reservation triggers present and enabled; 0 cross-table
+  duplicates; existing data unchanged. Recorded with
+  `supabase migration repair --status applied 20260926120000 --linked`; `supabase migration
+  list --linked` shows both versions on Local and Remote.
+- The pre-existing C2 history mismatch (remote `20260923043554`, repository file
+  `20260923120000`) was left untouched, as before.
+- PR #3 marked ready and merged into `master` as `f28cd35e554033aed59b841a200fba8254a905d0`
+  (merge commit, head `d6025ce`, 50 files). Vercel built `master` automatically:
+  `dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, READY, holding all three production domains.
+- **Production browser verification (operator, signed in):** article
+  `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, status `drafting`, shows the new *Article
+  publication proposal* section headed **Not eligible**, the banner **PROPOSAL ONLY — NOT
+  PUBLISHED**, no Record button and proposal history 0; the C5 approval section renders as
+  before; the fact-check still shows 0 of 4 units passed (metadata needs review, three
+  unchecked). No article was approved, proposed or published.
+
+**C6 notes and known items:**
+
+- C6 records proposals only: it never publishes, never generates a deployable artifact, never
+  creates a publishing pull request and never writes to `nexra-ai`. Real rendering and
+  publishing remain a later, separately approved milestone.
 - The draft `slug-taken` wording was corrected in `71e9b28`.
 - Known LOW items, left as they are: the GET route logs `name: message` rather than the C5
   route's `logFailure` shape; a Record whose re-read fails after the row was written reports
   `failed` (the C5 convention).
-
-**C6 production preflight (prerequisites only — none performed; each step needs §6 approval):**
-
-1. Read-only checks: production migration history (C5 `20260924120000` present; C6
-   `20260925120000` and D3 `20260926120000` absent) and the dependency objects (`projects`,
-   `nexra_articles`, `nexra_article_versions`, `nexra_article_approvals`,
-   `nexra_content_publication_proposals`); `show default_transaction_isolation;` is
-   `read committed`, with no `default_transaction_isolation` override on the `authenticator` or
-   `service_role` roles; the `nexra-agency` project row exists (the repository `seed.sql` does
-   not create it); active draft proposal reservations, and no destination/slug active in both
-   proposal tables.
-2. Apply C6 `20260925120000`, then D3 `20260926120000` — in that order, only after separate
-   approval — each followed by `NOTIFY pgrst, 'reload schema';`. There are no down-migrations.
-3. Post-migration checks: RLS enabled with no policies, `security definer` and empty
-   `search_path` where intended, both D3 triggers present and enabled, grants (service_role:
-   SELECT on the table, EXECUTE on propose/withdraw only; nothing for `anon`/`authenticated`),
-   migration history recorded, and existing data unchanged.
-4. Only then push, open a pull request, verify, and merge (which deploys through Vercel); the
-   migrations must be in production before the merge.
+- The C6 migration header's "known gap" text is superseded by D3; existing migrations are never
+  edited.
 
 **D3 assumptions:** READ COMMITTED is required, and any other isolation level fails closed
 (0A000). Both reservation triggers must stay enabled; a superuser disabling triggers can bypass
@@ -225,9 +243,10 @@ overwrite live content.
 - No automatic approval.
 - No write path to the `abdulrehmanvigo2-hash/nexra-ai` GitHub repository exists.
 - The current production draft, Version 2, remains **Needs review**.
-- There is no active publication proposal for Version 2.
-- The content workflow has no Create PR, Merge, Deploy or Publish control, and C6 adds none: C6
-  records proposal state only.
+- There is no active publication proposal for Version 2, and `nexra_article_publication_proposals`
+  holds no rows.
+- The content workflow has no Create PR, Merge, Deploy or Publish control; C6 records proposal
+  state only.
 - Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `drafting`: one check unit needs review,
   three are unchecked, and it is neither checked, approved nor published. Its Version 2 can never
   be approved (a needs-review result is final for its version), so it cannot receive a C6 proposal.
@@ -510,12 +529,11 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Complete, live verified |
 | Stage 5 / C4 | Complete Article Assembly: Article Check Units | Implementation complete; deployment and existing-result browser verification complete; new-parser live verification pending |
 | Stage 5 / C5 | Complete Article Assembly: Article Approval Gate | Complete, merged, deployed, production verified |
-| Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Checkpoints 1–4 and D3 implemented and verified locally; not pushed, merged or deployed; migrations not applied to production; not production verified |
+| Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Complete, merged (`f28cd35`), migrations applied, deployed, production verified |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: C6 — Article
-Publication Proposal (record-only), with Checkpoints 1–4 and D3 local only. Work beyond C6 is
-undecided and is not planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). C6 is complete; nothing is in
+progress. Work beyond C6 is undecided and is not planned here.
 
 ## 15. Definition of Done
 
