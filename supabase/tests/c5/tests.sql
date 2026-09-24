@@ -1,4 +1,4 @@
--- C5 article approval gate. Updated for C6: approvals are referenced by a foreign key (TRUNCATE 0A000 / CASCADE 23514), and the security definer inventory names the C6 functions.
+-- C5 article approval gate. Updated for C6: approvals are referenced by a foreign key (TRUNCATE 0A000 / CASCADE 23514), and the security definer inventory names the C6 functions and (since 20260927120000) the M1 Search Console snapshot record function.
 -- Part of the local PostgreSQL test harness; run only through supabase/tests/run.sh,
 -- which creates and destroys its own disposable cluster. Never run against a hosted database.
 
@@ -194,6 +194,7 @@ begin
              'nexra_article_save_version(text,uuid,smallint,text,text,jsonb,uuid)',
              'nexra_content_draft_save_version(uuid,text,smallint,text,text,uuid)',
              'nexra_content_publication_propose(text,uuid,smallint,uuid,text,uuid,timestamp with time zone,text,text,text,text,uuid)',
+             'nexra_search_console_snapshot_record(text,text,text,date,date,text,bigint,bigint,numeric,numeric,jsonb,jsonb,text[],timestamp with time zone)',
              'rate_limit_consume(text,integer,integer)'],
      'security definer, whole database: exactly the authorized functions with their signatures; nothing unexpected');
   perform t.ok((select bool_and(proconfig = array['search_path=""']) from pg_proc where proname in ('nexra_article_approve_version','nexra_article_approvals_check_insert','nexra_article_approvals_guard_write')), 'empty search_path');

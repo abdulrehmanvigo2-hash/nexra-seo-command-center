@@ -98,10 +98,25 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** none in progress. Milestone C6 — Article Publication Proposal (record-only) —
-is complete: merged as `f28cd35`, migrations applied to production, deployed as
-`dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, and production verified by the operator (see *C6 release*
-below). Work beyond C6 is undecided and starts only with explicit user approval.
+**Current work:** Milestone M1 — Search Console snapshot persistence, Checkpoint 1a (database),
+implemented and verified locally only on branch `claude/m1-cp1a-search-console-snapshots` (from
+`master` `954783e`); not pushed, not merged, not applied to production. C6 is complete (merged as
+`f28cd35`, migrations applied, deployed as `dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, production
+verified; see *C6 release* below). Each further M1 step (CP1b capture module, CP1c worker step,
+production migration) starts only with explicit user approval.
+
+**M1 CP1a (local only):** migration `20260927120000_create_search_console_snapshots.sql` —
+`nexra_search_console_snapshots`, one immutable row per project, property and 30-day window end
+(unique key; a repeated or concurrent capture answers `exists`); `connected` totals or a `no-data`
+row with nulls; top 25 queries and pages as JSONB checked by the immutable validator
+`nexra_search_console_rows_valid`; guard triggers refuse update, delete and truncate; the one
+write is `nexra_search_console_snapshot_record` (`security definer`, empty `search_path`,
+window must end before today, unknown project answers `not-found`); `service_role` gets SELECT
+and EXECUTE on that function only; RLS on with no policies. The project-to-property mapping is
+the server's private configuration and is not checked by the database. Nothing reads or writes
+the table yet. Harness suites `gsc` (100 assertions) and `gsc-races` (G1–G3) added; the C5
+`security definer` inventory names the new function. The migration has **not** been applied to
+production; applying it is a separate §6 approval.
 
 C6 records an operator's intention to publish one exact approved article version. It records
 proposal state only.
@@ -530,10 +545,12 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C4 | Complete Article Assembly: Article Check Units | Implementation complete; deployment and existing-result browser verification complete; new-parser live verification pending |
 | Stage 5 / C5 | Complete Article Assembly: Article Approval Gate | Complete, merged, deployed, production verified |
 | Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Complete, merged (`f28cd35`), migrations applied, deployed, production verified |
+| M1 / CP1a | Search Console snapshot persistence: database | Implemented and verified locally; not pushed; not applied to production |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). C6 is complete; nothing is in
-progress. Work beyond C6 is undecided and is not planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M1 — Search Console
+snapshot persistence, CP1a local only; CP1b (capture module) and CP1c (worker step) start only
+with explicit approval. Work beyond M1 is undecided and is not planned here.
 
 ## 15. Definition of Done
 
