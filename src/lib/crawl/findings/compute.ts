@@ -12,8 +12,10 @@ import {
 } from "@/lib/crawl/findings/contract";
 import {
   DEEP_PAGE_DEPTH,
+  isGenericAnchorText,
   META_DESCRIPTION_MAX_LENGTH,
   metaForbidsIndexing,
+  normaliseAnchorText,
   normaliseText,
   REDIRECT_CHAIN_MIN_HOPS,
   RULES,
@@ -96,7 +98,7 @@ function duplicates(
 ): Draft[] {
   const groups = new Map<string, CrawlPage[]>();
   for (const page of pages) {
-    if (page.canonicalIsSelf === false || metaForbidsIndexing(page.robotsMeta)) continue;
+    if (page.canonicalIsSelf === false || metaForbidsIndexing(page.robotsMeta) || page.robotsNoindex === true) continue;
     const value = normaliseText(read(page));
     if (value === "") continue;
     (groups.get(value) ?? groups.set(value, []).get(value)!).push(page);
@@ -139,6 +141,15 @@ function contentRules(pages: readonly CrawlPage[]): Draft[] {
     if (page.h1Count !== null) {
       if (page.h1Count === 0) drafts.push(perPage("h1-missing", page, { h1Count: 0 }, "The page has no H1."));
       else if (page.h1Count > 1) drafts.push(perPage("h1-multiple", page, { h1Count: page.h1Count, firstH1: page.firstH1 }, `The page has ${page.h1Count} H1 headings.`));
+    }
+
+    // Both counts come from one reading of the page; a page recorded before
+    // they were kept has neither and yields nothing.
+    if (page.h2Count !== null && page.h3Count !== null && page.h2Count === 0 && page.h3Count > 0) {
+      drafts.push(perPage("heading-h3-without-h2", page, { h1Count: page.h1Count, h2Count: 0, h3Count: page.h3Count }, `The page has ${page.h3Count} H3 heading(s) and no H2.`));
+    }
+    if (page.imageCount !== null && page.imagesWithoutAlt !== null && page.imagesWithoutAlt > 0) {
+      drafts.push(perPage("image-alt-missing", page, { imageCount: page.imageCount, imagesWithoutAlt: page.imagesWithoutAlt }, `${page.imagesWithoutAlt} of ${page.imageCount} images on the page have no alt attribute.`));
     }
 
     if (page.canonicalHref !== null && page.canonicalResolved === null) {
@@ -222,15 +233,53 @@ function indexabilityAndSitemapRules(pages: readonly CrawlPage[]): Draft[] {
     if (page.fetchState === "budget-skipped") continue;
     const disallowed = page.robotsTxtAllowed === false || page.fetchState === "blocked-by-robots";
     const noindex = page.fetchState === "fetched" && metaForbidsIndexing(page.robotsMeta);
+    // The header is read off any response that answered (an error page saying
+    // noindex is unremarkable); a page recorded before the header was kept
+    // has null and yields nothing.
+    const headerNoindex = page.httpStatus !== null && page.httpStatus < 400 && metaForbidsIndexing(page.xRobotsTag);
     if (disallowed) drafts.push(perPage("robots-txt-disallowed", page, { robotsTxtAllowed: page.robotsTxtAllowed, fetchState: page.fetchState }, "robots.txt disallows this URL for the crawler's user agent."));
     if (noindex) drafts.push(perPage("robots-meta-noindex", page, { robotsMeta: page.robotsMeta }, "The page's robots meta says noindex."));
+    if (headerNoindex) drafts.push(perPage("robots-header-noindex", page, { xRobotsTag: page.xRobotsTag, robotsMeta: page.robotsMeta, httpStatus: page.httpStatus }, "The X-Robots-Tag response header says noindex."));
 
     if (page.inSitemap !== true) continue;
-    if (noindex) drafts.push(perPage("sitemap-lists-noindex", page, { inSitemap: true, robotsMeta: page.robotsMeta }, "The sitemap lists a page whose robots meta says noindex."));
+    if (noindex || headerNoindex) {
+      drafts.push(perPage("sitemap-lists-noindex", page, { inSitemap: true, robotsMeta: page.robotsMeta, xRobotsTag: page.xRobotsTag }, `The sitemap lists a page whose ${noindex ? "robots meta" : "X-Robots-Tag header"} says noindex.`));
+    }
     if (page.httpStatus !== null && errorStatus(page)) drafts.push(perPage("sitemap-lists-error", page, { inSitemap: true, httpStatus: page.httpStatus }, `The sitemap lists a page that answered ${page.httpStatus}.`));
     if (disallowed) drafts.push(perPage("sitemap-lists-blocked", page, { inSitemap: true, robotsTxtAllowed: page.robotsTxtAllowed }, "The sitemap lists a page robots.txt disallows."));
     if (page.canonicalIsSelf === false && page.canonicalResolved !== null) {
       drafts.push(perPage("sitemap-lists-canonicalised", page, { inSitemap: true, canonicalResolved: page.canonicalResolved }, "The sitemap lists a page whose canonical points elsewhere."));
+    }
+  }
+  return drafts;
+}
+
+/**
+ * Anchor text of the internal links each recorded page carries. Only edges
+ * whose text was recorded take part (null is an edge from before T5), and
+ * only from pages this crawl recorded; one finding per page and rule.
+ */
+function anchorRules(links: readonly CrawlLink[], byPageUrl: ReadonlyMap<string, CrawlPage>): Draft[] {
+  const perSource = new Map<string, { checked: number; empty: number; generic: number; examples: Set<string> }>();
+  for (const link of links) {
+    if (!link.isInternal || link.anchorText === null || !byPageUrl.has(link.fromUrl)) continue;
+    const entry = perSource.get(link.fromUrl) ?? { checked: 0, empty: 0, generic: 0, examples: new Set<string>() };
+    perSource.set(link.fromUrl, entry);
+    entry.checked += 1;
+    if (normaliseText(link.anchorText) === "") entry.empty += 1;
+    else if (isGenericAnchorText(link.anchorText)) {
+      entry.generic += 1;
+      if (entry.examples.size < 5) entry.examples.add(normaliseAnchorText(link.anchorText));
+    }
+  }
+  const drafts: Draft[] = [];
+  for (const [fromUrl, entry] of perSource) {
+    const page = byPageUrl.get(fromUrl)!;
+    if (entry.empty > 0) {
+      drafts.push(perPage("link-anchor-empty", page, { emptyAnchors: entry.empty, internalLinksChecked: entry.checked }, `${entry.empty} of ${entry.checked} internal link(s) on the page have no anchor text and no image alt.`));
+    }
+    if (entry.generic > 0) {
+      drafts.push(perPage("link-anchor-generic", page, { genericAnchors: entry.generic, internalLinksChecked: entry.checked, examples: [...entry.examples].sort().join(", ") }, `${entry.generic} of ${entry.checked} internal link(s) on the page use generic anchor text.`));
     }
   }
   return drafts;
@@ -292,6 +341,7 @@ export function computeCrawlFindings(input: CrawlFindingsInput): CrawlFindingsRe
     ...canonicalTargetRules(content, byPageUrl),
     ...httpAndRedirectRules(pages),
     ...linkRules(ownLinks, byPageUrl),
+    ...anchorRules(ownLinks, byPageUrl),
     ...indexabilityAndSitemapRules(pages),
     ...structureRules(pages),
   ];

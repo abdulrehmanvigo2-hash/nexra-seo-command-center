@@ -10,7 +10,7 @@ import {
   type CrawlFinding,
   type FindingRuleId,
 } from "./contract.ts";
-import { DEEP_PAGE_DEPTH, META_DESCRIPTION_MAX_LENGTH, RULES, TITLE_MAX_LENGTH, TITLE_MIN_LENGTH, metaForbidsIndexing, normaliseText, robotsDirectives } from "./rules.ts";
+import { DEEP_PAGE_DEPTH, META_DESCRIPTION_MAX_LENGTH, RULES, TITLE_MAX_LENGTH, TITLE_MIN_LENGTH, isGenericAnchorText, metaForbidsIndexing, normaliseAnchorText, normaliseText, robotsDirectives } from "./rules.ts";
 
 /**
  * Checkpoint T1. On trial: that every rule fires on exactly the observed
@@ -67,6 +67,7 @@ function page(path: string, overrides: Partial<CrawlPage> = {}): CrawlPage {
     metaDescriptionLength: 55,
     h1Count: 1,
     firstH1: "Heading",
+    h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
     schemaTypes: ["WebPage"],
     schemaBlocks: 1,
     schemaParseFailed: false,
@@ -86,6 +87,7 @@ const link = (from: string, to: string, extra: Partial<CrawlLink> = {}): CrawlLi
   toUrl: to.startsWith("http") ? to : `https://nexraagency.com${to}`,
   rel: null,
   isInternal: true,
+  anchorText: null,
   ...extra,
 });
 
@@ -246,7 +248,7 @@ describe("HTTP, redirects and links", () => {
       link("/", "/gone"),
       link("/about", "/gone"),
       link("/", "/never-fetched"),
-      link("/", "https://other.example/dead", { isInternal: false }),
+      link("/", "https://other.example/dead", { isInternal: false, anchorText: null }),
       link("/about", "/about"),
     ];
     const broken = only(pages, "internal-link-broken", links);
@@ -350,7 +352,7 @@ describe("output discipline", () => {
 
   test("every rule has a category, a severity and a label, and the wording never claims indexation, ranking, vitals or orphans", () => {
     const rules = Object.keys(RULES) as FindingRuleId[];
-    assert.equal(rules.length, 27);
+    assert.equal(rules.length, 32);
     for (const rule of rules) assert.ok(RULES[rule].label.length > 0 && RULES[rule].category && RULES[rule].severity);
     const pages = [
       page("/", { internalLinksIn: 0 }),
@@ -362,5 +364,92 @@ describe("output discipline", () => {
     for (const word of ["indexed by google", "ranking", "core web vitals", "orphan page", "site-wide", "search volume"]) assert.ok(!text.includes(word), word);
     assert.ok(report.findings.length >= 8);
     assert.equal(normaliseText("  a \n b "), "a b");
+  });
+});
+
+describe("T5 signals (rule version 2)", () => {
+  test("the report is rule version 2, and a page recorded before the signals were kept yields none of the new findings", () => {
+    const report = run([page("/", { h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null })], [link("/", "/a", { anchorText: null })]);
+    assert.equal(report.ruleVersion, 2);
+    assert.equal(FINDINGS_RULE_VERSION, 2);
+    assert.deepEqual(report.findings, []);
+  });
+
+  test("heading-h3-without-h2 fires only when both counts are known, h2 is zero and h3 is positive", () => {
+    assert.equal(only([page("/a", { h2Count: 0, h3Count: 2 })], "heading-h3-without-h2").length, 1);
+    const [found] = only([page("/a", { h2Count: 0, h3Count: 2 })], "heading-h3-without-h2");
+    assert.deepEqual(found.observed, { h1Count: 1, h2Count: 0, h3Count: 2 });
+    assert.equal(found.message, "The page has 2 H3 heading(s) and no H2.");
+    for (const over of [{ h2Count: 1, h3Count: 2 }, { h2Count: 0, h3Count: 0 }, { h2Count: null, h3Count: 2 }, { h2Count: 0, h3Count: null }]) {
+      assert.equal(only([page("/b", over)], "heading-h3-without-h2").length, 0, JSON.stringify(over));
+    }
+  });
+
+  test("image-alt-missing reports the images with no alt attribute against the page's image count, and nothing on zero or unknown", () => {
+    const [found] = only([page("/a", { imageCount: 6, imagesWithoutAlt: 2 })], "image-alt-missing");
+    assert.deepEqual(found.observed, { imageCount: 6, imagesWithoutAlt: 2 });
+    assert.equal(found.message, "2 of 6 images on the page have no alt attribute.");
+    assert.equal(found.category, "images");
+    for (const over of [{ imageCount: 6, imagesWithoutAlt: 0 }, { imageCount: null, imagesWithoutAlt: 2 }, { imageCount: 6, imagesWithoutAlt: null }]) {
+      assert.equal(only([page("/b", over)], "image-alt-missing").length, 0, JSON.stringify(over));
+    }
+  });
+
+  test("robots-header-noindex reads the X-Robots-Tag of a page that answered, not an error page's, never null, and the sitemap rule sees it", () => {
+    const [found] = only([page("/a", { xRobotsTag: "noindex, nofollow", inSitemap: false })], "robots-header-noindex");
+    assert.deepEqual(found.observed, { xRobotsTag: "noindex, nofollow", robotsMeta: null, httpStatus: 200 });
+    assert.equal(only([page("/pdf", { fetchState: "non-html", contentType: "application/pdf", xRobotsTag: "googlebot: noindex", inSitemap: false })], "robots-header-noindex").length, 1, "a non-HTML resource's header counts");
+    assert.equal(only([page("/gone", { fetchState: "http-error", httpStatus: 404, xRobotsTag: "noindex" })], "robots-header-noindex").length, 0, "an error page saying noindex is unremarkable");
+    assert.equal(only([page("/old", { xRobotsTag: null })], "robots-header-noindex").length, 0);
+    assert.equal(only([page("/ok", { xRobotsTag: "index, follow" })], "robots-header-noindex").length, 0);
+    const listed = only([page("/s", { xRobotsTag: "noindex", inSitemap: true })], "sitemap-lists-noindex");
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].message, "The sitemap lists a page whose X-Robots-Tag header says noindex.");
+    assert.deepEqual(listed[0].observed, { inSitemap: true, robotsMeta: null, xRobotsTag: "noindex" });
+    const meta = only([page("/m", { robotsMeta: "noindex", inSitemap: true })], "sitemap-lists-noindex");
+    assert.equal(meta[0].message, "The sitemap lists a page whose robots meta says noindex.");
+  });
+
+  test("duplicate titles exclude a page whose derived robots reading says noindex", () => {
+    const pages = [page("/a", { title: "Same", titleLength: 4 }), page("/b", { title: "Same", titleLength: 4, robotsNoindex: true }), page("/c", { title: "Same", titleLength: 4 })];
+    const [dup] = only(pages, "title-duplicate");
+    assert.deepEqual(dup.urls, ["https://nexraagency.com/a", "https://nexraagency.com/c"]);
+  });
+
+  test("anchor-text findings are per source page, over internal edges whose text was recorded, from pages this crawl recorded", () => {
+    const pages = [page("/"), page("/a"), page("/b")];
+    const links = [
+      link("/", "/a", { anchorText: "" }),
+      link("/", "/b", { anchorText: "   " }),
+      link("/", "/x", { anchorText: "Click here!" }),
+      link("/", "/y", { anchorText: "read more" }),
+      link("/", "/z", { anchorText: "Our services" }),
+      link("/a", "/b", { anchorText: null }),
+      link("/a", "https://other.example/", { anchorText: "", isInternal: false }),
+      link("/nowhere", "/b", { anchorText: "" }),
+    ];
+    const empty = only(pages, "link-anchor-empty", links);
+    assert.equal(empty.length, 1);
+    assert.deepEqual(empty[0].urls, ["https://nexraagency.com/"]);
+    assert.deepEqual(empty[0].observed, { emptyAnchors: 2, internalLinksChecked: 5 });
+    assert.equal(empty[0].message, "2 of 5 internal link(s) on the page have no anchor text and no image alt.");
+    const generic = only(pages, "link-anchor-generic", links);
+    assert.equal(generic.length, 1);
+    assert.deepEqual(generic[0].observed, { genericAnchors: 2, internalLinksChecked: 5, examples: "click here, read more" });
+    assert.equal(generic[0].message, "2 of 5 internal link(s) on the page use generic anchor text.");
+    assert.equal(run(pages, [link("/a", "/b", { anchorText: null })]).findings.length, 0, "an edge with unknown text yields nothing");
+  });
+
+  test("generic anchor matching normalises case, whitespace and trailing punctuation, and empty is never generic", () => {
+    for (const text of ["Click here", "CLICK  HERE.", " here ", "Read more »", "Learn more…", "More info:"]) assert.equal(isGenericAnchorText(text), true, text);
+    for (const text of ["", "  ", "Pricing", "Read more about pricing", "here and now"]) assert.equal(isGenericAnchorText(text), false, text);
+    assert.equal(normaliseAnchorText("  Read   More! "), "read more");
+  });
+
+  test("the new rules carry a category, severity and label, and the version-2 limitation is stated", () => {
+    for (const rule of ["robots-header-noindex", "heading-h3-without-h2", "image-alt-missing", "link-anchor-empty", "link-anchor-generic"] as const) {
+      assert.ok(RULES[rule].label.length > 0 && RULES[rule].severity && RULES[rule].category, rule);
+    }
+    assert.ok(FINDINGS_LIMITATIONS.some((line) => /an empty alt is a deliberate marker/.test(line) && /review prompts, not measurements/.test(line)));
   });
 });

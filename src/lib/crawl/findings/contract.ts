@@ -18,7 +18,13 @@ import type { Crawl, CrawlFetchState, CrawlStatus, CrawlStopReason } from "@/typ
  * produces no finding.
  */
 
-export const FINDINGS_RULE_VERSION = 1;
+/**
+ * Bumped whenever a rule is added or changed, so a report says which rules
+ * produced it. Version 2 (T5) adds the image, heading-level, anchor-text and
+ * X-Robots-Tag rules, and reads the header's noindex where version 1 read
+ * the meta tag alone.
+ */
+export const FINDINGS_RULE_VERSION = 2;
 
 export type FindingCategory =
   | "metadata"
@@ -30,7 +36,8 @@ export type FindingCategory =
   | "indexability"
   | "sitemap"
   | "structure"
-  | "schema";
+  | "schema"
+  | "images";
 
 /** The same vocabulary the Technical screen uses, so the two can meet later. */
 export type FindingSeverity = "critical" | "high" | "medium" | "low";
@@ -62,7 +69,12 @@ export type FindingRuleId =
   | "page-deep"
   | "no-inbound-links-in-crawl"
   | "schema-missing"
-  | "schema-parse-failed";
+  | "schema-parse-failed"
+  | "robots-header-noindex"
+  | "heading-h3-without-h2"
+  | "image-alt-missing"
+  | "link-anchor-empty"
+  | "link-anchor-generic";
 
 /** JSON-safe scalars only: a finding must be storable and quotable as it is. */
 export type ObservedValue = string | number | boolean | null;
@@ -121,4 +133,5 @@ export const FINDINGS_LIMITATIONS: readonly string[] = [
   "Link findings count only edges between pages this crawl recorded. A page with no observed inbound link is not proven to be orphaned; it may be linked from pages that were not crawled, from nofollow pages whose links are not recorded, or from outside the site.",
   "A broken internal link is reported only when the target page was fetched and answered with an error status. External links are never fetched and are never called broken.",
   "There are no Core Web Vitals, no search volume, no rankings and no traffic here. Title and description lengths are review thresholds, not search-engine rules.",
+  "Image, heading-level and anchor-text findings describe what the page's markup carries: an image with no alt attribute at all (an empty alt is a deliberate marker and is not counted), an H3 on a page with no H2, an internal link with no text and no image alt, and an anchor whose text is one of a fixed generic list. They are review prompts, not measurements of how a page performs. A page recorded before these signals were kept yields none of them.",
 ];

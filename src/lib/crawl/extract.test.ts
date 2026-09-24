@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  MAX_ANCHOR_TEXT,
   MAX_SCHEMA_TYPES,
   MAX_SCHEMA_TYPE_LENGTH,
   extractDocument,
   isNofollow,
   metaForbidsFollowing,
+  metaForbidsIndexing,
 } from "./extract.ts";
 
 describe("extractDocument", () => {
@@ -125,7 +127,7 @@ describe("extractDocument", () => {
 
   test("keeps a link's rel attribute as written", () => {
     const result = extractDocument(`<html><body><a href="/x" rel="nofollow noopener">x</a></body></html>`);
-    assert.deepEqual(result.links, [{ href: "/x", rel: "nofollow noopener" }]);
+    assert.deepEqual(result.links, [{ href: "/x", rel: "nofollow noopener", text: "x" }]);
   });
 
   test("skips anchors with no usable href", () => {
@@ -218,5 +220,74 @@ describe("a JSON-LD @type is website-controlled text, and is bounded like it", (
     const stored = typesOf(many);
     assert.ok(stored.length <= MAX_SCHEMA_TYPES);
     assert.ok(stored.join("").length <= MAX_SCHEMA_TYPES * MAX_SCHEMA_TYPE_LENGTH);
+  });
+});
+
+describe("T5 signals: headings, images and anchor text", () => {
+  test("counts h2 and h3 elements, and images with and without an alt attribute", () => {
+    const result = extractDocument(`
+      <html><body>
+        <h1>One</h1><h2>A</h2><h2>B</h2><h3>C</h3>
+        <img src="a.png" alt="A picture">
+        <img src="b.png" alt="">
+        <img src="c.png">
+        <img src="d.png" ALT="upper-cased attribute name is still alt">
+      </body></html>`);
+    assert.equal(result.h2Count, 2);
+    assert.equal(result.h3Count, 1);
+    assert.equal(result.imageCount, 4);
+    // Only the attribute-less image counts: alt="" is a published statement.
+    assert.equal(result.imagesWithoutAlt, 1);
+  });
+
+  test("a document with none of them reads as zero of each, not as unknown", () => {
+    const result = extractDocument("<html><body><p>Plain.</p></body></html>");
+    assert.deepEqual([result.h2Count, result.h3Count, result.imageCount, result.imagesWithoutAlt], [0, 0, 0, 0]);
+  });
+
+  test("reads each link's text, collapsed, with an image link's alt standing in", () => {
+    const result = extractDocument(`
+      <html><body>
+        <a href="/a">  Read
+          more </a>
+        <a href="/b"><img src="logo.png" alt=" Nexra   home "></a>
+        <a href="/c"><img src="spacer.png"></a>
+        <a href="/d"><span>Nested</span> <b>text</b><img alt="ignored: the text wins"></a>
+        <a href="/e"></a>
+      </body></html>`);
+    assert.deepEqual(result.links.map((link) => link.text), ["Read more", "Nexra home", "", "Nested text", ""]);
+  });
+
+  test("bounds the anchor text to MAX_ANCHOR_TEXT characters", () => {
+    const result = extractDocument(`<a href="/x">${"y".repeat(MAX_ANCHOR_TEXT + 50)}</a>`);
+    assert.equal(result.links[0].text.length, MAX_ANCHOR_TEXT);
+  });
+
+  test("ignores headings, images and anchors inside comments and scripts, like a browser", () => {
+    const result = extractDocument(`
+      <html><body>
+        <!-- <h2>not a heading</h2><img src="no.png"><a href="/no">no</a> -->
+        <script>const s = "<h3>not a heading</h3><img src=x>";</script>
+        <h2>Real</h2>
+      </body></html>`);
+    assert.equal(result.h2Count, 1);
+    assert.equal(result.h3Count, 0);
+    assert.equal(result.imageCount, 0);
+    assert.equal(result.links.length, 0);
+  });
+});
+
+describe("metaForbidsIndexing", () => {
+  test("reads noindex and none from a meta directive or an X-Robots-Tag header, with a user-agent prefix or without", () => {
+    assert.equal(metaForbidsIndexing("noindex, follow"), true);
+    assert.equal(metaForbidsIndexing("NONE"), true);
+    assert.equal(metaForbidsIndexing("googlebot: noindex"), true);
+    assert.equal(metaForbidsIndexing("index, follow"), false);
+    assert.equal(metaForbidsIndexing("nofollow"), false);
+    assert.equal(metaForbidsIndexing("unavailable_after: 2027-01-01"), false);
+  });
+
+  test("null is unknown, never noindex", () => {
+    assert.equal(metaForbidsIndexing(null), false);
   });
 });

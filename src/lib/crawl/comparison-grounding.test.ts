@@ -105,6 +105,7 @@ const OWN_PAGE: CrawlPage = {
   metaDescriptionLength: 21,
   h1Count: 1,
   firstH1: "Services",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Organization"],
   schemaBlocks: 1,
   schemaParseFailed: false,
@@ -133,6 +134,7 @@ const OWN_SKIPPED: CrawlPage = {
   metaDescriptionLength: null,
   h1Count: null,
   firstH1: null,
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: [],
   schemaBlocks: 0,
   depth: null,
@@ -153,6 +155,7 @@ const RIVAL_PAGE: CrawlPage = {
   metaDescription: "Plans from the rival.",
   metaDescriptionLength: 21,
   firstH1: "Pricing",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Product"],
   fetchedAt: "2026-09-20T12:00:01.000Z",
 };

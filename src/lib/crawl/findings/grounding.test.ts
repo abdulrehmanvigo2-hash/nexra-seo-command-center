@@ -51,7 +51,7 @@ function page(path: string, overrides: Partial<CrawlPage> = {}): CrawlPage {
     id: `page-${n}`, crawlId: CRAWL.id, url, finalUrl: url, fetchState: "fetched", httpStatus: 200, redirectHops: 0, redirectChain: [],
     contentType: "text/html", contentBytes: 1000, robotsMeta: null, robotsTxtAllowed: true, canonicalHref: url, canonicalResolved: url, canonicalIsSelf: true,
     title: `Title for ${path} that is long enough to pass`, titleLength: 40, metaDescription: `Description for ${path}`, metaDescriptionLength: 30,
-    h1Count: 1, firstH1: "H1", schemaTypes: ["WebPage"], schemaBlocks: 1, schemaParseFailed: false, inSitemap: null, depth: path === "/" ? 0 : 1,
+    h1Count: 1, firstH1: "H1", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, schemaTypes: ["WebPage"], schemaBlocks: 1, schemaParseFailed: false, inSitemap: null, depth: path === "/" ? 0 : 1,
     internalLinksIn: path === "/" ? 0 : 1, internalLinksOut: 1, fetchedAt: "2026-09-20T10:00:01.000Z", errorCode: null, ...overrides,
   };
 }
@@ -63,12 +63,12 @@ describe("the findings block", () => {
   test("names its coverage, the counts per rule, and each finding by rule id, severity, URL, observed values and id", () => {
     const g = format([page("/"), page("/a", { h1Count: 0 }), page("/b", { fetchState: "http-error", httpStatus: 404, inSitemap: true })]);
     assert.match(g.text, /^DETERMINISTIC CRAWL FINDINGS \(fixed rules this product applied[^\n]*observations, not a model's reading\)\n/);
-    assert.match(g.text, /Coverage: 3 pages recorded \(2 fetched and read, 1 not fetched, 0 not reached within the budget\); 0 link edges read; crawl completed, stopped on completed; robots.txt fetched; sitemap absent; host nexraagency\.com; rule version 1\./);
+    assert.match(g.text, /Coverage: 3 pages recorded \(2 fetched and read, 1 not fetched, 0 not reached within the budget\); 0 link edges read; crawl completed, stopped on completed; robots.txt fetched; sitemap absent; host nexraagency\.com; rule version 2\./);
     assert.match(g.text, /Findings: 3 in total across 3 rule\(s\) — h1-missing ×1, http-client-error ×1, sitemap-lists-error ×1\./);
     assert.ok(g.text.includes('- [http-client-error] high · Client error (4xx) · https://nexraagency.com/b · observed: httpStatus=404; fetchState="http-error" · The page answered 404. (id http-client-error:'));
     assert.ok(g.text.includes("- [h1-missing] medium · Missing H1 · https://nexraagency.com/a · observed: h1Count=0 · The page has no H1. (id h1-missing:"));
     assert.ok(g.text.endsWith(FINDINGS_EVIDENCE_LIMITS_NOTE));
-    assert.deepEqual(g.summary, { status: "available", ruleVersion: 1, findings: 3, described: 3, rules: 3, rulesCut: [], cutByBytes: 0, linksRead: 0, linksCut: false, bytes: bytes(g.text) });
+    assert.deepEqual(g.summary, { status: "available", ruleVersion: 2, findings: 3, described: 3, rules: 3, rulesCut: [], cutByBytes: 0, linksRead: 0, linksCut: false, bytes: bytes(g.text) });
   });
 
   test("an empty report says no rule fired and is not a clean bill of health", () => {

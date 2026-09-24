@@ -42,7 +42,7 @@ const page = (path: string, overrides: Partial<CrawlPage> = {}): CrawlPage => ({
   id: path, crawlId: CRAWL.id, url: `https://nexraagency.com${path}`, finalUrl: `https://nexraagency.com${path}`, fetchState: "fetched", httpStatus: 200,
   redirectHops: 0, redirectChain: [], contentType: "text/html", contentBytes: 100, robotsMeta: null, robotsTxtAllowed: true,
   canonicalHref: null, canonicalResolved: null, canonicalIsSelf: null, title: `A long enough title for the ${path} page here`, titleLength: 38,
-  metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", schemaTypes: [], schemaBlocks: 1, schemaParseFailed: false,
+  metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, schemaTypes: [], schemaBlocks: 1, schemaParseFailed: false,
   inSitemap: null, depth: path === "/" ? 0 : 1, internalLinksIn: path === "/" ? 0 : 1, internalLinksOut: 1, fetchedAt: null, errorCode: null, ...overrides,
 });
 
@@ -101,7 +101,7 @@ describe("recording against the T3 function", () => {
     assert.deepEqual(Object.keys(rpcCalls[0].args), migrationParameters());
     assert.equal(migrationParameters().length, 12);
     const args = rpcCalls[0].args;
-    assert.deepEqual([args.p_project_id, args.p_crawl_id, args.p_rule_version, args.p_pages_total, args.p_pages_fetched, args.p_pages_not_fetched, args.p_pages_not_reached, args.p_links_read, args.p_links_cut], ["nexra-agency", CRAWL.id, 1, 2, 2, 0, 0, 0, false]);
+    assert.deepEqual([args.p_project_id, args.p_crawl_id, args.p_rule_version, args.p_pages_total, args.p_pages_fetched, args.p_pages_not_fetched, args.p_pages_not_reached, args.p_links_read, args.p_links_cut], ["nexra-agency", CRAWL.id, 2, 2, 2, 0, 0, 0, false]);
     assert.deepEqual(args.p_counts, { "h1-missing": 1 });
     assert.deepEqual(args.p_truncated_rules, []);
     assert.deepEqual(args.p_findings, [{ key: REPORT.findings[0].id, rule: "h1-missing", category: "headings", severity: "medium", urls: ["https://nexraagency.com/a"], urlCount: 1, observed: { h1Count: 0 }, message: "The page has no H1." }]);

@@ -1614,7 +1614,7 @@ of the rival.
 
 | Observed | Derived | Never stored |
 |---|---|---|
-| final URL, HTTP status, redirect chain, robots meta, canonical href, title, meta description, H1, JSON-LD types, sitemap membership | crawl depth, internal link counts (within the crawl), canonical-is-self, length fields, robots.txt verdict | Google indexation, Core Web Vitals |
+| final URL, HTTP status, redirect chain, robots meta, X-Robots-Tag header, canonical href, title, meta description, H1, H2 and H3 counts, image count and images without alt, anchor text per link, JSON-LD types, sitemap membership | crawl depth, internal link counts (within the crawl), canonical-is-self, length fields, robots.txt verdict, robots noindex/nofollow (meta and header together) | Google indexation, Core Web Vitals |
 
 There is no column for indexation or vitals in any of the three tables. A
 crawler cannot observe either — a 200 means the page answered us, not that
@@ -1637,8 +1637,8 @@ normalisation, host classification and source-target deduplication that
 equals the crawl's internal edge count. A raw anchor is not a link: repeated
 hrefs, fragments, `mailto:` and `tel:` and `javascript:` anchors, hrefs that
 do not normalise, and links to other hosts never reach either count. A page
-whose robots meta says `nofollow` or `none` records no edges and counts zero
-on the outbound side. **Crawls completed before this definition took effect
+whose robots meta, or whose `X-Robots-Tag` response header (since T5), says
+`nofollow` or `none` records no edges and counts zero on the outbound side. **Crawls completed before this definition took effect
 stored the raw extracted anchor count in `internal_links_out`** — duplicates,
 non-URLs and external anchors included — so their page-level outbound figures
 read high, while their edge table and inbound counts were always as described
@@ -1734,14 +1734,17 @@ also work through a custom dispatcher, but no builtin module exposes it, so
 using it would mean taking a dependency for something the platform already
 does.
 
-### Deterministic crawl findings (T1–T4)
+### Deterministic crawl findings (T1–T5)
 
-`src/lib/crawl/findings` applies 27 fixed rules to what one crawl recorded
-(`compute.ts`, `rules.ts`, `contract.ts`): titles, meta descriptions, H1s,
-canonicals, 4xx/5xx, redirect chains and loops, broken internal links (only
-when the target page was fetched with an error), robots.txt and robots-meta
-noindex, sitemap conflicts, deep pages, pages with no observed inbound link,
-JSON-LD. A null field is unknown and yields nothing; duplicates are found
+`src/lib/crawl/findings` applies 32 fixed rules (rule version 2) to what one
+crawl recorded (`compute.ts`, `rules.ts`, `contract.ts`): titles, meta
+descriptions, H1s, canonicals, 4xx/5xx, redirect chains and loops, broken
+internal links (only when the target page was fetched with an error),
+robots.txt, robots-meta and X-Robots-Tag noindex, sitemap conflicts, deep
+pages, pages with no observed inbound link, JSON-LD, and — since T5 — an H3
+on a page with no H2, images with no alt attribute, internal links with no
+anchor text, and internal links with generic anchor text (a fixed list,
+`GENERIC_ANCHOR_TEXTS`). A null field is unknown and yields nothing; duplicates are found
 within one crawl; a finding carries a stable id, category, severity, the URLs
 it names, the exact observed values and one sentence, and the report carries
 coverage, true per-rule counts and fixed limitations (no site-wide totals, no
@@ -1782,6 +1785,33 @@ within this crawl, not site-wide; no indexation, ranking, traffic or vitals;
 not fixture data. The section offers no control — nothing fixes, dispatches
 or writes — and the Technical SEO screen still renders its modelled registry,
 labelled as such; mapping one onto the other remains a separate feature.
+
+### More of what a crawl observes (T5)
+
+Migration `20260929120000_extend_crawl_page_signals.sql` adds nullable
+columns, and nothing else: on `nexra_crawl_pages`, `x_robots_tag` (observed:
+the response header as sent, collapsed, at most 200 characters),
+`robots_noindex` and `robots_nofollow` (derived: the robots meta and the
+header read together, true when either says the directive or `none`),
+`h2_count`, `h3_count`, `image_count` and `images_without_alt` (observed;
+an image with `alt=""` is decorative by the page's own statement and is not
+counted); on `nexra_crawl_links`, `anchor_text` (observed: the anchor's
+text, collapsed, at most 200 characters, an image link's alt standing in,
+empty when it has neither). Every column is null on a row written before
+the migration, on a URL that never answered, and — for the counts — on a
+non-HTML response; a URL never reached can carry none of them (constraint).
+The migration also lets `nexra_crawl_findings.category` be `images`. No
+grant, policy, trigger or function changes; RLS stays on with no policies.
+The crawler (`extract.ts`, `fetcher.ts`, `engine.ts`) records all of them
+on every fetch and honours an `X-Robots-Tag: nofollow` header exactly as it
+honours the meta tag: no edge recorded, nothing queued. Budgets, the address
+guard, robots.txt handling, the allow-list and the user agent are unchanged.
+**Deploy order:** the page and link inserts name the new columns, so the
+application built from T5 must be deployed only after this migration is
+applied to production; until then a crawl on that deployment would fail to
+save its pages. Applying it is a separate §6 approval, and it has been
+applied only to disposable local PostgreSQL 16 clusters (harness suites
+`signals` and `signals-upgrade`).
 
 ### Safety boundaries
 

@@ -50,6 +50,7 @@ function pageFixture(url: string, overrides: Partial<CrawlPage> = {}): Omit<Craw
     metaDescriptionLength: null,
     h1Count: 1,
     firstH1: "A page",
+    h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
     schemaTypes: [],
     schemaBlocks: 0,
     schemaParseFailed: false,
@@ -196,7 +197,7 @@ describe("createSupabaseCrawlStore — pages and links", () => {
 
     await store.savePages(id, [pageFixture("https://nexraagency.com/")]);
     await store.saveLinks(id, [
-      { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true },
+      { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true, anchorText: null },
     ]);
 
     assert.equal(db.rows.nexra_crawl_pages.length, 1);
@@ -267,6 +268,7 @@ describe("createSupabaseCrawlStore — pages and links", () => {
         title: null,
         titleLength: null,
         firstH1: null,
+        h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
         h1Count: null,
         errorCode: "budget-skipped",
       }),
@@ -336,7 +338,7 @@ describe("isolation from the foreign crawl subsystem", () => {
     assert.ok(created.status === "inserted");
     await store.savePages(created.crawl.id, [pageFixture("https://nexraagency.com/")]);
     await store.saveLinks(created.crawl.id, [
-      { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/a", rel: null, isInternal: true },
+      { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/a", rel: null, isInternal: true, anchorText: null },
     ]);
     await store.finish(created.crawl.id, {
       status: "completed",
@@ -414,6 +416,7 @@ describe("rows satisfy the migration's constraints", () => {
         title: LONG,
         metaDescription: LONG,
         firstH1: LONG,
+        h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
         robotsMeta: LONG,
         schemaTypes: Array.from({ length: 200 }, (_, index) => `Type${index}`),
         errorCode: null,
@@ -454,6 +457,7 @@ describe("rows satisfy the migration's constraints", () => {
         toUrl: "https://nexraagency.com/x",
         rel: LONG,
         isInternal: true,
+        anchorText: null,
       },
     ]);
     const rel = db.rows.nexra_crawl_links[0].rel;
@@ -466,11 +470,11 @@ describe("rows satisfy the migration's constraints", () => {
 
 describe("createSupabaseCrawlStore — listLinks", () => {
   const links = (crawlId: string) => [
-    { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true },
-    { fromUrl: "https://nexraagency.com/about", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false },
-    { fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false },
-    { fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false },
-    { fromUrl: "https://nexraagency.com/about", toUrl: "https://nexraagency.com/", rel: null, isInternal: true },
+    { fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true, anchorText: null },
+    { fromUrl: "https://nexraagency.com/about", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false, anchorText: null },
+    { fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false, anchorText: null },
+    { fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false, anchorText: null },
+    { fromUrl: "https://nexraagency.com/about", toUrl: "https://nexraagency.com/", rel: null, isInternal: true, anchorText: null },
   ].map((link) => ({ ...link, crawlId }));
 
   test("reads a crawl's edges back exactly as written, external edges first, in a fixed order", async () => {
@@ -482,11 +486,11 @@ describe("createSupabaseCrawlStore — listLinks", () => {
 
     const read = await store.listLinks(id, 100);
     assert.deepEqual(read, [
-      { crawlId: id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false },
-      { crawlId: id, fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false },
-      { crawlId: id, fromUrl: "https://nexraagency.com/about", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false },
-      { crawlId: id, fromUrl: "https://nexraagency.com/about", toUrl: "https://nexraagency.com/", rel: null, isInternal: true },
-      { crawlId: id, fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true },
+      { crawlId: id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false, anchorText: null },
+      { crawlId: id, fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false, anchorText: null },
+      { crawlId: id, fromUrl: "https://nexraagency.com/about", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false, anchorText: null },
+      { crawlId: id, fromUrl: "https://nexraagency.com/about", toUrl: "https://nexraagency.com/", rel: null, isInternal: true, anchorText: null },
+      { crawlId: id, fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/about", rel: null, isInternal: true, anchorText: null },
     ]);
   });
 

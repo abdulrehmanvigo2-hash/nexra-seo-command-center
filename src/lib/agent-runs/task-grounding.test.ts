@@ -79,6 +79,7 @@ const PAGE: CrawlPage = {
   metaDescriptionLength: 21,
   h1Count: 1,
   firstH1: "Services",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Organization"],
   schemaBlocks: 1,
   schemaParseFailed: false,
@@ -107,6 +108,7 @@ const SKIPPED: CrawlPage = {
   metaDescriptionLength: null,
   h1Count: null,
   firstH1: null,
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: [],
   schemaBlocks: 0,
   depth: null,
@@ -132,11 +134,11 @@ function crawlStore(crawl: Crawl = CRAWL, pages: readonly CrawlPage[] = PAGES) {
 
 /** The edges the crawl recorded: a few internal, three external to two hosts. */
 const LINKS: readonly CrawlLink[] = [
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/services", rel: null, isInternal: true },
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://nexraagency.com/", rel: null, isInternal: true },
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false },
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false },
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/services", rel: null, isInternal: true, anchorText: null },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://nexraagency.com/", rel: null, isInternal: true, anchorText: null },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false, anchorText: null },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false, anchorText: null },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false, anchorText: null },
 ];
 
 /** The findings block the fixture crawl yields: one short title on /services. */
@@ -368,6 +370,7 @@ const RIVAL_PAGE: CrawlPage = {
   metaDescription: "Plans from the rival.",
   metaDescriptionLength: 21,
   firstH1: "Pricing",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Product"],
 };
 

@@ -107,6 +107,7 @@ const OWN_PAGE: CrawlPage = {
   metaDescriptionLength: 21,
   h1Count: 1,
   firstH1: "Services",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Organization"],
   schemaBlocks: 1,
   schemaParseFailed: false,
@@ -135,6 +136,7 @@ const OWN_SKIPPED: CrawlPage = {
   metaDescriptionLength: null,
   h1Count: null,
   firstH1: null,
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: [],
   schemaBlocks: 0,
   depth: null,
@@ -151,6 +153,7 @@ const RIVAL_PAGE: CrawlPage = {
   title: "Rival pricing — the market leader since 2019",
   titleLength: 44,
   firstH1: "Pricing",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Product"],
 };
 

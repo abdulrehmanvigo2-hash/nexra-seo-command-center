@@ -425,6 +425,27 @@ Apply it after `20260927120000`, then `NOTIFY pgrst, 'reload schema';`. It
 has been applied only to disposable local PostgreSQL 16 clusters; it has
 **not** been applied to production.
 
+## Crawl signals
+
+`20260929120000_extend_crawl_page_signals.sql` (Technical SEO + On-Page SEO,
+checkpoint T5) adds nullable columns and nothing else: on `nexra_crawl_pages`,
+`x_robots_tag`, `robots_noindex`, `robots_nofollow`, `h2_count`, `h3_count`,
+`image_count` and `images_without_alt`, each with a prefixed check (length at
+most 200, counts non-negative, images without alt at most the image count) and
+one constraint that a URL never reached (`budget-skipped`) carries none of
+them; on `nexra_crawl_links`, `anchor_text` (at most 200 characters; empty
+when the anchor had no text, null on an edge recorded before). It widens
+`nexra_crawl_findings.category` by exactly `images`, dropping and re-adding
+that one check constraint, which PostgreSQL validates over every existing row.
+No default, no backfill, no grant, policy, trigger or function change: a row
+written before it keeps every new column null, and null means "not recorded",
+never zero or false. `service_role`'s existing table-level privileges cover
+the new columns. Apply it after `20260928120000`, then
+`NOTIFY pgrst, 'reload schema';`. **The application built from T5 must be
+deployed only after this migration is applied**: its page and link inserts
+name the new columns. It has been applied only to disposable local PostgreSQL
+16 clusters; it has **not** been applied to production.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

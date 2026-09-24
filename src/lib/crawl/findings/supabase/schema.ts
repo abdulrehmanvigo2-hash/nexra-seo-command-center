@@ -86,7 +86,7 @@ export const REPORT_READ_COLUMNS =
   "id, crawl_id, project_id, rule_version, pages_total, pages_fetched, pages_not_fetched, pages_not_reached, links_read, links_cut, findings_total, counts, truncated_rules, recorded_at";
 export const FINDING_READ_COLUMNS = "id, report_id, crawl_id, project_id, finding_key, rule, category, severity, urls, url_count, observed, message, ordinal";
 
-const CATEGORIES: readonly FindingCategory[] = ["metadata", "headings", "canonical", "http", "redirects", "links", "indexability", "sitemap", "structure", "schema"];
+const CATEGORIES: readonly FindingCategory[] = ["metadata", "headings", "canonical", "http", "redirects", "links", "indexability", "sitemap", "structure", "schema", "images"];
 const SEVERITIES: readonly FindingSeverity[] = ["critical", "high", "medium", "low"];
 
 function record(value: unknown, what: string): Record<string, unknown> {

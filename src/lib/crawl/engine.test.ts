@@ -14,6 +14,8 @@ type Route = {
   readonly body?: string;
   readonly location?: string;
   readonly fail?: "timeout" | "connection";
+  /** Extra response headers, e.g. an X-Robots-Tag. */
+  readonly headers?: Readonly<Record<string, string>>;
 };
 
 const PUBLIC_RESOLVER: AddressResolver = async () => [{ address: "93.184.216.34", family: 4 }];
@@ -31,7 +33,7 @@ function siteFetch(routes: Readonly<Record<string, Route>>): Fetch {
     }
     if (route.fail === "connection") throw new Error("socket hang up");
 
-    const headers: Record<string, string> = { "content-type": route.type ?? "text/html" };
+    const headers: Record<string, string> = { "content-type": route.type ?? "text/html", ...route.headers };
     if (route.location !== undefined) headers.location = route.location;
     return new Response(route.body ?? "", { status: route.status ?? 200, headers });
   };
@@ -803,5 +805,89 @@ describe("internal links out", () => {
     assert.equal(page(result.pages, "https://example.com/down").internalLinksOut, 0);
     assert.equal(page(result.pages, "https://example.com/").internalLinksOut, 2);
     consistent(result);
+  });
+});
+
+describe("T5 signals", () => {
+  test("records the X-Robots-Tag header, the derived robots readings, heading and image counts, and each edge's anchor text", async () => {
+    const result = await crawl({
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": {
+        body: `<h1>Home</h1><h2>A</h2><h3>B</h3><img src="x.png"><img src="y.png" alt=""><a href="/a">Read   more</a><a href="/b"><img src="l.png" alt="Logo"></a>`,
+        headers: { "x-robots-tag": "  noindex ,  nofollow  " },
+      },
+      "https://example.com/a": { body: `<meta name="robots" content="nofollow"><p>a</p>` },
+      "https://example.com/b": { body: `<p>b</p>` },
+    });
+
+    const home = page(result.pages, "https://example.com/");
+    assert.equal(home.xRobotsTag, "noindex , nofollow");
+    assert.equal(home.robotsNoindex, true);
+    assert.equal(home.robotsNofollow, true);
+    // Three images: x (no alt), y (alt=""), and the logo inside the image link.
+    assert.deepEqual([home.h2Count, home.h3Count, home.imageCount, home.imagesWithoutAlt], [1, 1, 3, 1]);
+    // The header's nofollow is honoured like the meta tag's: nothing recorded, nothing queued.
+    assert.deepEqual(result.links.filter((link) => link.fromUrl === "https://example.com/"), []);
+    assert.equal(result.pages.find((entry) => entry.url === "https://example.com/a"), undefined);
+    assert.equal(home.internalLinksOut, 0);
+  });
+
+  test("an anchor's text and an image link's alt are recorded on the edge; a plain page reads false, not null, for both robots readings", async () => {
+    const result = await crawl({
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": { body: `<a href="/a">Read   more</a><a href="/b"><img src="l.png" alt="Logo"></a><a href="/c"></a>` },
+      "https://example.com/a": { body: `<p>a</p>` },
+      "https://example.com/b": { body: `<p>b</p>` },
+      "https://example.com/c": { body: `<p>c</p>` },
+    });
+    assert.deepEqual(
+      result.links.map((link) => [link.toUrl, link.anchorText]),
+      [["https://example.com/a", "Read more"], ["https://example.com/b", "Logo"], ["https://example.com/c", ""]],
+    );
+    const home = page(result.pages, "https://example.com/");
+    assert.equal(home.xRobotsTag, null);
+    assert.equal(home.robotsNoindex, false);
+    assert.equal(home.robotsNofollow, false);
+    assert.deepEqual([home.h2Count, home.h3Count, home.imageCount, home.imagesWithoutAlt], [0, 0, 1, 0]);
+  });
+
+  test("a URL that never answered has null for every T5 reading; a non-HTML response keeps its header and no counts", async () => {
+    const result = await crawl({
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": { body: `<a href="/down">down</a><a href="/file.pdf">file</a>` },
+      "https://example.com/down": { fail: "connection" },
+      "https://example.com/file.pdf": { type: "application/pdf", body: "%PDF", headers: { "x-robots-tag": "noindex" } },
+    });
+    const down = page(result.pages, "https://example.com/down");
+    assert.deepEqual([down.xRobotsTag, down.robotsNoindex, down.robotsNofollow, down.h2Count, down.imageCount], [null, null, null, null, null]);
+    const pdf = page(result.pages, "https://example.com/file.pdf");
+    assert.equal(pdf.fetchState, "non-html");
+    assert.equal(pdf.xRobotsTag, "noindex");
+    assert.equal(pdf.robotsNoindex, true);
+    assert.equal(pdf.robotsNofollow, false);
+    assert.deepEqual([pdf.h2Count, pdf.h3Count, pdf.imageCount, pdf.imagesWithoutAlt], [null, null, null, null]);
+  });
+
+  test("a meta nofollow page and a header nofollow page are treated the same: no edges, nothing queued", async () => {
+    const meta = await crawl({
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": { body: `<meta name="robots" content="nofollow"><a href="/a">a</a>` },
+      "https://example.com/a": { body: `<p>a</p>` },
+    });
+    const header = await crawl({
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": { body: `<a href="/a">a</a>`, headers: { "x-robots-tag": "nofollow" } },
+      "https://example.com/a": { body: `<p>a</p>` },
+    });
+    for (const result of [meta, header]) {
+      assert.deepEqual(result.links, []);
+      assert.deepEqual(result.pages.map((entry) => entry.url), ["https://example.com/"]);
+      assert.equal(page(result.pages, "https://example.com/").robotsNofollow, true);
+    }
   });
 });

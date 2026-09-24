@@ -77,6 +77,7 @@ const PAGE: CrawlPage = {
   metaDescriptionLength: null,
   h1Count: 1,
   firstH1: "Nexra Agency",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: [],
   schemaBlocks: 0,
   schemaParseFailed: false,
@@ -94,6 +95,7 @@ const edge = (fromPath: string, toUrl: string, rel: string | null, isInternal: b
   toUrl,
   rel,
   isInternal,
+  anchorText: null,
 });
 
 /** Eight internal edges, six external edges to three hosts, and one unparsable target. */

@@ -728,7 +728,7 @@ describe("recording the deterministic findings when a crawl finishes (T3)", () =
   const crawledPage = (path: string, overrides: Partial<CrawlResult["pages"][number]> = {}): CrawlResult["pages"][number] => ({
     url: `https://nexraagency.com${path}`, finalUrl: `https://nexraagency.com${path}`, fetchState: "fetched", httpStatus: 200, redirectHops: 0, redirectChain: [],
     contentType: "text/html", contentBytes: 100, robotsMeta: null, robotsTxtAllowed: true, canonicalHref: null, canonicalResolved: null, canonicalIsSelf: null,
-    title: `A long enough title for the ${path} page here`, titleLength: 38, metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", schemaTypes: [], schemaBlocks: 1,
+    title: `A long enough title for the ${path} page here`, titleLength: 38, metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, schemaTypes: [], schemaBlocks: 1,
     schemaParseFailed: false, inSitemap: null, depth: path === "/" ? 0 : 1, internalLinksIn: path === "/" ? 0 : 1, internalLinksOut: 1, fetchedAt: null, errorCode: null, ...overrides,
   });
 
@@ -737,7 +737,7 @@ describe("recording the deterministic findings when a crawl finishes (T3)", () =
     const store = recordingStore();
     const service = createCrawlService({
       store, projects: projectsWith(PROJECT), config: CONFIG, findings: findings.store,
-      engine: engineReturning({ pages: [crawledPage("/"), crawledPage("/a", { h1Count: 0 })], links: [{ fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/a", rel: null, isInternal: true }], pagesDiscovered: 2, pagesFetched: 2 }),
+      engine: engineReturning({ pages: [crawledPage("/"), crawledPage("/a", { h1Count: 0 })], links: [{ fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/a", rel: null, isInternal: true, anchorText: null }], pagesDiscovered: 2, pagesFetched: 2 }),
     });
     const result = await service.startCrawl("nexra-agency", OPERATOR);
     assert.ok(result.ok);

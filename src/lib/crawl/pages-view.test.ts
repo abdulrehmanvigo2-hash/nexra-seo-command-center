@@ -49,6 +49,7 @@ const FETCHED: CrawlPage = {
   metaDescriptionLength: null,
   h1Count: 1,
   firstH1: "Services",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Organization"],
   schemaBlocks: 1,
   schemaParseFailed: false,

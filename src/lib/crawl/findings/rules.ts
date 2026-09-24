@@ -16,6 +16,29 @@ export const DEEP_PAGE_DEPTH = 3;
 /** Redirect hops from which a redirect is called a chain. */
 export const REDIRECT_CHAIN_MIN_HOPS = 2;
 
+/**
+ * Anchor texts that say nothing about their target. Compared after
+ * whitespace collapse, lower-casing and stripping trailing punctuation; the
+ * list is fixed so the finding is the same on every run.
+ */
+export const GENERIC_ANCHOR_TEXTS: readonly string[] = [
+  "click here",
+  "here",
+  "read more",
+  "more",
+  "learn more",
+  "link",
+  "this",
+  "this page",
+  "continue",
+  "continue reading",
+  "see more",
+  "view more",
+  "details",
+  "more info",
+  "more information",
+];
+
 export type RuleMeta = {
   readonly category: FindingCategory;
   readonly severity: FindingSeverity;
@@ -50,6 +73,11 @@ export const RULES: Readonly<Record<FindingRuleId, RuleMeta>> = {
   "no-inbound-links-in-crawl": { category: "links", severity: "low", label: "No observed inbound internal link in this crawl" },
   "schema-missing": { category: "schema", severity: "low", label: "No JSON-LD" },
   "schema-parse-failed": { category: "schema", severity: "medium", label: "JSON-LD could not be parsed" },
+  "robots-header-noindex": { category: "indexability", severity: "medium", label: "X-Robots-Tag noindex" },
+  "heading-h3-without-h2": { category: "headings", severity: "low", label: "H3 on a page with no H2" },
+  "image-alt-missing": { category: "images", severity: "low", label: "Images without alt attribute" },
+  "link-anchor-empty": { category: "links", severity: "low", label: "Internal links with no anchor text" },
+  "link-anchor-generic": { category: "links", severity: "low", label: "Internal links with generic anchor text" },
 };
 
 export const SEVERITY_RANK: Readonly<Record<FindingSeverity, number>> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -69,4 +97,15 @@ export function metaForbidsIndexing(robotsMeta: string | null): boolean {
 /** Whitespace-collapsed, trimmed; the form two titles are compared in. Empty after that is "missing". */
 export function normaliseText(value: string | null): string {
   return value === null ? "" : value.replace(/\s+/g, " ").trim();
+}
+
+/** The form an anchor text is compared in: collapsed, lower-cased, without trailing punctuation. */
+export function normaliseAnchorText(text: string): string {
+  return normaliseText(text).toLowerCase().replace(/[\s.!:…»>›-]+$/u, "").trim();
+}
+
+/** True when an anchor's text is one of the fixed generic phrases. Empty text is not generic; it is empty. */
+export function isGenericAnchorText(text: string): boolean {
+  const normalised = normaliseAnchorText(text);
+  return normalised !== "" && GENERIC_ANCHOR_TEXTS.includes(normalised);
 }
