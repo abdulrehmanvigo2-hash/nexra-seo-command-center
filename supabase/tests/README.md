@@ -1,7 +1,8 @@
 # Database test harness
 
 PostgreSQL tests for the content-workflow migrations: C2 (articles), C4 (article check units),
-C5 (article approvals) and C6 (article publication proposals). They exercise the real migration
+C5 (article approvals), draft publication proposals (Stage 5A), C6 (article publication
+proposals) and D3 (one active proposal per destination and slug across both proposal tables). They exercise the real migration
 SQL — guards, grants, row level security, `security definer` functions and row locks — which the
 TypeScript tests in `src/lib` only read as text.
 
@@ -46,12 +47,18 @@ assertions (`EXPECTED` in `run.sh`); change that number when you add or remove a
 | `c2` | `c2/setup.sql`, `c2/tests.sql` (on `supabase/seed.sql`), `c2/race-*.sql` | 54 assertions; two-session create/create (`exists`) and save/save (`stale`) races |
 | `c4` | `c4/setup.sql`, `c4/tests.sql` | 60 assertions |
 | `c5` | `c4/setup.sql`, `c5/setup.sql`, `c5/tests.sql` | 69 assertions |
+| `drafts` | `c4/setup.sql`, `drafts/setup.sql`, `drafts/tests.sql` | 40 assertions: draft proposal security, every propose outcome, the application's withdrawal UPDATE, guards |
+| `drafts-races` | as `drafts`, scenarios in `run.sh` | two drafts on one slug, identical proposes, propose vs save, withdrawal vs propose |
 | `c6` | `c4/setup.sql`, `c5/setup.sql`, `c6/setup.sql`, `c6/tests.sql` | 146 assertions: schema, security, binding refusals, immutability and withdrawal |
 | `c6-races` | as `c6`, scenarios in `run.sh` | nine two-session races (E1–E9); the second session must wait for the first and answer as expected |
-| `c6-d3-gap` | as `c6`, plus `c6/d3-gap-setup.sql` | the known D3 gap (below) |
+| `c6-d3` | as `c6`, plus `c6/d3-setup.sql`, `c6/d3-tests.sql` | 35 assertions: the D3 trigger's schema and security, both orders, retries, withdrawal, rollback, direct privileged inserts, the isolation guard |
+| `c6-d3-races` | as `c6-d3`, scenarios in `run.sh` | draft/article races in both orders (D1–D2), two drafts (D3), different slugs without waiting (D4), rollback (D5), withdrawal vs propose in both orders (D6–D8), and a 12-session stress run with no deadlock |
+| `c6-d3-preflight` | the D3 migration | refuses to apply over an existing draft/article duplicate, leaving nothing; applies once one is withdrawn |
 | `c6-rollback` | the C6 migration | a failed apply leaves no partial objects; a clean apply succeeds |
 
-`c4/setup.sql` is also the shared base for C5 and C6 (projects, the `t.ok()` assertion helper).
+`c4/setup.sql` is also the shared base for the draft, C5 and C6 suites (projects, the `t.ok()`
+assertion helper). Draft fixtures are fact-checked and approved the way the application does
+it: `service_role` UPDATEs through the draft guards.
 
 ### C5 and the C6 schema
 
@@ -61,11 +68,18 @@ therefore refused by PostgreSQL itself (`0A000`) before the C5 guard runs, and
 history is intact afterwards. Its `security definer` inventory names the authorized C2, C4, C5
 and C6 functions, and every such function in the database, with signatures.
 
-### D3: the known gap
+### C6 and D3
 
-`c6-d3-gap` passes while the documented gap between draft and article proposals is present
-(see the header of `20260925120000_create_article_publication_proposals.sql`): the draft
-proposal function does not check article proposals, and the two tables share no lock or index.
-G1 (article, then draft) and G2 (both at once) each end with two active reservations of one
-destination and slug; G3 confirms a committed draft proposal does block an article proposal.
-When D3 is fixed, change G1 and G2 to expect `slug-taken`.
+`c6/tests.sql` lists the article proposal table's triggers exactly; since D3 that list includes
+`nexra_article_publication_proposals_reserve_slug`.
+
+### D3: one active proposal per destination and slug
+
+`20260926120000_publication_proposals_cross_table_slug_lock.sql` adds one BEFORE INSERT trigger
+to each proposal table, sharing one function. For a row inserted as `proposed` it refuses a
+transaction that is not READ COMMITTED (`0A000`), takes a transaction advisory lock on the
+destination and slug, and raises `unique_violation` if the other table holds an active
+proposal for them; both propose functions answer that as `slug-taken`. Before D3 the draft and
+article tables each enforced the rule only for themselves; `c6-d3` and `c6-d3-races` now assert
+that one active reservation survives where the earlier G1 (article, then draft) and G2 (both at
+once) reproductions ended with two.

@@ -10,7 +10,8 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 c6 c6-races c6-d3-gap c6-rollback   (default: all, in that order)
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback
+#           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
 #         When run as root, the server runs as the OS user NEXRA_DB_TEST_OS_USER
@@ -18,15 +19,17 @@
 #         Set NEXRA_DB_TEST_KEEP=1 to keep the temporary cluster for inspection.
 
 set -euo pipefail
+trap 'echo "run.sh: aborted at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 MIGRATIONS="$REPO/supabase/migrations"
 SEED="$REPO/supabase/seed.sql"
 C6_MIGRATION="$MIGRATIONS/20260925120000_create_article_publication_proposals.sql"
+D3_MIGRATION="$MIGRATIONS/20260926120000_publication_proposals_cross_table_slug_lock.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -81,15 +84,16 @@ FAILED=0
 pass() { printf 'PASS  %s\n' "$*"; }
 fail() { printf 'FAIL  %s\n' "$*"; FAILED=1; }
 
-# A fresh database: the API roles, then every migration in order.
+# A fresh database: the API roles, then every migration in order — or, given a migration
+# file, only the migrations before it.
 fresh_db() {
   "$PG_BIN/dropdb" --if-exists nexra 2>/dev/null
   "$PG_BIN/createdb" nexra
   "${PSQL[@]}" -c "do \$\$ begin if not exists (select 1 from pg_roles where rolname = 'anon') then
     create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; end if; end \$\$;"
-  local skip="${1:-}" f
+  local stop="${1:-}" f
   for f in "$MIGRATIONS"/*.sql; do
-    [ "$f" = "$skip" ] && continue
+    [ -n "$stop" ] && [ "$f" = "$stop" ] && break
     "${PSQL[@]}" -f "$f" >/dev/null
   done
 }
@@ -109,11 +113,12 @@ run_sql_suite() {
 
 ms() { date +%s%3N; }
 
-# Session 1 runs $1 in an open transaction held for 2 s; session 2 runs $2 0.5 s later.
-# Sets R1, R2 (answers) and WAIT_MS (how long session 2 took).
+# Session 1 runs $1 in an open transaction held for 2 s, then commits (or runs $3, e.g.
+# rollback); session 2 runs $2 0.5 s later. Sets R1, R2 (answers) and WAIT_MS (how long
+# session 2 took).
 race() {
-  local s1="$1" s2="$2" t0 t1
-  "$PG_BIN/psql" -X -Atq -c "begin" -c "$s1" -c "select pg_sleep(2)" -c "commit" >"$OUT/race1" 2>&1 &
+  local s1="$1" s2="$2" end="${3:-commit}" t0 t1
+  "$PG_BIN/psql" -X -Atq -c "begin" -c "$s1" -c "select pg_sleep(2)" -c "$end" >"$OUT/race1" 2>&1 &
   local bg=$!
   sleep 0.5
   t0=$(ms); R2="$("$PG_BIN/psql" -X -Atq -c "$s2" 2>&1)"; t1=$(ms)
@@ -137,6 +142,37 @@ suite_c2() {
   "$PG_BIN/psql" -X -Atq -f "$HERE/c2/race-save-a.sql" >"$OUT/c2a" 2>&1 & bg=$!
   sleep 0.5; t0=$(ms); b="$("$PG_BIN/psql" -X -Atq -f "$HERE/c2/race-save-b.sql" 2>&1 | grep '^B|')"; t1=$(ms); wait "$bg" || true; a="$(cat "$OUT/c2a")"
   check "c2 race save/save: A=${a} B=${b} (B waited $((t1 - t0)) ms)" "$([ "$a" = "A|created" ] && [ "$b" = "B|stale" ] && [ $((t1 - t0)) -ge 1000 ]; echo $?)"
+}
+
+# Draft publication proposals (Stage 5A): the existing draft workflow, as a regression suite.
+suite_drafts() {
+  fresh_db
+  run_sql_suite drafts "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/drafts/setup.sql" "$HERE/drafts/tests.sql"
+}
+
+# Two sessions on draft proposals; session 2 must wait for session 1 and answer as listed.
+suite_drafts_races() {
+  fresh_db
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/drafts/setup.sql" >/dev/null
+  q "select td.ready(n) from generate_series(20, 25) n" >/dev/null
+  local o="->>'outcome'" final
+  race "select td.propose(td.d(20), 'r-one')$o" "select td.propose(td.d(21), 'r-one')$o"
+  final="$(q "select td.active('r-one')")"
+  check "drafts race two drafts, one slug: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, active $final" \
+    "$([ "$R1" = created ] && [ "$R2" = slug-taken ] && [ "$WAIT_MS" -ge 1000 ] && [ "$final" = 1 ]; echo $?)"
+  race "select td.propose(td.d(22), 'r-two')$o" "select td.propose(td.d(22), 'r-two')$o"
+  final="$(q "select count(*) from nexra_content_publication_proposals where draft_id = td.d(22)")"
+  check "drafts race identical proposes: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, rows $final" \
+    "$([ "$R1" = created ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1000 ] && [ "$final" = 1 ]; echo $?)"
+  race "select td.propose(td.d(23), 'r-three')$o" "select public.nexra_content_draft_save_version(td.d(23), 'halcyon-fintech', 1::smallint, 'T2', 'B2', '00000000-0000-4000-8000-0000000000aa')$o"
+  final="$(q "select p.version || ' ' || p.status || ' ' || d.status || ' v' || d.current_version from nexra_content_publication_proposals p join nexra_content_drafts d on d.id = p.draft_id where d.id = td.d(23)")"
+  check "drafts race propose vs save: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, after: $final" \
+    "$([ "$R1" = created ] && [ "$R2" = created ] && [ "$WAIT_MS" -ge 1000 ] && [ "$final" = "1 proposed drafting v2" ]; echo $?)"
+  q "select td.propose(td.d(24), 'r-four')" >/dev/null
+  race "select td.withdraw((select id from nexra_content_publication_proposals where draft_id = td.d(24)))" "select td.propose(td.d(25), 'r-four')$o"
+  final="$(q "select string_agg(d.n::text || ':' || p.status, ',' order by d.n) from nexra_content_publication_proposals p join (values (24), (25)) d(n) on p.draft_id = td.d(d.n)")"
+  check "drafts race withdraw vs propose (same slug): s1=$R1 s2=$R2, waited ${WAIT_MS} ms, after: $final" \
+    "$([ "$R1" = 1 ] && [ "$R2" = created ] && [ "$WAIT_MS" -ge 1000 ] && [ "$final" = "24:withdrawn,25:proposed" ]; echo $?)"
 }
 
 suite_c4() {
@@ -192,28 +228,88 @@ suite_c6_races() {
     "select string_agg(status, ',') from nexra_article_publication_proposals where article_id = t6.a(40)" "withdrawn"
 }
 
-# D3: characterises the KNOWN, DOCUMENTED gap between draft and article proposals (see the
-# C6 migration header). It passes while the gap is present exactly as documented; when D3
-# is fixed, G1 and G2 must be changed to expect slug-taken.
-suite_c6_d3_gap() {
+# D3 (20260926120000): one active proposal per destination and slug across both tables.
+d3_base() {
   c6_base
-  "${PSQL[@]}" -f "$HERE/c6/d3-gap-setup.sql" >/dev/null
-  local a d counts
-  a="$(q "select t6.propose(t6.a(60), 1)->>'outcome'")"
-  d="$(q "select t6.dprop('d6000000-0000-4000-8000-000000000001', 'gap-one')")"
-  counts="$(q "select (select count(*) from nexra_article_publication_proposals where slug = 'gap-one' and status = 'proposed') || '/' || (select count(*) from nexra_content_publication_proposals where slug = 'gap-one' and status = 'proposed')")"
-  check "c6 D3 G1 (reverse direction, sequential): article=$a then draft=$d; active article/draft = $counts — gap reproduced" \
-    "$([ "$a" = created ] && [ "$d" = created ] && [ "$counts" = "1/1" ]; echo $?)"
-  race "select t6.dprop('d6000000-0000-4000-8000-000000000002', 'gap-two')" "select t6.propose(t6.a(61), 1)->>'outcome'"
-  counts="$(q "select (select count(*) from nexra_article_publication_proposals where slug = 'gap-two' and status = 'proposed') || '/' || (select count(*) from nexra_content_publication_proposals where slug = 'gap-two' and status = 'proposed')")"
-  check "c6 D3 G2 (concurrent): draft=$R1, article=$R2 without waiting (${WAIT_MS} ms); active article/draft = $counts — gap reproduced" \
-    "$([ "$R1" = created ] && [ "$R2" = created ] && [ "$WAIT_MS" -lt 1000 ] && [ "$counts" = "1/1" ]; echo $?)"
-  q "select t6.ready(62, t6.txt('gap-two'))" >/dev/null
-  a="$(q "select t6.propose(t6.a(62), 1)->>'outcome'")"
-  check "c6 D3 G3 (control, forward direction): a committed draft proposal blocks an article: $a" "$([ "$a" = slug-taken ]; echo $?)"
+  "${PSQL[@]}" -f "$HERE/c6/d3-setup.sql" >/dev/null
+}
+
+suite_c6_d3() {
+  fresh_db
+  run_sql_suite c6-d3 "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/c6/d3-setup.sql" "$HERE/c6/d3-tests.sql"
+}
+
+# Two sessions contend across the draft and article tables. Session 2 must end as listed,
+# and exactly one proposal per destination and slug may be active afterwards.
+suite_c6_d3_races() {
+  d3_base
+  q "select t6.ready(n, t6.txt('r-' || n)), t6.dready(n) from generate_series(80, 89) n" >/dev/null
+  local o="->>'outcome'" held
+  # held <slug>: '<active article>/<active draft>'
+  held() { q "select t6.held('$1')"; }
+  d3_race() { # label, s1, s2, expected R1, expected R2, wait (ge|lt), slug, expected held, [end]
+    race "$2" "$3" "${9:-commit}"
+    local h; h="$(held "$7")"
+    local waited=1
+    if [ "$6" = ge ] && [ "$WAIT_MS" -ge 1000 ]; then waited=0; fi
+    if [ "$6" = lt ] && [ "$WAIT_MS" -lt 1000 ]; then waited=0; fi
+    check "c6-d3 race $1: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, active article/draft $h" \
+      "$([ "$R1" = "$4" ] && [ "$R2" = "$5" ] && [ "$waited" = 0 ] && [ "$h" = "$8" ]; echo $?)"
+  }
+  d3_race "D1 draft first, article meanwhile [G2 fixed]" "select t6.dprop(t6.dd(80), 'r-80')" "select t6.propose(t6.a(80), 1)$o" created slug-taken ge r-80 "0/1"
+  d3_race "D2 article first, draft meanwhile [G2, reverse order]" "select t6.propose(t6.a(81), 1)$o" "select t6.dprop(t6.dd(81), 'r-81')" created slug-taken ge r-81 "1/0"
+  d3_race "D3 two drafts, one slug" "select t6.dprop(t6.dd(82), 'r-82')" "select t6.dprop(t6.dd(83), 'r-82')" created slug-taken ge r-82 "0/1"
+  q "select t6.ready(90, t6.txt('r-five-a'))" >/dev/null
+  d3_race "D4 different slugs, article and draft: no wait" "select t6.propose(t6.a(90), 1)$o" "select t6.dprop(t6.dd(84), 'r-five-b')" created created lt r-five-a "1/0"
+  check "c6-d3 race D4 (the draft's slug): active article/draft $(held r-five-b)" "$([ "$(held r-five-b)" = "0/1" ]; echo $?)"
+  d3_race "D5 draft proposes then ROLLS BACK; article meanwhile" "select t6.dprop(t6.dd(85), 'r-85')" "select t6.propose(t6.a(85), 1)$o" created created ge r-85 "1/0" rollback
+  q "select t6.propose(t6.a(86), 1)" >/dev/null
+  d3_race "D6 article withdrawal (open) vs draft propose" "select t6.awithdraw(t6.a(86))" "select t6.dprop(t6.dd(86), 'r-86')" withdrawn slug-taken lt r-86 "0/0"
+  check "c6-d3 race D6 retry after the withdrawal commits: $(q "select t6.dprop(t6.dd(86), 'r-86')") / $(held r-86)" "$([ "$(held r-86)" = "0/1" ]; echo $?)"
+  q "select t6.dprop(t6.dd(87), 'r-87')" >/dev/null
+  d3_race "D7 draft withdrawal (open) vs article propose" "select t6.dwithdraw(t6.dd(87))" "select t6.propose(t6.a(87), 1)$o" 1 slug-taken lt r-87 "0/0"
+  check "c6-d3 race D7 retry after the withdrawal commits: $(q "select t6.propose(t6.a(87), 1)->>'outcome'") / $(held r-87)" "$([ "$(held r-87)" = "1/0" ]; echo $?)"
+  q "select t6.dprop(t6.dd(88), 'r-88')" >/dev/null
+  d3_race "D8 article propose refused (open) vs withdrawal of the draft holding the slug" "select t6.propose(t6.a(88), 1)$o" "select t6.dwithdraw(t6.dd(88))" slug-taken 1 lt r-88 "0/0"
+  check "c6-d3 race D8 retry after both: $(q "select t6.propose(t6.a(88), 1)->>'outcome'") / $(held r-88)" "$([ "$(held r-88)" = "1/0" ]; echo $?)"
+
+  # Stress: 12 sessions at once, 3 articles and 3 drafts on each of two slugs.
+  q "select t6.ready(n, t6.txt(case when n < 94 then 'st-a' else 'st-b' end)), t6.dready(n) from generate_series(91, 96) n" >/dev/null
+  local n pids=() out log_from
+  log_from=$(($(wc -c <"$LOG") + 1))
+  for n in 91 92 93 94 95 96; do
+    local slug=st-a; [ "$n" -ge 94 ] && slug=st-b
+    "$PG_BIN/psql" -X -Atq -c "select t6.propose(t6.a($n), 1)->>'outcome'" >"$OUT/st-a$n" 2>&1 & pids+=($!)
+    "$PG_BIN/psql" -X -Atq -c "select t6.dprop(t6.dd($n), '$slug')" >"$OUT/st-d$n" 2>&1 & pids+=($!)
+  done
+  wait "${pids[@]}" || true
+  out="$(cat "$OUT"/st-* | sort | uniq -c | tr -s ' ' | tr '\n' ';')"
+  local created unexpected
+  created="$(cat "$OUT"/st-* | grep -cx created || true)"
+  unexpected="$(cat "$OUT"/st-* | grep -cvx 'created\|slug-taken' || true)"
+  local ha hb; ha="$(held st-a)"; hb="$(held st-b)"
+  check "c6-d3 stress 12 sessions, 2 slugs: outcomes [$out] active article/draft st-a $ha, st-b $hb" \
+    "$([ "$created" = 2 ] && [ "$unexpected" = 0 ] && [ $(( ${ha%/*} + ${ha#*/} )) = 1 ] && [ $(( ${hb%/*} + ${hb#*/} )) = 1 ]; echo $?)"
+  check "c6-d3 stress: no deadlock or error in the server log during the run" "$(! tail -c +"$log_from" "$LOG" | grep -qiE 'deadlock|ERROR'; echo $?)"
+}
+
+# The D3 migration refuses to apply over an existing cross-table duplicate, leaving nothing.
+suite_c6_d3_preflight() {
+  fresh_db "$D3_MIGRATION"
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/c5/setup.sql" -f "$HERE/c6/setup.sql" -f "$HERE/c6/d3-setup.sql" >/dev/null
+  local a d
+  a="$(q "select t6.propose(t6.ready(80, t6.txt('pf-dup')), 1)->>'outcome'")"
+  d="$(q "select t6.dprop(t6.dready(80), 'pf-dup')")"
+  check "c6-d3 preflight: without D3 the duplicate is possible (article=$a, draft=$d)" "$([ "$a" = created ] && [ "$d" = created ]; echo $?)"
+  if "${PSQL[@]}" --single-transaction -f "$D3_MIGRATION" >"$OUT/preflight.log" 2>&1; then fail "c6-d3 preflight: applied over a duplicate"; return; fi
+  local left; left="$(q "select to_regprocedure('public.nexra_publication_proposals_reserve_slug()') is null and not exists (select 1 from pg_trigger where tgname like '%reserve_slug')")"
+  check "c6-d3 preflight: refused ($(grep -o 'nexra D3 preflight: [0-9]* destination/slug pair' "$OUT/preflight.log")), nothing created" "$([ "$left" = t ]; echo $?)"
+  q "select t6.dwithdraw(t6.dd(80))" >/dev/null
+  if "${PSQL[@]}" --single-transaction -f "$D3_MIGRATION" >/dev/null 2>&1; then pass "c6-d3 preflight: applies once one of the pair is withdrawn"; else fail "c6-d3 preflight: clean apply failed"; fi
 }
 
 # A C6 migration that fails part-way leaves nothing behind; after the conflict is removed it applies.
+# The database holds only the migrations before C6.
 suite_c6_rollback() {
   fresh_db "$C6_MIGRATION"
   q "create function public.nexra_article_publication_withdraw(text, uuid, uuid) returns jsonb language sql as 'select null::jsonb'" >/dev/null
@@ -229,12 +325,14 @@ suite_c6_rollback() {
 }
 
 # --- Main ------------------------------------------------------------------------------
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 c6 c6-races c6-d3-gap c6-rollback)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
     c2) suite_c2 ;; c4) suite_c4 ;; c5) suite_c5 ;; c6) suite_c6 ;;
-    c6-races) suite_c6_races ;; c6-d3-gap) suite_c6_d3_gap ;; c6-rollback) suite_c6_rollback ;;
+    drafts) suite_drafts ;; drafts-races) suite_drafts_races ;;
+    c6-races) suite_c6_races ;; c6-d3) suite_c6_d3 ;; c6-d3-races) suite_c6_d3_races ;;
+    c6-d3-preflight) suite_c6_d3_preflight ;; c6-rollback) suite_c6_rollback ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

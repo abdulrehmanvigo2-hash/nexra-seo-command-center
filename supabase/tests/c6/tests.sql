@@ -22,7 +22,7 @@ begin
   perform t.ok((select indexdef from pg_indexes where indexname = 'nexra_article_publication_proposals_one_active_per_slug') like '%UNIQUE%(destination, slug) WHERE (status = ''proposed''::text)', 'A one active per destination+slug');
   perform t.ok((select indexdef from pg_indexes where indexname = 'nexra_article_publication_proposals_article_idx') like '%(article_id, created_at DESC)', 'A history index');
   perform t.ok((select array_agg(tgname::text order by tgname) from pg_trigger where tgrelid = 'public.nexra_article_publication_proposals'::regclass and not tgisinternal)
-    = array['nexra_article_publication_proposals_check_insert','nexra_article_publication_proposals_guard_delete','nexra_article_publication_proposals_guard_truncate','nexra_article_publication_proposals_guard_update','nexra_article_publication_proposals_set_updated_at'], 'A five triggers');
+    = array['nexra_article_publication_proposals_check_insert','nexra_article_publication_proposals_guard_delete','nexra_article_publication_proposals_guard_truncate','nexra_article_publication_proposals_guard_update','nexra_article_publication_proposals_reserve_slug','nexra_article_publication_proposals_set_updated_at'], 'A six triggers: five from C6 and the D3 cross-table slug lock (20260926120000)');
   perform t.ok(public.nexra_article_publication_destination_allowed('nexra-agency-website','nexra-agency')
     and not public.nexra_article_publication_destination_allowed('nexra-agency-website','halcyon-fintech')
     and not public.nexra_article_publication_destination_allowed('other','nexra-agency')
