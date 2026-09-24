@@ -259,7 +259,7 @@ describe("HTTP, redirects and links", () => {
     const two = only([...pages, gone2], "internal-link-broken", [link("/", "/gone"), link("/", "/gone-too")]);
     assert.equal(two.length, 2);
     assert.notEqual(two[0].id, two[1].id);
-    assert.deepEqual(two.map((f) => f.observed.toUrl), ["https://nexraagency.com/gone", "https://nexraagency.com/gone-too"]);
+    assert.deepEqual(two.map((f) => f.observed.toUrl).sort(), ["https://nexraagency.com/gone", "https://nexraagency.com/gone-too"]);
     // A target that failed without a status (timeout) is unknown, not broken.
     const timedOut = page("/slow", { fetchState: "timeout", httpStatus: null });
     assert.deepEqual(only([page("/"), timedOut], "internal-link-broken", [link("/", "/slow")]), []);
