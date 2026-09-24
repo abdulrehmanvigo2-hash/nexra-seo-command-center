@@ -364,6 +364,35 @@ bypasses it. Apply it after `20260925120000`, then `NOTIFY pgrst, 'reload
 schema';`. It has been applied only to disposable local PostgreSQL 16
 clusters; it has **not** been applied to production.
 
+## Search Console snapshots
+
+`20260927120000_create_search_console_snapshots.sql` adds
+`nexra_search_console_snapshots` (M1, Checkpoint 1a): one immutable row per
+project, property and 30-day window end, holding what the Search Console
+provider read — the window (exactly 30 calendar days, ended before today),
+`connected` totals (clicks, impressions, CTR, average position; null only for
+a `no-data` row) and the top 25 queries and top 25 pages as JSONB, checked by
+the immutable validator `nexra_search_console_rows_valid` (at most 25 objects
+with exactly key/clicks/impressions/ctr/position, unique keys, non-negative
+metrics, impressions above zero, clicks never above impressions, CTR in
+[0, 1]); which secondary reads were unavailable; and when Google answered and
+when the row was written. The unique key `(project_id, property, range_id,
+end_date)` makes a repeated or concurrent capture of one window answer
+`exists` with the stored row. Guard triggers refuse every update, delete and
+truncate; there is no retention rule. The one write is
+`public.nexra_search_console_snapshot_record(...)` (`security definer`,
+`search_path` pinned empty): every argument required, the window must end
+before today, an unknown project answers `not-found`, and the table's
+constraints check the shape for any writer. The project-to-property mapping is
+the server's private configuration (`SEARCH_CONSOLE_PROPERTIES`) and is not
+checked by the database. `service_role` gets SELECT on the table and EXECUTE
+on that function, nothing else; `anon` and `authenticated` get nothing. No
+existing object is changed. Nothing reads or writes this table yet: the
+capture module and worker step are later checkpoints. Apply it after
+`20260926120000`, then `NOTIFY pgrst, 'reload schema';`. It has been applied
+only to disposable local PostgreSQL 16 clusters; it has **not** been applied
+to production.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

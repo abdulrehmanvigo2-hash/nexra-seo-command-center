@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -29,7 +29,7 @@ C6_MIGRATION="$MIGRATIONS/20260925120000_create_article_publication_proposals.sq
 D3_MIGRATION="$MIGRATIONS/20260926120000_publication_proposals_cross_table_slug_lock.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -324,8 +324,32 @@ suite_c6_rollback() {
   if "${PSQL[@]}" --single-transaction -f "$C6_MIGRATION" >/dev/null 2>&1; then pass "c6 rollback: clean apply after the conflict is removed"; else fail "c6 rollback: clean apply failed"; fi
 }
 
+# Search Console snapshots (M1 CP1a): schema, security, validation, recording, immutability.
+suite_gsc() {
+  fresh_db
+  run_sql_suite gsc "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/gsc/tests.sql"
+}
+
+# Two sessions capture the same window at once: the second waits for the first, exactly one row.
+suite_gsc_races() {
+  fresh_db
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/gsc/setup.sql" >/dev/null
+  local rows
+  race "select t.snap()->>'outcome'" "select t.snap(p_clicks => 7)->>'outcome'"
+  rows="$(q "select count(*) || '/' || min(clicks) from public.nexra_search_console_snapshots where project_id = 'halcyon-fintech'")"
+  check "gsc race G1 same window: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, rows/clicks $rows" \
+    "$([ "$R1" = created ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/120" ]; echo $?)"
+  race "select t.snap(p_end => t.win_end(9), p_start => t.win_start(9))->>'outcome'" "select t.snap(p_end => t.win_end(9), p_start => t.win_start(9), p_clicks => 7)->>'outcome'" rollback
+  rows="$(q "select count(*) || '/' || min(clicks) from public.nexra_search_console_snapshots where end_date = t.win_end(9)")"
+  check "gsc race G2 first rolls back: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, rows/clicks $rows" \
+    "$([ "$R1" = created ] && [ "$R2" = created ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/7" ]; echo $?)"
+  race "select t.snap(p_end => t.win_end(10), p_start => t.win_start(10))->>'outcome'" "select t.snap(p_end => t.win_end(11), p_start => t.win_start(11))->>'outcome'"
+  check "gsc race G3 different windows do not wait: s1=$R1 s2=$R2, waited ${WAIT_MS} ms" \
+    "$([ "$R1" = created ] && [ "$R2" = created ] && [ "$WAIT_MS" -lt 1000 ]; echo $?)"
+}
+
 # --- Main ------------------------------------------------------------------------------
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -333,6 +357,7 @@ for s in "${SUITES[@]}"; do
     drafts) suite_drafts ;; drafts-races) suite_drafts_races ;;
     c6-races) suite_c6_races ;; c6-d3) suite_c6_d3 ;; c6-d3-races) suite_c6_d3_races ;;
     c6-d3-preflight) suite_c6_d3_preflight ;; c6-rollback) suite_c6_rollback ;;
+    gsc) suite_gsc ;; gsc-races) suite_gsc_races ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

@@ -55,6 +55,8 @@ assertions (`EXPECTED` in `run.sh`); change that number when you add or remove a
 | `c6-d3-races` | as `c6-d3`, scenarios in `run.sh` | draft/article races in both orders (D1–D2), two drafts (D3), different slugs without waiting (D4), rollback (D5), withdrawal vs propose in both orders (D6–D8), and a 12-session stress run with no deadlock |
 | `c6-d3-preflight` | the D3 migration | refuses to apply over an existing draft/article duplicate, leaving nothing; applies once one is withdrawn |
 | `c6-rollback` | the C6 migration | a failed apply leaves no partial objects; a clean apply succeeds |
+| `gsc` | `c4/setup.sql`, `gsc/setup.sql`, `gsc/tests.sql` | 100 assertions (M1 CP1a Search Console snapshots): schema, security, the JSONB row validator, every shape refusal, recording, `exists`, no-data and partial rows, immutability, project isolation |
+| `gsc-races` | as `gsc`, scenarios in `run.sh` | two sessions on one window (G1: second waits, answers `exists`, one row), the first rolling back (G2: second creates), different windows without waiting (G3) |
 
 `c4/setup.sql` is also the shared base for the draft, C5 and C6 suites (projects, the `t.ok()`
 assertion helper). Draft fixtures are fact-checked and approved the way the application does
