@@ -36,3 +36,19 @@ export {
   unavailableCrawlFindingsGrounding,
   type CrawlFindingsGrounding,
 } from "@/lib/crawl/findings/grounding";
+export {
+  CATEGORY_LABEL,
+  FINDINGS_PROVENANCE_NOTE,
+  FINDINGS_UNAVAILABLE_WORDING,
+  SEVERITY_LABEL,
+  SEVERITY_ORDER,
+  coverageLine,
+  noFindingsWording,
+  notRecordedWording,
+  observedEntries,
+  presentFindings,
+  type FindingsView,
+  type RuleGroup,
+  type SeverityGroup,
+} from "@/lib/crawl/findings/present";
+export { findingsReadFailure, findingsReadRequest, findingsUrl, type FindingsReadRequest } from "@/lib/crawl/findings/request";

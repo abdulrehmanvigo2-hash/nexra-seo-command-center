@@ -771,12 +771,55 @@ describe("recording the deterministic findings when a crawl finishes (T3)", () =
     assert.ok(result.ok && result.crawl.status === "completed");
   });
 
-  test("getCrawlFindings reads the store for the project and crawl, and answers null without a store", async () => {
+  /** The recording store forgets what it finished; this one holds the finished crawl so it can be read back by id. */
+  function storeHoldingFinished(): CrawlStore {
+    const base = recordingStore();
+    let held: Crawl | null = null;
+    return {
+      ...base,
+      async finish(id, completion) {
+        held = await base.finish(id, completion);
+        return held;
+      },
+      async getById(id) {
+        return held !== null && held.id === id ? held : null;
+      },
+    };
+  }
+
+  test("getCrawlFindings answers the recorded report for the project's own crawl, and reads the store for that project and crawl only", async () => {
     const stored: StoredCrawlFindingsReport = { header: { id: "rep-1", crawlId: "crawl-1", projectId: "nexra-agency", ruleVersion: 1, coverage: { pagesTotal: 1, pagesFetched: 1, pagesNotFetched: 0, pagesNotReached: 0 }, linksRead: 0, linksCut: false, findingsTotal: 0, counts: {}, truncatedRules: [], recordedAt: "2026-09-20T00:01:01.000Z" }, findings: [], findingsTruncated: false };
     const findings = findingsStore({ report: stored });
-    const service = createCrawlService({ store: recordingStore(), projects: projectsWith(PROJECT), config: CONFIG, findings: findings.store });
-    assert.equal(await service.getCrawlFindings("nexra-agency", "crawl-1"), stored);
-    assert.deepEqual(findings.reads, [["nexra-agency", "crawl-1"]]);
-    assert.equal(await createCrawlService({ store: recordingStore(), projects: projectsWith(PROJECT), config: CONFIG }).getCrawlFindings("nexra-agency", "crawl-1"), null);
+    const store = storeHoldingFinished();
+    const service = createCrawlService({ store, projects: projectsWith(PROJECT), config: CONFIG, findings: findings.store, engine: engineReturning({ pages: [crawledPage("/")], pagesFetched: 1 }) });
+    const started = await service.startCrawl("nexra-agency", "op-1");
+    assert.ok(started.ok);
+
+    const read = await service.getCrawlFindings("nexra-agency", started.crawl.id);
+    assert.equal(read.status, "recorded");
+    assert.ok(read.status === "recorded");
+    assert.equal(read.report, stored);
+    assert.equal(read.crawl.id, started.crawl.id);
+    assert.deepEqual(findings.reads, [["nexra-agency", started.crawl.id]]);
+  });
+
+  test("getCrawlFindings (T4): another project's crawl and an unknown crawl are not-found before the store is asked; nothing recorded is not-recorded with the crawl's status; no store is unavailable", async () => {
+    const findings = findingsStore({ report: null });
+    const store = storeHoldingFinished();
+    const service = createCrawlService({ store, projects: projectsWith(PROJECT), config: CONFIG, findings: findings.store, engine: engineReturning({ pages: [crawledPage("/")], pagesFetched: 1 }) });
+    const started = await service.startCrawl("nexra-agency", "op-1");
+    assert.ok(started.ok);
+
+    assert.deepEqual(await service.getCrawlFindings("other-project", started.crawl.id), { status: "not-found" });
+    assert.deepEqual(await service.getCrawlFindings("nexra-agency", "00000000-0000-4000-8000-000000000000"), { status: "not-found" });
+    assert.deepEqual(findings.reads, [], "the store is never asked for a crawl that is not the project's");
+
+    const read = await service.getCrawlFindings("nexra-agency", started.crawl.id);
+    assert.equal(read.status, "not-recorded");
+    assert.ok(read.status === "not-recorded");
+    assert.equal(read.crawl.status, started.crawl.status);
+    assert.deepEqual(findings.reads, [["nexra-agency", started.crawl.id]]);
+
+    assert.deepEqual(await createCrawlService({ store, projects: projectsWith(PROJECT), config: CONFIG }).getCrawlFindings("nexra-agency", started.crawl.id), { status: "unavailable" });
   });
 });

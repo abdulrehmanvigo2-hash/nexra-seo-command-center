@@ -1734,7 +1734,7 @@ also work through a custom dispatcher, but no builtin module exposes it, so
 using it would mean taking a dependency for something the platform already
 does.
 
-### Deterministic crawl findings (T1–T3)
+### Deterministic crawl findings (T1–T4)
 
 `src/lib/crawl/findings` applies 27 fixed rules to what one crawl recorded
 (`compute.ts`, `rules.ts`, `contract.ts`): titles, meta descriptions, H1s,
@@ -1756,9 +1756,32 @@ finishes in a reviewable state, through
 version; a competitor crawl, a failed crawl and a store that keeps no
 findings record nothing, and a recording failure is logged and never fails
 the crawl. `crawlService().getCrawlFindings(projectId, crawlId)` reads the
-newest recorded report for the project's crawl, or null (a crawl made before
-findings were kept has none). The rows are immutable and go only with their
-crawl.
+newest recorded report for the project's crawl: `unavailable` when the store
+keeps no findings, `not-found` for a crawl that is not the project's,
+`not-recorded` (with the crawl) when nothing was recorded — a crawl made
+before findings were kept, still running or failed — and `recorded` with the
+report. The rows are immutable and go only with their crawl.
+
+T4 shows them. `GET /api/crawls/<id>/findings?project=<id>`
+(`src/app/api/crawls/[crawlId]/findings/route.ts`) is read-only and operators
+only: the operator is confirmed first, both ids are validated by shape
+(`findings/request.ts`), the read is rate-limited as a crawl read, and each
+service answer maps to a fixed code (503 `unavailable`, 404 `not-found`, 200
+`{ status: "not-recorded", crawl }` or `{ status: "recorded", crawl, report
+}`); an exception is logged by name and answered `failed`. The *Observed
+findings* section inside the crawl panel (`src/components/crawl/
+crawl-findings.tsx`) reads that endpoint for the crawl on screen and keeps
+every state apart: loading, not stored on this deployment, a failed read
+(never "no findings"), nothing recorded (worded by the crawl's own status), a
+report with no findings (worded as "not a clean result", naming what was not
+looked at) and a report. The presenter (`findings/present.ts`) groups by
+severity then rule in recorded order, shows the true per-rule count from the
+report header beside the rows on screen, says when a rule or the read was
+cut, shows an absent observed value as "—", and carries a provenance note:
+within this crawl, not site-wide; no indexation, ranking, traffic or vitals;
+not fixture data. The section offers no control — nothing fixes, dispatches
+or writes — and the Technical SEO screen still renders its modelled registry,
+labelled as such; mapping one onto the other remains a separate feature.
 
 ### Safety boundaries
 

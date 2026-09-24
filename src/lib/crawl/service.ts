@@ -70,13 +70,23 @@ export type CrawlService = {
   listCompetitorCrawls(projectId: string, competitorDomain: string, limit?: number): Promise<CompetitorCrawlsResult>;
   /**
    * The deterministic findings recorded for one of the project's own crawls
-   * when it finished, or null when none were recorded (a crawl made before
-   * findings were kept, a competitor crawl, or a store that keeps none).
-   * A read of stored rows only, scoped to the project: another project's
-   * crawl reads as null.
+   * when it finished. A read of stored rows only, scoped to the project:
+   * a crawl that is not the project's answers `not-found`, a crawl with
+   * nothing recorded (made before findings were kept, still running, failed,
+   * or a competitor's) answers `not-recorded`, and a deployment whose store
+   * keeps no findings answers `unavailable` rather than an empty report.
    */
-  getCrawlFindings(projectId: string, crawlId: string): Promise<StoredCrawlFindingsReport | null>;
+  getCrawlFindings(projectId: string, crawlId: string): Promise<CrawlFindingsRead>;
 };
+
+export type CrawlFindingsRead =
+  /** The findings store is not configured on this deployment. */
+  | { readonly status: "unavailable" }
+  /** No such crawl, or not this project's. */
+  | { readonly status: "not-found" }
+  /** The crawl is the project's, and nothing was recorded for it. */
+  | { readonly status: "not-recorded"; readonly crawl: Crawl }
+  | { readonly status: "recorded"; readonly crawl: Crawl; readonly report: StoredCrawlFindingsReport };
 
 export type CrawlServiceOptions = {
   readonly store: CrawlStore;
@@ -310,8 +320,14 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
     },
 
     async getCrawlFindings(projectId, crawlId) {
-      if (!findings.storesFindings) return null;
-      return findings.getReport(projectId, crawlId);
+      if (!findings.storesFindings) return { status: "unavailable" };
+      // The crawl row is the project check: the report is read by project and
+      // crawl, so another project's crawl could never answer with a report,
+      // but it must answer `not-found`, not "nothing recorded".
+      const crawl = await store.getById(crawlId);
+      if (crawl === null || crawl.projectId !== projectId) return { status: "not-found" };
+      const report = await findings.getReport(projectId, crawlId);
+      return report === null ? { status: "not-recorded", crawl } : { status: "recorded", crawl, report };
     },
 
     async getCrawl(id, pageLimit = DEFAULT_PAGE_LIMIT) {
