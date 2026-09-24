@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots, T3 crawl findings).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races findings findings-races
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -29,7 +29,7 @@ C6_MIGRATION="$MIGRATIONS/20260925120000_create_article_publication_proposals.sq
 D3_MIGRATION="$MIGRATIONS/20260926120000_publication_proposals_cross_table_slug_lock.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [findings]=108)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -349,7 +349,31 @@ suite_gsc_races() {
 }
 
 # --- Main ------------------------------------------------------------------------------
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races)
+# Crawl findings (T3): schema, security, validation, recording, immutability, cascade, isolation.
+suite_findings() {
+  fresh_db
+  run_sql_suite findings "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/findings/setup.sql" "$HERE/findings/tests.sql"
+}
+
+# Two sessions record the same crawl at once: the second waits for the first, exactly one report.
+suite_findings_races() {
+  fresh_db
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/findings/setup.sql" >/dev/null
+  local rows
+  race "select t.frec()->>'outcome'" "select t.frec(p_findings => t.findings(5), p_counts => '{\"h1-missing\": 5}')->>'outcome'"
+  rows="$(q "select count(*) || '/' || sum(findings_total) from public.nexra_crawl_findings_reports where crawl_id = 'c0000000-0000-4000-8000-000000000001'")"
+  check "findings race F1 same crawl: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, reports/total $rows" \
+    "$([ "$R1" = created ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/2" ]; echo $?)"
+  race "select t.frec(p_crawl => 'c0000000-0000-4000-8000-000000000002')->>'outcome'" "select t.frec(p_crawl => 'c0000000-0000-4000-8000-000000000002', p_findings => t.findings(5), p_counts => '{\"h1-missing\": 5}')->>'outcome'" rollback
+  rows="$(q "select count(*) || '/' || sum(findings_total) from public.nexra_crawl_findings_reports where crawl_id = 'c0000000-0000-4000-8000-000000000002'")"
+  check "findings race F2 first rolls back: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, reports/total $rows" \
+    "$([ "$R1" = created ] && [ "$R2" = created ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/5" ]; echo $?)"
+  race "select t.frec(p_version => 7::smallint)->>'outcome'" "select t.frec(p_version => 8::smallint)->>'outcome'"
+  check "findings race F3 different rule versions do not wait: s1=$R1 s2=$R2, waited ${WAIT_MS} ms" \
+    "$([ "$R1" = created ] && [ "$R2" = created ] && [ "$WAIT_MS" -lt 1000 ]; echo $?)"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races findings findings-races)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -358,6 +382,7 @@ for s in "${SUITES[@]}"; do
     c6-races) suite_c6_races ;; c6-d3) suite_c6_d3 ;; c6-d3-races) suite_c6_d3_races ;;
     c6-d3-preflight) suite_c6_d3_preflight ;; c6-rollback) suite_c6_rollback ;;
     gsc) suite_gsc ;; gsc-races) suite_gsc_races ;;
+    findings) suite_findings ;; findings-races) suite_findings_races ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

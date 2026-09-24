@@ -1734,6 +1734,32 @@ also work through a custom dispatcher, but no builtin module exposes it, so
 using it would mean taking a dependency for something the platform already
 does.
 
+### Deterministic crawl findings (T1–T3)
+
+`src/lib/crawl/findings` applies 27 fixed rules to what one crawl recorded
+(`compute.ts`, `rules.ts`, `contract.ts`): titles, meta descriptions, H1s,
+canonicals, 4xx/5xx, redirect chains and loops, broken internal links (only
+when the target page was fetched with an error), robots.txt and robots-meta
+noindex, sitemap conflicts, deep pages, pages with no observed inbound link,
+JSON-LD. A null field is unknown and yields nothing; duplicates are found
+within one crawl; a finding carries a stable id, category, severity, the URLs
+it names, the exact observed values and one sentence, and the report carries
+coverage, true per-rule counts and fixed limitations (no site-wide totals, no
+indexation, no orphan claims, no external broken links, no vitals or
+rankings). The two page reviews receive a bounded block of these findings
+after the crawl evidence (`findings/grounding.ts`, T2).
+
+Since T3 the crawl service records the findings when an own-site crawl
+finishes in a reviewable state, through
+`nexra_crawl_findings_record` into `nexra_crawl_findings_reports` and
+`nexra_crawl_findings` (migration `20260928120000`), once per crawl and rule
+version; a competitor crawl, a failed crawl and a store that keeps no
+findings record nothing, and a recording failure is logged and never fails
+the crawl. `crawlService().getCrawlFindings(projectId, crawlId)` reads the
+newest recorded report for the project's crawl, or null (a crawl made before
+findings were kept has none). The rows are immutable and go only with their
+crawl.
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`

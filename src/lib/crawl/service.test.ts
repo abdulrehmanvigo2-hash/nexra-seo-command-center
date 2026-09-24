@@ -4,6 +4,7 @@ import { createCrawlService } from "./service.ts";
 import { unavailableCrawlStore, type CrawlStore } from "./contract.ts";
 import { DEFAULT_USER_AGENT, type CrawlConfig } from "./config.ts";
 import type { CrawlResult } from "./engine.ts";
+import type { CrawlFindingsStore, StoredCrawlFindingsReport } from "./findings/store-contract.ts";
 import type { ProjectRepository } from "@/lib/projects/contract";
 import type { Crawl } from "@/types/crawl";
 import type { ProjectIntake, ProjectRecord } from "@/types/project";
@@ -702,5 +703,80 @@ describe("own-site and competitor crawls are listed apart", () => {
     });
     assert.deepEqual(await service.listCrawls("nexra-agency"), []);
     assert.deepEqual(store.listings, []);
+  });
+});
+
+describe("recording the deterministic findings when a crawl finishes (T3)", () => {
+  type Recorded = Parameters<CrawlFindingsStore["record"]>[0];
+  function findingsStore(options: { keeps?: boolean; throws?: boolean; report?: StoredCrawlFindingsReport | null } = {}) {
+    const recorded: Recorded[] = [];
+    const reads: [string, string][] = [];
+    const store: CrawlFindingsStore = {
+      storesFindings: options.keeps ?? true,
+      async record(input) {
+        if (options.throws) throw new Error("findings store down");
+        recorded.push(input);
+        return { status: "created", findings: input.report.findings.length, header: { id: "rep-1", crawlId: input.crawlId, projectId: input.projectId, ruleVersion: input.report.ruleVersion, coverage: input.report.coverage, linksRead: input.links.read, linksCut: input.links.cut, findingsTotal: input.report.findings.length, counts: input.report.counts, truncatedRules: input.report.truncatedRules, recordedAt: "2026-09-20T00:01:01.000Z" } };
+      },
+      async getReport(projectId, crawlId) {
+        reads.push([projectId, crawlId]);
+        return options.report ?? null;
+      },
+    };
+    return { store, recorded, reads };
+  }
+  const crawledPage = (path: string, overrides: Partial<CrawlResult["pages"][number]> = {}): CrawlResult["pages"][number] => ({
+    url: `https://nexraagency.com${path}`, finalUrl: `https://nexraagency.com${path}`, fetchState: "fetched", httpStatus: 200, redirectHops: 0, redirectChain: [],
+    contentType: "text/html", contentBytes: 100, robotsMeta: null, robotsTxtAllowed: true, canonicalHref: null, canonicalResolved: null, canonicalIsSelf: null,
+    title: `A long enough title for the ${path} page here`, titleLength: 38, metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", schemaTypes: [], schemaBlocks: 1,
+    schemaParseFailed: false, inSitemap: null, depth: path === "/" ? 0 : 1, internalLinksIn: path === "/" ? 0 : 1, internalLinksOut: 1, fetchedAt: null, errorCode: null, ...overrides,
+  });
+
+  test("a finished own-site crawl records the rules' findings over the pages and links it just saved, bound to its project and id", async () => {
+    const findings = findingsStore();
+    const store = recordingStore();
+    const service = createCrawlService({
+      store, projects: projectsWith(PROJECT), config: CONFIG, findings: findings.store,
+      engine: engineReturning({ pages: [crawledPage("/"), crawledPage("/a", { h1Count: 0 })], links: [{ fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/a", rel: null, isInternal: true }], pagesDiscovered: 2, pagesFetched: 2 }),
+    });
+    const result = await service.startCrawl("nexra-agency", OPERATOR);
+    assert.ok(result.ok);
+    assert.equal(findings.recorded.length, 1);
+    const [input] = findings.recorded;
+    assert.deepEqual([input.projectId, input.crawlId, input.links], ["nexra-agency", "crawl-1", { read: 1, cut: false }]);
+    assert.deepEqual(input.report.findings.map((f) => [f.rule, f.urls[0]]), [["h1-missing", "https://nexraagency.com/a"]]);
+    assert.deepEqual(input.report.coverage.pagesTotal, 2);
+    // Recorded after the crawl row was closed, never before.
+    assert.deepEqual(store.calls.slice(-1), ["finish"]);
+  });
+
+  test("nothing is recorded for a crawl that failed to start, a competitor crawl, or a store that keeps no findings", async () => {
+    const failed = findingsStore();
+    await createCrawlService({ store: recordingStore(), projects: projectsWith(PROJECT), config: CONFIG, findings: failed.store, engine: engineReturning({ startFailure: "start-unreachable", stopReason: "error" }) }).startCrawl("nexra-agency", OPERATOR);
+    assert.equal(failed.recorded.length, 0);
+
+    const competitor = findingsStore();
+    const rival = await createCrawlService({ store: recordingStore(), projects: projectsWithIntake(PROJECT, { competitorDomains: ["rival.example"], intakeNotes: "" }), config: COMPETITOR_CONFIG, findings: competitor.store, engine: engineReturning({ pages: [crawledPage("/", { h1Count: 0 })], pagesFetched: 1 }) }).startCrawl("nexra-agency", OPERATOR, { competitorDomain: "rival.example" });
+    assert.ok(rival.ok, JSON.stringify(rival));
+    assert.equal(competitor.recorded.length, 0);
+
+    const none = findingsStore({ keeps: false });
+    await createCrawlService({ store: recordingStore(), projects: projectsWith(PROJECT), config: CONFIG, findings: none.store, engine: engineReturning({ pages: [crawledPage("/", { h1Count: 0 })], pagesFetched: 1 }) }).startCrawl("nexra-agency", OPERATOR);
+    assert.equal(none.recorded.length, 0);
+  });
+
+  test("a findings store that throws never fails the crawl", async () => {
+    const service = createCrawlService({ store: recordingStore(), projects: projectsWith(PROJECT), config: CONFIG, findings: findingsStore({ throws: true }).store, engine: engineReturning({ pages: [crawledPage("/")], pagesFetched: 1 }) });
+    const result = await service.startCrawl("nexra-agency", OPERATOR);
+    assert.ok(result.ok && result.crawl.status === "completed");
+  });
+
+  test("getCrawlFindings reads the store for the project and crawl, and answers null without a store", async () => {
+    const stored: StoredCrawlFindingsReport = { header: { id: "rep-1", crawlId: "crawl-1", projectId: "nexra-agency", ruleVersion: 1, coverage: { pagesTotal: 1, pagesFetched: 1, pagesNotFetched: 0, pagesNotReached: 0 }, linksRead: 0, linksCut: false, findingsTotal: 0, counts: {}, truncatedRules: [], recordedAt: "2026-09-20T00:01:01.000Z" }, findings: [], findingsTruncated: false };
+    const findings = findingsStore({ report: stored });
+    const service = createCrawlService({ store: recordingStore(), projects: projectsWith(PROJECT), config: CONFIG, findings: findings.store });
+    assert.equal(await service.getCrawlFindings("nexra-agency", "crawl-1"), stored);
+    assert.deepEqual(findings.reads, [["nexra-agency", "crawl-1"]]);
+    assert.equal(await createCrawlService({ store: recordingStore(), projects: projectsWith(PROJECT), config: CONFIG }).getCrawlFindings("nexra-agency", "crawl-1"), null);
   });
 });

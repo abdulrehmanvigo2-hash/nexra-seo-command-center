@@ -57,6 +57,8 @@ assertions (`EXPECTED` in `run.sh`); change that number when you add or remove a
 | `c6-rollback` | the C6 migration | a failed apply leaves no partial objects; a clean apply succeeds |
 | `gsc` | `c4/setup.sql`, `gsc/setup.sql`, `gsc/tests.sql` | 100 assertions (M1 CP1a Search Console snapshots): schema, security, the JSONB row validator, every shape refusal, recording, `exists`, no-data and partial rows, immutability, project isolation |
 | `gsc-races` | as `gsc`, scenarios in `run.sh` | two sessions on one window (G1: second waits, answers `exists`, one row), the first rolling back (G2: second creates), different windows without waiting (G3) |
+| `findings` | `c4/setup.sql`, `findings/setup.sql`, `findings/tests.sql` | 108 assertions (T3 crawl findings): schema, security, every shape and binding refusal through the record function, recording, `exists`, a second rule version beside the first, immutability, cascade-only deletion, project isolation |
+| `findings-races` | as `findings`, scenarios in `run.sh` | two sessions recording one crawl (F1: second waits, answers `exists`, one report), the first rolling back (F2: second creates), different rule versions without waiting (F3) |
 
 `c4/setup.sql` is also the shared base for the draft, C5 and C6 suites (projects, the `t.ok()`
 assertion helper). Draft fixtures are fact-checked and approved the way the application does
