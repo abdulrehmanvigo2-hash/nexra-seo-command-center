@@ -1,8 +1,8 @@
 import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
-import type { RecordSnapshotOutcome, SearchConsoleSnapshotStore } from "@/lib/search-console/snapshots/contract";
-import { recordResultToOutcome, type SearchConsoleSnapshotsDatabase } from "@/lib/search-console/snapshots/supabase/schema";
+import { SNAPSHOT_LIST_LIMIT, type RecordSnapshotOutcome, type SearchConsoleSnapshotStore } from "@/lib/search-console/snapshots/contract";
+import { recordResultToOutcome, SNAPSHOT_READ_COLUMNS, snapshotRowToSnapshot, type SearchConsoleSnapshotsDatabase } from "@/lib/search-console/snapshots/supabase/schema";
 
 /**
  * The snapshot store over `nexra_search_console_snapshots`.
@@ -10,8 +10,8 @@ import { recordResultToOutcome, type SearchConsoleSnapshotsDatabase } from "@/li
  * A thin translation into one Supabase call: the capture holds the rules,
  * and the one database function and the table's constraints enforce the
  * row's shape again for any caller. The only write is that function — the
- * table grants service_role SELECT and nothing else — and nothing here
- * reads the table.
+ * table grants service_role SELECT and nothing else — and the one read is
+ * a bounded, project- and range-scoped SELECT of that table.
  */
 
 export class SearchConsoleSnapshotStoreError extends Error {
@@ -52,6 +52,23 @@ export function createSupabaseSearchConsoleSnapshotStore(
       });
       if (error) throw new SearchConsoleSnapshotStoreError("record snapshot", error);
       return recordResultToOutcome(data);
+    },
+
+    // The project's rows only, newest window first, never more than the ceiling.
+    async listSnapshots(projectId, rangeId, limit) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > SNAPSHOT_LIST_LIMIT) {
+        throw new Error(`Search Console snapshot store: a list reads 1 to ${SNAPSHOT_LIST_LIMIT} snapshots.`);
+      }
+      const { data, error } = await client
+        .from("nexra_search_console_snapshots")
+        .select(SNAPSHOT_READ_COLUMNS)
+        .eq("project_id", projectId)
+        .eq("range_id", rangeId)
+        .order("end_date", { ascending: false })
+        .order("property", { ascending: true })
+        .limit(limit);
+      if (error) throw new SearchConsoleSnapshotStoreError("list snapshots", error);
+      return data.map(snapshotRowToSnapshot);
     },
   };
 }

@@ -241,6 +241,8 @@ export const SEARCH_CONSOLE_LIMITS_NOTE = [
   "- Average position is an impression-weighted average of every position the query was shown at, not a rank on any one page, and it is unknown where there were no impressions.",
   "- A change against the previous window compares two windows. It is not a trend and says nothing about cause; a window without a comparison is a fact about retention, not a flat result.",
   "- These figures describe what Google showed and what was clicked. They say nothing about whether a page is indexed, crawlable, or healthy.",
+  "- No cannibalisation conclusion can be drawn from this evidence: without a query mapped to a page, two pages cannot be shown to compete for one query.",
+  "- Average position is Search Console's average, not a rank tracker reading. A STORED HISTORY block, where one follows, compares two stored windows by fixed arithmetic; its lists are top-25 cuts and its differences are not a long-term trend.",
 ].join("\n");
 
 /**
@@ -261,6 +263,7 @@ export const SEARCH_QUERY_REVIEW_INSTRUCTIONS = [
   "Do not state or estimate search volume, keyword difficulty, rankings on specific pages, which page answered a query, competitors, indexation, crawl health, or Core Web Vitals; none of it is in the evidence.",
   "Do not describe the query list as the property's whole search demand or state totals derived from it; the window totals cover queries not listed. Say plainly that the list is Google's top rows for the window.",
   "Treat a change against the previous window as a comparison of two windows, not a trend, and do not assert a cause for it.",
+  "Where a STORED HISTORY block follows the report, it compares two stored windows of the same property by fixed arithmetic. Cite its dates when you use it, treat its opportunity, improving, declining, appeared and left labels as review lists rather than findings, and never read it as a long-term trend, a ranking cause, a SERP feature, a cannibalisation finding or a query mapped to a page. If it says history is unavailable or insufficient, say so and infer nothing in its place.",
   "You cannot change anything: every recommendation is a proposed next step for an operator to review, and you must not describe it as done.",
   "End with one line naming the single query whose figures most deserve attention, and why.",
 ].join(" ");
@@ -282,6 +285,7 @@ export const PERFORMANCE_REVIEW_INSTRUCTIONS = [
   "Name which listed queries account for the most clicks, and say plainly that the window totals include queries that are not listed, so the listed rows cannot be totalled or read as the property's whole demand.",
   "Use only the supplied evidence. Every finding must cite at least one stated total or one listed query. Where a reading is marked 'not established', say it is unknown and say what would establish it; never treat it as a pass, a failure, a zero, or a no.",
   "Do not state or estimate search volume, keyword difficulty, rankings on specific pages, which page answered a query, competitors, conversions, revenue, indexation, crawl health, or Core Web Vitals; none of it is in the evidence.",
+  "Where a STORED HISTORY block follows the report, it compares the totals and the top pages of two stored windows of the same property by fixed arithmetic, with a confidence and coverage statement. Use it as two more windows to measure between, citing both dates; state its confidence and any partial or no-data side; never read it as a long-term trend, a ranking cause, a SERP feature, a cannibalisation finding or a query mapped to a page. If it says history is unavailable or insufficient, say so and infer nothing in its place.",
   "End with two lines: the single figure that most deserves attention next cycle, and why; and the single measurement a person should take before the next cycle that this evidence cannot supply.",
   "You cannot change anything: every recommendation is a proposed next step for an operator to review, and you must not describe it as done.",
 ].join(" ");

@@ -4,7 +4,7 @@ import { selectProjectDataSource } from "@/lib/projects/data-source";
 import { projectRepository } from "@/lib/projects/repository";
 import { searchConsoleProperties, searchConsoleProvider } from "@/lib/search-console";
 import { createSnapshotCapture, type SnapshotCapture } from "@/lib/search-console/snapshots/capture";
-import { unavailableSearchConsoleSnapshotStore } from "@/lib/search-console/snapshots/contract";
+import { unavailableSearchConsoleSnapshotStore, type SearchConsoleSnapshotStore } from "@/lib/search-console/snapshots/contract";
 import type { SearchConsoleSnapshotsDatabase } from "@/lib/search-console/snapshots/supabase/schema";
 import { createSupabaseSearchConsoleSnapshotStore } from "@/lib/search-console/snapshots/supabase/store";
 import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supabase/server";
@@ -20,16 +20,28 @@ import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supa
  * step is checkpoint 1c and starts only with approval.
  */
 
-function configuredCapture(): SnapshotCapture {
+function configuredStore(): SearchConsoleSnapshotStore {
   const supabase = selectProjectDataSource(process.env) === "supabase";
   const config = supabase ? readSupabaseServerConfig(process.env) : null;
+  return config
+    ? createSupabaseSearchConsoleSnapshotStore(createSupabaseServerClient<SearchConsoleSnapshotsDatabase>(config))
+    : unavailableSearchConsoleSnapshotStore;
+}
+
+let store: SearchConsoleSnapshotStore | null = null;
+
+/** The one snapshot store of this process: the capture writes through it, the history reader reads through it. */
+export function searchConsoleSnapshotStore(): SearchConsoleSnapshotStore {
+  store ??= configuredStore();
+  return store;
+}
+
+function configuredCapture(): SnapshotCapture {
   return createSnapshotCapture({
     provider: searchConsoleProvider(),
     properties: searchConsoleProperties(),
     projects: projectRepository,
-    store: config
-      ? createSupabaseSearchConsoleSnapshotStore(createSupabaseServerClient<SearchConsoleSnapshotsDatabase>(config))
-      : unavailableSearchConsoleSnapshotStore,
+    store: searchConsoleSnapshotStore(),
   });
 }
 

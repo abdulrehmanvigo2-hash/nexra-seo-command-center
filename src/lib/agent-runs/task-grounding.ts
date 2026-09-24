@@ -13,6 +13,8 @@ import {
   readSearchConsoleGrounding,
   type SearchConsoleReportReader,
 } from "@/lib/search-console/grounding";
+import type { SnapshotHistoryComparison } from "@/lib/search-console/history/compare";
+import { formatSearchConsoleHistory, type HistoryInput } from "@/lib/search-console/history/grounding";
 
 /**
  * Which evidence a task is allowed to see, decided by what its task type
@@ -40,9 +42,19 @@ import {
  * Pure apart from the readers it is handed, so the same dispatch runs against
  * Supabase and Google in the application and in-memory fakes in a test.
  */
+/** The stored-snapshot comparison for one project, or null when this deployment keeps no snapshots. */
+export type SearchConsoleHistoryReader = (projectId: string) => Promise<SnapshotHistoryComparison | null>;
+
 export type TaskGroundingReaders = {
   readonly crawls: CrawlGroundingReader;
   readonly searchConsole: SearchConsoleReportReader;
+  /**
+   * `search-console` tasks, after the live report: the run's own project's
+   * stored snapshot history, appended as a second block. Never a replacement
+   * for the live report, and never a refusal: history that is missing,
+   * insufficient or unreadable is stated in one bounded note.
+   */
+  readonly searchConsoleHistory: SearchConsoleHistoryReader;
   /** The run store itself satisfies this; a test hands in a map. */
   readonly runs: AgentRunReader;
   /** The project repository, crawl service, Search Console and run store, each read by project id. */
@@ -100,11 +112,22 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         });
         if (!result.ok) return { ok: false, reason: result.reason };
 
+        // The live report is the evidence; stored history is appended after
+        // it for the run's own project. A history read that fails leaves the
+        // live report standing and says so, rather than failing the run.
+        let history: HistoryInput;
+        try {
+          history = (await readers.searchConsoleHistory(task.project.id)) ?? { available: false, reason: "not-kept" };
+        } catch {
+          history = { available: false, reason: "read-failed" };
+        }
+        const historyGrounding = formatSearchConsoleHistory(history, task.taskType === "performance-review" ? "analytics" : "keyword");
+
         return {
           ok: true,
           grounding: {
-            text: result.grounding.text,
-            summary: { ...result.grounding.summary },
+            text: `${result.grounding.text}\n\n${historyGrounding.text}`,
+            summary: { ...result.grounding.summary, history: historyGrounding.summary },
             source: result.grounding.source,
           },
         };

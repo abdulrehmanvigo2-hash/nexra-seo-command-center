@@ -78,6 +78,9 @@ export type SearchConsoleSnapshotsDatabase = {
   };
 };
 
+export const SNAPSHOT_READ_COLUMNS =
+  "id, project_id, property, range_id, days, start_date, end_date, state, clicks, impressions, ctr, position, queries, pages, partial, source, fetched_at, captured_at";
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PARTIALS: readonly SnapshotPartial[] = ["queries-unavailable", "pages-unavailable"];
 
