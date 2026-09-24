@@ -98,12 +98,13 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone M1 — Search Console snapshot persistence, Checkpoint 1a (database),
-implemented and verified locally only on branch `claude/m1-cp1a-search-console-snapshots` (from
-`master` `954783e`); not pushed, not merged, not applied to production. C6 is complete (merged as
+**Current work:** Milestone M1 — Search Console snapshot persistence, Checkpoints 1a (database)
+and 1b (capture module), implemented and verified locally only on branch
+`claude/m1-cp1a-search-console-snapshots` (from `master` `954783e`); not pushed, not merged, not
+applied to production. C6 is complete (merged as
 `f28cd35`, migrations applied, deployed as `dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, production
-verified; see *C6 release* below). Each further M1 step (CP1b capture module, CP1c worker step,
-production migration) starts only with explicit user approval.
+verified; see *C6 release* below). Each further M1 step (CP1c worker step, pushing, production
+migration) starts only with explicit user approval.
 
 **M1 CP1a (local only):** migration `20260927120000_create_search_console_snapshots.sql` —
 `nexra_search_console_snapshots`, one immutable row per project, property and 30-day window end
@@ -117,6 +118,16 @@ the server's private configuration and is not checked by the database. Nothing r
 the table yet. Harness suites `gsc` (100 assertions) and `gsc-races` (G1–G3) added; the C5
 `security definer` inventory names the new function. The migration has **not** been applied to
 production; applying it is a separate §6 approval.
+
+**M1 CP1b (local only):** `src/lib/search-console/snapshots/` — the server-side capture module
+(`capture.ts`), its store contract, the Supabase store over the CP1a record function and the
+process wiring (`index.ts`), which nothing calls yet. It reads the 30-day window through the
+existing cached provider for each stored project the private `SEARCH_CONSOLE_PROPERTIES` mapping
+names, sequentially, within `maxProjects` and `budgetMs`, and records one immutable snapshot per
+project, property and window end. A row is written only for a stored project's own mapped
+property, from a fresh answer that names that exact property; a failed read is never a no-data
+row; rows stay within the table's limits; logs carry ids, outcomes and durations only. The worker,
+cron, UI, environment and migrations are unchanged. See `docs/BACKEND.md` (*Search Console*).
 
 C6 records an operator's intention to publish one exact approved article version. It records
 proposal state only.
@@ -546,11 +557,12 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C5 | Complete Article Assembly: Article Approval Gate | Complete, merged, deployed, production verified |
 | Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Complete, merged (`f28cd35`), migrations applied, deployed, production verified |
 | M1 / CP1a | Search Console snapshot persistence: database | Implemented and verified locally; not pushed; not applied to production |
+| M1 / CP1b | Search Console snapshot persistence: capture module | Implemented and verified locally; not pushed; not wired to the worker |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M1 — Search Console
-snapshot persistence, CP1a local only; CP1b (capture module) and CP1c (worker step) start only
-with explicit approval. Work beyond M1 is undecided and is not planned here.
+snapshot persistence, CP1a and CP1b local only; CP1c (worker step) starts only with explicit
+approval. Work beyond M1 is undecided and is not planned here.
 
 ## 15. Definition of Done
 

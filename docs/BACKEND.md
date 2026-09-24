@@ -85,6 +85,33 @@ reading written as "not established" — and refuses every non-connected state
 before anything is formatted. No caller can name a property or a query: the
 input carries a range and nothing else.
 
+**Snapshot capture (milestone M1, checkpoint 1b; local only, not yet wired).**
+`src/lib/search-console/snapshots/capture.ts` reads the 30-day window for each
+stored project that `SEARCH_CONSOLE_PROPERTIES` maps to a property and records
+what Google reported through the one CP1a database function,
+`nexra_search_console_snapshot_record` (migration `20260927120000`,
+`nexra_search_console_snapshots`). Sequential across projects, bounded by
+`maxProjects` (1–50) and `budgetMs`; a project is not started with under three
+seconds left, and a Google read that outlives the budget answers
+`unavailable`/`timeout` without writing. Before a row is written the project is
+read again (`project-not-found` if gone), the property comes from the server's
+mapping and nowhere else (`not-connected` otherwise), the provider's answer must
+name that exact property (`property-mismatch` otherwise) and must be fresh
+(`stale-skipped`); a stale or mismatched queries or pages read is recorded as
+`queries-unavailable`/`pages-unavailable`, never as today's rows. Google's
+totals and top 25 queries and pages are stored as returned, within the table's
+limits (25 rows, keys of at most 2,048 characters; a row outside them is left
+out, not altered). Outcomes: `created`, `no-data-created` (Google answered with
+no impressions), `exists` (the window was already recorded; nothing written),
+`not-connected`, `access-denied`, `unavailable`, `stale-skipped`,
+`property-mismatch`, `project-not-found`, `store-unavailable` (fixture roster)
+and `store-failed`. A failed read is never a no-data row. Logs carry project
+ids, outcomes, reasons and durations only. The provider does not echo the
+window's dates, so the window is bound by the call the capture makes (the
+provider caches by property and exact dates), not by the response; the
+database does not check the project-to-property mapping. Nothing calls the
+capture yet — the worker step is checkpoint 1c.
+
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
