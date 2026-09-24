@@ -254,6 +254,12 @@ describe("HTTP, redirects and links", () => {
     assert.deepEqual(broken[0].urls, ["https://nexraagency.com/", "https://nexraagency.com/about"]);
     assert.deepEqual(broken[0].observed, { toUrl: "https://nexraagency.com/gone", targetHttpStatus: 410, targetFetchState: "http-error", linkingPages: 2 });
     assert.match(broken[0].message, /which answered 410/);
+    // Two broken targets linked from the same pages are two findings with two ids.
+    const gone2 = page("/gone-too", { fetchState: "http-error", httpStatus: 404 });
+    const two = only([...pages, gone2], "internal-link-broken", [link("/", "/gone"), link("/", "/gone-too")]);
+    assert.equal(two.length, 2);
+    assert.notEqual(two[0].id, two[1].id);
+    assert.deepEqual(two.map((f) => f.observed.toUrl), ["https://nexraagency.com/gone", "https://nexraagency.com/gone-too"]);
     // A target that failed without a status (timeout) is unknown, not broken.
     const timedOut = page("/slow", { fetchState: "timeout", httpStatus: null });
     assert.deepEqual(only([page("/"), timedOut], "internal-link-broken", [link("/", "/slow")]), []);

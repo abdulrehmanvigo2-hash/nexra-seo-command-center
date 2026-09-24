@@ -48,12 +48,15 @@ type Draft = {
   readonly urls: readonly string[];
   readonly observed: Readonly<Record<string, ObservedValue>>;
   readonly message: string;
+  /** For a rule whose URLs alone do not identify the finding (a broken link's target): part of the id. */
+  readonly key?: string;
 };
 
 const byUrl = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-function findingId(rule: FindingRuleId, urls: readonly string[]): string {
-  const digest = createHash("sha256").update(`${rule}\n${urls.join("\n")}`, "utf8").digest("hex").slice(0, 16);
+function findingId(rule: FindingRuleId, urls: readonly string[], key?: string): string {
+  const subject = key === undefined ? `${rule}\n${urls.join("\n")}` : `${rule}\n${key}\n${urls.join("\n")}`;
+  const digest = createHash("sha256").update(subject, "utf8").digest("hex").slice(0, 16);
   return `${rule}:${digest}`;
 }
 
@@ -61,7 +64,7 @@ function finalise(draft: Draft): CrawlFinding {
   const urls = [...draft.urls].sort(byUrl);
   const meta = RULES[draft.rule];
   return {
-    id: findingId(draft.rule, urls),
+    id: findingId(draft.rule, urls, draft.key),
     rule: draft.rule,
     category: meta.category,
     severity: meta.severity,
@@ -205,6 +208,7 @@ function linkRules(links: readonly CrawlLink[], byPageUrl: ReadonlyMap<string, C
     drafts.push({
       rule: "internal-link-broken",
       urls: from,
+      key: toUrl,
       observed: { toUrl, targetHttpStatus: target.httpStatus, targetFetchState: target.fetchState, linkingPages: from.length },
       message: `${from.length} crawled page(s) link to ${toUrl}, which answered ${target.httpStatus}.`,
     });
