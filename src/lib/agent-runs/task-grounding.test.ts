@@ -6,6 +6,8 @@ import type { RangeId } from "../../types/dashboard.ts";
 import type { ProjectIntake, ProjectRecord } from "../../types/project.ts";
 import type { SearchConsoleReport } from "../../types/search-console.ts";
 import { COMPARISON_SIDE_LIMITS, formatComparisonGrounding, type ComparisonGroundingReaders } from "../crawl/comparison-grounding.ts";
+import { computeCrawlFindings } from "../crawl/findings/compute.ts";
+import { FINDINGS_EVIDENCE_LIMITS_NOTE, formatCrawlFindingsGrounding, unavailableCrawlFindingsGrounding } from "../crawl/findings/grounding.ts";
 import { formatCrawlGrounding } from "../crawl/grounding.ts";
 import { formatProjectGrounding, type ProjectGroundingReaders } from "../projects/grounding.ts";
 import { formatDraftGrounding, resolveSection, type DraftGroundingReaders } from "../content/draft-grounding.ts";
@@ -23,6 +25,9 @@ import { createAiExecutor } from "./ai-executor.ts";
 import type { ExecutionTask } from "./executor.ts";
 import { formatRunGrounding } from "./run-grounding.ts";
 import { createTaskGrounding, type TaskGroundingReaders } from "./task-grounding.ts";
+import { NO_RECORDED_FINDINGS_NOTE, formatRecordedFindingsGrounding } from "../crawl/findings/director-grounding.ts";
+import type { StoredCrawlFindingsReport } from "../crawl/findings/store-contract.ts";
+import type { CrawlFindingsRead } from "../crawl/service.ts";
 
 /**
  * One crawl, two agents, one reader.
@@ -77,6 +82,7 @@ const PAGE: CrawlPage = {
   metaDescriptionLength: 21,
   h1Count: 1,
   firstH1: "Services",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Organization"],
   schemaBlocks: 1,
   schemaParseFailed: false,
@@ -105,6 +111,7 @@ const SKIPPED: CrawlPage = {
   metaDescriptionLength: null,
   h1Count: null,
   firstH1: null,
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: [],
   schemaBlocks: 0,
   depth: null,
@@ -130,12 +137,17 @@ function crawlStore(crawl: Crawl = CRAWL, pages: readonly CrawlPage[] = PAGES) {
 
 /** The edges the crawl recorded: a few internal, three external to two hosts. */
 const LINKS: readonly CrawlLink[] = [
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/services", rel: null, isInternal: true },
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://nexraagency.com/", rel: null, isInternal: true },
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false },
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false },
-  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://nexraagency.com/services", rel: null, isInternal: true, anchorText: null },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://nexraagency.com/", rel: null, isInternal: true, anchorText: null },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/", toUrl: "https://www.linkedin.com/company/nexra", rel: "nofollow noopener", isInternal: false, anchorText: null },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://www.linkedin.com/company/nexra", rel: null, isInternal: false, anchorText: null },
+  { crawlId: CRAWL.id, fromUrl: "https://nexraagency.com/services", toUrl: "https://partner.example/tools", rel: "sponsored", isInternal: false, anchorText: null },
 ];
+
+/** The findings block the fixture crawl yields: one short title on /services. */
+function expectedFindings(crawl: Crawl = CRAWL, pages: readonly CrawlPage[] = PAGES, links: readonly CrawlLink[] = LINKS) {
+  return formatCrawlFindingsGrounding(computeCrawlFindings({ crawl, pages, links }), { read: links.length, cut: false });
+}
 
 /** The Authority agent's readers: a crawl record of its own and the crawl's edges. */
 function linkStore(crawl: Crawl = CRAWL, links: readonly CrawlLink[] = LINKS) {
@@ -268,6 +280,18 @@ const UPSTREAM_RUN: AgentRun = {
 };
 
 /** An in-memory run store that counts how often it was read. */
+/** The recorded-findings reader (T6): answers as told, counting every read with the project and crawl it was asked for. */
+function findingsReader(answer: CrawlFindingsRead = { status: "not-recorded", crawl: CRAWL }) {
+  const calls: [string, string][] = [];
+  return {
+    calls,
+    read: async (projectId: string, crawlId: string): Promise<CrawlFindingsRead> => {
+      calls.push([projectId, crawlId]);
+      return answer;
+    },
+  };
+}
+
 function runStore(...runs: readonly AgentRun[]) {
   let reads = 0;
   return {
@@ -361,6 +385,7 @@ const RIVAL_PAGE: CrawlPage = {
   metaDescription: "Plans from the rival.",
   metaDescriptionLength: 21,
   firstH1: "Pricing",
+  h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
   schemaTypes: ["Product"],
 };
 
@@ -562,7 +587,9 @@ function readers(
   links: ReturnType<typeof linkStore> = linkStore(),
   factCheck: ReturnType<typeof factCheckStore> = factCheckStore(),
   history: ReturnType<typeof historyStore> = historyStore(null),
+  findings: ReturnType<typeof findingsReader> = findingsReader(),
 ): TaskGroundingReaders & {
+  findingsCalls: [string, string][];
   crawls: TaskGroundingReaders["crawls"];
   store: typeof crawls;
   console: typeof console;
@@ -588,6 +615,8 @@ function readers(
     searchConsole: console.read,
     searchConsoleHistory: history.read,
     runs: runs.reader,
+    crawlFindings: findings.read,
+    findingsCalls: findings.calls,
     projects: projects.reader,
     comparison: comparison.reader,
     evidencePack: evidencePack.reader,
@@ -676,8 +705,8 @@ describe("which tasks are grounded", () => {
     if (!onPage.ok || !technical.ok) return;
     assert.equal(onPage.grounding?.text, technical.grounding?.text);
     assert.deepEqual(onPage.grounding?.summary, technical.grounding?.summary);
-    // And it is the block the grounding module itself would produce.
-    assert.equal(onPage.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
+    // And it is the block the grounding module itself would produce, followed by the fixed rules' findings.
+    assert.equal(onPage.grounding?.text, `${formatCrawlGrounding(CRAWL, PAGES).text}\n\n${expectedFindings().text}`);
   });
 
   test("a task that declares no evidence gets none, and the crawl store is never read", async () => {
@@ -776,7 +805,7 @@ describe("the On-Page SEO agent through the executor", () => {
     assert.equal(output.metadata?.grounded, true);
     assert.equal(output.metadata?.simulated, false);
     assert.equal(output.metadata?.taskType, "on-page-review");
-    assert.deepEqual(output.metadata?.evidence, { ...formatCrawlGrounding(CRAWL, PAGES).summary });
+    assert.deepEqual(output.metadata?.evidence, { ...formatCrawlGrounding(CRAWL, PAGES).summary, findings: expectedFindings().summary });
   });
 
   test("the partial-crawl scope language is in the prompt, so the agent cannot read five pages as a site", async () => {
@@ -950,7 +979,9 @@ describe("the SEO Director hand-off through the dispatch", () => {
     assert.equal(all.runReads(), 1);
     assert.equal(all.store.reads(), 0, "the crawl store was read for a hand-off");
     assert.equal(all.console.calls.length, 0, "Search Console was read for a hand-off");
-    assert.equal(result.grounding?.text, formatRunGrounding(UPSTREAM_RUN).text);
+    // T6: the recorded findings for the crawl the review was written over follow the review, read once for the Director's project.
+    assert.equal(result.grounding?.text, `${formatRunGrounding(UPSTREAM_RUN).text}\n\n${NO_RECORDED_FINDINGS_NOTE["not-recorded"]}`);
+    assert.deepEqual(all.findingsCalls, [["nexra-agency", CRAWL.id]]);
     assert.equal(result.grounding?.source?.label, "upstream agent review");
     assert.equal(result.grounding?.summary.source, "agent-run");
     assert.equal(result.grounding?.summary.runId, UPSTREAM_RUN.id);
@@ -1032,7 +1063,10 @@ describe("the SEO Director through the executor", () => {
     assert.equal(output.metadata?.grounded, true);
     assert.equal(output.metadata?.simulated, false);
     assert.equal(output.metadata?.taskType, "priority-review");
-    assert.deepEqual(output.metadata?.evidence, { ...formatRunGrounding(UPSTREAM_RUN).summary });
+    assert.deepEqual(output.metadata?.evidence, {
+      ...formatRunGrounding(UPSTREAM_RUN).summary,
+      recordedFindings: formatRecordedFindingsGrounding(CRAWL.id, { status: "not-recorded", crawl: CRAWL }).summary,
+    });
   });
 
   test("a refused hand-off reaches no provider, whatever the refusal", async () => {
@@ -1228,7 +1262,7 @@ describe("the AI Visibility answer-readiness review through the dispatch", () =>
     assert.equal(result.grounding?.summary.crawlId, CRAWL.id);
   });
 
-  test("all three crawl-grounded tasks receive byte-identical evidence", async () => {
+  test("all three crawl-grounded tasks receive the byte-identical crawl evidence; the two page reviews add the same findings block after it", async () => {
     const grounding = createTaskGrounding(readers());
     const [technical, onPage, readiness] = await Promise.all([
       grounding(crawlReviewTask),
@@ -1237,9 +1271,9 @@ describe("the AI Visibility answer-readiness review through the dispatch", () =>
     ]);
     assert.ok(technical.ok && onPage.ok && readiness.ok);
     if (!technical.ok || !onPage.ok || !readiness.ok) return;
-    assert.equal(readiness.grounding?.text, technical.grounding?.text);
-    assert.equal(readiness.grounding?.text, onPage.grounding?.text);
-    assert.deepEqual(readiness.grounding?.summary, technical.grounding?.summary);
+    assert.equal(technical.grounding?.text, onPage.grounding?.text);
+    assert.deepEqual(technical.grounding?.summary, onPage.grounding?.summary);
+    assert.ok(technical.grounding?.text.startsWith(readiness.grounding?.text ?? "x"));
     assert.equal(readiness.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
   });
 
@@ -1518,12 +1552,13 @@ describe("a competitor crawl reaches none of the project's own reviews", () => {
     assert.deepEqual(result, { ok: false, reason: "crawl-not-project-site" });
   });
 
-  test("the project's own crawl is still read by all three, byte for byte as before", async () => {
+  test("the project's own crawl is still read by all three, byte for byte as before; the two page reviews then get the findings block", async () => {
     for (const [, task] of reviews) {
       const result = await createTaskGrounding(readers())(task);
       assert.ok(result.ok);
       if (!result.ok) continue;
-      assert.equal(result.grounding?.text, formatCrawlGrounding(CRAWL, PAGES).text);
+      const withFindings = task.taskType === "crawl-review" || task.taskType === "on-page-review";
+      assert.equal(result.grounding?.text, withFindings ? `${formatCrawlGrounding(CRAWL, PAGES).text}\n\n${expectedFindings().text}` : formatCrawlGrounding(CRAWL, PAGES).text);
     }
   });
 });
@@ -2189,14 +2224,15 @@ describe("the Authority agent's prompt", () => {
     }
   });
 
-  test("the eleven existing tasks keep their exact wording — none of them reads an edge", async () => {
+  test("the eleven existing tasks keep their exact wording; only the two page reviews read edges, for their deterministic findings, never as outbound link evidence", async () => {
     for (const task of [crawlReviewTask, onPageTask, answerReadinessTask, searchQueryTask, performanceReviewTask, priorityReviewTask, intakeReviewTask, comparisonTask, evidencePackTask, contentPlanTask, sectionDraftTask]) {
       const links = linkStore();
       const { seen, provider } = capturingProvider();
       await createAiExecutor(provider, createTaskGrounding(readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, links))).execute(task, new AbortController().signal);
       assert.doesNotMatch(seen.prompt ?? "", /OUTBOUND LINK RECORD|OUTBOUND HOSTS|Outbound link review/, task.taskType);
       assert.doesNotMatch(seen.system ?? "", /outbound link evidence/, task.taskType);
-      assert.equal(links.listCalls(), 0, task.taskType);
+      const readsEdges = task.taskType === "crawl-review" || task.taskType === "on-page-review";
+      assert.equal(links.listCalls(), readsEdges ? 1 : 0, task.taskType);
     }
   });
 });
@@ -2370,5 +2406,178 @@ describe("stored Search Console history beside the live report (P4b)", () => {
     const evidence = output.metadata?.evidence as { history?: { history?: string; bytes?: number } };
     assert.equal(evidence.history?.history, "available");
     assert.ok((evidence.history?.bytes ?? 0) > 0);
+  });
+});
+
+describe("deterministic crawl findings beside the crawl evidence (T2)", () => {
+  const crawlText = formatCrawlGrounding(CRAWL, PAGES).text;
+
+  test("crawl-review and on-page-review get the crawl evidence first, then the findings block, and the run's evidence summary carries the counts", async () => {
+    for (const task of [crawlReviewTask, onPageTask]) {
+      const all = readers();
+      const result = await createTaskGrounding(all)(task);
+      assert.ok(result.ok && result.grounding);
+      assert.ok(result.grounding.text.startsWith(crawlText), "the crawl evidence is unchanged and first");
+      const block = result.grounding.text.slice(crawlText.length + 2);
+      assert.match(block, /^DETERMINISTIC CRAWL FINDINGS \(fixed rules/);
+      assert.match(block, /Coverage: 2 pages recorded \(1 fetched and read, 0 not fetched, 1 not reached within the budget\); 5 link edges read; crawl partial, stopped on page-budget/);
+      assert.match(block, /Findings: 1 in total across 1 rule\(s\) — title-short ×1\./);
+      assert.ok(block.includes('- [title-short] low · Short title · https://nexraagency.com/services · observed: title="Services"; titleLength=8 · The title is 8 characters, under 30. (id title-short:'));
+      assert.ok(block.endsWith(FINDINGS_EVIDENCE_LIMITS_NOTE));
+      assert.equal(all.linkListCalls(), 1);
+      const findings = (result.grounding.summary as { findings?: Record<string, unknown> }).findings;
+      assert.deepEqual([findings?.status, findings?.findings, findings?.described, findings?.rules, findings?.linksRead, findings?.linksCut, findings?.cutByBytes], ["available", 1, 1, 1, 5, false, 0]);
+    }
+  });
+
+  test("the AI Visibility, link and comparison tasks are untouched: no findings block, no link read for the readiness review", async () => {
+    const all = readers();
+    const result = await createTaskGrounding(all)(answerReadinessTask);
+    assert.ok(result.ok && result.grounding);
+    assert.equal(result.grounding.text, crawlText);
+    assert.equal(all.linkListCalls(), 0);
+    assert.equal("findings" in result.grounding.summary, false);
+  });
+
+  test("a wrong-project or unfinished crawl is refused before any finding is computed or any edge read", async () => {
+    const other = crawlStore({ ...CRAWL, projectId: "other-client" });
+    const otherReaders = readers(other);
+    assert.deepEqual(await createTaskGrounding(otherReaders)(crawlReviewTask), { ok: false, reason: "crawl-not-in-project" });
+    assert.equal(otherReaders.linkListCalls(), 0);
+    const running = readers(crawlStore({ ...CRAWL, status: "running", finishedAt: null }));
+    assert.deepEqual(await createTaskGrounding(running)(onPageTask), { ok: false, reason: "crawl-unfinished" });
+    assert.equal(running.linkListCalls(), 0);
+    const failed = readers(crawlStore({ ...CRAWL, status: "failed" }));
+    assert.deepEqual(await createTaskGrounding(failed)(onPageTask), { ok: false, reason: "crawl-not-reviewable" });
+    assert.equal(failed.linkListCalls(), 0);
+  });
+
+  test("a link read that throws leaves the crawl evidence intact with an unavailable note; the run is not refused", async () => {
+    const throwing = linkStore();
+    throwing.reader.links.listLinks = async () => {
+      throw new Error("edges unreadable");
+    };
+    const result = await createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), throwing))(crawlReviewTask);
+    assert.ok(result.ok && result.grounding);
+    assert.equal(result.grounding.text, `${crawlText}\n\n${unavailableCrawlFindingsGrounding().text}`);
+    assert.equal((result.grounding.summary as { findings?: { status?: string } }).findings?.status, "unavailable");
+  });
+
+  test("a crawl with no findings says no rule fired, not that the pages are clean", async () => {
+    const clean: CrawlPage = { ...PAGE, title: "Services at Nexra Agency, London SEO consultancy", titleLength: 47 };
+    const result = await createTaskGrounding(readers(crawlStore(CRAWL, [clean, SKIPPED])))(onPageTask);
+    assert.ok(result.ok && result.grounding);
+    assert.match(result.grounding.text, /Findings: 0 in total across 0 rule\(s\)\.\n\nNo rule fired on the pages this crawl recorded\. That is a statement about these rules over these pages, not a clean bill of health/);
+  });
+
+  test("through the executor, the findings block and the findings instructions reach the prompt", async () => {
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, createTaskGrounding(readers()));
+    const output = await executor.execute(crawlReviewTask, new AbortController().signal);
+    assert.match(seen.prompt ?? "", /DETERMINISTIC CRAWL FINDINGS/);
+    assert.match(seen.prompt ?? "", /\[title-short\] low/);
+    assert.match(seen.prompt ?? "", /Where a DETERMINISTIC CRAWL FINDINGS block follows the crawl evidence/);
+    assert.match(seen.prompt ?? "", /No finding says whether Google has indexed/);
+    const evidence = output.metadata?.evidence as { findings?: { status?: string } };
+    assert.equal(evidence.findings?.status, "available");
+  });
+});
+
+describe("the SEO Director's recorded crawl findings (T6)", () => {
+  const RECORDED: StoredCrawlFindingsReport = {
+    header: {
+      id: "rep-1",
+      crawlId: CRAWL.id,
+      projectId: "nexra-agency",
+      ruleVersion: 2,
+      coverage: { pagesTotal: 4, pagesFetched: 3, pagesNotFetched: 1, pagesNotReached: 0 },
+      linksRead: 6,
+      linksCut: false,
+      findingsTotal: 2,
+      counts: { "meta-description-missing": 1, "http-client-error": 1 },
+      truncatedRules: [],
+      recordedAt: "2026-09-20T10:00:05.000Z",
+    },
+    findings: [
+      { id: "http-client-error:aaaaaaaaaaaaaaaa", rule: "http-client-error", category: "http", severity: "high", urls: ["https://nexraagency.com/gone"], urlCount: 1, observed: { httpStatus: 404, fetchState: "http-error" }, message: "The page answered 404.", ordinal: 0 },
+      { id: "meta-description-missing:bbbbbbbbbbbbbbbb", rule: "meta-description-missing", category: "metadata", severity: "medium", urls: ["https://nexraagency.com/services"], urlCount: 1, observed: { metaDescription: null }, message: "The page has no meta description.", ordinal: 1 },
+    ],
+    findingsTruncated: false,
+  };
+  const withFindings = (answer: CrawlFindingsRead) =>
+    readers(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, findingsReader(answer));
+
+  test("a review written over a crawl gets that crawl's recorded findings beneath it, read for the Director's project and never recomputed", async () => {
+    const all = withFindings({ status: "recorded", crawl: CRAWL, report: RECORDED });
+    const result = await createTaskGrounding(all)(priorityReviewTask);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.ok(result.grounding);
+    assert.deepEqual(all.findingsCalls, [["nexra-agency", CRAWL.id]]);
+    assert.equal(all.store.reads(), 0, "the crawl itself is not re-read");
+    const expected = formatRecordedFindingsGrounding(CRAWL.id, { status: "recorded", crawl: CRAWL, report: RECORDED });
+    assert.ok(result.grounding.text.startsWith(formatRunGrounding(UPSTREAM_RUN).text));
+    assert.ok(result.grounding.text.endsWith(expected.text));
+    assert.match(result.grounding.text, /RECORDED CRAWL FINDINGS \(observations by fixed rules/);
+    assert.match(result.grounding.text, /\[http-client-error\] high · Client error \(4xx\) · https:\/\/nexraagency\.com\/gone/);
+    assert.deepEqual(result.grounding.summary.recordedFindings, expected.summary);
+    assert.equal((result.grounding.summary.recordedFindings as { findings: number }).findings, 2);
+    assert.equal(result.grounding.summary.runId, UPSTREAM_RUN.id);
+  });
+
+  test("a review written over a Search Console report gets no findings block and reads nothing", async () => {
+    const searchReview: AgentRun = {
+      ...UPSTREAM_RUN,
+      id: "11111111-0000-4000-8000-000000000009",
+      agentId: "keyword-intent",
+      taskType: "search-query-review",
+      input: { rangeId: "28d" },
+      resultMetadata: { ...UPSTREAM_RUN.resultMetadata, evidence: { source: "search-console", property: "sc-domain:nexraagency.com", startDate: "2026-08-01", endDate: "2026-08-28", queriesIncluded: 10 }, taskType: "search-query-review" },
+    };
+    const all = readers(undefined, undefined, runStore(searchReview));
+    const result = await createTaskGrounding(all)({ ...priorityReviewTask, input: { sourceRunId: searchReview.id } });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.ok(result.grounding);
+    assert.equal(result.grounding.text, formatRunGrounding(searchReview).text);
+    assert.equal("recordedFindings" in result.grounding.summary, false);
+    assert.deepEqual(all.findingsCalls, []);
+  });
+
+  test("findings that are unavailable, not recorded or not the project's are one fixed note each, never a refusal and never an empty report", async () => {
+    for (const answer of [{ status: "unavailable" }, { status: "not-found" }, { status: "not-recorded", crawl: CRAWL }] as const) {
+      const all = withFindings(answer);
+      const result = await createTaskGrounding(all)(priorityReviewTask);
+      assert.equal(result.ok, true, answer.status);
+      if (!result.ok) return;
+      assert.ok(result.grounding);
+      assert.ok(result.grounding.text.endsWith(NO_RECORDED_FINDINGS_NOTE[answer.status]));
+      assert.match(NO_RECORDED_FINDINGS_NOTE[answer.status], /Rank nothing on findings/);
+      assert.deepEqual(result.grounding.summary.recordedFindings, { status: answer.status, crawlId: CRAWL.id, reportId: null, ruleVersion: 0, recordedAt: null, findings: 0, described: 0, rules: 0, rulesCut: [], cutByBytes: 0, readCut: false, bytes: new TextEncoder().encode(NO_RECORDED_FINDINGS_NOTE[answer.status]).length });
+    }
+  });
+
+  test("a refused hand-off never reaches the findings reader: the ownership check comes first", async () => {
+    const all = readers();
+    const foreign = { ...priorityReviewTask, project: { id: "other-client", name: "Other Client", domain: "other.example" } };
+    assert.deepEqual(await createTaskGrounding(all)(foreign), { ok: false, reason: "source-run-not-in-project" });
+    const none = readers(undefined, undefined, runStore());
+    assert.deepEqual(await createTaskGrounding(none)(priorityReviewTask), { ok: false, reason: "source-run-not-found" });
+    assert.deepEqual([all.findingsCalls, none.findingsCalls], [[], []]);
+  });
+
+  test("the Director's prompt carries both blocks and the instructions that keep them apart; the specialist reviews are untouched", async () => {
+    const { seen, provider } = capturingProvider();
+    const all = withFindings({ status: "recorded", crawl: CRAWL, report: RECORDED });
+    await createAiExecutor(provider, createTaskGrounding(all)).execute(priorityReviewTask, new AbortController().signal);
+    assert.match(seen.prompt ?? "", /UPSTREAM AGENT REVIEW/);
+    assert.match(seen.prompt ?? "", /RECORDED CRAWL FINDINGS/);
+    assert.match(seen.prompt ?? "", /OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on the review's inference/);
+    assert.match(seen.prompt ?? "", /Never state or estimate a ranking, traffic, click, revenue or Core Web Vitals effect/);
+    for (const task of [crawlReviewTask, onPageTask]) {
+      const specialist = capturingProvider();
+      await createAiExecutor(specialist.provider, createTaskGrounding(readers())).execute(task, new AbortController().signal);
+      assert.doesNotMatch(specialist.seen.prompt ?? "", /RECORDED CRAWL FINDINGS/);
+    }
   });
 });

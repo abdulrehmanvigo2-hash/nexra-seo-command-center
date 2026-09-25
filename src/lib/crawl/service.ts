@@ -4,7 +4,10 @@ import type { CrawlStore } from "@/lib/crawl/contract";
 import type { CrawlConfig } from "@/lib/crawl/config";
 import { isHostAllowed } from "@/lib/crawl/config";
 import { resolveCompetitorTarget } from "@/lib/crawl/competitor-target";
-import { runCrawl, type EngineOptions } from "@/lib/crawl/engine";
+import { runCrawl, type CrawlResult, type EngineOptions } from "@/lib/crawl/engine";
+import { computeCrawlFindings } from "@/lib/crawl/findings/compute";
+import { FINDINGS_LINK_LIMIT } from "@/lib/crawl/findings/grounding";
+import { unavailableCrawlFindingsStore, type CrawlFindingsStore, type StoredCrawlFindingsReport } from "@/lib/crawl/findings/store-contract";
 import { hostScopeFromDomain, startUrlForDomain } from "@/lib/crawl/url-policy";
 import { logEvent } from "@/lib/observability/log";
 import type { ProjectRepository } from "@/lib/projects/contract";
@@ -65,12 +68,32 @@ export type CrawlService = {
   listCrawls(projectId: string, limit?: number): Promise<readonly Crawl[]>;
   /** The crawls of one recorded competitor domain, newest first, or why the domain is refused. */
   listCompetitorCrawls(projectId: string, competitorDomain: string, limit?: number): Promise<CompetitorCrawlsResult>;
+  /**
+   * The deterministic findings recorded for one of the project's own crawls
+   * when it finished. A read of stored rows only, scoped to the project:
+   * a crawl that is not the project's answers `not-found`, a crawl with
+   * nothing recorded (made before findings were kept, still running, failed,
+   * or a competitor's) answers `not-recorded`, and a deployment whose store
+   * keeps no findings answers `unavailable` rather than an empty report.
+   */
+  getCrawlFindings(projectId: string, crawlId: string): Promise<CrawlFindingsRead>;
 };
+
+export type CrawlFindingsRead =
+  /** The findings store is not configured on this deployment. */
+  | { readonly status: "unavailable" }
+  /** No such crawl, or not this project's. */
+  | { readonly status: "not-found" }
+  /** The crawl is the project's, and nothing was recorded for it. */
+  | { readonly status: "not-recorded"; readonly crawl: Crawl }
+  | { readonly status: "recorded"; readonly crawl: Crawl; readonly report: StoredCrawlFindingsReport };
 
 export type CrawlServiceOptions = {
   readonly store: CrawlStore;
   readonly projects: ProjectRepository;
   readonly config: CrawlConfig;
+  /** Where recorded findings are kept; absent, none are recorded and none read. */
+  readonly findings?: CrawlFindingsStore;
   /** Injected so a test can drive the engine without a network. */
   readonly engine?: typeof runCrawl;
   readonly engineOverrides?: Partial<EngineOptions>;
@@ -103,7 +126,42 @@ const UNEXPECTED_FAILURE = {
 } as const;
 
 export function createCrawlService(options: CrawlServiceOptions): CrawlService {
-  const { store, projects, config, engine = runCrawl, engineOverrides = {} } = options;
+  const { store, projects, config, findings = unavailableCrawlFindingsStore, engine = runCrawl, engineOverrides = {} } = options;
+
+  /**
+   * The fixed rules over what the crawl just recorded, kept beside it. Only
+   * for the project's own site (a competitor's pages are never "findings"
+   * of the project), only for a finished, reviewable crawl, and never in
+   * the way of the crawl itself: a store that keeps no findings skips this,
+   * and a failure here is logged and leaves the crawl result untouched.
+   */
+  async function recordFindings(crawl: Crawl, result: { readonly pages: CrawlResult["pages"]; readonly links: CrawlResult["links"] }): Promise<void> {
+    if (!findings.storesFindings) return;
+    if (crawl.status !== "completed" && crawl.status !== "partial") return;
+    try {
+      const pages = result.pages.map((page, index) => ({ ...page, id: String(index), crawlId: crawl.id }));
+      const links = result.links.slice(0, FINDINGS_LINK_LIMIT).map((link) => ({ ...link, crawlId: crawl.id }));
+      const report = computeCrawlFindings({ crawl, pages, links });
+      const outcome = await findings.record({
+        projectId: crawl.projectId,
+        crawlId: crawl.id,
+        report,
+        links: { read: links.length, cut: result.links.length > FINDINGS_LINK_LIMIT },
+      });
+      logEvent(outcome.status === "created" || outcome.status === "exists" ? "info" : "warn", "crawl.findings_recorded", {
+        crawlId: crawl.id,
+        projectId: crawl.projectId,
+        outcome: outcome.status,
+        count: outcome.status === "created" ? outcome.findings : outcome.status === "exists" ? outcome.header.findingsTotal : null,
+      });
+    } catch (error) {
+      logEvent("error", "crawl.findings_failed", {
+        crawlId: crawl.id,
+        projectId: crawl.projectId,
+        reason: error instanceof Error ? error.name : "unknown",
+      });
+    }
+  }
 
   /**
    * The host a competitor crawl of this project may fetch, or a refusal.
@@ -254,7 +312,22 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
       // something else closed it first. Re-read rather than handing back the
       // `running` row we opened with, which would report a finished crawl as
       // still in flight.
-      return { ok: true, crawl: finished ?? (await store.getById(crawl.id)) ?? crawl };
+      const closed = finished ?? (await store.getById(crawl.id)) ?? crawl;
+      // The project's own site only: the findings describe "the project's
+      // pages", which a competitor crawl's are not.
+      if (target === undefined) await recordFindings(closed, result);
+      return { ok: true, crawl: closed };
+    },
+
+    async getCrawlFindings(projectId, crawlId) {
+      if (!findings.storesFindings) return { status: "unavailable" };
+      // The crawl row is the project check: the report is read by project and
+      // crawl, so another project's crawl could never answer with a report,
+      // but it must answer `not-found`, not "nothing recorded".
+      const crawl = await store.getById(crawlId);
+      if (crawl === null || crawl.projectId !== projectId) return { status: "not-found" };
+      const report = await findings.getReport(projectId, crawlId);
+      return report === null ? { status: "not-recorded", crawl } : { status: "recorded", crawl, report };
     },
 
     async getCrawl(id, pageLimit = DEFAULT_PAGE_LIMIT) {

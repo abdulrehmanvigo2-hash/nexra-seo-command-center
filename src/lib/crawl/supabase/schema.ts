@@ -86,6 +86,14 @@ export type CrawlPageRow = {
   internal_links_out: number;
   fetched_at: string | null;
   error_code: string | null;
+  // Since T5 (migration 20260929120000). Null on a row written before it.
+  x_robots_tag: string | null;
+  robots_noindex: boolean | null;
+  robots_nofollow: boolean | null;
+  h2_count: number | null;
+  h3_count: number | null;
+  image_count: number | null;
+  images_without_alt: number | null;
 };
 
 export type CrawlLinkRow = {
@@ -94,6 +102,8 @@ export type CrawlLinkRow = {
   to_url: string;
   rel: string | null;
   is_internal: boolean;
+  /** Since T5. Null on an edge written before it; empty when the anchor had no text. */
+  anchor_text: string | null;
 };
 
 /** What creating a crawl sets. Every other column has a default or is set on finish. */
@@ -161,10 +171,10 @@ export type CrawlsDatabase = {
 export const CRAWL_READ_COLUMNS =
   "id, project_id, start_url, host_scope, status, stop_reason, max_pages, max_depth, max_duration_ms, user_agent, robots_state, sitemap_state, pages_discovered, pages_fetched, pages_failed, error_code, error_message, created_by, started_at, finished_at";
 
-export const CRAWL_LINK_READ_COLUMNS = "crawl_id, from_url, to_url, rel, is_internal";
+export const CRAWL_LINK_READ_COLUMNS = "crawl_id, from_url, to_url, rel, is_internal, anchor_text";
 
 export const CRAWL_PAGE_READ_COLUMNS =
-  "id, crawl_id, url, final_url, fetch_state, http_status, redirect_hops, redirect_chain, content_type, content_bytes, robots_meta, robots_txt_allowed, canonical_href, canonical_resolved, canonical_is_self, title, title_length, meta_description, meta_description_length, h1_count, first_h1, schema_types, schema_blocks, schema_parse_failed, in_sitemap, depth, internal_links_in, internal_links_out, fetched_at, error_code";
+  "id, crawl_id, url, final_url, fetch_state, http_status, redirect_hops, redirect_chain, content_type, content_bytes, robots_meta, robots_txt_allowed, canonical_href, canonical_resolved, canonical_is_self, title, title_length, meta_description, meta_description_length, h1_count, first_h1, schema_types, schema_blocks, schema_parse_failed, in_sitemap, depth, internal_links_in, internal_links_out, fetched_at, error_code, x_robots_tag, robots_noindex, robots_nofollow, h2_count, h3_count, image_count, images_without_alt";
 
 const STATUSES: readonly CrawlStatus[] = ["running", "completed", "partial", "failed", "cancelled"];
 const STOP_REASONS: readonly CrawlStopReason[] = [
@@ -295,6 +305,13 @@ export function crawlPageRowToPage(row: CrawlPageRow): CrawlPage {
     metaDescriptionLength: row.meta_description_length,
     h1Count: row.h1_count,
     firstH1: row.first_h1,
+    h2Count: row.h2_count,
+    h3Count: row.h3_count,
+    imageCount: row.image_count,
+    imagesWithoutAlt: row.images_without_alt,
+    xRobotsTag: row.x_robots_tag,
+    robotsNoindex: row.robots_noindex,
+    robotsNofollow: row.robots_nofollow,
     schemaTypes: row.schema_types,
     schemaBlocks: row.schema_blocks,
     schemaParseFailed: row.schema_parse_failed,
@@ -332,6 +349,13 @@ export function pageToInsert(
     meta_description_length: page.metaDescriptionLength,
     h1_count: page.h1Count,
     first_h1: bounded(page.firstH1, 1000),
+    x_robots_tag: bounded(page.xRobotsTag, 200),
+    robots_noindex: page.robotsNoindex,
+    robots_nofollow: page.robotsNofollow,
+    h2_count: page.h2Count,
+    h3_count: page.h3Count,
+    image_count: page.imageCount,
+    images_without_alt: page.imagesWithoutAlt,
     schema_types: [...page.schemaTypes].slice(0, 50),
     schema_blocks: page.schemaBlocks,
     schema_parse_failed: page.schemaParseFailed,
@@ -352,6 +376,7 @@ export function crawlLinkRowToLink(row: CrawlLinkRow): CrawlLink {
     toUrl: row.to_url,
     rel: row.rel,
     isInternal: row.is_internal,
+    anchorText: row.anchor_text,
   };
 }
 
@@ -365,5 +390,6 @@ export function linkToInsert(
     to_url: bounded(link.toUrl, 2048) ?? link.toUrl,
     rel: bounded(link.rel, 200),
     is_internal: link.isInternal,
+    anchor_text: bounded(link.anchorText, 200),
   };
 }

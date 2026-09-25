@@ -390,7 +390,12 @@ describe("bounded serialisation", () => {
 
 describe("the Director's instructions", () => {
   test("demand a traced, bounded, verifiable queue that changes nothing", () => {
-    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /from the upstream agent review supplied with this task, and from nothing else/);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /from the upstream agent review supplied with this task and, where they are supplied beneath it, the recorded crawl findings, and from nothing else/);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /BASIS \(OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on the review's inference\)/);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /the recorded finding is the observation and the review is the inference/);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /Never state or estimate a ranking, traffic, click, revenue or Core Web Vitals effect/);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /When the findings block says none are recorded, rank nothing on findings/);
+    assert.match(RUN_LIMITS_NOTE, /Where RECORDED CRAWL FINDINGS follow beneath this review, they are this product's own observations by fixed rules/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /at most five items/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /PRIORITY .* ACTION .* SOURCE .* WHY THIS RANK .* VERIFY/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /Every item must trace to a statement in the review/);

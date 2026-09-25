@@ -23,6 +23,7 @@ import {
 } from "@/lib/crawl/pages-view";
 import { CRAWL_REVIEWS, OUTBOUND_LINK_REVIEW, reviewRequest } from "@/lib/crawl/review-request";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
+import { CrawlFindings } from "@/components/crawl/crawl-findings";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { Crawl, CrawlPage } from "@/types/crawl";
 
@@ -335,6 +336,13 @@ export function CrawlPanel({
               {...answerReadiness}
             />
             <QueuedReview review={OUTBOUND_LINK_REVIEW} projectId={projectId} {...outboundLinks} />
+
+            {/*
+              What fixed rules found in this crawl, recorded when it finished.
+              Read through its own endpoint, scoped to this project, and shown
+              beside the pages rather than mapped onto the modelled registry.
+            */}
+            <CrawlFindings projectId={projectId} crawlId={shown.id} />
 
             {pages.status === "loading" && <Skeleton className="h-20 w-full" />}
 

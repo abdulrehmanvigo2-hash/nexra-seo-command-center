@@ -6,7 +6,11 @@ import { readArticleCheckGrounding, type ArticleCheckGroundingReaders } from "@/
 import { readDraftGrounding, type DraftGroundingReaders } from "@/lib/content/draft-grounding";
 import { readFactCheckGrounding, type FactCheckGroundingReaders } from "@/lib/content/drafts/fact-check-grounding";
 import { readComparisonGrounding, type ComparisonGroundingReaders } from "@/lib/crawl/comparison-grounding";
-import { readCrawlGrounding, type CrawlGroundingReader } from "@/lib/crawl/grounding";
+import { computeCrawlFindings } from "@/lib/crawl/findings/compute";
+import { formatRecordedFindingsGrounding } from "@/lib/crawl/findings/director-grounding";
+import { FINDINGS_LINK_LIMIT, formatCrawlFindingsGrounding, unavailableCrawlFindingsGrounding } from "@/lib/crawl/findings/grounding";
+import { formatCrawlGrounding, readReviewableCrawl, type CrawlGroundingReader } from "@/lib/crawl/grounding";
+import type { CrawlFindingsRead } from "@/lib/crawl/service";
 import { readProjectGrounding, type ProjectGroundingReaders } from "@/lib/projects/grounding";
 import { readEvidencePackGrounding, type EvidencePackReaders } from "@/lib/research/evidence-pack";
 import {
@@ -45,6 +49,9 @@ import { formatSearchConsoleHistory, type HistoryInput } from "@/lib/search-cons
 /** The stored-snapshot comparison for one project, or null when this deployment keeps no snapshots. */
 export type SearchConsoleHistoryReader = (projectId: string) => Promise<SnapshotHistoryComparison | null>;
 
+/** The findings recorded for one of the project's own crawls (T3), read by project and crawl id, never recomputed. */
+export type CrawlFindingsReader = (projectId: string, crawlId: string) => Promise<CrawlFindingsRead>;
+
 export type TaskGroundingReaders = {
   readonly crawls: CrawlGroundingReader;
   readonly searchConsole: SearchConsoleReportReader;
@@ -57,6 +64,14 @@ export type TaskGroundingReaders = {
   readonly searchConsoleHistory: SearchConsoleHistoryReader;
   /** The run store itself satisfies this; a test hands in a map. */
   readonly runs: AgentRunReader;
+  /**
+   * `agent-run` tasks, after the quoted upstream review: when that review
+   * was written over a crawl this product recorded, the findings recorded
+   * for that crawl, appended as a second block. Never a refusal: findings
+   * that are unavailable, not recorded or not the project's are stated in
+   * one bounded note, and nothing is inferred in their place.
+   */
+  readonly crawlFindings: CrawlFindingsReader;
   /** The project repository, crawl service, Search Console and run store, each read by project id. */
   readonly projects: ProjectGroundingReaders;
   /** The project repository and crawl service, for the two crawls a comparison reads. */
@@ -88,18 +103,35 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
 
         // The run's own project and its own domain: a crawl of another project
         // or of a competitor's site is refused before a page is described.
-        const result = await readCrawlGrounding(readers.crawls, {
+        const eligible = await readReviewableCrawl(readers.crawls, {
           crawlId,
           projectId: task.project.id,
           projectDomain: task.project.domain,
         });
-        if (!result.ok) return { ok: false, reason: result.reason };
+        if (!eligible.ok) return { ok: false, reason: eligible.reason };
+        const crawlGrounding = formatCrawlGrounding(eligible.crawl, eligible.pages);
+
+        // The two reviews of the project's own pages also get the fixed
+        // rules' findings over the same eligible crawl, appended after the
+        // crawl evidence. The edges come through the one bounded link read;
+        // if that read fails the crawl evidence stands alone and says so.
+        if (task.taskType !== "crawl-review" && task.taskType !== "on-page-review") {
+          return { ok: true, grounding: { text: crawlGrounding.text, summary: { ...crawlGrounding.summary }, source: CRAWL_SOURCE } };
+        }
+        let findings;
+        try {
+          const links = await readers.links.links.listLinks(eligible.crawl.id, FINDINGS_LINK_LIMIT);
+          const report = computeCrawlFindings({ crawl: eligible.crawl, pages: eligible.pages, links });
+          findings = formatCrawlFindingsGrounding(report, { read: links.length, cut: links.length >= FINDINGS_LINK_LIMIT });
+        } catch {
+          findings = unavailableCrawlFindingsGrounding();
+        }
 
         return {
           ok: true,
           grounding: {
-            text: result.grounding.text,
-            summary: { ...result.grounding.summary },
+            text: `${crawlGrounding.text}\n\n${findings.text}`,
+            summary: { ...crawlGrounding.summary, findings: findings.summary },
             source: CRAWL_SOURCE,
           },
         };
@@ -140,11 +172,29 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         const result = await readRunGrounding(readers.runs, { sourceRunId, projectId: task.project.id });
         if (!result.ok) return { ok: false, reason: result.reason };
 
+        // The upstream review was written over a crawl this product recorded
+        // when its own evidence summary names one. The findings recorded for
+        // that crawl (T3) are then read for the Director's own project — the
+        // same project the upstream run was just checked against — and
+        // appended after the review as observations beside an inference. A
+        // review written over anything else gets no second block.
+        const upstreamCrawlId = result.grounding.summary.upstreamEvidence?.crawlId;
+        if (typeof upstreamCrawlId !== "string") {
+          return {
+            ok: true,
+            grounding: {
+              text: result.grounding.text,
+              summary: { ...result.grounding.summary },
+              source: result.grounding.source,
+            },
+          };
+        }
+        const recorded = formatRecordedFindingsGrounding(upstreamCrawlId, await readers.crawlFindings(task.project.id, upstreamCrawlId));
         return {
           ok: true,
           grounding: {
-            text: result.grounding.text,
-            summary: { ...result.grounding.summary },
+            text: `${result.grounding.text}\n\n${recorded.text}`,
+            summary: { ...result.grounding.summary, recordedFindings: recorded.summary },
             source: result.grounding.source,
           },
         };

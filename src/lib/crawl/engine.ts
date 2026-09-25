@@ -19,6 +19,7 @@ import {
   extractDocument,
   isNofollow,
   metaForbidsFollowing,
+  metaForbidsIndexing,
   type ExtractedDocument,
 } from "./extract.ts";
 import { DOCUMENT_TYPES, fetchPage, type Fetch, type FetchOutcome } from "./fetcher.ts";
@@ -61,6 +62,13 @@ export type CrawledPage = {
   readonly metaDescriptionLength: number | null;
   readonly h1Count: number | null;
   readonly firstH1: string | null;
+  readonly h2Count: number | null;
+  readonly h3Count: number | null;
+  readonly imageCount: number | null;
+  readonly imagesWithoutAlt: number | null;
+  readonly xRobotsTag: string | null;
+  readonly robotsNoindex: boolean | null;
+  readonly robotsNofollow: boolean | null;
   readonly schemaTypes: readonly string[];
   readonly schemaBlocks: number;
   readonly schemaParseFailed: boolean;
@@ -155,6 +163,14 @@ function toPage(
       extracted?.metaDescription == null ? null : extracted.metaDescription.length,
     h1Count: extracted?.h1Count ?? null,
     firstH1: extracted?.firstH1 ?? null,
+    h2Count: extracted?.h2Count ?? null,
+    h3Count: extracted?.h3Count ?? null,
+    imageCount: extracted?.imageCount ?? null,
+    imagesWithoutAlt: extracted?.imagesWithoutAlt ?? null,
+    // Header and derived robots readings need a response; set below when one arrived.
+    xRobotsTag: null,
+    robotsNoindex: null,
+    robotsNofollow: null,
     schemaTypes: extracted?.schemaTypes ?? [],
     schemaBlocks: extracted?.schemaBlocks ?? 0,
     schemaParseFailed: extracted?.schemaParseFailed ?? false,
@@ -192,11 +208,19 @@ function toPage(
     canonicalResolved = resolved.ok ? resolved.url : null;
   }
 
+  // Both robots readings take the meta tag and the header together. A page
+  // with neither said nothing forbidding, which is a fact about the response;
+  // only a URL with no response at all stays unknown (null, above).
+  const robotsMeta = extracted?.robotsMeta ?? null;
+
   return {
     ...base,
     finalUrl: outcome.finalUrl,
     fetchState: outcome.state,
     httpStatus: outcome.status,
+    xRobotsTag: outcome.xRobotsTag,
+    robotsNoindex: metaForbidsIndexing(robotsMeta) || metaForbidsIndexing(outcome.xRobotsTag),
+    robotsNofollow: metaForbidsFollowing(robotsMeta) || metaForbidsFollowing(outcome.xRobotsTag),
     redirectHops: outcome.redirectChain.length,
     redirectChain: outcome.redirectChain,
     contentType: outcome.contentType,
@@ -344,11 +368,11 @@ export async function runCrawl(options: EngineOptions): Promise<CrawlResult> {
   let stopReason: CrawlStopReason = "completed";
   let startFailure: CrawlResult["startFailure"] = null;
 
-  const recordLink = (from: string, to: string, rel: string | null, isInternal: boolean): void => {
+  const recordLink = (from: string, to: string, rel: string | null, isInternal: boolean, anchorText: string): void => {
     const key = `${from}\u0000${to}`;
     if (linkKeys.has(key)) return;
     linkKeys.add(key);
-    links.push({ fromUrl: from, toUrl: to, rel, isInternal });
+    links.push({ fromUrl: from, toUrl: to, rel, isInternal, anchorText });
     // One distinct internal edge counts once on each end. Every source is a
     // fetched page, so the pages' outbound counts sum to the crawl's internal
     // edge count; a target that was never queued (a nofollow link) has an
@@ -398,13 +422,16 @@ export async function runCrawl(options: EngineOptions): Promise<CrawlResult> {
           fetchedAt: new Date().toISOString(),
         });
 
-        if (extracted !== null && !metaForbidsFollowing(extracted.robotsMeta)) {
+        // A nofollow directive in the response header is honoured exactly as
+        // one in the page's meta tag: no edge recorded, nothing queued.
+        const headerForbidsFollowing = outcome.ok && metaForbidsFollowing(outcome.xRobotsTag);
+        if (extracted !== null && !metaForbidsFollowing(extracted.robotsMeta) && !headerForbidsFollowing) {
           const base = extracted.baseHref ?? outcome.finalUrl ?? item.url;
           for (const link of extracted.links) {
             const resolved = normaliseUrl(link.href, base);
             if (!resolved.ok) continue;
             const internal = isWithinHostScope(resolved.parsed.hostname, hostScope);
-            recordLink(item.url, resolved.url, link.rel, internal);
+            recordLink(item.url, resolved.url, link.rel, internal, link.text);
             if (!internal || isNofollow(link.rel)) continue;
             if (known.has(resolved.url)) continue;
             if (item.depth + 1 > budget.maxDepth) continue;

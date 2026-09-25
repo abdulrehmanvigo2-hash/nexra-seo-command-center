@@ -161,6 +161,26 @@ export async function readCrawlGrounding(
   reader: CrawlGroundingReader,
   request: { readonly crawlId: string; readonly projectId: string; readonly projectDomain: string },
 ): Promise<CrawlGroundingResult> {
+  const eligible = await readReviewableCrawl(reader, request);
+  if (!eligible.ok) return eligible;
+  return { ok: true, grounding: formatCrawlGrounding(eligible.crawl, eligible.pages) };
+}
+
+export type ReviewableCrawlResult =
+  | { readonly ok: true; readonly crawl: Crawl; readonly pages: readonly CrawlPage[] }
+  | { readonly ok: false; readonly reason: CrawlGroundingRefusal };
+
+/**
+ * The checks every review of the project's own crawl makes, in order, before
+ * a page is read: the crawl exists, is the run's project's, is of the
+ * project's own site, and finished in a reviewable state. Callers that need
+ * the rows themselves (the deterministic findings) read through this, so no
+ * second path to a crawl's pages exists.
+ */
+export async function readReviewableCrawl(
+  reader: CrawlGroundingReader,
+  request: { readonly crawlId: string; readonly projectId: string; readonly projectDomain: string },
+): Promise<ReviewableCrawlResult> {
   const detail = await reader.getCrawl(request.crawlId, MAX_DESCRIBED_PAGES * 4);
   if (detail === null) return { ok: false, reason: "crawl-not-found" };
   if (detail.crawl.projectId !== request.projectId) {
@@ -175,8 +195,7 @@ export async function readCrawlGrounding(
   if (!REVIEWABLE_STATUSES.includes(detail.crawl.status)) {
     return { ok: false, reason: "crawl-not-reviewable" };
   }
-
-  return { ok: true, grounding: formatCrawlGrounding(detail.crawl, detail.pages) };
+  return { ok: true, crawl: detail.crawl, pages: detail.pages };
 }
 
 function crawlHeader(crawl: Crawl): string {
@@ -454,6 +473,7 @@ export const CRAWL_REVIEW_INSTRUCTIONS = [
   "URLs listed as discovered but not reached were NOT audited. You may say they exist and were not examined. Do not describe their contents, their health, or their issues.",
   "Do not state or estimate search volume, rankings, traffic, indexation status, or Core Web Vitals; none of it is in the evidence and none of it is knowable from a crawl.",
   "Do not describe the crawl as a full site audit or state site-wide totals. Say plainly that this covers only the pages listed.",
+  "Where a DETERMINISTIC CRAWL FINDINGS block follows the crawl evidence, each finding there is an observation by a fixed rule over the pages this crawl recorded: cite it by its rule id in square brackets and the exact URL or URLs it names, treat it as OBSERVED, and keep your own reading and next step as INFERENCE and RECOMMENDATION. State the coverage that block gives (pages fetched, link edges read, anything cut) and never extend a finding to pages it does not name, to indexation, rankings, Core Web Vitals, external links or site-wide totals. If the block says findings are unavailable or no rule fired, say so and infer nothing in their place.",
   "End with one line naming the single most useful thing to check or measure next.",
 ].join(" ");
 
@@ -475,6 +495,7 @@ export const ON_PAGE_REVIEW_INSTRUCTIONS = [
   "You cannot edit, publish, or change any page. Every recommendation is a proposed change for an operator to review and apply; do not describe it as done.",
   "Do not state or estimate search volume, rankings, click-through, traffic, indexation status, or Core Web Vitals; none of it is in the evidence.",
   "Do not describe this as a site-wide review or state site-wide totals. Say plainly that this covers only the pages listed. Internal link counts are within this crawl only and cannot show that a page is orphaned.",
+  "Where a DETERMINISTIC CRAWL FINDINGS block follows the crawl evidence, each finding there is an observation by a fixed rule over the pages this crawl recorded: cite it by its rule id in square brackets and the exact URL or URLs it names, treat it as OBSERVED, and keep your proposed change as RECOMMENDATION. State the coverage that block gives (pages fetched, link edges read, anything cut) and never extend a finding to pages it does not name, to indexation, rankings, click-through, Core Web Vitals, external links or site-wide totals. If the block says findings are unavailable or no rule fired, say so and infer nothing in their place.",
   "End with one line naming the single page whose on-page elements most need attention, and why.",
 ].join(" ");
 

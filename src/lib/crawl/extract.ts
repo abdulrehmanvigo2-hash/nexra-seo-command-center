@@ -59,9 +59,22 @@ const MAX_ROBOTS_META = 200;
 const MAX_HREF = 2_048;
 const MAX_REL = 200;
 
+/**
+ * How much of an anchor's text is kept. Anchor text is website-controlled
+ * prose that is stored and later quoted to an agent, so it is collapsed to
+ * one line and bounded like the other prose fields.
+ */
+export const MAX_ANCHOR_TEXT = 200;
+
 export type ExtractedLink = {
   readonly href: string;
   readonly rel: string | null;
+  /**
+   * The anchor's text, whitespace-collapsed and bounded. When the anchor has
+   * no text of its own, the alt text of the first image inside it stands in,
+   * which is how a search engine reads an image link. Empty when neither.
+   */
+  readonly text: string;
 };
 
 export type ExtractedDocument = {
@@ -74,6 +87,12 @@ export type ExtractedDocument = {
   readonly baseHref: string | null;
   readonly h1Count: number;
   readonly firstH1: string | null;
+  readonly h2Count: number;
+  readonly h3Count: number;
+  /** How many `<img>` elements the document carries. */
+  readonly imageCount: number;
+  /** `<img>` elements with no `alt` attribute at all. An empty alt is present, and deliberate. */
+  readonly imagesWithoutAlt: number;
   readonly schemaTypes: readonly string[];
   readonly schemaBlocks: number;
   readonly schemaParseFailed: boolean;
@@ -109,6 +128,26 @@ function textOf(element: Element): string {
 
 function clamp(value: string, limit: number): string {
   return value.length > limit ? value.slice(0, limit) : value;
+}
+
+/** The alt text of the first image inside an element, collapsed, or null when there is none with an alt. */
+function firstImageAlt(element: Element): string | null {
+  let found: string | null = null;
+  const walk = (node: ChildNode): void => {
+    if (found !== null) return;
+    if ("tagName" in node) {
+      if (node.tagName === "img") {
+        const alt = attribute(node, "alt");
+        if (alt !== null) {
+          found = alt.replace(/\s+/g, " ").trim();
+          return;
+        }
+      }
+      for (const child of node.childNodes) walk(child);
+    }
+  };
+  for (const child of element.childNodes) walk(child);
+  return found;
 }
 
 /**
@@ -169,6 +208,10 @@ export function extractDocument(html: string): ExtractedDocument {
   let baseHref: string | null = null;
   let h1Count = 0;
   let firstH1: string | null = null;
+  let h2Count = 0;
+  let h3Count = 0;
+  let imageCount = 0;
+  let imagesWithoutAlt = 0;
   let schemaBlocks = 0;
   let schemaParseFailed = false;
   const schemaTypes = new Set<string>();
@@ -214,13 +257,27 @@ export function extractDocument(html: string): ExtractedDocument {
           h1Count += 1;
           if (firstH1 === null) firstH1 = clamp(textOf(element), MAX_TITLE);
           break;
+        case "h2":
+          h2Count += 1;
+          break;
+        case "h3":
+          h3Count += 1;
+          break;
+        case "img":
+          imageCount += 1;
+          // Absent, not empty: alt="" is a published statement that the image
+          // is decorative, and only a missing attribute is counted here.
+          if (attribute(element, "alt") === null) imagesWithoutAlt += 1;
+          break;
         case "a": {
           const href = attribute(element, "href");
           if (href !== null && href.trim() !== "" && links.length < MAX_LINKS_PER_PAGE) {
             const rel = attribute(element, "rel");
+            const own = textOf(element);
             links.push({
               href: clamp(href.trim(), MAX_HREF),
               rel: rel === null ? null : clamp(rel, MAX_REL),
+              text: clamp(own !== "" ? own : (firstImageAlt(element) ?? ""), MAX_ANCHOR_TEXT),
             });
           }
           break;
@@ -257,6 +314,10 @@ export function extractDocument(html: string): ExtractedDocument {
     baseHref,
     h1Count,
     firstH1,
+    h2Count,
+    h3Count,
+    imageCount,
+    imagesWithoutAlt,
     schemaTypes: [...schemaTypes],
     schemaBlocks,
     schemaParseFailed,
@@ -269,9 +330,22 @@ export function isNofollow(rel: string | null): boolean {
   return rel !== null && rel.toLowerCase().split(/\s+/).includes("nofollow");
 }
 
-/** Whether a robots directive forbids following the page's links. */
+/**
+ * Whether a robots directive forbids following the page's links.
+ *
+ * The same grammar serves the robots meta tag and the `X-Robots-Tag` header:
+ * directives separated by commas or whitespace, so a header written for one
+ * crawler (`googlebot: noindex`) still reads its directive.
+ */
 export function metaForbidsFollowing(robotsMeta: string | null): boolean {
   if (robotsMeta === null) return false;
   const directives = robotsMeta.toLowerCase().split(/[\s,]+/);
   return directives.includes("nofollow") || directives.includes("none");
+}
+
+/** Whether a robots directive (meta or `X-Robots-Tag`) forbids indexing the page. Null is unknown, never noindex. */
+export function metaForbidsIndexing(robotsMeta: string | null): boolean {
+  if (robotsMeta === null) return false;
+  const directives = robotsMeta.toLowerCase().split(/[\s,]+/);
+  return directives.includes("noindex") || directives.includes("none");
 }

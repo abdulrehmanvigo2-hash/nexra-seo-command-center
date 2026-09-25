@@ -1614,7 +1614,7 @@ of the rival.
 
 | Observed | Derived | Never stored |
 |---|---|---|
-| final URL, HTTP status, redirect chain, robots meta, canonical href, title, meta description, H1, JSON-LD types, sitemap membership | crawl depth, internal link counts (within the crawl), canonical-is-self, length fields, robots.txt verdict | Google indexation, Core Web Vitals |
+| final URL, HTTP status, redirect chain, robots meta, X-Robots-Tag header, canonical href, title, meta description, H1, H2 and H3 counts, image count and images without alt, anchor text per link, JSON-LD types, sitemap membership | crawl depth, internal link counts (within the crawl), canonical-is-self, length fields, robots.txt verdict, robots noindex/nofollow (meta and header together) | Google indexation, Core Web Vitals |
 
 There is no column for indexation or vitals in any of the three tables. A
 crawler cannot observe either — a 200 means the page answered us, not that
@@ -1637,8 +1637,8 @@ normalisation, host classification and source-target deduplication that
 equals the crawl's internal edge count. A raw anchor is not a link: repeated
 hrefs, fragments, `mailto:` and `tel:` and `javascript:` anchors, hrefs that
 do not normalise, and links to other hosts never reach either count. A page
-whose robots meta says `nofollow` or `none` records no edges and counts zero
-on the outbound side. **Crawls completed before this definition took effect
+whose robots meta, or whose `X-Robots-Tag` response header (since T5), says
+`nofollow` or `none` records no edges and counts zero on the outbound side. **Crawls completed before this definition took effect
 stored the raw extracted anchor count in `internal_links_out`** — duplicates,
 non-URLs and external anchors included — so their page-level outbound figures
 read high, while their edge table and inbound counts were always as described
@@ -1733,6 +1733,114 @@ is built and once inside the lookup callback. Node's bundled `undici` would
 also work through a custom dispatcher, but no builtin module exposes it, so
 using it would mean taking a dependency for something the platform already
 does.
+
+### Deterministic crawl findings (T1–T5)
+
+`src/lib/crawl/findings` applies 32 fixed rules (rule version 2) to what one
+crawl recorded (`compute.ts`, `rules.ts`, `contract.ts`): titles, meta
+descriptions, H1s, canonicals, 4xx/5xx, redirect chains and loops, broken
+internal links (only when the target page was fetched with an error),
+robots.txt, robots-meta and X-Robots-Tag noindex, sitemap conflicts, deep
+pages, pages with no observed inbound link, JSON-LD, and — since T5 — an H3
+on a page with no H2, images with no alt attribute, internal links with no
+anchor text, and internal links with generic anchor text (a fixed list,
+`GENERIC_ANCHOR_TEXTS`). A null field is unknown and yields nothing; duplicates are found
+within one crawl; a finding carries a stable id, category, severity, the URLs
+it names, the exact observed values and one sentence, and the report carries
+coverage, true per-rule counts and fixed limitations (no site-wide totals, no
+indexation, no orphan claims, no external broken links, no vitals or
+rankings). The two page reviews receive a bounded block of these findings
+after the crawl evidence (`findings/grounding.ts`, T2).
+
+Since T3 the crawl service records the findings when an own-site crawl
+finishes in a reviewable state, through
+`nexra_crawl_findings_record` into `nexra_crawl_findings_reports` and
+`nexra_crawl_findings` (migration `20260928120000`), once per crawl and rule
+version; a competitor crawl, a failed crawl and a store that keeps no
+findings record nothing, and a recording failure is logged and never fails
+the crawl. `crawlService().getCrawlFindings(projectId, crawlId)` reads the
+newest recorded report for the project's crawl: `unavailable` when the store
+keeps no findings, `not-found` for a crawl that is not the project's,
+`not-recorded` (with the crawl) when nothing was recorded — a crawl made
+before findings were kept, still running or failed — and `recorded` with the
+report. The rows are immutable and go only with their crawl.
+
+T4 shows them. `GET /api/crawls/<id>/findings?project=<id>`
+(`src/app/api/crawls/[crawlId]/findings/route.ts`) is read-only and operators
+only: the operator is confirmed first, both ids are validated by shape
+(`findings/request.ts`), the read is rate-limited as a crawl read, and each
+service answer maps to a fixed code (503 `unavailable`, 404 `not-found`, 200
+`{ status: "not-recorded", crawl }` or `{ status: "recorded", crawl, report
+}`); an exception is logged by name and answered `failed`. The *Observed
+findings* section inside the crawl panel (`src/components/crawl/
+crawl-findings.tsx`) reads that endpoint for the crawl on screen and keeps
+every state apart: loading, not stored on this deployment, a failed read
+(never "no findings"), nothing recorded (worded by the crawl's own status), a
+report with no findings (worded as "not a clean result", naming what was not
+looked at) and a report. The presenter (`findings/present.ts`) groups by
+severity then rule in recorded order, shows the true per-rule count from the
+report header beside the rows on screen, says when a rule or the read was
+cut, shows an absent observed value as "—", and carries a provenance note:
+within this crawl, not site-wide; no indexation, ranking, traffic or vitals;
+not fixture data. The section offers no control — nothing fixes, dispatches
+or writes — and the Technical SEO screen still renders its modelled registry,
+labelled as such; mapping one onto the other remains a separate feature.
+
+### The Director reads the recorded findings (T6)
+
+The SEO Director's `priority-review` still takes one input, a source run id,
+checked against the Director's own project before anything is formatted.
+Since T6, when the upstream review's own evidence summary names a crawl —
+`crawl-review`, `on-page-review` and `answer-readiness-review` record one —
+the dispatch (`src/lib/agent-runs/task-grounding.ts`, `agent-run` case) reads
+the findings recorded for that crawl (T3) through
+`crawlService().getCrawlFindings(projectId, crawlId)` for the Director's
+project and appends them after the quoted review as a second block
+(`src/lib/crawl/findings/director-grounding.ts`): the crawl, when and under
+which rule version the findings were recorded, the coverage, the true count
+per rule, and each finding by rule id, severity, URLs, exact observed values,
+sentence and id — bounded exactly like the T2 block (at most ten per rule,
+under 16,000 bytes, a cut named, the counts always complete) and ending with
+the same limitations. Nothing is recomputed and the crawl itself is not
+re-read. Findings that are unavailable (no store), not recorded (a crawl from
+before T3, or one that never finished) or not the project's are one fixed note
+each that tells the Director to rank nothing on findings; a report with no
+findings says no rule fired and that this is not a clean bill of health. A
+review written over a Search Console report or a performance run gets no
+second block and reads nothing. The Director's evidence summary gains
+`recordedFindings` (status, crawl and report ids, rule version, counts, cuts,
+bytes). The instructions now ask for a BASIS on every item — OBSERVED when it
+rests on a recorded finding cited by rule id and URL, PROPOSED when it rests
+on the review's inference — say the recorded finding wins a disagreement, and
+forbid stating or estimating any ranking, traffic, click, revenue or vitals
+effect. The specialist reviews' prompts are unchanged.
+
+### More of what a crawl observes (T5)
+
+Migration `20260929120000_extend_crawl_page_signals.sql` adds nullable
+columns, and nothing else: on `nexra_crawl_pages`, `x_robots_tag` (observed:
+the response header as sent, collapsed, at most 200 characters),
+`robots_noindex` and `robots_nofollow` (derived: the robots meta and the
+header read together, true when either says the directive or `none`),
+`h2_count`, `h3_count`, `image_count` and `images_without_alt` (observed;
+an image with `alt=""` is decorative by the page's own statement and is not
+counted); on `nexra_crawl_links`, `anchor_text` (observed: the anchor's
+text, collapsed, at most 200 characters, an image link's alt standing in,
+empty when it has neither). Every column is null on a row written before
+the migration, on a URL that never answered, and — for the counts — on a
+non-HTML response; a URL never reached can carry none of them (constraint).
+The migration also lets `nexra_crawl_findings.category` be `images`. No
+grant, policy, trigger or function changes; RLS stays on with no policies.
+The crawler (`extract.ts`, `fetcher.ts`, `engine.ts`) records all of them
+on every fetch and honours an `X-Robots-Tag: nofollow` header exactly as it
+honours the meta tag: no edge recorded, nothing queued. Budgets, the address
+guard, robots.txt handling, the allow-list and the user agent are unchanged.
+**Deploy order:** the page and link inserts name the new columns, so the
+application built from T5 must be deployed only after this migration is
+applied to production; until then a crawl on that deployment would fail to
+save its pages. Applying it is a separate §6 approval, and it has been
+applied only to disposable local PostgreSQL 16 clusters (harness suites
+`signals` and `signals-upgrade`).
 
 ### Safety boundaries
 

@@ -37,6 +37,8 @@ export const MAX_REDIRECT_HOPS = 10;
  * declared limit; an unbounded one would fail the insert of the whole crawl.
  */
 const MAX_CONTENT_TYPE = 200;
+/** The stored bound of the `X-Robots-Tag` header, matching the page column. */
+const MAX_ROBOTS_TAG = 200;
 
 /** Media types a page fetch will read a body for. */
 export const HTML_TYPES: readonly string[] = ["text/html", "application/xhtml+xml"];
@@ -65,6 +67,12 @@ export type FetchOutcome =
       readonly redirectChain: readonly string[];
       readonly contentType: string | null;
       readonly contentBytes: number;
+      /**
+       * The `X-Robots-Tag` header as sent, whitespace-collapsed and bounded;
+       * null when the response carried none. Read off any response, HTML or
+       * not, since the header applies to the resource whatever its type.
+       */
+      readonly xRobotsTag: string | null;
       /** Present only for HTML; other types are recorded, never parsed. */
       readonly body: string | null;
       readonly state: Extract<CrawlFetchState, "fetched" | "http-error" | "non-html">;
@@ -245,6 +253,9 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
     const rawContentType = response.headers.get("content-type");
     const contentType =
       rawContentType === null ? null : rawContentType.slice(0, MAX_CONTENT_TYPE);
+    const rawRobotsTag = response.headers.get("x-robots-tag");
+    const xRobotsTag =
+      rawRobotsTag === null ? null : rawRobotsTag.replace(/\s+/g, " ").trim().slice(0, MAX_ROBOTS_TAG);
     const mediaType = (rawContentType ?? "").split(";")[0].trim().toLowerCase();
     // A response with no content-type at all is read when the caller accepts
     // text, since robots.txt is commonly served without one.
@@ -261,6 +272,7 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
         redirectChain,
         contentType,
         contentBytes: 0,
+        xRobotsTag,
         body: null,
         state: response.status >= 400 ? "http-error" : "non-html",
       };
@@ -278,6 +290,7 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
       redirectChain,
       contentType,
       contentBytes: read.bytes,
+      xRobotsTag,
       body: read.text,
       state: response.status >= 400 ? "http-error" : "fetched",
     };

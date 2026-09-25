@@ -127,6 +127,10 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // keeps its own runs in: one record, read by id, checked against the
         // Director's project before a word of it is formatted.
         runs: store,
+        // After the review, the findings recorded (T3) for the crawl that
+        // review was written over, read by the Director's own project and
+        // that crawl id through the crawl service; never recomputed.
+        crawlFindings: (projectId, crawlId) => crawlService().getCrawlFindings(projectId, crawlId),
         // The Project Manager's intake review reads the run's own project
         // record and an inventory of what the other three readers hold for
         // it — counts and states, through the same services, never contents.

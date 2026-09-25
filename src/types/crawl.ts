@@ -221,6 +221,27 @@ export type CrawlPage = {
   readonly h1Count: number | null;
   /** observed */
   readonly firstH1: string | null;
+  /** observed — how many h2 elements the page carries. Null on a page recorded before T5, or never read. */
+  readonly h2Count: number | null;
+  /** observed — how many h3 elements the page carries. Null as above. */
+  readonly h3Count: number | null;
+  /** observed — how many img elements the page carries. Null as above. */
+  readonly imageCount: number | null;
+  /**
+   * observed — img elements with no alt attribute at all. An empty alt is a
+   * deliberate marker for a decorative image and counts as present. Null as above.
+   */
+  readonly imagesWithoutAlt: number | null;
+  /** observed — the X-Robots-Tag response header as sent, or null when none was sent, no response arrived, or the page was recorded before T5. */
+  readonly xRobotsTag: string | null;
+  /**
+   * derived — this crawler's reading of the robots meta and the X-Robots-Tag
+   * header together: true when either says noindex or none. Null when no
+   * response arrived or the page was recorded before T5; never a default.
+   */
+  readonly robotsNoindex: boolean | null;
+  /** derived — as `robotsNoindex`, for nofollow or none. */
+  readonly robotsNofollow: boolean | null;
 
   /** observed — JSON-LD `@type` values found on the page. */
   readonly schemaTypes: readonly string[];
@@ -256,4 +277,11 @@ export type CrawlLink = {
   /** The `rel` attribute as written, or null. */
   readonly rel: string | null;
   readonly isInternal: boolean;
+  /**
+   * observed — the anchor's text, whitespace-collapsed and bounded; an image
+   * link's alt text stands in when the anchor has no text of its own, as a
+   * search engine reads it. Empty when the anchor carries neither; null on an
+   * edge recorded before T5.
+   */
+  readonly anchorText: string | null;
 };

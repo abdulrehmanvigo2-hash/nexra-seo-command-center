@@ -321,7 +321,8 @@ describe("what this checkpoint leaves alone", () => {
     const sql = readFileSync(join(root, "supabase/migrations/20260927120000_create_search_console_snapshots.sql"), "utf8").replace(/\r\n/g, "\n");
     assert.equal(createHash("sha256").update(sql, "utf8").digest("hex"), "d872aab5b94f53dd7ce31c1681d06fb41e063ac880962b6236ab4d0c494e7f13");
     const migrations = readdirSync(join(root, "supabase/migrations")).filter((f) => f.endsWith(".sql")).sort();
-    assert.equal(migrations.at(-1), "20260927120000_create_search_console_snapshots.sql");
+    // The snapshot store has exactly one migration; later checkpoints add migrations of their own.
+    assert.deepEqual(migrations.filter((f) => f.includes("search_console")), ["20260927120000_create_search_console_snapshots.sql"]);
   });
 
   test("no screen or component reaches the snapshot capture: only the process route does", () => {

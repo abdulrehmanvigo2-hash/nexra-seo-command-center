@@ -393,6 +393,59 @@ capture module and worker step are later checkpoints. Apply it after
 only to disposable local PostgreSQL 16 clusters; it has **not** been applied
 to production.
 
+## Crawl findings
+
+`20260928120000_create_crawl_findings.sql` adds `nexra_crawl_findings_reports`
+and `nexra_crawl_findings` (Technical SEO + On-Page SEO, checkpoint T3): what
+the deterministic findings rules (`src/lib/crawl/findings`) observed over one
+finished crawl of a project, recorded once when the crawl finishes. A report
+names its crawl and project, the rule version, the coverage the rules had
+(pages recorded, fetched, not fetched, not reached; link edges read and
+whether that read was cut), the true count per rule and the rules cut to the
+library's per-rule ceiling; under it, one row per finding holds the
+library's stable key, rule, category, severity, the URLs it names (at most
+25, with the true count), the exact observed values as JSON scalars (checked
+by the immutable validator `nexra_crawl_findings_scalars_valid`), one
+sentence and its position in the report's fixed order. Insert triggers bind a
+report to a finished, reviewable (`completed` or `partial`) crawl of its own
+project and a finding to its report's crawl and project, for any writer. The
+unique key `(crawl_id, rule_version)` makes a repeated or concurrent
+recording answer `exists`; a finding is unique per report and key. Guard
+triggers refuse every update and truncate, and every direct delete: rows go
+only with their crawl, through the cascade a crawl's own deletion runs. The
+one write is `public.nexra_crawl_findings_record(...)` (`security definer`,
+`search_path` pinned empty): every argument required, an unknown crawl
+answers `not-found`, another project's `wrong-project`, an unfinished or
+failed one `not-reviewable`, and any finding the constraints refuse rolls the
+whole recording back. No column exists for indexation, vitals, rankings,
+traffic or volume. `service_role` gets SELECT on both tables and EXECUTE on
+that function, nothing else; `anon` and `authenticated` get nothing. No
+existing object is changed, and the unprefixed crawl subsystem is not named.
+Apply it after `20260927120000`, then `NOTIFY pgrst, 'reload schema';`. It
+has been applied only to disposable local PostgreSQL 16 clusters; it has
+**not** been applied to production.
+
+## Crawl signals
+
+`20260929120000_extend_crawl_page_signals.sql` (Technical SEO + On-Page SEO,
+checkpoint T5) adds nullable columns and nothing else: on `nexra_crawl_pages`,
+`x_robots_tag`, `robots_noindex`, `robots_nofollow`, `h2_count`, `h3_count`,
+`image_count` and `images_without_alt`, each with a prefixed check (length at
+most 200, counts non-negative, images without alt at most the image count) and
+one constraint that a URL never reached (`budget-skipped`) carries none of
+them; on `nexra_crawl_links`, `anchor_text` (at most 200 characters; empty
+when the anchor had no text, null on an edge recorded before). It widens
+`nexra_crawl_findings.category` by exactly `images`, dropping and re-adding
+that one check constraint, which PostgreSQL validates over every existing row.
+No default, no backfill, no grant, policy, trigger or function change: a row
+written before it keeps every new column null, and null means "not recorded",
+never zero or false. `service_role`'s existing table-level privileges cover
+the new columns. Apply it after `20260928120000`, then
+`NOTIFY pgrst, 'reload schema';`. **The application built from T5 must be
+deployed only after this migration is applied**: its page and link inserts
+name the new columns. It has been applied only to disposable local PostgreSQL
+16 clusters; it has **not** been applied to production.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

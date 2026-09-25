@@ -3,6 +3,9 @@ import "server-only";
 import { readCrawlConfig } from "@/lib/crawl/config";
 import { unavailableCrawlStore } from "@/lib/crawl/contract";
 import { createCrawlService, type CrawlService } from "@/lib/crawl/service";
+import { unavailableCrawlFindingsStore } from "@/lib/crawl/findings/store-contract";
+import type { CrawlFindingsDatabase } from "@/lib/crawl/findings/supabase/schema";
+import { createSupabaseCrawlFindingsStore } from "@/lib/crawl/findings/supabase/store";
 import type { CrawlsDatabase } from "@/lib/crawl/supabase/schema";
 import { createSupabaseCrawlStore } from "@/lib/crawl/supabase/store";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
@@ -36,10 +39,19 @@ function configuredService(): CrawlService {
       )
     : unavailableCrawlStore;
 
+  // Findings are kept where crawls are: with the fixture roster there is no
+  // crawl to record them for, and the service records none.
+  const findings = storesInSupabase()
+    ? createSupabaseCrawlFindingsStore(
+        createSupabaseServerClient<CrawlFindingsDatabase>(readSupabaseServerConfig(process.env)),
+      )
+    : unavailableCrawlFindingsStore;
+
   return createCrawlService({
     store,
     projects: projectRepository,
     config: readCrawlConfig(process.env),
+    findings,
   });
 }
 
