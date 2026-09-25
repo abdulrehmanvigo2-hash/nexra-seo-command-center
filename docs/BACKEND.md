@@ -215,6 +215,87 @@ view, and always carries the caveats: two windows, not a trend; Search
 Console's average position, not a rank tracker; incomplete top rows; no
 query-to-page mapping and no cannibalisation conclusion. Nothing here writes.
 
+### Observed query inventory (M4; local only)
+
+M4 began with a gap audit of the Keyword Intelligence roadmap against
+`master` after M1. Overlap and cannibalization-candidate detection (P4c),
+Search Console evidence grounding for the two review agents (M1, P4b, P4c),
+stored history and movement over two windows (P4a, P4d) and the live Search
+Console panel were complete. What was missing was a project-level inventory
+of the queries Google reported, any structured intent label, any grouping,
+a query-to-page mapping beyond the overlaps, fixed opportunity rules and a
+live keyword surface. M4 delivers those as derived intelligence over the two
+M1 tables and adds no table: every input already sits in
+`nexra_search_console_snapshots` (each window's top 25 queries) and
+`nexra_search_console_query_pages` (each window's top 250 pairs), and an
+inventory recomputed on read from immutable rows is always the rows' truth.
+A persisted, operator-curated keyword entity and AI-assisted intent or topic
+classification were considered and deferred: neither is needed to show what
+Google reported, and both would present a model's or an operator's opinion
+beside observed figures.
+
+`src/lib/search-console/keywords/` holds the pure module. `inventory.ts`
+unions the top queries of every stored snapshot for the property the private
+mapping names now (the P4a property rule; rows under another property are
+set aside and counted) with the latest stored pair window (selected as P4c
+selects it, a possibly cut oldest window dropped): per query, the windows it
+was listed in with first and last window end, whether it is in the latest
+top rows, the latest window's figures — the snapshot row when the query is
+in the latest top rows, else the impression-weighted sum of its pairs, and
+the source is named — its page mapping from the pairs (`no-pairs`,
+`single-page` or P4c's `overlap` with the leading page, its share and the
+candidate flag), an intent hint, a lexical group and opportunity labels.
+Sorted by the latest window's impressions, then clicks, then query; counts
+are true counts. `intent.ts` gives a lexical hint from fixed word lists over
+the query's own words — informational, commercial, transactional,
+navigational (the brand: the host's registrable label and the name's words of
+four letters or more, minus generic business words such as "agency"), local,
+or `unclassified` when nothing matches — with the word that decided it,
+under the precedence brand, transactional, local, commercial, informational.
+It is derived, never observed, and every surface says so. `groups.ts` files
+each query under its most frequent non-function word within the inventory
+(ties to the alphabetically earlier word) and keeps groups of two or more: a
+lexical group shares a word, not necessarily a topic, and is labelled that
+way. `thresholds.ts` writes the opportunity rules once: *low CTR* reuses the
+P4a opportunity rule (at least 100 impressions, CTR at most 1%, position
+within 20); *position band* is an average position from 4 to 20 with at
+least 20 impressions; *no strong landing page* is an overlap whose leading
+page holds under 50% of the query's impressions; *cannibalization candidate
+for review* is P4c's label unchanged; a *page hub* is a page under at least
+five observed queries in the pairs. Every label names a candidate for a
+person's review, never a predicted win; there is no search volume,
+difficulty, cost per click, SERP feature, indexation or rank-tracker
+reading, and nothing is estimated in their place.
+
+`readKeywordIntelligence(projectId)` (`keywords/index.ts`, server-only)
+reads the project's snapshots and pairs through the two existing bounded
+store reads, resolves the property from the private mapping and the brand
+words from the stored project record, and answers null when the deployment
+keeps no snapshots. `GET /api/search-console/keywords?project=<id>&range=30d`
+mirrors the query-pages route's gates and answers
+`presentKeywordIntelligence` (`keywords/view.ts`): at most 50 rows, 10
+groups of 8 queries and 5 hubs with the true counts, no property or row id,
+and the fixed caveats; the states not kept, no snapshots, snapshots under a
+previous property and no queries are each named, never an empty inventory
+read as no demand. The *Observed query inventory* panel
+(`src/components/search-console/search-console-keywords.tsx`) sits beneath
+the Search Console panel on the Keywords tab for one stored project at a
+time, labelled *Observed · derived labels* and "not the modelled keyword
+universe above"; the modelled Keyword Intelligence views and their "Mock
+data" label are unchanged, and the panel offers no control.
+
+`search-query-review` alone gets a fourth grounding block after the pairs
+(`keywords/grounding.ts`): at most 25 rows, 10 groups, 5 hubs, under 8,000
+bytes with a truncation note, ending with its own limits; no inventory, a
+deployment that keeps no snapshots or a failed read adds no block and never
+fails the run, and `performance-review` never reads it. The instructions
+tell the agent that an intent hint is a lexical suggestion it may confirm or
+overturn in its INFERENCE and must never cite as OBSERVED, that a group
+shares a word, that an opportunity label is a candidate, that no page owns
+a query, and to infer nothing when no block follows. The run's evidence
+summary gains `keywords` (status, window ends, counts, cuts, bytes). No
+migration, no worker, cron, credential or environment change.
+
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
