@@ -3,11 +3,12 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Milestone M3 (finding triage and the observed Technical section), local
-development. C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d) and M2 are complete, merged
-and deployed; M2 is production verified on crawl `3398ff1a…`, and the On-Page output bound
-(PR #13, `6760cfc`) is deployed. The P4c first live query × page capture and one On-Page review
-over M2 evidence are pending operator runs. M3 is implemented and verified locally only (see §0).**
+**Current stage: Milestone M4 (observed keyword intelligence), local development. C1–C6 (with
+D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2 and M3 are complete, merged and deployed; M2 is
+production verified on crawl `3398ff1a…`, the On-Page output bound (PR #13, `6760cfc`) is deployed,
+and M3 (PR #14, `db7afdb`, migration `20261002120000` applied and recorded) is deployed with its
+browser verification pending. The P4c first live query × page capture is pending the next scheduled
+worker run. M4 is implemented and verified locally only (see §0).**
 
 ---
 
@@ -99,29 +100,35 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone M3 — finding triage and the observed section on the Technical SEO
-screen, implemented and verified locally on branch `claude/m3-gap-completion` (from `master`
-`6760cfc`, the On-Page output-bound merge). Nothing is pushed, no PR is open, nothing is deployed,
-and the M3 migration `20261002120000_create_crawl_finding_triage.sql` has **not** been applied to
-production. Each further M3 step (push, PR, merge, the production migration) starts only with
-explicit user approval.
+**Current work:** Milestone M4 — observed keyword intelligence, implemented and verified locally
+on branch `claude/m4-keyword-intelligence-gap` (from `master` `db7afdb`, the M3 merge). Nothing is
+pushed, no PR is open, nothing is deployed. M4 adds **no migration**. Each further M4 step (push,
+PR, merge) starts only with explicit user approval.
 
-**M3 (local only):** a gap audit found the registry (T1/T5/M2), persistence (T3), the live read
-path and panel (T4), the findings-grounded page reviews (T2, superseded: they recompute the same
-rules) and the Director hand-off (T6) complete, prioritisation covered by severity, category and
-counts, and two gaps: operator triage and a live Technical screen. One additive migration adds
-`nexra_crawl_finding_triage` — one row per project and finding key with `open` / `acknowledged` /
-`resolved` / `ignored`, a note of at most 500 characters, who and when, and the exact finding,
-report and crawl it was last made on; written only by `nexra_crawl_finding_triage_set`
-(`security definer`, advisory lock per key); binding checked on insert and update; identity
-immutable; no direct delete; the findings tables untouched. `GET /api/crawls/latest-findings` and
-`POST /api/crawls/<id>/findings/triage`; the crawl service's `getLatestCrawlFindings` and
-`setFindingTriage`. The Technical SEO page mounts *Observed findings* once above its modelled views,
-with its own stored-project selector, every state kept apart, the 50 most severe findings with true
-totals, decision counts, and one control that records a decision worded as the operator's, never as
-a change to the page. Cross-crawl finding history (appeared / persisted / disappeared) is deferred
-to a later milestone. Harness suites `triage` (84 assertions) and `triage-races` (R1–R3).
-**Deploy order:** the migration must be applied to production before this code is deployed.
+**M4 (local only):** a gap audit found overlap and cannibalization-candidate detection (P4c), Search
+Console grounding (M1, P4b, P4c), stored history and movement (P4a, P4d) and the live panel complete;
+missing were a project-level observed query inventory, structured intent labels, grouping, a
+query-to-page mapping beyond overlaps, fixed opportunity rules and a live keyword surface. All are
+delivered as derived intelligence recomputed on read from `nexra_search_console_snapshots` and
+`nexra_search_console_query_pages`; no new table, no paid API, no SERP scraping, no search volume,
+difficulty, cost per click or rank tracking. `src/lib/search-console/keywords/`: the inventory
+(union of every stored snapshot's top queries and the latest pair window, per the P4a property rule
+and the P4c window selection), lexical intent hints (fixed word lists, the deciding word returned,
+brand from the host label and the project name minus generic business words; "unclassified" when
+nothing matches), lexical groups (most frequent non-function word; "a shared word, not a topic"),
+page mapping (`no-pairs`, `single-page`, P4c `overlap` with leading page and share), opportunity
+labels (*low CTR* = the P4a rule; *position band* 4–20 with ≥ 20 impressions; *no strong landing
+page* = leading share under 50%; *cannibalization candidate* = P4c), page hubs (≥ 5 observed
+queries). `GET /api/search-console/keywords`; the *Observed query inventory* panel beneath the
+Search Console panel on the Keywords tab, labelled *Observed · derived labels*; a fourth grounding
+block (≤ 8,000 bytes) for `search-query-review` only, with instructions that an intent hint is a
+lexical suggestion never to be cited as OBSERVED and an opportunity label is a candidate, never a
+predicted gain. A persisted operator-curated keyword entity and AI-assisted intent or topic
+classification are deferred.
+
+**M3 (merged, deployed):** PR #14 merged as `db7afdb`; migration `20261002120000` applied and
+recorded; deployment `dpl_4bSxM9oBQHTA4auwToyRVRd1cR1v` READY; the triage table holds 0 rows;
+browser verification of the *Observed findings* section is pending.
 
 **M2 (merged, deployed, production verified):** PR #12 merged as `3b74d99`; migration
 `20261001120000` applied and recorded; deployment `dpl_HWMCwJTSWtJdwYAgVLtuMez6D8T7`; the fresh
@@ -615,13 +622,14 @@ foundation, Search Console) are complete. Current work follows the content workf
 | M1 / P4a–P4b, P4d | Stored history comparison, agent grounding, history API and panel section | Complete, merged (`fc2066d`), deployed |
 | M1 / P4c | Query × page Search Console intelligence | Complete, merged (`315323b`), migration applied and recorded, deployed; first live capture verification pending |
 | M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Complete, merged (`3b74d99`), migration applied and recorded, deployed, production verified; On-Page output bound merged (`6760cfc`) and deployed |
-| M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Implemented and verified locally; local commits; not pushed; migration not applied to production |
+| M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Complete, merged (`db7afdb`), migration applied and recorded, deployed; browser verification pending |
+| M4 | Observed keyword intelligence: query inventory, lexical intent hints and groups, page mapping, fixed opportunity rules, Keywords panel, agent grounding | Implemented and verified locally; local commits; not pushed; no migration |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M3 on its feature
-branch; pushing it, a PR, merge and the production migration start only with explicit approval.
-Work beyond M3 (cross-crawl finding history is the noted candidate) is undecided and is not planned
-here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M4 on its feature
+branch; pushing it, a PR and merge start only with explicit approval. Work beyond M4 (cross-crawl
+finding history and a curated keyword entity are the noted candidates) is undecided and is not
+planned here.
 
 ## 15. Definition of Done
 
