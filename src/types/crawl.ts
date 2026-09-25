@@ -243,6 +243,36 @@ export type CrawlPage = {
   /** derived — as `robotsNoindex`, for nofollow or none. */
   readonly robotsNofollow: boolean | null;
 
+  /**
+   * observed (M2) — whitespace-separated words in the fetched HTML's visible
+   * text: everything outside script, style, template and noscript elements.
+   * A count over the markup as served, not a rendered page and not a measure
+   * of quality. Null on a page recorded before M2, never fetched, or not HTML.
+   */
+  readonly wordCount: number | null;
+  /** observed (M2) — the `lang` attribute of the html element as written (empty when written empty). Null when absent, or as above. */
+  readonly htmlLang: string | null;
+  /** observed (M2) — how many `<link rel="alternate" hreflang>` elements the page carries. Null as above. */
+  readonly hreflangCount: number | null;
+  /** observed (M2) — of those, how many have an empty or ill-formed hreflang value or no href. Null as above. */
+  readonly hreflangMalformed: number | null;
+  /** observed (M2) — how many `<meta property="og:…">` elements the page carries. Null as above. */
+  readonly ogTagCount: number | null;
+  /** observed (M2) — the first `og:title` content, collapsed and bounded. Null when the page declares none, or as above. */
+  readonly ogTitle: string | null;
+  /** observed (M2) — the first `og:image` content as written, bounded. Null when none, or as above. */
+  readonly ogImage: string | null;
+  /** observed (M2) — the first `twitter:card` content, collapsed and bounded. Null when none, or as above. */
+  readonly twitterCard: string | null;
+  /**
+   * observed (M2) — milliseconds this server waited for the final hop, from
+   * sending the request to reading the whole body (or the headers, for a body
+   * it did not read). Our connection to the origin, from one place at one
+   * moment: not a user's experience and not a Core Web Vital. Null when no
+   * response arrived, or on a page recorded before M2.
+   */
+  readonly responseMs: number | null;
+
   /** observed — JSON-LD `@type` values found on the page. */
   readonly schemaTypes: readonly string[];
   /** observed — how many `application/ld+json` blocks the page carries. */

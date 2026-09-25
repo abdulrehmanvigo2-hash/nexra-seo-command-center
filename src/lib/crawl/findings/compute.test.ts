@@ -68,6 +68,7 @@ function page(path: string, overrides: Partial<CrawlPage> = {}): CrawlPage {
     h1Count: 1,
     firstH1: "Heading",
     h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
+  wordCount: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null,
     schemaTypes: ["WebPage"],
     schemaBlocks: 1,
     schemaParseFailed: false,

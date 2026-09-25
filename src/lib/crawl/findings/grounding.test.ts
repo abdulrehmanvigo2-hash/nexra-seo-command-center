@@ -51,7 +51,7 @@ function page(path: string, overrides: Partial<CrawlPage> = {}): CrawlPage {
     id: `page-${n}`, crawlId: CRAWL.id, url, finalUrl: url, fetchState: "fetched", httpStatus: 200, redirectHops: 0, redirectChain: [],
     contentType: "text/html", contentBytes: 1000, robotsMeta: null, robotsTxtAllowed: true, canonicalHref: url, canonicalResolved: url, canonicalIsSelf: true,
     title: `Title for ${path} that is long enough to pass`, titleLength: 40, metaDescription: `Description for ${path}`, metaDescriptionLength: 30,
-    h1Count: 1, firstH1: "H1", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, schemaTypes: ["WebPage"], schemaBlocks: 1, schemaParseFailed: false, inSitemap: null, depth: path === "/" ? 0 : 1,
+    h1Count: 1, firstH1: "H1", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, wordCount: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null, schemaTypes: ["WebPage"], schemaBlocks: 1, schemaParseFailed: false, inSitemap: null, depth: path === "/" ? 0 : 1,
     internalLinksIn: path === "/" ? 0 : 1, internalLinksOut: 1, fetchedAt: "2026-09-20T10:00:01.000Z", errorCode: null, ...overrides,
   };
 }

@@ -26,9 +26,12 @@ const CAPTURE = read("src/lib/search-console/snapshots/capture.ts");
 const VERCEL = read("vercel.json");
 
 describe("the P4c migration", () => {
-  test("is the newest migration, additive, prefixed, and unchanged from the reviewed file", () => {
+  test("is the newest Search Console migration, additive, prefixed, and unchanged from the reviewed file", () => {
     const migrations = readdirSync(new URL("supabase/migrations", root)).filter((f) => f.endsWith(".sql")).sort();
-    assert.equal(migrations.at(-1), MIGRATION_FILE);
+    // Newest of the Search Console migrations; the M2 crawl migration (20261001) follows it.
+    const at = migrations.indexOf(MIGRATION_FILE);
+    assert.ok(at > 0 && migrations[at - 1] === "20260929120000_extend_crawl_page_signals.sql");
+    assert.ok(migrations.slice(at + 1).every((f) => !f.includes("search_console")));
     assert.ok(MIGRATION.endsWith("\n") && !/\r/.test(MIGRATION));
     assert.equal(/\b(drop |delete from|update public\.|truncate public\.)/i.test(SQL), false, "creates only");
     assert.deepEqual([...SQL.matchAll(/alter table ([^\n]+)/g)].map((m) => m[1]), ["public.nexra_search_console_query_pages enable row level security;"], "the one alter is this table's RLS");

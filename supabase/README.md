@@ -471,6 +471,27 @@ deployed only after this migration is applied**: its page and link inserts
 name the new columns. It has been applied only to disposable local PostgreSQL
 16 clusters; it has **not** been applied to production.
 
+## Crawl content signals
+
+`20261001120000_extend_crawl_page_content_signals.sql` (milestone M2) adds
+nullable columns and nothing else: on `nexra_crawl_pages`, `word_count`,
+`html_lang`, `hreflang_count`, `hreflang_malformed`, `og_tag_count`,
+`og_title`, `og_image`, `twitter_card` and `response_ms`, each with a
+prefixed check (counts and milliseconds non-negative; lang and twitter card at
+most 64 characters, og:title 1,000, og:image 2,048; malformed alternates at
+most the alternate count) and one constraint that a URL never reached
+(`budget-skipped`) carries none of them. It widens
+`nexra_crawl_findings.category` by exactly `content`, dropping and re-adding
+that one check constraint, which PostgreSQL validates over every existing
+row. No default, no backfill, no grant, policy, trigger or function change: a
+row written before it keeps every new column null, and null means "not
+recorded", never zero or false. `service_role`'s existing table-level
+privileges cover the new columns. Apply it after `20260930120000`, then
+`NOTIFY pgrst, 'reload schema';`. **The application built from M2 must be
+deployed only after this migration is applied**: its page insert names the
+new columns. It has been applied only to disposable local PostgreSQL 16
+clusters; it has **not** been applied to production.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

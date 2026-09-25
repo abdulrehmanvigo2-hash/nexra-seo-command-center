@@ -75,6 +75,13 @@ export type FetchOutcome =
       readonly xRobotsTag: string | null;
       /** Present only for HTML; other types are recorded, never parsed. */
       readonly body: string | null;
+      /**
+       * Whole milliseconds this server waited on the final hop: from sending
+       * the request to reading the whole body, or the headers when the body
+       * was not read. One connection from one place at one moment — never a
+       * user's experience and never a Core Web Vital.
+       */
+      readonly responseMs: number;
       readonly state: Extract<CrawlFetchState, "fetched" | "http-error" | "non-html">;
     }
   | {
@@ -210,6 +217,8 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const sentAt = performance.now();
+    const elapsedMs = () => Math.max(0, Math.round(performance.now() - sentAt));
     let response: Response;
     try {
       response = await send(
@@ -274,6 +283,7 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
         contentBytes: 0,
         xRobotsTag,
         body: null,
+        responseMs: elapsedMs(),
         state: response.status >= 400 ? "http-error" : "non-html",
       };
     }
@@ -292,6 +302,7 @@ export async function fetchPage(url: string, options: FetcherOptions): Promise<F
       contentBytes: read.bytes,
       xRobotsTag,
       body: read.text,
+      responseMs: elapsedMs(),
       state: response.status >= 400 ? "http-error" : "fetched",
     };
   }

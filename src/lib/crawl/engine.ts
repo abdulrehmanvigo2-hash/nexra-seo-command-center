@@ -69,6 +69,15 @@ export type CrawledPage = {
   readonly xRobotsTag: string | null;
   readonly robotsNoindex: boolean | null;
   readonly robotsNofollow: boolean | null;
+  readonly wordCount: number | null;
+  readonly htmlLang: string | null;
+  readonly hreflangCount: number | null;
+  readonly hreflangMalformed: number | null;
+  readonly ogTagCount: number | null;
+  readonly ogTitle: string | null;
+  readonly ogImage: string | null;
+  readonly twitterCard: string | null;
+  readonly responseMs: number | null;
   readonly schemaTypes: readonly string[];
   readonly schemaBlocks: number;
   readonly schemaParseFailed: boolean;
@@ -169,6 +178,17 @@ function toPage(
     imagesWithoutAlt: extracted?.imagesWithoutAlt ?? null,
     // Header and derived robots readings need a response; set below when one arrived.
     xRobotsTag: null,
+    // M2 content signals: read off the parsed HTML alone, so a URL that never
+    // answered, or answered with something other than HTML, keeps them null.
+    wordCount: extracted?.wordCount ?? null,
+    htmlLang: extracted?.htmlLang ?? null,
+    hreflangCount: extracted?.hreflangCount ?? null,
+    hreflangMalformed: extracted?.hreflangMalformed ?? null,
+    ogTagCount: extracted?.ogTagCount ?? null,
+    ogTitle: extracted?.ogTitle ?? null,
+    ogImage: extracted?.ogImage ?? null,
+    twitterCard: extracted?.twitterCard ?? null,
+    responseMs: null,
     robotsNoindex: null,
     robotsNofollow: null,
     schemaTypes: extracted?.schemaTypes ?? [],
@@ -219,6 +239,8 @@ function toPage(
     fetchState: outcome.state,
     httpStatus: outcome.status,
     xRobotsTag: outcome.xRobotsTag,
+    // Timing is a property of the response, HTML or not.
+    responseMs: outcome.responseMs,
     robotsNoindex: metaForbidsIndexing(robotsMeta) || metaForbidsIndexing(outcome.xRobotsTag),
     robotsNofollow: metaForbidsFollowing(robotsMeta) || metaForbidsFollowing(outcome.xRobotsTag),
     redirectHops: outcome.redirectChain.length,

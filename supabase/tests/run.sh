@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots, T3 crawl findings, T5 crawl signals).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -28,9 +28,10 @@ SEED="$REPO/supabase/seed.sql"
 C6_MIGRATION="$MIGRATIONS/20260925120000_create_article_publication_proposals.sql"
 D3_MIGRATION="$MIGRATIONS/20260926120000_publication_proposals_cross_table_slug_lock.sql"
 T5_MIGRATION="$MIGRATIONS/20260929120000_extend_crawl_page_signals.sql"
+M2_MIGRATION="$MIGRATIONS/20261001120000_extend_crawl_page_content_signals.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=108 [signals]=36 [signals-upgrade]=7)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=108 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -410,7 +411,19 @@ suite_signals_upgrade() {
   run_sql_suite signals-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/findings/setup.sql" "$HERE/signals/upgrade-before.sql" "$T5_MIGRATION" "$HERE/signals/upgrade-after.sql"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade)
+# Crawl content signals (M2): the added columns, their constraints, privileges, the findings category set, and T5 untouched.
+suite_content() {
+  fresh_db
+  run_sql_suite content "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/findings/setup.sql" "$HERE/content/setup.sql" "$HERE/content/tests.sql"
+}
+
+# The M2 migration applied over rows written before it (through M1 P4c): nothing lost, every new column null, new writes work.
+suite_content_upgrade() {
+  fresh_db "$M2_MIGRATION"
+  run_sql_suite content-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/findings/setup.sql" "$HERE/content/upgrade-before.sql" "$M2_MIGRATION" "$HERE/content/upgrade-after.sql"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -422,6 +435,7 @@ for s in "${SUITES[@]}"; do
     gsc-pairs) suite_gsc_pairs ;; gsc-pairs-races) suite_gsc_pairs_races ;;
     findings) suite_findings ;; findings-races) suite_findings_races ;;
     signals) suite_signals ;; signals-upgrade) suite_signals_upgrade ;;
+    content) suite_content ;; content-upgrade) suite_content_upgrade ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

@@ -42,7 +42,7 @@ const page = (path: string, overrides: Partial<CrawlPage> = {}): CrawlPage => ({
   id: path, crawlId: CRAWL.id, url: `https://nexraagency.com${path}`, finalUrl: `https://nexraagency.com${path}`, fetchState: "fetched", httpStatus: 200,
   redirectHops: 0, redirectChain: [], contentType: "text/html", contentBytes: 100, robotsMeta: null, robotsTxtAllowed: true,
   canonicalHref: null, canonicalResolved: null, canonicalIsSelf: null, title: `A long enough title for the ${path} page here`, titleLength: 38,
-  metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, schemaTypes: [], schemaBlocks: 1, schemaParseFailed: false,
+  metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, wordCount: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null, schemaTypes: [], schemaBlocks: 1, schemaParseFailed: false,
   inSitemap: null, depth: path === "/" ? 0 : 1, internalLinksIn: path === "/" ? 0 : 1, internalLinksOut: 1, fetchedAt: null, errorCode: null, ...overrides,
 });
 
