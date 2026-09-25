@@ -393,6 +393,31 @@ capture module and worker step are later checkpoints. Apply it after
 only to disposable local PostgreSQL 16 clusters; it has **not** been applied
 to production.
 
+## Search Console query × page rows
+
+`20260930120000_create_search_console_query_pages.sql` adds
+`nexra_search_console_query_pages` (M1, P4c): one immutable row per project,
+property, 30-day window end, query and page, holding only the four metrics
+Google reported for that pair. The same property format, range, window-length,
+source and fetched-before-captured checks as the snapshot table; query and page
+1–2,048 characters, the page an absolute http(s) URL; clicks ≥ 0, impressions
+> 0, clicks ≤ impressions, CTR in [0, 1], position ≥ 0. Guard triggers refuse
+every update, delete and truncate. The one write is
+`public.nexra_search_console_query_pages_record(text, text, text, date, date, jsonb, timestamptz)`
+(`security definer`, `search_path` pinned empty): every argument required, the
+list 1–250 pairs checked by the immutable validator
+`nexra_search_console_pairs_valid` (exactly query/page/clicks/impressions/ctr/position,
+no repeated pair), the window ended before today, an unknown project answers
+`not-found`; it takes a transaction advisory lock on the project, property,
+range and window end, answers `exists` with the count when the window already
+holds rows (nothing written, so two answers minutes apart never merge), and
+otherwise inserts every pair in one statement and answers `created` with the
+count. At most 250 rows per project per property per day. `service_role` gets
+SELECT on the table and EXECUTE on that function, nothing else; RLS on with no
+policies; no existing object is changed. Apply it after `20260929120000`, then
+`NOTIFY pgrst, 'reload schema';`. It has been applied only to disposable local
+PostgreSQL 16 clusters; it has **not** been applied to production.
+
 ## Crawl findings
 
 `20260928120000_create_crawl_findings.sql` adds `nexra_crawl_findings_reports`

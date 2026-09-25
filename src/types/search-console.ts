@@ -36,6 +36,17 @@ export type SearchPerformanceRow = SearchPerformance & {
   readonly key: string;
 };
 
+/**
+ * One (query, page) pair Google reported over the window, with the pair's own
+ * performance (milestone M1, P4c). Search Console omits anonymised queries
+ * from dimensioned rows and the request is capped, so a set of these is
+ * never the property's complete demand.
+ */
+export type SearchQueryPageRow = SearchPerformance & {
+  readonly query: string;
+  readonly page: string;
+};
+
 /** Why a connected report is incomplete. */
 export type SearchConsolePartial =
   /** The previous window reaches past the 16 months Search Console keeps. */

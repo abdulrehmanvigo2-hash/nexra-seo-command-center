@@ -3,10 +3,9 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Stage 5 (publication) of the content workflow. Milestones A, B, C1, C2, C3 and C5
-and C6 (with D3) are complete; C4 is implemented and deployed, with new-parser live verification
-pending. C6 is merged, its migrations are applied to production, it is deployed and it is
-production verified. Work beyond C6 is undecided (see §0).**
+**Current stage: Milestone M1 (Search Console persistence), Phase 4. C1–C6 (with D3), T3–T6, M1
+CP1a–CP1c, P4a, P4b and P4d are complete, merged and deployed. P4c is implemented and verified
+locally only (see §0).**
 
 ---
 
@@ -98,13 +97,30 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone M1 — Search Console snapshot persistence, Checkpoints 1a (database),
-1b (capture module) and 1c (worker step), implemented and verified locally on branch
-`claude/m1-cp1a-search-console-snapshots` (from `master` `954783e`); CP1a and CP1b are pushed to
-that branch (`52273fa`), CP1c is a local commit; nothing is merged or applied to production. C6 is complete (merged as
-`f28cd35`, migrations applied, deployed as `dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, production
-verified; see *C6 release* below). Each further M1 step (pushing CP1c, a PR, merge, the production
-migration) starts only with explicit user approval.
+**Current work:** Milestone M1 Phase 4 — P4c, query × page Search Console intelligence, implemented
+and verified locally on branch `claude/m1-p4c-query-page-intelligence` (from `master` `fc2066d`,
+the P4d merge). Three local commits (storage and capture; intelligence, grounding and read route;
+UI). Nothing is pushed, no PR is open, nothing is deployed, and the P4c migration
+`20260930120000_create_search_console_query_pages.sql` has **not** been applied to production.
+Earlier M1 work (CP1a–CP1c, P4a, P4b, P4d) and the T3–T6 Technical SEO work are merged and
+deployed (`master` `fc2066d`, deployment `dpl_GWMMCzCn8xRzdMPdzv8teHefVMC7`). Each further P4c step
+(push, PR, merge, the production migration) starts only with explicit user approval.
+
+**M1 P4c (local only):** one additive migration, `nexra_search_console_query_pages` — one immutable
+row per project, property, 30-day window end, query and page with only clicks, impressions, CTR and
+position; at most 250 pairs per capture, written as one set by
+`nexra_search_console_query_pages_record` (`security definer`, advisory lock per window, `exists`
+never extends a set); RLS on, no policies, `service_role` SELECT and EXECUTE only. The capture makes
+one extra real Search Console request (`dimensions: ["query", "page"]`, `rowLimit` 250) strictly
+after each connected snapshot write, inside the project's remaining budget; its outcome sits beside
+the snapshot's and never changes it; worker budgets, cron and credentials are unchanged. Pure
+intelligence with documented thresholds (overlap: a query on ≥ 2 pages; candidate: ≥ 2 pages with
+≥ 20 impressions within 5 places; change: ≥ 7-day gap, ≥ 20 impressions); a third grounding block
+for `search-query-review` and `performance-review` only when pair evidence exists;
+`GET /api/search-console/query-pages`; the *Query-to-page overlap* panel section. Wording is
+"potential query overlap" and "cannibalization candidate for review"; nothing claims a confirmed
+cannibalisation, a ranking, a search volume, a difficulty, a SERP feature, an indexation state, a
+cause or an owned query. Harness suites `gsc-pairs` (94 assertions) and `gsc-pairs-races` (P1–P3).
 
 **M1 CP1a (local only):** migration `20260927120000_create_search_console_snapshots.sql` —
 `nexra_search_console_snapshots`, one immutable row per project, property and 30-day window end
@@ -568,12 +584,14 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Complete, merged (`f28cd35`), migrations applied, deployed, production verified |
 | M1 / CP1a | Search Console snapshot persistence: database | Implemented and verified locally; not pushed; not applied to production |
 | M1 / CP1b | Search Console snapshot persistence: capture module | Implemented and verified locally; pushed to the feature branch; not merged |
-| M1 / CP1c | Search Console snapshot persistence: worker step | Implemented and verified locally; not pushed; migration not applied to production |
+| M1 / CP1c | Search Console snapshot persistence: worker step | Complete, merged, deployed |
+| M1 / P4a–P4b, P4d | Stored history comparison, agent grounding, history API and panel section | Complete, merged (`fc2066d`), deployed |
+| M1 / P4c | Query × page Search Console intelligence | Implemented and verified locally; three local commits; not pushed; migration not applied to production |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M1 — Search Console
-snapshot persistence, CP1a–CP1c on the feature branch; pushing CP1c, a PR, merge and the
-production migration start only with explicit approval. Work beyond M1 is undecided and is not planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M1 Phase 4 — P4c on
+its feature branch; pushing it, a PR, merge and the production migration start only with explicit
+approval. Work beyond M1 is undecided and is not planned here.
 
 ## 15. Definition of Done
 

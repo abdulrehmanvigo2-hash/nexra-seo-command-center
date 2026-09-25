@@ -37,11 +37,13 @@ const QUEUE_OK: Extract<ProcessQueueResult, { ok: true }> = {
 
 const WINDOW = { rangeId: "30d", startDate: "2026-08-23", endDate: "2026-09-21", days: 30 } as const;
 
-const batchOf = (entries: SnapshotCaptureBatch["entries"], stoppedBy: SnapshotCaptureBatch["stoppedBy"] = "complete"): SnapshotCaptureBatch => ({
+type EntryFixture = Omit<SnapshotCaptureBatch["entries"][number], "pairs"> & { pairs?: SnapshotCaptureBatch["entries"][number]["pairs"] };
+
+const batchOf = (fixtures: readonly EntryFixture[], stoppedBy: SnapshotCaptureBatch["stoppedBy"] = "complete"): SnapshotCaptureBatch => ({
   rangeId: "30d",
   window: WINDOW,
-  entries,
-  attempted: entries.filter((e) => e.outcome.status !== "not-connected").length,
+  entries: fixtures.map((entry) => ({ ...entry, pairs: entry.pairs ?? { status: "skipped", reason: "snapshot-not-connected" } })),
+  attempted: fixtures.filter((e) => e.outcome.status !== "not-connected").length,
   stoppedBy,
   durationMs: 10,
 });
@@ -49,6 +51,7 @@ const batchOf = (entries: SnapshotCaptureBatch["entries"], stoppedBy: SnapshotCa
 const CREATED = batchOf([
   {
     projectId: "halcyon-fintech",
+    pairs: { status: "recorded", count: 3 },
     outcome: {
       status: "created",
       snapshot: {
@@ -161,7 +164,7 @@ describe("order and the queue's answer", () => {
     assert.deepEqual(outcome.snapshots, {
       status: "captured",
       window: WINDOW,
-      entries: [{ projectId: "halcyon-fintech", outcome: "created", reason: null }],
+      entries: [{ projectId: "halcyon-fintech", outcome: "created", reason: null, pairs: "recorded" }],
       attempted: 1,
       stoppedBy: "complete",
       budgetMs: CAPTURE_MAX_MS,
@@ -269,9 +272,9 @@ describe("capture failures never touch the queue's answer", () => {
     const outcome = await s.run();
     assert.ok(outcome.kind === "ok" && outcome.snapshots.status === "captured");
     assert.deepEqual(outcome.snapshots.entries, [
-      { projectId: "a", outcome: "unavailable", reason: "rate-limited" },
-      { projectId: "b", outcome: "access-denied", reason: null },
-      { projectId: "c", outcome: "not-connected", reason: "no-property" },
+      { projectId: "a", outcome: "unavailable", reason: "rate-limited", pairs: "skipped" },
+      { projectId: "b", outcome: "access-denied", reason: null, pairs: "skipped" },
+      { projectId: "c", outcome: "not-connected", reason: "no-property", pairs: "skipped" },
     ]);
     assert.deepEqual(outcome.queue, QUEUE_OK);
   });
@@ -280,7 +283,7 @@ describe("capture failures never touch the queue's answer", () => {
     const s = setup({ capture: batchOf([{ projectId: "a", outcome: { status: "store-failed" }, durationMs: 1 }]) });
     const outcome = await s.run();
     assert.ok(outcome.kind === "ok" && outcome.snapshots.status === "captured");
-    assert.deepEqual(outcome.snapshots.entries, [{ projectId: "a", outcome: "store-failed", reason: null }]);
+    assert.deepEqual(outcome.snapshots.entries, [{ projectId: "a", outcome: "store-failed", reason: null, pairs: "skipped" }]);
     assert.deepEqual(outcome.queue, QUEUE_OK);
   });
 
@@ -321,8 +324,8 @@ describe("what this checkpoint leaves alone", () => {
     const sql = readFileSync(join(root, "supabase/migrations/20260927120000_create_search_console_snapshots.sql"), "utf8").replace(/\r\n/g, "\n");
     assert.equal(createHash("sha256").update(sql, "utf8").digest("hex"), "d872aab5b94f53dd7ce31c1681d06fb41e063ac880962b6236ab4d0c494e7f13");
     const migrations = readdirSync(join(root, "supabase/migrations")).filter((f) => f.endsWith(".sql")).sort();
-    // The snapshot store has exactly one migration; later checkpoints add migrations of their own.
-    assert.deepEqual(migrations.filter((f) => f.includes("search_console")), ["20260927120000_create_search_console_snapshots.sql"]);
+    // The snapshot store has exactly one migration; P4c added the query × page table beside it, and nothing else touches Search Console.
+    assert.deepEqual(migrations.filter((f) => f.includes("search_console")), ["20260927120000_create_search_console_snapshots.sql", "20260930120000_create_search_console_query_pages.sql"]);
   });
 
   test("no screen or component reaches the snapshot capture: only the process route does", () => {

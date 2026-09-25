@@ -19,6 +19,8 @@ import {
 } from "@/lib/search-console/grounding";
 import type { SnapshotHistoryComparison } from "@/lib/search-console/history/compare";
 import { formatSearchConsoleHistory, type HistoryInput } from "@/lib/search-console/history/grounding";
+import { formatQueryPageGrounding } from "@/lib/search-console/query-pages/grounding";
+import type { QueryPageInput } from "@/lib/search-console/query-pages/intelligence";
 
 /**
  * Which evidence a task is allowed to see, decided by what its task type
@@ -49,6 +51,9 @@ import { formatSearchConsoleHistory, type HistoryInput } from "@/lib/search-cons
 /** The stored-snapshot comparison for one project, or null when this deployment keeps no snapshots. */
 export type SearchConsoleHistoryReader = (projectId: string) => Promise<SnapshotHistoryComparison | null>;
 
+/** The stored query × page intelligence for one project (P4c), or null when this deployment keeps no pairs. */
+export type SearchConsoleQueryPageReader = (projectId: string) => Promise<QueryPageInput | null>;
+
 /** The findings recorded for one of the project's own crawls (T3), read by project and crawl id, never recomputed. */
 export type CrawlFindingsReader = (projectId: string, crawlId: string) => Promise<CrawlFindingsRead>;
 
@@ -62,6 +67,13 @@ export type TaskGroundingReaders = {
    * insufficient or unreadable is stated in one bounded note.
    */
   readonly searchConsoleHistory: SearchConsoleHistoryReader;
+  /**
+   * `search-console` tasks, after the history: the run's own project's
+   * stored query × page evidence (P4c), appended as a third block only when
+   * observed pair evidence exists. Absent, or answering null, means no
+   * block; never a refusal and never a replacement for the live report.
+   */
+  readonly searchConsoleQueryPages?: SearchConsoleQueryPageReader;
   /** The run store itself satisfies this; a test hands in a map. */
   readonly runs: AgentRunReader;
   /**
@@ -153,13 +165,25 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         } catch {
           history = { available: false, reason: "read-failed" };
         }
-        const historyGrounding = formatSearchConsoleHistory(history, task.taskType === "performance-review" ? "analytics" : "keyword");
+        const audience = task.taskType === "performance-review" ? "analytics" : "keyword";
+        const historyGrounding = formatSearchConsoleHistory(history, audience);
+
+        // Stored query × page pairs (P4c), appended after the history and
+        // only when observed pair evidence exists; a missing reader, an
+        // empty store or a failed read adds no block and never fails the run.
+        let queryPages: QueryPageInput;
+        try {
+          queryPages = (await readers.searchConsoleQueryPages?.(task.project.id)) ?? { available: false, reason: "not-kept" };
+        } catch {
+          queryPages = { available: false, reason: "read-failed" };
+        }
+        const pairGrounding = formatQueryPageGrounding(queryPages, audience);
 
         return {
           ok: true,
           grounding: {
-            text: `${result.grounding.text}\n\n${historyGrounding.text}`,
-            summary: { ...result.grounding.summary, history: historyGrounding.summary },
+            text: `${result.grounding.text}\n\n${historyGrounding.text}${pairGrounding.text === null ? "" : `\n\n${pairGrounding.text}`}`,
+            summary: { ...result.grounding.summary, history: historyGrounding.summary, queryPages: pairGrounding.summary },
             source: result.grounding.source,
           },
         };

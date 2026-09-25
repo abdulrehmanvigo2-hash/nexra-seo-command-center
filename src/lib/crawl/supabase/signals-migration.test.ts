@@ -49,10 +49,11 @@ describe("the T5 migration", () => {
     assert.match(MIGRATION, /crawl_page_signals/, "the comment names what must not be touched");
   });
 
-  test("is the newest migration, after the T3 findings migration, and stays byte-for-byte the reviewed file", () => {
+  test("follows the T3 findings migration directly (the M1 P4c migration came after both), and stays byte-for-byte the reviewed file", () => {
     const migrations = readdirSync(new URL("supabase/migrations", root)).filter((f) => f.endsWith(".sql")).sort();
-    assert.equal(migrations.at(-1), "20260929120000_extend_crawl_page_signals.sql");
-    assert.equal(migrations.at(-2), "20260928120000_create_crawl_findings.sql");
+    const at = migrations.indexOf("20260929120000_extend_crawl_page_signals.sql");
+    assert.equal(migrations[at - 1], "20260928120000_create_crawl_findings.sql");
+    assert.deepEqual(migrations.slice(at + 1), ["20260930120000_create_search_console_query_pages.sql"]);
     assert.ok(MIGRATION.endsWith("\n"));
     assert.equal(/\r/.test(MIGRATION), false);
   });

@@ -18,6 +18,9 @@ import type { CrawlLink } from "../../types/crawl.ts";
 import { EVIDENCE_PACK_CRAWL_LIMITS, formatEvidencePackGrounding, type EvidencePackReaders } from "../research/evidence-pack.ts";
 import { formatSearchConsoleGrounding } from "../search-console/grounding.ts";
 import { compareSnapshotHistory, type SnapshotHistoryComparison } from "../search-console/history/compare.ts";
+import { formatQueryPageGrounding, QUERY_PAGE_LIMITS_NOTE } from "../search-console/query-pages/grounding.ts";
+import { buildQueryPageIntelligence, type QueryPageInput } from "../search-console/query-pages/intelligence.ts";
+import type { StoredQueryPage } from "../search-console/query-pages/contract.ts";
 import { formatSearchConsoleHistory, SEARCH_CONSOLE_HISTORY_LIMITS_NOTE } from "../search-console/history/grounding.ts";
 import type { SearchConsoleSnapshot } from "../search-console/snapshots/contract.ts";
 import type { SearchPerformanceRow } from "../../types/search-console.ts";
@@ -935,7 +938,11 @@ describe("the Keyword & Search Intent agent through the executor", () => {
     assert.equal(output.metadata?.simulated, false);
     assert.equal(output.metadata?.taskType, "search-query-review");
     // No stored history in this deployment: the live summary, plus one note saying so.
-    assert.deepEqual(output.metadata?.evidence, { ...formatSearchConsoleGrounding(REPORT).summary, history: formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "keyword").summary });
+    assert.deepEqual(output.metadata?.evidence, {
+      ...formatSearchConsoleGrounding(REPORT).summary,
+      history: formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "keyword").summary,
+      queryPages: formatQueryPageGrounding({ available: false, reason: "not-kept" }, "keyword").summary,
+    });
   });
 
   test("a refused report reaches no provider", async () => {
@@ -1186,7 +1193,11 @@ describe("the Analytics & Learning agent through the executor", () => {
     assert.equal(output.metadata?.grounded, true);
     assert.equal(output.metadata?.simulated, false);
     assert.equal(output.metadata?.taskType, "performance-review");
-    assert.deepEqual(output.metadata?.evidence, { ...formatSearchConsoleGrounding(REPORT).summary, history: formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "analytics").summary });
+    assert.deepEqual(output.metadata?.evidence, {
+      ...formatSearchConsoleGrounding(REPORT).summary,
+      history: formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "analytics").summary,
+      queryPages: formatQueryPageGrounding({ available: false, reason: "not-kept" }, "analytics").summary,
+    });
   });
 
   test("a refused report reaches no provider", async () => {
@@ -2604,5 +2615,83 @@ describe("the SEO Director's recorded crawl findings (T6)", () => {
       await createAiExecutor(specialist.provider, createTaskGrounding(readers())).execute(task, new AbortController().signal);
       assert.doesNotMatch(specialist.seen.prompt ?? "", /RECORDED CRAWL FINDINGS/);
     }
+  });
+});
+
+describe("stored query × page evidence after the history (P4c)", () => {
+  const liveText = formatSearchConsoleGrounding(REPORT).text;
+  const historyText = formatSearchConsoleHistory(HISTORY, "keyword").text;
+  const qp = (query: string, page: string, impressions: number, clicks = 0, position = 5): StoredQueryPage => ({
+    id: `row-${query}-${page}`, projectId: "nexra-agency", property: REPORT.property, rangeId: "30d", days: 30, startDate: "2026-08-19", endDate: "2026-09-17",
+    query, page, clicks, impressions, ctr: clicks / impressions, position, source: "scheduled", fetchedAt: "2026-09-18T12:00:00.000Z", capturedAt: "2026-09-18T12:00:01.000Z",
+  });
+  const PAIRS: QueryPageInput = buildQueryPageIntelligence([qp("seo agency london", "https://nexraagency.com/", 300, 12, 4.1), qp("seo agency london", "https://nexraagency.com/services/seo", 120, 3, 6.8), qp("nexra agency", "https://nexraagency.com/", 900, 200, 1.1)], REPORT.property, 750);
+
+  function withPairs(answer: QueryPageInput | null | Error | "absent", history = historyStore(HISTORY)) {
+    const calls: string[] = [];
+    const base = readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), linkStore(), factCheckStore(), history);
+    if (answer === "absent") return { calls, readers: base };
+    return {
+      calls,
+      readers: {
+        ...base,
+        searchConsoleQueryPages: async (projectId: string) => {
+          calls.push(projectId);
+          if (answer instanceof Error) throw answer;
+          return answer;
+        },
+      },
+    };
+  }
+
+  test("both Search Console agents get the live report, then the history, then the pair block for the run's own project", async () => {
+    for (const [task, audience] of [[searchQueryTask, "keyword"], [performanceReviewTask, "analytics"]] as const) {
+      const r = withPairs(PAIRS);
+      const result = await createTaskGrounding(r.readers)(task);
+      assert.ok(result.ok && result.grounding);
+      assert.deepEqual(r.calls, ["nexra-agency"]);
+      const expectedHistory = formatSearchConsoleHistory(HISTORY, audience).text;
+      assert.ok(result.grounding.text.startsWith(`${liveText}\n\n${expectedHistory}\n\n`), "live report, then history, unchanged and in order");
+      const block = result.grounding.text.slice(liveText.length + 2 + expectedHistory.length + 2);
+      assert.match(block, /^STORED SEARCH CONSOLE QUERY × PAGE EVIDENCE/);
+      assert.match(block, /CANNIBALIZATION CANDIDATE FOR REVIEW/);
+      assert.ok(block.includes('"seo agency london" on 2 pages'));
+      assert.ok(block.endsWith(QUERY_PAGE_LIMITS_NOTE));
+      const evidence = result.grounding.summary as { queryPages?: Record<string, unknown>; history?: Record<string, unknown> };
+      assert.deepEqual([evidence.queryPages?.queryPages, evidence.queryPages?.audience, evidence.queryPages?.overlaps, evidence.queryPages?.candidates, evidence.history?.history], ["available", audience, 1, 1, "available"]);
+    }
+  });
+
+  test("no observed pair evidence adds no block: not kept, no pairs, another property, an absent reader", async () => {
+    const cases: { answer: QueryPageInput | null | "absent"; status: string }[] = [
+      { answer: null, status: "not-kept" },
+      { answer: "absent", status: "not-kept" },
+      { answer: { available: false, reason: "no-pairs", otherProperty: 0 }, status: "no-pairs" },
+      { answer: { available: false, reason: "no-pairs-for-property", otherProperty: 1 }, status: "no-pairs-for-property" },
+    ];
+    for (const c of cases) {
+      const result = await createTaskGrounding(withPairs(c.answer).readers)(searchQueryTask);
+      assert.ok(result.ok && result.grounding);
+      assert.equal(result.grounding.text, `${liveText}\n\n${historyText}`, c.status);
+      assert.equal((result.grounding.summary as { queryPages?: { queryPages?: string } }).queryPages?.queryPages, c.status);
+    }
+  });
+
+  test("a pair read that throws never fails the run and adds no block; the summary says read-failed", async () => {
+    const result = await createTaskGrounding(withPairs(new Error("pairs store down")).readers)(performanceReviewTask);
+    assert.ok(result.ok && result.grounding);
+    assert.ok(!result.grounding.text.includes("QUERY × PAGE"));
+    assert.equal((result.grounding.summary as { queryPages?: { queryPages?: string } }).queryPages?.queryPages, "read-failed");
+  });
+
+  test("a refused live report never reaches the pair reader, and no other task type reads pairs", async () => {
+    const refused = withPairs(PAIRS, historyStore(HISTORY));
+    const result = await createTaskGrounding({ ...refused.readers, searchConsole: searchConsole({ projectId: "nexra-agency", source: "search-console", state: "not-connected", reason: "no-property" }).read })(searchQueryTask);
+    assert.deepEqual(result, { ok: false, reason: "search-console-not-connected" });
+    assert.deepEqual(refused.calls, []);
+    const crawl = withPairs(PAIRS);
+    const crawlResult = await createTaskGrounding(crawl.readers)(crawlReviewTask);
+    assert.ok(crawlResult.ok);
+    assert.deepEqual(crawl.calls, []);
   });
 });

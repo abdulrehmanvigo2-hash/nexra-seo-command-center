@@ -1,5 +1,6 @@
 import type {
   SearchConsoleSite,
+  SearchQueryPageRow,
   SearchPerformance,
   SearchPerformanceRow,
 } from "@/types/search-console";
@@ -67,6 +68,34 @@ export function mapDimensionRows(response: unknown): readonly SearchPerformanceR
     mapped.push({ key: keys[0], ...performance });
   }
   return mapped;
+}
+
+/**
+ * Rows from a query with exactly the dimensions ["query", "page"], in that
+ * order. A row with no impressions, a missing key, an empty query or a page
+ * that is not an absolute http(s) URL cannot be read and is dropped, never
+ * repaired; a repeated pair keeps its first row.
+ */
+export function mapQueryPageRows(response: unknown): readonly SearchQueryPageRow[] {
+  const mapped: SearchQueryPageRow[] = [];
+  const seen = new Set<string>();
+  for (const row of rowsOf(response)) {
+    const keys = row.keys;
+    const performance = performanceFrom(row);
+    if (!performance || performance.impressions === 0 || !Array.isArray(keys) || keys.length !== 2) continue;
+    const [query, page] = keys;
+    if (typeof query !== "string" || query === "" || typeof page !== "string" || !isAbsoluteHttpUrl(page)) continue;
+    const pair = `${query}\n${page}`;
+    if (seen.has(pair)) continue;
+    seen.add(pair);
+    mapped.push({ query, page, ...performance });
+  }
+  return mapped;
+}
+
+/** What the query × page table accepts as a page: an absolute http(s) URL with no whitespace. */
+export function isAbsoluteHttpUrl(page: string): boolean {
+  return /^https?:\/\/\S+$/.test(page);
 }
 
 const PERMISSIONS: Readonly<Record<string, SearchConsoleSite["permission"]>> = {

@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ProviderResult, SearchConsoleProvider } from "../provider.ts";
-import type { SearchConsoleWindow, SearchPerformance, SearchPerformanceRow } from "../../../types/search-console.ts";
+import type { SearchConsoleWindow, SearchPerformance, SearchPerformanceRow, SearchQueryPageRow } from "../../../types/search-console.ts";
+import { QUERY_PAGE_ROW_LIMIT, type RecordQueryPagesInput, type RecordQueryPagesOutcome, type SearchConsoleQueryPageStore } from "../query-pages/contract.ts";
 import {
   MAX_CAPTURE_PROJECTS,
+  MIN_PAIR_BUDGET_MS,
   MIN_PROJECT_BUDGET_MS,
   createSnapshotCapture,
   isRecordableTotals,
+  queryPageRows,
   snapshotRows,
   snapshotWindow,
   type SnapshotCaptureDependencies,
@@ -43,12 +46,15 @@ const FETCHED = "2026-09-24T11:59:00.000Z";
 
 const row = (key: string, clicks = 1, impressions = 10): SearchPerformanceRow => ({ key, clicks, impressions, ctr: clicks / impressions, position: 4.2 });
 const rows = (n: number, prefix = "q") => Array.from({ length: n }, (_, i) => row(`${prefix}${i + 1}`, i + 1, (i + 1) * 10));
+const pair = (query: string, page: string, clicks = 1, impressions = 10, position = 4.2): SearchQueryPageRow => ({ query, page, clicks, impressions, ctr: clicks / impressions, position });
+const PAIRS: readonly SearchQueryPageRow[] = [pair("secret pair query", "https://halcyon.example/a", 3, 60), pair("secret pair query", "https://halcyon.example/b", 1, 30, 6.1), pair("other", "https://halcyon.example/a")];
 
 type Answer<T> = ProviderResult<T> | "never" | Error;
 type Answers = {
   totals?: (projectId: string) => Answer<SearchPerformance | null>;
   queries?: (projectId: string) => Answer<readonly SearchPerformanceRow[]>;
   pages?: (projectId: string) => Answer<readonly SearchPerformanceRow[]>;
+  pairs?: (projectId: string) => Answer<readonly SearchQueryPageRow[]>;
 };
 
 function ok<T>(value: T, projectId: string, extra: { stale?: boolean; property?: string; fetchedAt?: string } = {}): ProviderResult<T> {
@@ -70,8 +76,32 @@ function fakeProvider(answers: Answers = {}, configured = true) {
     getSearchPerformance: (id, w) => answer("totals", id, w, answers.totals, ok<SearchPerformance | null>(TOTALS, id)),
     getQueryPerformance: (id, w) => answer("queries", id, w, answers.queries, ok<readonly SearchPerformanceRow[]>(rows(3, "q"), id)),
     getPagePerformance: (id, w) => answer("pages", id, w, answers.pages, ok<readonly SearchPerformanceRow[]>(rows(2, "https://p.example/"), id)),
+    getQueryPagePerformance: (id, w) => answer("pairs", id, w, answers.pairs, ok<readonly SearchQueryPageRow[]>(PAIRS, id)),
   };
   return { provider, calls };
+}
+
+/** A pair store that applies the P4c function's rules: one set per project, property and window end. */
+function memoryPairStore(options: { fail?: Error | null; missing?: Set<string>; stores?: boolean } = {}) {
+  const sets = new Map<string, readonly SearchQueryPageRow[]>();
+  const inputs: RecordQueryPagesInput[] = [];
+  const store: SearchConsoleQueryPageStore = {
+    storesQueryPages: options.stores ?? true,
+    async record(input): Promise<RecordQueryPagesOutcome> {
+      inputs.push(input);
+      if (options.fail) throw options.fail;
+      if (options.missing?.has(input.projectId)) return { status: "not-found" };
+      const key = [input.projectId, input.property, input.window.rangeId, input.window.endDate].join("|");
+      const existing = sets.get(key);
+      if (existing) return { status: "exists", count: existing.length };
+      sets.set(key, input.pairs);
+      return { status: "created", count: input.pairs.length };
+    },
+    async listQueryPages() {
+      return [];
+    },
+  };
+  return { store, sets, inputs };
 }
 
 /** A store that applies the database function's rules: one row per project, property and window end. */
@@ -135,9 +165,10 @@ function logs() {
   return { lines, log };
 }
 
-function setup(overrides: Partial<SnapshotCaptureDependencies> & { ids?: readonly string[]; answers?: Answers; configured?: boolean } = {}) {
+function setup(overrides: Partial<SnapshotCaptureDependencies> & { ids?: readonly string[]; answers?: Answers; configured?: boolean; noPairStore?: boolean } = {}) {
   const { provider, calls } = fakeProvider(overrides.answers, overrides.configured ?? true);
   const memory = memoryStore();
+  const pairs = memoryPairStore();
   const repo = fakeProjects(overrides.ids ?? [HALCYON, VERDANT]);
   const { lines, log } = logs();
   const capture = createSnapshotCapture({
@@ -145,10 +176,11 @@ function setup(overrides: Partial<SnapshotCaptureDependencies> & { ids?: readonl
     properties: overrides.properties ?? PROPERTIES,
     projects: overrides.projects ?? repo.projects,
     store: overrides.store ?? memory.store,
+    queryPages: overrides.noPairStore ? undefined : (overrides.queryPages ?? pairs.store),
     now: () => NOW,
     log,
   });
-  return { capture, calls, memory, repo, lines };
+  return { capture, calls, memory, pairs, repo, lines };
 }
 
 const run = (s: ReturnType<typeof setup>, options = { maxProjects: 10, budgetMs: 45_000 }) => s.capture.capture(options);
@@ -161,9 +193,11 @@ describe("the 30-day window", () => {
     const s = setup({ ids: [HALCYON] });
     const batch = await run(s);
     assert.deepEqual(batch.window, window);
-    assert.equal(s.calls.length, 3);
+    // Three snapshot reads, then the one P4c pair read, all for the same window.
+    assert.deepEqual(s.calls.map((c) => c.method), ["totals", "queries", "pages", "pairs"]);
     assert.ok(s.calls.every((c) => c.projectId === HALCYON && c.window.startDate === "2026-08-23" && c.window.endDate === "2026-09-21"));
     assert.equal(s.memory.inputs[0].window.endDate, "2026-09-21");
+    assert.equal(s.pairs.inputs[0].window.endDate, "2026-09-21");
   });
 
   test("late in the UTC day the window still follows the Pacific date", () => {
@@ -465,12 +499,210 @@ describe("logging", () => {
       assert.ok(!text.includes(forbidden), `log lines must not contain ${forbidden}`);
     }
     const events = s.lines.map((l) => l.event);
-    assert.deepEqual(events, ["search_console.snapshot", "search_console.snapshot", "search_console.snapshot_batch"]);
+    assert.deepEqual(events, ["search_console.snapshot", "search_console.query_pages", "search_console.snapshot", "search_console.snapshot_batch"]);
     assert.deepEqual(s.lines[0].fields, { projectId: HALCYON, outcome: "created", reason: null, durationMs: s.lines[0].fields.durationMs });
-    assert.deepEqual(s.lines[1].fields, { projectId: VERDANT, outcome: "unavailable", reason: "rate-limited", durationMs: s.lines[1].fields.durationMs });
-    assert.deepEqual(s.lines[2].fields, { count: 2, stoppedBy: "complete", durationMs: s.lines[2].fields.durationMs });
+    assert.deepEqual(s.lines[1].fields, { projectId: HALCYON, outcome: "recorded", reason: null, count: 3, durationMs: s.lines[1].fields.durationMs });
+    assert.deepEqual(s.lines[2].fields, { projectId: VERDANT, outcome: "unavailable", reason: "rate-limited", durationMs: s.lines[2].fields.durationMs });
+    assert.deepEqual(s.lines[3].fields, { count: 2, stoppedBy: "complete", durationMs: s.lines[3].fields.durationMs });
     for (const line of s.lines) {
       for (const value of Object.values(line.fields)) assert.ok(value === null || typeof value !== "object", "scalar fields only");
+    }
+  });
+});
+
+describe("query × page pairs after the snapshot (P4c)", () => {
+  const pairsOf = (batch: Awaited<ReturnType<typeof run>>) => batch.entries.map((e) => `${e.projectId}:${e.pairs.status}${"reason" in e.pairs ? `/${e.pairs.reason}` : ""}${"count" in e.pairs ? `/${e.pairs.count}` : ""}`);
+
+  test("after a connected snapshot is written, one pair read for the same property and window is recorded as one set", async () => {
+    const s = setup({ ids: [HALCYON] });
+    const batch = await run(s);
+    assert.deepEqual(statuses(batch), [`${HALCYON}:created`]);
+    assert.deepEqual(pairsOf(batch), [`${HALCYON}:recorded/3`]);
+    assert.deepEqual(s.calls.map((c) => c.method), ["totals", "queries", "pages", "pairs"]);
+    const [input] = s.pairs.inputs;
+    assert.equal(input.property, "sc-domain:halcyon.example");
+    assert.deepEqual(input.window, batch.window);
+    assert.deepEqual(input.pairs, PAIRS);
+    assert.equal(input.fetchedAt, FETCHED);
+  });
+
+  test("the pair read starts only after the snapshot write has settled", async () => {
+    const order: string[] = [];
+    const s = setup({ ids: [HALCYON] });
+    const memory = s.memory.store;
+    const capture = createSnapshotCapture({
+      provider: {
+        ...fakeProvider().provider,
+        getQueryPagePerformance: async (id) => {
+          order.push("pairs-read");
+          return ok<readonly SearchQueryPageRow[]>(PAIRS, id);
+        },
+      },
+      properties: PROPERTIES,
+      projects: s.repo.projects,
+      store: {
+        storesSnapshots: true,
+        record: async (input) => {
+          order.push("snapshot-write");
+          return memory.record(input);
+        },
+        listSnapshots: memory.listSnapshots,
+      },
+      queryPages: s.pairs.store,
+      now: () => NOW,
+    });
+    await capture.capture({ maxProjects: 10, budgetMs: 45_000 });
+    assert.deepEqual(order, ["snapshot-write", "pairs-read"]);
+  });
+
+  test("a window whose snapshot already exists still records its pairs when they are missing, and answers exists when they are not", async () => {
+    const s = setup({ ids: [HALCYON] });
+    const first = await run(s);
+    assert.deepEqual(pairsOf(first), [`${HALCYON}:recorded/3`]);
+    const second = await run(s);
+    assert.deepEqual(statuses(second), [`${HALCYON}:exists`]);
+    assert.deepEqual(pairsOf(second), [`${HALCYON}:exists/3`]);
+    assert.equal(s.pairs.sets.size, 1);
+  });
+
+  test("a no-data snapshot skips the pair read entirely", async () => {
+    const s = setup({ ids: [HALCYON], answers: { totals: (id) => ok<SearchPerformance | null>(null, id) } });
+    const batch = await run(s);
+    assert.deepEqual(statuses(batch), [`${HALCYON}:no-data-created`]);
+    assert.deepEqual(pairsOf(batch), [`${HALCYON}:skipped/snapshot-not-connected`]);
+    assert.ok(!s.calls.some((c) => c.method === "pairs"));
+  });
+
+  test("a snapshot that was not written (failed, stale, mismatched, missing project, unmapped) never triggers a pair read", async () => {
+    const cases: { answers?: Answers; ids?: string[]; properties?: ReadonlyMap<string, string>; expect: string }[] = [
+      { answers: { totals: () => ({ ok: false, failure: { state: "unavailable", reason: "rate-limited" } }) }, expect: "unavailable" },
+      { answers: { totals: (id) => ok(TOTALS, id, { stale: true }) }, expect: "stale-skipped" },
+      { answers: { totals: (id) => ok(TOTALS, id, { property: "sc-domain:other.example" }) }, expect: "property-mismatch" },
+      { ids: ["unmapped"], expect: "not-connected" },
+    ];
+    for (const c of cases) {
+      const s = setup({ ids: c.ids ?? [HALCYON], answers: c.answers });
+      const batch = await run(s);
+      assert.equal(batch.entries[0].outcome.status, c.expect);
+      assert.deepEqual(batch.entries[0].pairs, { status: "skipped", reason: "snapshot-not-connected" });
+      assert.ok(!s.calls.some((call) => call.method === "pairs"), c.expect);
+      assert.equal(s.pairs.inputs.length, 0);
+    }
+  });
+
+  test("a failed, stale or mismatched pair read is unavailable with its reason; the snapshot stands and nothing is written", async () => {
+    const cases: { pairs: (id: string) => Answer<readonly SearchQueryPageRow[]>; reason: string }[] = [
+      { pairs: () => ({ ok: false, failure: { state: "unavailable", reason: "rate-limited" } }), reason: "rate-limited" },
+      { pairs: () => ({ ok: false, failure: { state: "access-denied", property: "sc-domain:halcyon.example" } }), reason: "access-denied" },
+      { pairs: () => ({ ok: false, failure: { state: "not-connected", reason: "no-property" } }), reason: "no-property" },
+      { pairs: (id) => ok<readonly SearchQueryPageRow[]>(PAIRS, id, { stale: true }), reason: "stale" },
+      { pairs: (id) => ok<readonly SearchQueryPageRow[]>(PAIRS, id, { property: "sc-domain:other.example" }), reason: "property-mismatch" },
+      { pairs: () => new Error("boom"), reason: "error" },
+    ];
+    for (const c of cases) {
+      const s = setup({ ids: [HALCYON], answers: { pairs: c.pairs } });
+      // A provider that throws is outside the provider contract; the capture still must not throw, and the snapshot stands.
+      const batch = await run(s);
+      assert.deepEqual(statuses(batch), [`${HALCYON}:created`], c.reason);
+      assert.equal(batch.entries[0].pairs.status, "unavailable", c.reason);
+      assert.equal("reason" in batch.entries[0].pairs ? batch.entries[0].pairs.reason : null, c.reason);
+      assert.equal(s.pairs.inputs.length, 0);
+    }
+  });
+
+  test("Google answered with no readable pair: no-pairs, nothing written, the snapshot stands", async () => {
+    const s = setup({ ids: [HALCYON], answers: { pairs: (id) => ok<readonly SearchQueryPageRow[]>([pair("q", "/relative")], id) } });
+    const batch = await run(s);
+    assert.deepEqual(statuses(batch), [`${HALCYON}:created`]);
+    assert.deepEqual(pairsOf(batch), [`${HALCYON}:no-pairs`]);
+    assert.equal(s.pairs.inputs.length, 0);
+  });
+
+  test("no pair store (fixture roster): skipped as store-unavailable, Google is not asked for pairs", async () => {
+    for (const s of [setup({ ids: [HALCYON], noPairStore: true }), setup({ ids: [HALCYON], queryPages: memoryPairStore({ stores: false }).store })]) {
+      const batch = await run(s);
+      assert.deepEqual(statuses(batch), [`${HALCYON}:created`]);
+      assert.deepEqual(pairsOf(batch), [`${HALCYON}:skipped/store-unavailable`]);
+      assert.ok(!s.calls.some((c) => c.method === "pairs"));
+    }
+  });
+
+  test("a throwing pair store: store-failed for the pairs, the snapshot still created, the error's code logged and nothing else", async () => {
+    const error = Object.assign(new Error("secret pair query leaked https://halcyon.example/a"), { code: "23514" });
+    const s = setup({ ids: [HALCYON, VERDANT], queryPages: memoryPairStore({ fail: error }).store });
+    const batch = await run(s);
+    assert.deepEqual(statuses(batch), [`${HALCYON}:created`, `${VERDANT}:created`]);
+    assert.deepEqual(pairsOf(batch), [`${HALCYON}:store-failed`, `${VERDANT}:store-failed`]);
+    const line = s.lines.find((l) => l.event === "search_console.query_pages_store_failed");
+    assert.deepEqual(line, { level: "error", event: "search_console.query_pages_store_failed", fields: { projectId: HALCYON, errorCode: "23514" } });
+    assert.ok(!JSON.stringify(s.lines).includes("secret pair query"));
+  });
+
+  test("the pair store answering not-found is a skip, never a failure of the snapshot", async () => {
+    const s = setup({ ids: [HALCYON], queryPages: memoryPairStore({ missing: new Set([HALCYON]) }).store });
+    const batch = await run(s);
+    assert.deepEqual(statuses(batch), [`${HALCYON}:created`]);
+    assert.deepEqual(pairsOf(batch), [`${HALCYON}:skipped/store-unavailable`]);
+  });
+
+  test("the pair read is not started with under its minimum budget left, and a hanging pair read ends at the project's deadline", async () => {
+    // Budget just above the project minimum: the snapshot reads spend almost nothing, leaving well over MIN_PAIR_BUDGET_MS.
+    const hanging = setup({ ids: [HALCYON], answers: { pairs: () => "never" } });
+    const began = performance.now();
+    const batch = await run(hanging, { maxProjects: 10, budgetMs: MIN_PROJECT_BUDGET_MS + 200 });
+    assert.ok(performance.now() - began < MIN_PROJECT_BUDGET_MS + 1700, "the project deadline ended the wait");
+    assert.deepEqual(statuses(batch), [`${HALCYON}:created`], "the snapshot was written before the pair read hung");
+    assert.deepEqual(pairsOf(batch), [`${HALCYON}:unavailable/timeout`]);
+    assert.ok(MIN_PAIR_BUDGET_MS < MIN_PROJECT_BUDGET_MS);
+
+    // A snapshot write that consumes the budget leaves the pairs skipped as time-budget, without a Google call.
+    const slow = setup({ ids: [HALCYON] });
+    const memory = slow.memory.store;
+    const capture = createSnapshotCapture({
+      provider: fakeProvider().provider,
+      properties: PROPERTIES,
+      projects: slow.repo.projects,
+      store: { storesSnapshots: true, record: async (input) => { await new Promise((r) => setTimeout(r, 1_300)); return memory.record(input); }, listSnapshots: memory.listSnapshots },
+      queryPages: slow.pairs.store,
+      now: () => NOW,
+    });
+    const slowBatch = await capture.capture({ maxProjects: 10, budgetMs: MIN_PROJECT_BUDGET_MS + 100 });
+    assert.deepEqual(slowBatch.entries.map((e) => [e.outcome.status, e.pairs]), [["created", { status: "skipped", reason: "time-budget" }]]);
+    assert.equal(slow.pairs.inputs.length, 0);
+  });
+
+  test("one project's pair failure does not touch the next project's snapshot or pairs", async () => {
+    const s = setup({ answers: { pairs: (id) => (id === HALCYON ? { ok: false, failure: { state: "unavailable", reason: "timeout" } } : ok<readonly SearchQueryPageRow[]>(PAIRS, id)) } });
+    const batch = await run(s);
+    assert.deepEqual(statuses(batch), [`${HALCYON}:created`, `${VERDANT}:created`]);
+    assert.deepEqual(pairsOf(batch), [`${HALCYON}:unavailable/timeout`, `${VERDANT}:recorded/3`]);
+  });
+
+  test("logs for the pair step carry ids, outcomes, reasons, counts and durations — never a query or a page", async () => {
+    const s = setup({ ids: [HALCYON] });
+    await run(s);
+    const line = s.lines.find((l) => l.event === "search_console.query_pages");
+    assert.ok(line);
+    assert.deepEqual(Object.keys(line.fields).sort(), ["count", "durationMs", "outcome", "projectId", "reason"]);
+    assert.ok(!JSON.stringify(s.lines).includes("secret pair query") && !JSON.stringify(s.lines).includes("halcyon.example"));
+  });
+});
+
+describe("pair rows within the table's limits", () => {
+  const long = "k".repeat(2048);
+  test("at most 250 distinct pairs in Google's order; a repeated pair keeps its first row", () => {
+    const many = Array.from({ length: 260 }, (_, i) => pair(`q${i}`, "https://h.example/p"));
+    assert.equal(queryPageRows(many).length, QUERY_PAGE_ROW_LIMIT);
+    assert.equal(queryPageRows(many)[0].query, "q0");
+    assert.deepEqual(queryPageRows([pair("a", "https://h.example/", 1, 10), pair("a", "https://h.example/", 2, 20)]), [pair("a", "https://h.example/", 1, 10)]);
+  });
+
+  test("a query or page of 2,048 characters is kept as typed; longer, empty, relative or whitespace pages and bad metrics are left out, never truncated", () => {
+    assert.equal(queryPageRows([pair(long, `https://h.example/${"p".repeat(2048 - 18)}`)]).length, 1);
+    assert.equal(queryPageRows([pair(`${long}k`, "https://h.example/")]).length, 0);
+    assert.equal(queryPageRows([pair("q", `https://h.example/${"p".repeat(2049 - 18)}`)]).length, 0);
+    for (const bad of [pair("", "https://h.example/"), pair("q", ""), pair("q", "/relative"), pair("q", "https://h.example/a b"), pair("q", "ftp://h.example/"), pair("q", "https://h.example/", 3, 2), pair("q", "https://h.example/", 0, 0)]) {
+      assert.equal(queryPageRows([bad]).length, 0, JSON.stringify(bad));
     }
   });
 });
