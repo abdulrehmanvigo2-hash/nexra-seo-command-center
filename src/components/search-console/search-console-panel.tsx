@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
+import { SearchConsoleHistory } from "@/components/search-console/search-console-history";
 import { PERFORMANCE_REVIEW, SEARCH_QUERY_REVIEW, searchQueryReviewRequest } from "@/lib/crawl/review-request";
 import { formatFullDate, formatNumber, formatPercent } from "@/lib/format";
 import {
@@ -193,6 +194,14 @@ export function SearchConsolePanel({
           noun={view === "queries" ? "Query" : "Page"}
         />
       )}
+
+      {/*
+        Stored history (P4d): the project's two newest comparable snapshots,
+        read through its own endpoint with its own load, so it never changes
+        what the live report above shows and never borrows a figure from it.
+        Snapshots are kept for the 30-day window only.
+      */}
+      {projectId && rangeId === "30d" && <SearchConsoleHistory projectId={projectId} view={view} />}
 
       {/* Offered where the queries are the subject — beside the summary and
           the query list, not the page list, which neither review reads. */}

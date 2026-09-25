@@ -127,6 +127,31 @@ ids, outcome names, counts and durations only. Nominal worst case: 240 + 45 +
 5 = 290 s. The cron schedule, `vercel.json`, the worker credential and its
 rate limit are unchanged.
 
+### Stored history on the panel (M1 P4d)
+
+`GET /api/search-console/history?project=<id>&range=30d`
+(`src/app/api/search-console/history/route.ts`) is the browser's only way to
+the stored snapshot history: operators only, the project must be stored, the
+range must be the one window snapshots are kept for, and the property is the
+server's own mapping resolved inside `readSearchConsoleHistory` — no request
+names one. It answers the P4a comparison projected by
+`src/lib/search-console/history/view.ts`: dates, gap, confidence, both
+windows' state and partial flags, totals as the comparison computed them (a
+percentage stays null over a zero baseline; a position stays not established
+when the previous window had no impressions), and for queries and pages at
+most five improving, five declining and five opportunity rows with the true
+counts beside them. No property name, snapshot id or full top-25 list reaches
+the browser. A deployment that keeps no snapshots answers `not-kept`; no
+snapshots, one snapshot and history under a previous property are each named;
+a failed read is a 503, never an empty comparison. The *Change since last
+stored snapshot* section (`src/components/search-console/search-console-history.tsx`)
+sits inside the Search Console panel beneath the live report with its own
+load, so a failed or empty history never changes the live panel, shows the
+query lists on the summary and queries views and the page lists on the pages
+view, and always carries the caveats: two windows, not a trend; Search
+Console's average position, not a rank tracker; incomplete top rows; no
+query-to-page mapping and no cannibalisation conclusion. Nothing here writes.
+
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
