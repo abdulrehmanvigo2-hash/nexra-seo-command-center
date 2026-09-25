@@ -1131,3 +1131,131 @@ describe("an outbound link review on the screen — the Authority & Backlink age
     assert.equal(run.resultSummary, null);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The On-Page SEO review, through the same screen
+// ---------------------------------------------------------------------------
+
+/**
+ * The first live on-page review over an M2 crawl (run 874e5384, crawl
+ * 3398ff1a) was refused as `rejected-output` twelve seconds after the same
+ * evidence had been reviewed and kept by the Technical SEO agent. The refused
+ * text is never stored, so the failure class is reproduced here: an answer in
+ * the pre-bound shape — every fetched page by full URL with every element the
+ * instructions name, M2 signals included — through the real worker, beside an
+ * answer at the bound the corrected instructions set. The screen is
+ * untouched: the same 2,000-character ceiling, the same credential patterns,
+ * the same metadata rules.
+ */
+
+/** The metadata the executor stores for an on-page run over an M2 crawl, in production's shape. */
+const ON_PAGE_METADATA: JsonObject = {
+  simulated: false,
+  grounded: true,
+  evidence: {
+    bytes: 7_629,
+    crawlId: CRAWL_ID,
+    hostScope: "nexraagency.com",
+    truncated: false,
+    truncatedByBytes: false,
+    pagesFetched: 5,
+    pagesIncluded: 5,
+    pagesNotReached: 2,
+    findings: { status: "available", ruleVersion: 3, findings: 5, described: 5, rules: 4, rulesCut: [], cutByBytes: 0, linksRead: 46, linksCut: false, bytes: 4_459 },
+  },
+  taskType: "on-page-review",
+  attempt: 1,
+  provider: "anthropic",
+  model: "test-model",
+  inputTokens: 6_000,
+  outputTokens: 500,
+};
+
+/** An answer of the shape the bounded on-page instructions demand. */
+const ON_PAGE_ANSWER = [
+  "Coverage: 5 of 7 pages fetched and read, 46 link edges read, nothing cut; partial crawl, stopped on page budget. Covers only the pages listed.",
+  "1. [h1-missing] OBSERVED: https://nexraagency.com/contact has h1Count=0. INFERENCE: the served HTML carries no h1; high confidence. RECOMMENDATION: add one h1 stating what the page is for.",
+  "2. [meta-description-long] OBSERVED: https://nexraagency.com/ meta description is 169 characters. INFERENCE: likely cut short in results; medium confidence. RECOMMENDATION: trim it to 160 or fewer.",
+  "3. [title-duplicate] OBSERVED: https://nexraagency.com/ and https://www.nexraagency.com/ share one title. INFERENCE: the redirect source and target were recorded separately; high confidence. RECOMMENDATION: keep one canonical host and one title.",
+  "4. OBSERVED: https://nexraagency.com/services declares og:title, a summary_large_image Twitter card and 454 visible words as served. INFERENCE: social metadata is present; the count says nothing about quality; high confidence. RECOMMENDATION: no change proposed.",
+  "/privacy and /terms were discovered but not reached and were not examined.",
+  "Most needs attention: https://nexraagency.com/contact, because it has no h1.",
+].join("\n\n");
+
+async function runOnPage(output: ExecutionOutput) {
+  const { store, finishes, current } = memoryStore(queuedRun({ agentId: "on-page-seo", taskType: "on-page-review" }));
+  const stub = answering(output);
+  const worker = createAgentRunWorker({
+    store,
+    executor: stub.executor,
+    projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+    timeoutMs: 5_000,
+  });
+  const outcome = await worker.executeRun(RUN_ID);
+  return { outcome, finishes, run: current(), executorCalls: stub.calls() };
+}
+
+describe("the On-Page SEO review through the worker's output screen", () => {
+  test("a bounded four-finding review is kept, with its M2 and rule-version-3 evidence metadata, and sits under 1,500 characters", async () => {
+    assert.ok(ON_PAGE_ANSWER.length < 1_500, `${ON_PAGE_ANSWER.length} characters`);
+    const { outcome, finishes, run, executorCalls } = await runOnPage({ summary: ON_PAGE_ANSWER, metadata: ON_PAGE_METADATA });
+
+    assert.equal(outcome.status, "executed");
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "completed");
+    assert.equal(run.status, "completed");
+    assert.equal(run.resultSummary, ON_PAGE_ANSWER);
+    assert.deepEqual(run.resultMetadata, ON_PAGE_METADATA);
+    assert.equal(run.error, null);
+  });
+
+  test("the failure class seen live: a review in the pre-bound shape, every page with every element, runs over 2,000 characters and is refused after one executor call", async () => {
+    const finding = (path: string) =>
+      [
+        `OBSERVED: https://www.nexraagency.com/${path} — title 48 characters, meta description 158 characters, h1Count=1, first h1 "${path}", canonical self, structured data ProfessionalService, 9 internal links in and 11 out within this crawl, depth 1, in sitemap, html lang "en", 0 hreflang alternates, 7 og: meta tags with og:title and og:image, Twitter card summary_large_image, 454 visible words as served.`,
+        "INFERENCE: the declarations are complete and consistent; the word count is a count of the HTML as served and says nothing about quality; high confidence.",
+        "RECOMMENDATION: no change is proposed for this page; an operator may still review the description against the page's purpose.",
+      ].join("\n");
+    const overlong = ["", "about", "blog", "contact", "services"].map(finding).join("\n\n");
+    assert.ok(overlong.length > 2_000, `fixture is only ${overlong.length} characters`);
+
+    const { finishes, run, executorCalls } = await runOnPage({ summary: overlong, metadata: ON_PAGE_METADATA });
+
+    assert.equal(executorCalls, 1, "the worker asked the executor more than once");
+    assert.equal(finishes.length, 1);
+    assert.equal(finishes[0]?.outcome, "failed");
+    assert.equal(run.status, "failed");
+    assert.equal(run.error?.code, "rejected-output");
+    assert.match(run.error?.message ?? "", /too large or looked like it contained a credential/);
+    assert.equal(run.resultSummary, null);
+    assert.equal(run.resultMetadata, null);
+  });
+
+  test("the ceiling is unchanged for this task: 2,000 characters is kept and 2,001 is refused", async () => {
+    const base = "OBSERVED: https://nexraagency.com/contact has h1Count=0. INFERENCE: no h1 served. RECOMMENDATION: add one. ";
+    const atCeiling = base.repeat(Math.ceil(2_000 / base.length)).slice(0, 2_000);
+    assert.equal((await runOnPage({ summary: atCeiling, metadata: ON_PAGE_METADATA })).run.status, "completed");
+    const refused = await runOnPage({ summary: `${atCeiling}x`, metadata: ON_PAGE_METADATA });
+    assert.equal(refused.run.status, "failed");
+    assert.equal(refused.run.error?.code, "rejected-output");
+  });
+
+  test("credential-shaped on-page output is still refused", async () => {
+    for (const summary of [
+      `${ON_PAGE_ANSWER}\nAlso seen: sk-abcdefghijklmnopqrstuvwxyz0123456789`,
+      `${ON_PAGE_ANSWER}\napi_key: 0123456789abcdef`,
+    ]) {
+      const { run, executorCalls } = await runOnPage({ summary, metadata: ON_PAGE_METADATA });
+      assert.equal(executorCalls, 1);
+      assert.equal(run.status, "failed");
+      assert.equal(run.error?.code, "rejected-output");
+      assert.equal(run.resultSummary, null);
+    }
+  });
+
+  test("the on-page evidence summary, findings block included, is storable metadata: no key, depth or size trips the screen", async () => {
+    const { run } = await runOnPage({ summary: ON_PAGE_ANSWER, metadata: ON_PAGE_METADATA });
+    assert.equal(run.status, "completed");
+    assert.deepEqual(run.resultMetadata, ON_PAGE_METADATA);
+  });
+});
