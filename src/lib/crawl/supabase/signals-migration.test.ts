@@ -53,7 +53,7 @@ describe("the T5 migration", () => {
     const migrations = readdirSync(new URL("supabase/migrations", root)).filter((f) => f.endsWith(".sql")).sort();
     const at = migrations.indexOf("20260929120000_extend_crawl_page_signals.sql");
     assert.equal(migrations[at - 1], "20260928120000_create_crawl_findings.sql");
-    assert.deepEqual(migrations.slice(at + 1), ["20260930120000_create_search_console_query_pages.sql", "20261001120000_extend_crawl_page_content_signals.sql"]);
+    assert.deepEqual(migrations.slice(at + 1, at + 3), ["20260930120000_create_search_console_query_pages.sql", "20261001120000_extend_crawl_page_content_signals.sql"]);
     assert.ok(MIGRATION.endsWith("\n"));
     assert.equal(/\r/.test(MIGRATION), false);
   });

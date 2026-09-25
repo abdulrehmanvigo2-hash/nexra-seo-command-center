@@ -1,4 +1,4 @@
--- C5 article approval gate. Updated for C6: approvals are referenced by a foreign key (TRUNCATE 0A000 / CASCADE 23514), and the security definer inventory names the C6 functions and (since 20260927120000) the M1 Search Console snapshot record function, (since 20260928120000) the T3 crawl findings record function, and (since 20260930120000) the M1 P4c query × page record function.
+-- C5 article approval gate. Updated for C6: approvals are referenced by a foreign key (TRUNCATE 0A000 / CASCADE 23514), and the security definer inventory names the C6 functions and (since 20260927120000) the M1 Search Console snapshot record function, (since 20260928120000) the T3 crawl findings record function, and (since 20260930120000) the M1 P4c query × page record function, and (since 20261002120000) the M3 finding triage set function.
 -- Part of the local PostgreSQL test harness; run only through supabase/tests/run.sh,
 -- which creates and destroys its own disposable cluster. Never run against a hosted database.
 
@@ -194,6 +194,7 @@ begin
              'nexra_article_save_version(text,uuid,smallint,text,text,jsonb,uuid)',
              'nexra_content_draft_save_version(uuid,text,smallint,text,text,uuid)',
              'nexra_content_publication_propose(text,uuid,smallint,uuid,text,uuid,timestamp with time zone,text,text,text,text,uuid)',
+             'nexra_crawl_finding_triage_set(text,uuid,text,text,text,uuid)',
              'nexra_crawl_findings_record(text,uuid,smallint,integer,integer,integer,integer,integer,boolean,jsonb,text[],jsonb)',
              'nexra_search_console_query_pages_record(text,text,text,date,date,jsonb,timestamp with time zone)',
              'nexra_search_console_snapshot_record(text,text,text,date,date,text,bigint,bigint,numeric,numeric,jsonb,jsonb,text[],timestamp with time zone)',

@@ -26,6 +26,8 @@ import {
   getVitalsSummary,
 } from "@/lib/mock/technical";
 import { AgentAccessPanel } from "@/components/technical/agent-access-panel";
+import { ObservedFindings } from "@/components/technical/observed-findings";
+import type { ProjectOption } from "@/lib/projects/selection";
 import { CrawlView } from "@/components/technical/crawl-view";
 import { LinksView } from "@/components/technical/links-view";
 import {
@@ -100,7 +102,12 @@ type TabId = (typeof TABS)[number]["id"];
 
 const TAB_IDS: readonly string[] = TABS.map((tab) => tab.id);
 
-export function TechnicalSeo() {
+export function TechnicalSeo({
+  storedProjects,
+}: {
+  /** The stored roster, for the observed findings section only. The modelled views keep their own fixture project options. */
+  storedProjects: readonly ProjectOption[];
+}) {
   const searchParams = useSearchParams();
 
   const allPages = getTechnicalPages();
@@ -398,6 +405,11 @@ export function TechnicalSeo() {
       />
 
       <MetricTileGrid metrics={overview.metrics} />
+
+      {/* Observed, not modelled: the stored project's latest recorded findings
+          and the decisions made about them (M3). It has its own project
+          selector because the filters below range over the fixture roster. */}
+      <ObservedFindings projects={storedProjects} initialProjectId={initialProject} />
 
       <Panel>
         <TechnicalToolbar

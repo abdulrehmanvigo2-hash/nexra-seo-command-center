@@ -51,10 +51,11 @@ describe("the M2 migration", () => {
     assert.match(MIGRATION, /never a user's experience and never a Core Web Vital/);
   });
 
-  test("is the newest migration, after the M1 P4c migration, and stays byte-for-byte the reviewed file", () => {
+  test("follows the M1 P4c migration directly (the M3 triage migration came after), and stays byte-for-byte the reviewed file", () => {
     const migrations = readdirSync(new URL("supabase/migrations", root)).filter((f) => f.endsWith(".sql")).sort();
-    assert.equal(migrations.at(-1), MIGRATION_FILE);
-    assert.equal(migrations.at(-2), "20260930120000_create_search_console_query_pages.sql");
+    const at = migrations.indexOf(MIGRATION_FILE);
+    assert.equal(migrations[at - 1], "20260930120000_create_search_console_query_pages.sql");
+    assert.ok(migrations.slice(at + 1).every((f) => !/crawl_page/.test(f)), "no later migration touches the page columns");
     assert.ok(MIGRATION.endsWith("\n"));
     assert.equal(/\r/.test(MIGRATION), false);
   });

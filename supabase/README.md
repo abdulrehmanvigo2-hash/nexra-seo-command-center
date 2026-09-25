@@ -492,6 +492,26 @@ deployed only after this migration is applied**: its page insert names the
 new columns. It has been applied only to disposable local PostgreSQL 16
 clusters; it has **not** been applied to production.
 
+## Crawl finding triage
+
+`20261002120000_create_crawl_finding_triage.sql` (milestone M3) adds
+`nexra_crawl_finding_triage`: one row per project and finding key holding an
+operator's decision — `open`, `acknowledged`, `resolved` or `ignored`, an
+optional note of at most 500 characters, who set it and when — and the exact
+finding, report and crawl it was last made on (foreign keys that cascade with
+the finding; the project restricts). Binding is checked by trigger on insert
+and update; the row's identity never changes, a decision is never re-dated
+earlier, and a direct delete or truncate is refused. The one write is
+`nexra_crawl_finding_triage_set` (`security definer`, empty `search_path`,
+advisory lock per project and key), answering `set` with the previous status,
+`not-found` or `not-recorded`. `service_role` gets SELECT on the table and
+EXECUTE on that function only; RLS on, no policies. The findings tables are
+not touched: no column, grant, trigger or policy changes. Apply it after
+`20261001120000`, then `NOTIFY pgrst, 'reload schema';`. **The application
+built from M3 must be deployed only after this migration is applied.** It has
+been applied only to disposable local PostgreSQL 16 clusters; it has **not**
+been applied to production.
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -31,7 +31,7 @@ T5_MIGRATION="$MIGRATIONS/20260929120000_extend_crawl_page_signals.sql"
 M2_MIGRATION="$MIGRATIONS/20261001120000_extend_crawl_page_content_signals.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=108 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -423,7 +423,31 @@ suite_content_upgrade() {
   run_sql_suite content-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/findings/setup.sql" "$HERE/content/upgrade-before.sql" "$M2_MIGRATION" "$HERE/content/upgrade-after.sql"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade)
+# Crawl finding triage (M3): schema, security, every outcome of the set function, guards, binding, isolation, the findings untouched.
+suite_triage() {
+  fresh_db
+  run_sql_suite triage "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/findings/setup.sql" "$HERE/triage/setup.sql" "$HERE/triage/tests.sql"
+}
+
+# Two operators decide the same finding at once: the second waits for the first, one row, the later decision wins.
+suite_triage_races() {
+  fresh_db
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/findings/setup.sql" -f "$HERE/triage/setup.sql" >/dev/null
+  local rows
+  race "select t.tset(p_status => 'acknowledged')->>'outcome'" "select t.tset(p_status => 'resolved')->>'previous'"
+  rows="$(q "select count(*) || '/' || string_agg(status, ',') from public.nexra_crawl_finding_triage where project_id = 'halcyon-fintech'")"
+  check "triage race R1 same key: s1=$R1 s2(previous)=$R2, waited ${WAIT_MS} ms, rows/status $rows" \
+    "$([ "$R1" = set ] && [ "$R2" = acknowledged ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/resolved" ]; echo $?)"
+  race "select t.tset(p_key => t.key2(), p_status => 'acknowledged')->>'outcome'" "select t.tset(p_key => t.key2(), p_status => 'ignored')->>'outcome'" rollback
+  rows="$(q "select count(*) || '/' || string_agg(status, ',') from public.nexra_crawl_finding_triage where finding_key = t.key2()")"
+  check "triage race R2 first rolls back: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, rows/status $rows" \
+    "$([ "$R1" = set ] && [ "$R2" = set ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/ignored" ]; echo $?)"
+  race "select t.tset(p_project => 'verdant-home', p_crawl => 'c0000000-0000-4000-8000-000000000005', p_key => 'title-missing:00000000000000aa')->>'outcome'" "select t.tset(p_key => t.key1(), p_status => 'open')->>'outcome'"
+  check "triage race R3 different keys do not wait: s1=$R1 s2=$R2, waited ${WAIT_MS} ms" \
+    "$([ "$R1" = set ] && [ "$R2" = set ] && [ "$WAIT_MS" -lt 1000 ]; echo $?)"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -436,6 +460,7 @@ for s in "${SUITES[@]}"; do
     findings) suite_findings ;; findings-races) suite_findings_races ;;
     signals) suite_signals ;; signals-upgrade) suite_signals_upgrade ;;
     content) suite_content ;; content-upgrade) suite_content_upgrade ;;
+    triage) suite_triage ;; triage-races) suite_triage_races ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

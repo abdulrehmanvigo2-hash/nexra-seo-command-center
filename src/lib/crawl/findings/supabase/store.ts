@@ -84,5 +84,18 @@ export function createSupabaseCrawlFindingsStore(client: SupabaseClient<CrawlFin
         findingsTruncated: rows.data.length >= FINDINGS_READ_LIMIT,
       };
     },
+
+    // The most recently recorded report for the project, whichever crawl it
+    // is of, through the project index. Its header only.
+    async getLatestReportHeader(projectId) {
+      const reports = await client
+        .from("nexra_crawl_findings_reports")
+        .select(REPORT_READ_COLUMNS)
+        .eq("project_id", projectId)
+        .order("recorded_at", { ascending: false })
+        .limit(1);
+      if (reports.error) throw new CrawlFindingsStoreError("read latest crawl findings report", reports.error);
+      return reports.data.length === 0 ? null : reportRowToHeader(reports.data[0]);
+    },
   };
 }

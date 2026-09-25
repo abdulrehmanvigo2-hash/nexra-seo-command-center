@@ -30,8 +30,10 @@ Everything else on screen — rankings, content, technical, competitor, backlink
 AI-visibility, and reporting figures — is still modelled fixture data, labelled
 as such. Nothing measures it yet. **The crawl foundation does not change that:**
 it stores what it observes, and the only readers of it are the crawl panel on
-the project workspace and the two crawl-grounded agent tasks below, so every
-Technical SEO screen is still fixture data and still says so.
+the project workspace and the two crawl-grounded agent tasks below. Since M3
+the Technical SEO screen carries one observed section — a stored project's
+latest recorded findings and the decisions made about them — above its
+modelled views, which stay fixture data and still say so.
 
 ## Supabase
 
@@ -1978,6 +1980,87 @@ after this migration is applied to production. Applying it is a separate §6
 approval, and it has been applied only to disposable local PostgreSQL 16
 clusters (harness suites `content` and `content-upgrade`).
 
+### Finding triage and the observed section on the Technical screen (M3; local only)
+
+M3 began with a gap audit against the original M3 goals. A deterministic
+issue registry (T1, T5, M2), persisted findings per crawl (T3), the live
+findings read path and panel (T4), the two page reviews grounded on the
+findings (T2; they recompute the same fixed rules over the same crawl, so a
+stored report would add nothing) and the Director's hand-off (T6) were
+complete. Severity, category and true per-rule counts, plus the Director's
+OBSERVED/PROPOSED ranking, already cover prioritisation, so no scoring system
+was added. Two things were missing and are delivered here: an operator's
+decision about a finding, and a live view of a stored project's findings on
+the Technical SEO screen. Comparing findings across crawls (appeared,
+persisted, disappeared) is left for a later milestone; the stable finding
+key makes it possible, and triage is already keyed by it.
+
+**Triage.** `nexra_crawl_finding_triage` (migration `20261002120000`) keeps
+one row per project and finding key — `open`, `acknowledged`, `resolved` or
+`ignored`, an optional note of at most 500 characters, who set it and when,
+and the exact finding, report and crawl the decision was last made on. It is
+a decision about an observation, kept in its own table: the findings tables
+gain no column, no grant and no trigger, and their guards still refuse every
+update. Keyed by project and finding key, a decision made on one crawl's
+finding applies when a later crawl records the same finding again (the
+section says "decided … on an earlier crawl's finding with the same key"),
+and setting it again on the later crawl moves the binding forward. The one
+write is `nexra_crawl_finding_triage_set(project, crawl, key, status, note,
+operator)` (`security definer`, empty `search_path`, a transaction advisory
+lock per project and key): `set` with the previous status, `not-found` for
+a crawl that is not stored or not the project's, `not-recorded` for a key
+not recorded for that crawl; a status outside the four or a note over the
+limit raises and writes nothing. Insert and update triggers check the row
+names its own project's finding with that key and rule; the row's identity
+never changes; a decision is never re-dated earlier; a direct delete or
+truncate is refused, and a row goes only with the finding it was set on.
+`service_role` gets SELECT and EXECUTE on the function only; RLS is on with
+no policies. Nothing resolves automatically, expires, dispatches an agent or
+changes a page. Harness suites `triage` (84 assertions) and `triage-races`
+(two operators on one key wait and the later decision wins; a rolled-back
+first decision leaves the second; different keys do not wait).
+
+**Server.** `src/lib/crawl/findings/triage/` holds the contract (statuses,
+note normalisation, request parsing), the store contract, the Supabase store,
+the presenter and the request helpers. The crawl service gains
+`getLatestCrawlFindings(projectId)` — the most recently recorded report
+across the project's own crawls (the findings store's
+`getLatestReportHeader`), re-checked against the crawl's project, with the
+report and every decision recorded for the project; `unavailable` when no
+findings are kept, `none` when nothing was ever recorded — and
+`setFindingTriage`, which checks the crawl is the project's before the
+database does. `GET /api/crawls/latest-findings?project=<id>` (operators only,
+crawl-read rate limit, the project must be stored) answers `none` or
+`recorded` with the crawl, the report and the decisions. `POST
+/api/crawls/<id>/findings/triage` (same-origin, operators only, a bounded
+JSON body of exactly `project`, `findingKey`, `status` and optional `note`,
+its own 60-per-ten-minutes limit) answers `set`, 404 `not-found` or
+`not-recorded`, 503 `unavailable`. Logs carry ids, the outcome and the
+statuses; never the note.
+
+**Screen.** The Technical SEO page reads the stored roster from the Projects
+repository and mounts *Observed findings* (`src/components/technical/
+observed-findings.tsx`) once, above the modelled views. The section has its
+own stored-project selector (the modelled filters range over the fixture
+roster, and the two are never mixed), the *Observed* label, and every state
+apart: no stored project, loading, not stored on this deployment, a failed
+read (never "no findings"), nothing recorded ("this says nothing about the
+site"), a report with no findings ("not a clean result"), and a report. The
+presenter (`triage/present.ts`) lists the 50 most severe findings in recorded
+order with the true totals beside them, counts decisions over the findings
+read (a finding with no decision is open), shows a decision's note and time,
+and says when it was made on an earlier crawl. The one control records a
+decision — a status and a note — and the wording after a save says it is what
+the operator decided, not a change to the page. The provenance note names
+observed data, decisions as an operator's record, within this crawl, no
+indexation, ranking, traffic or vitals, and nothing fixture. The T4 section
+inside the crawl panel is unchanged and still offers no control.
+
+**Deploy order:** the migration must be applied to production before this
+code is deployed; the read route answers 503 until then only if the store is
+missing, but the write and the triage read would fail on the missing table.
+It has been applied only to disposable local PostgreSQL 16 clusters.
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`
@@ -2037,8 +2120,10 @@ clusters (harness suites `content` and `content-upgrade`).
   never logged or stored; a bare 401 for every failure.
 - Rate limits shared across instances (Postgres, `src/lib/security/app-rate-limit.ts`):
   sign-in 5 per email address (stored as a hash) and 50 overall per 15 min;
-  project creation 10/10 min, run creation 30/10 min, run actions 60/10 min, and
-  manual worker triggers 30/10 min per operator; scheduled jobs 60/hour per job.
+  project creation 10/10 min, run creation 30/10 min, run actions 60/10 min,
+  crawl starts 10/10 min, crawl reads 120/10 min, finding triage decisions
+  60/10 min, and manual worker triggers 30/10 min per operator; scheduled jobs
+  60/hour per job.
   Refusals are 429 with `Retry-After` (sign-in: a fixed "too many attempts"
   message). If the shared count cannot be read, the request is refused. On the
   fixture data source, counts are per process.
