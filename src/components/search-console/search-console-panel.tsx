@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
 import { SearchConsoleHistory } from "@/components/search-console/search-console-history";
+import { SearchConsoleQueryPages } from "@/components/search-console/search-console-query-pages";
 import { PERFORMANCE_REVIEW, SEARCH_QUERY_REVIEW, searchQueryReviewRequest } from "@/lib/crawl/review-request";
 import { formatFullDate, formatNumber, formatPercent } from "@/lib/format";
 import {
@@ -202,6 +203,14 @@ export function SearchConsolePanel({
         Snapshots are kept for the 30-day window only.
       */}
       {projectId && rangeId === "30d" && <SearchConsoleHistory projectId={projectId} view={view} />}
+
+      {/*
+        Query-to-page overlap (P4c): the project's stored query × page pairs
+        for the newest window, analysed by fixed rules, with its own load.
+        Offered where queries are the subject, beside the summary and the
+        query list; pairs are kept for the 30-day window only.
+      */}
+      {projectId && rangeId === "30d" && view !== "pages" && <SearchConsoleQueryPages projectId={projectId} />}
 
       {/* Offered where the queries are the subject — beside the summary and
           the query list, not the page list, which neither review reads. */}
