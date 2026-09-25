@@ -57,16 +57,37 @@ describe("the keywords read route", () => {
 });
 
 describe("the observed query inventory section", () => {
-  test("is mounted once on the Keywords tab, for one stored project, beneath the Search Console panel", () => {
+  test("is mounted exactly once whenever the Keywords tab is active, whatever the project filter says, beneath the Search Console panel", () => {
     assert.match(WORKSPACE, /import \{ SearchConsoleKeywords \} from "@\/components\/search-console\/search-console-keywords"/);
-    assert.equal((WORKSPACE.match(/<SearchConsoleKeywords /g) ?? []).length, 1);
-    assert.match(WORKSPACE, /tab === "keywords" && filters\.project !== "all" && \(\s+<SearchConsoleKeywords projectId=\{filters\.project\} \/>/);
+    assert.equal((WORKSPACE.match(/<SearchConsoleKeywords/g) ?? []).length, 1);
+    assert.match(WORKSPACE, /\{tab === "keywords" && \(\s+<SearchConsoleKeywords\s+projects=\{projects\}\s+initialProjectId=\{filters\.project === "all" \? null : filters\.project\}\s+\/>/);
+    assert.doesNotMatch(WORKSPACE, /filters\.project !== "all" && \(\s+<SearchConsoleKeywords/, "the mount no longer depends on the filter");
     assert.ok(WORKSPACE.indexOf("<SearchConsolePanel") < WORKSPACE.indexOf("<SearchConsoleKeywords"), "beneath the panel");
     assert.match(WORKSPACE, /Mock data over the/, "the modelled universe keeps its label");
+    assert.match(WORKSPACE, /projects: readonly ProjectOption\[\];/, "the roster it hands down is the stored roster");
   });
 
-  test("reads through the keywords endpoint only, offers no control, imports no fixture, and labels its provenance", () => {
+  test("carries its own stored-project selector, seeded from the filter when that names a stored project", () => {
+    assert.match(SECTION, /projects: readonly ProjectOption\[\];/);
+    assert.match(SECTION, /initialProjectId: string \| null;/);
+    assert.match(SECTION, /useState<string \| null>\(\(\) =>\s+initialProjectId !== null && projects\.some\(\(project\) => project\.id === initialProjectId\) \? initialProjectId : null,/);
+    assert.match(SECTION, /<Select\s+id=\{selectId\}/);
+    assert.match(SECTION, /Stored project/);
+    assert.match(SECTION, /\.\.\.projects\.map\(\(project\) => \(\{ value: project\.id, label: project\.name \}\)\)/, "the roster only");
+    assert.match(SECTION, /label: "Choose a project"/);
+    assert.match(SECTION, /title="Choose a single project"/);
+    assert.match(SECTION, /title="No stored project"/);
+  });
+
+  test("reads nothing until a project is chosen, then the keywords endpoint only", () => {
+    assert.match(SECTION, /useState<Load>\(\{ status: "idle" \}\)/);
+    assert.match(SECTION, /useEffect\(\(\) => \{\s+if \(projectId === null\) return;/);
     assert.match(SECTION, /keywordsUrl\(projectId\)/);
+    assert.equal((SECTION.match(/fetch\(/g) ?? []).length, 1);
+    assert.match(SECTION, /setLoad\(\{ status: "idle" \}\)/, "clearing the selection clears the read");
+  });
+
+  test("offers no control beyond the selector, imports no fixture, and labels its provenance", () => {
     assert.doesNotMatch(SECTION, /method: "POST"|<Button|<form|onClick|useQueuedReview|@\/lib\/mock/);
     assert.match(SECTION, /Observed · derived labels/);
     assert.match(SECTION, /Not the modelled keyword universe above/);

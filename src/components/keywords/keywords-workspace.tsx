@@ -691,10 +691,14 @@ export function KeywordsWorkspace({
         )}
 
         {/* The observed query inventory (M4): derived by fixed rules from the
-            stored snapshots and pairs the panel above reads live. One project
-            at a time, like the panel; never the modelled universe. */}
-        {tab === "keywords" && filters.project !== "all" && (
-          <SearchConsoleKeywords projectId={filters.project} />
+            stored snapshots and pairs the panel above reads live. One stored
+            project at a time, chosen in the panel itself so it is reachable
+            whatever the filter above says; never the modelled universe. */}
+        {tab === "keywords" && (
+          <SearchConsoleKeywords
+            projects={projects}
+            initialProjectId={filters.project === "all" ? null : filters.project}
+          />
         )}
 
         {tab === "clusters" && (
