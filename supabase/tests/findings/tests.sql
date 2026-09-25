@@ -131,7 +131,12 @@ begin
   perform t.ok(t.ferr($q$update nexra_crawl_findings set severity = 'low' where crawl_id = 'c0000000-0000-4000-8000-000000000001'$q$) = '23514', 'D UPDATE of a finding refused (23514)');
   perform t.ok(t.ferr($q$delete from nexra_crawl_findings where crawl_id = 'c0000000-0000-4000-8000-000000000001'$q$) = '23514', 'D direct DELETE of a finding refused (23514)');
   perform t.ok(t.ferr($q$delete from nexra_crawl_findings_reports where crawl_id = 'c0000000-0000-4000-8000-000000000001'$q$) = '23514', 'D direct DELETE of a report refused (23514)');
-  perform t.ok(t.ferr($q$truncate nexra_crawl_findings$q$) = '23514', 'D TRUNCATE refused (23514)');
+  -- Since M3 (20261002120000) the findings are referenced by the triage table's
+  -- foreign key, so a plain TRUNCATE is refused by PostgreSQL itself (0A000)
+  -- before the guard runs; TRUNCATE ... CASCADE reaches the guard, which
+  -- refuses it. Either way nothing is removed.
+  perform t.ok(t.ferr($q$truncate nexra_crawl_findings$q$) = '0A000', 'D plain TRUNCATE refused by the foreign key (0A000)');
+  perform t.ok(t.ferr($q$truncate nexra_crawl_findings cascade$q$) = '23514', 'D TRUNCATE CASCADE refused by the guard (23514)');
   perform t.ok(t.ferr($q$delete from projects where id = 'halcyon-fintech'$q$) = '23503', 'D the project cannot be deleted under its findings (23503)');
   perform t.ok((select count(*) from nexra_crawl_findings where crawl_id = 'c0000000-0000-4000-8000-000000000001') = 4, 'D nothing above removed anything');
 
