@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 import { createAiExecutor } from "../agent-runs/ai-executor.ts";
 import { looksLikeSecret } from "../agent-runs/safety.ts";
 import { agentMayRun, getTaskType } from "../agent-runs/task-types.ts";
 import type { Crawl, CrawlPage } from "../../types/crawl.ts";
+import { computeCrawlFindings } from "./findings/compute.ts";
+import { FINDINGS_RULE_VERSION } from "./findings/contract.ts";
+import { formatCrawlFindingsGrounding } from "./findings/grounding.ts";
 import {
   ANSWER_READINESS_REVIEW_INSTRUCTIONS,
   CRAWL_REVIEW_INSTRUCTIONS,
@@ -911,5 +915,151 @@ describe("M2 content signals in the evidence", () => {
     assert.match(LIMITS_NOTE, /A response time above is this server's one fetch of the final hop/);
     assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /the visible word count of the HTML as served \(a count, not a judgement of quality or depth\)/);
     assert.ok(ANSWER_READINESS_REVIEW_INSTRUCTIONS.length < 2_400, "the answer-readiness instructions were left at their pinned length");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The on-page instructions bound what the model emits
+// ---------------------------------------------------------------------------
+
+/**
+ * The first live on-page review over an M2 crawl was refused as
+ * `rejected-output`: the worker keeps at most 2,000 characters, the executor
+ * asks for under 1,500, and the on-page instructions named more elements per
+ * page than either allowed for, with no cap on findings. The fix is one
+ * sentence in those instructions. Nothing else moved: the screen, the crawl
+ * evidence, the findings and the other two crawl reviews are pinned here.
+ */
+describe("the on-page instructions bound what the model emits", () => {
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+
+  test("they cap the answer at 4 findings and 1,500 characters, prioritised, with lower-priority findings omitted", () => {
+    assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /OUTPUT BOUND: give at most 4 findings/);
+    assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /under 1,500 characters/);
+    assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /highest confidence first/);
+    assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /cite the rule id in square brackets and the exact URL wherever the evidence gives them/);
+    assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /keep each finding's OBSERVED, INFERENCE and RECOMMENDATION separate/);
+    assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /omit lower-priority findings entirely rather than exceed the bound/);
+    assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /Never drop the coverage statement/);
+    // The bound sits before the closing line, so the closing line is inside it.
+    assert.ok(ON_PAGE_REVIEW_INSTRUCTIONS.indexOf("OUTPUT BOUND") < ON_PAGE_REVIEW_INSTRUCTIONS.indexOf("End with one line"));
+    // The task type still hands the model this exact text.
+    assert.equal(getTaskType("on-page-review")?.instructions, ON_PAGE_REVIEW_INSTRUCTIONS);
+  });
+
+  test("the anti-fabrication, coverage and read-only wording is intact", () => {
+    for (const phrase of [
+      "Use only the supplied evidence",
+      "Every finding must cite at least one crawled URL",
+      "Only the pages listed as fetched and read were examined",
+      "Where a reading is marked 'not established', say it is unknown",
+      "Never treat it as a pass, a failure, a zero, or a no",
+      "were NOT audited",
+      "Do not describe their titles, headings, or issues",
+      "You cannot edit, publish, or change any page",
+      "do not describe it as done",
+      "Do not state or estimate search volume, rankings, click-through, traffic, indexation status, or Core Web Vitals",
+      "Say plainly that this covers only the pages listed",
+      "cannot show that a page is orphaned",
+      "If the block says findings are unavailable or no rule fired, say so and infer nothing in their place",
+      "End with one line naming the single page whose on-page elements most need attention",
+    ]) {
+      assert.ok(ON_PAGE_REVIEW_INSTRUCTIONS.includes(phrase), `missing: ${phrase}`);
+    }
+    assert.equal(getTaskType("on-page-review")?.policy, "read-only");
+    assert.equal(getTaskType("on-page-review")?.evidence, "crawl");
+  });
+
+  test("the crawl-review and answer-readiness instructions are byte-for-byte what master 3b74d99 shipped", () => {
+    assert.equal(CRAWL_REVIEW_INSTRUCTIONS.length, 1_738);
+    assert.equal(sha256(CRAWL_REVIEW_INSTRUCTIONS), "73c8fe593c6ab0d1ea8a6efa469d48a7c3231d94dfb9c63b156aaf09a0ac7f63");
+    assert.equal(ANSWER_READINESS_REVIEW_INSTRUCTIONS.length, 2_297);
+    assert.equal(sha256(ANSWER_READINESS_REVIEW_INSTRUCTIONS), "2045b12eecf05806a4830cf0fbbc592e24dd3cdbc31a89d189395477cac25876");
+    assert.equal(getTaskType("crawl-review")?.instructions, CRAWL_REVIEW_INSTRUCTIONS);
+    assert.equal(getTaskType("answer-readiness-review")?.instructions, ANSWER_READINESS_REVIEW_INSTRUCTIONS);
+  });
+
+  test("the M2 evidence lines and the rule-version-3 findings still reach an on-page prompt, with the bound in it", async () => {
+    const page: CrawlPage = {
+      ...FETCHED,
+      wordCount: 454,
+      htmlLang: "en",
+      hreflangCount: 0,
+      hreflangMalformed: 0,
+      ogTagCount: 5,
+      ogTitle: "Services",
+      ogImage: "https://nexraagency.com/og.png",
+      twitterCard: "summary_large_image",
+      responseMs: 31,
+    };
+    const crawlGrounding = formatCrawlGrounding(CRAWL, [page]);
+    const report = computeCrawlFindings({ crawl: CRAWL, pages: [page], links: [] });
+    assert.equal(report.ruleVersion, 3);
+    assert.equal(FINDINGS_RULE_VERSION, 3);
+    const findings = formatCrawlFindingsGrounding(report, { read: 0, cut: false });
+
+    const seen: { system?: string; prompt?: string } = {};
+    const executor = createAiExecutor(
+      {
+        id: "anthropic",
+        model: "test-model",
+        async generate(request: { system: string; prompt: string }) {
+          seen.system = request.system;
+          seen.prompt = request.prompt;
+          return { text: "ok", model: "test-model", inputTokens: 1, outputTokens: 1 };
+        },
+      },
+      async () => ({
+        ok: true,
+        grounding: {
+          text: `${crawlGrounding.text}\n\n${findings.text}`,
+          summary: { ...crawlGrounding.summary, findings: findings.summary },
+        },
+      }),
+    );
+    await executor.execute(
+      {
+        runId: "00000000-0000-4000-8000-00000000000c",
+        attempt: 1,
+        agent: { id: "on-page-seo", name: "On-Page SEO" },
+        project: { id: "nexra-agency", name: "Nexra Agency", domain: "nexraagency.com" },
+        taskType: "on-page-review",
+        input: { crawlId: CRAWL.id },
+      },
+      new AbortController().signal,
+    );
+
+    const prompt = seen.prompt ?? "";
+    assert.ok(prompt.includes(ON_PAGE_REVIEW_INSTRUCTIONS));
+    assert.match(prompt, /OUTPUT BOUND: give at most 4 findings/);
+    assert.match(prompt, /Visible word count \(fetched HTML as served, not rendered\): 454\n/);
+    assert.match(prompt, /Document language \(html lang\): "en"\n/);
+    assert.match(prompt, /hreflang alternate links: 0\n/);
+    assert.match(prompt, /Open Graph: 5 og: meta tag\(s\), og:title "Services", og:image present\n/);
+    assert.match(prompt, /Twitter card: "summary_large_image"\n/);
+    assert.match(prompt, /Response time of THIS SERVER'S fetch \(final hop, one connection; not a user metric, not a Core Web Vital\): 31 ms/);
+    assert.match(prompt, /rule version 3\./);
+    assert.match(prompt, /DETERMINISTIC CRAWL FINDINGS/);
+    // The evidence itself is not shortened: the block is the whole crawl grounding plus the whole findings block.
+    assert.ok(prompt.includes(crawlGrounding.text));
+    assert.ok(prompt.includes(findings.text));
+    assert.match(seen.system ?? "", /under 1500 characters/);
+  });
+
+  test("an answer at the bound — four findings in the demanded shape — fits the worker's ceiling with room to spare", () => {
+    const answer = [
+      "Coverage: 5 of 7 pages fetched and read, 46 link edges read, nothing cut; partial crawl, stopped on page budget. Covers only the pages listed.",
+      "1. [h1-missing] OBSERVED: https://nexraagency.com/contact has h1Count=0. INFERENCE: the served HTML carries no h1; high confidence. RECOMMENDATION: add one h1 stating what the page is for.",
+      "2. [meta-description-long] OBSERVED: https://nexraagency.com/ meta description is 169 characters. INFERENCE: likely cut short in results; medium confidence. RECOMMENDATION: trim it to 160 or fewer.",
+      "3. [title-duplicate] OBSERVED: https://nexraagency.com/ and https://www.nexraagency.com/ share one title. INFERENCE: the redirect source and target were recorded separately; high confidence. RECOMMENDATION: keep one canonical host and one title.",
+      "4. OBSERVED: https://nexraagency.com/services declares og:title, a summary_large_image Twitter card and 454 visible words as served. INFERENCE: social metadata is present; the count says nothing about quality; high confidence. RECOMMENDATION: no change proposed.",
+      "/privacy and /terms were discovered but not reached and were not examined.",
+      "Most needs attention: https://nexraagency.com/contact, because it has no h1.",
+    ].join("\n\n");
+    assert.ok(answer.length < 1_500, `${answer.length} characters`);
+    assert.ok(answer.length <= 2_000);
+    assert.equal((answer.match(/OBSERVED:/g) ?? []).length, 4);
+    assert.equal(looksLikeSecret(answer), false);
+    assert.equal(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(answer), false);
   });
 });
