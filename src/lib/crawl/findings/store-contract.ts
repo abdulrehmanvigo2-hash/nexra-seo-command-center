@@ -61,6 +61,12 @@ export type CrawlFindingsStore = {
   record(input: RecordCrawlFindingsInput): Promise<RecordCrawlFindingsOutcome>;
   /** The newest report recorded for the project's crawl, or null. Never another project's. */
   getReport(projectId: string, crawlId: string): Promise<StoredCrawlFindingsReport | null>;
+  /**
+   * The header of the most recently recorded report across all of the
+   * project's crawls, or null when none was ever recorded. The header only:
+   * the caller reads the report through `getReport` once it knows the crawl.
+   */
+  getLatestReportHeader(projectId: string): Promise<StoredCrawlFindingsReportHeader | null>;
 };
 
 /** The store used when crawls are not persisted anywhere. It refuses rather than pretends. */
@@ -70,6 +76,9 @@ export const unavailableCrawlFindingsStore: CrawlFindingsStore = {
     return { status: "not-found" };
   },
   async getReport() {
+    return null;
+  },
+  async getLatestReportHeader() {
     return null;
   },
 };

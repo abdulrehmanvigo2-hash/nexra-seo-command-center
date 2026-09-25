@@ -8,6 +8,8 @@ import { runCrawl, type CrawlResult, type EngineOptions } from "@/lib/crawl/engi
 import { computeCrawlFindings } from "@/lib/crawl/findings/compute";
 import { FINDINGS_LINK_LIMIT } from "@/lib/crawl/findings/grounding";
 import { unavailableCrawlFindingsStore, type CrawlFindingsStore, type StoredCrawlFindingsReport } from "@/lib/crawl/findings/store-contract";
+import type { FindingTriage, FindingTriageStatus, SetFindingTriageOutcome } from "@/lib/crawl/findings/triage/contract";
+import { TRIAGE_READ_LIMIT, unavailableCrawlFindingTriageStore, type CrawlFindingTriageStore } from "@/lib/crawl/findings/triage/store-contract";
 import { hostScopeFromDomain, startUrlForDomain } from "@/lib/crawl/url-policy";
 import { logEvent } from "@/lib/observability/log";
 import type { ProjectRepository } from "@/lib/projects/contract";
@@ -77,7 +79,41 @@ export type CrawlService = {
    * keeps no findings answers `unavailable` rather than an empty report.
    */
   getCrawlFindings(projectId: string, crawlId: string): Promise<CrawlFindingsRead>;
+  /**
+   * The most recently recorded findings across the project's own crawls,
+   * with every decision recorded for the project (M3). A read of stored rows
+   * only: `unavailable` when the store keeps no findings, `none` when no crawl
+   * of the project ever recorded any, otherwise the crawl, its newest report
+   * and the project's decisions. Never another project's rows.
+   */
+  getLatestCrawlFindings(projectId: string): Promise<LatestCrawlFindingsRead>;
+  /**
+   * Records an operator's decision about one recorded finding of one of the
+   * project's own crawls, by finding key (M3). The crawl is checked against
+   * the project here and again by the database function; a crawl that is not
+   * the project's answers `not-found`, a key not recorded for it
+   * `not-recorded`. Nothing about the finding itself changes.
+   */
+  setFindingTriage(input: SetFindingTriageRequest): Promise<SetFindingTriageResult>;
 };
+
+export type LatestCrawlFindingsRead =
+  /** The findings store is not configured on this deployment. */
+  | { readonly status: "unavailable" }
+  /** No crawl of the project has a recorded report. */
+  | { readonly status: "none" }
+  | { readonly status: "recorded"; readonly crawl: Crawl; readonly report: StoredCrawlFindingsReport; readonly triage: readonly FindingTriage[] };
+
+export type SetFindingTriageRequest = {
+  readonly projectId: string;
+  readonly crawlId: string;
+  readonly findingKey: string;
+  readonly status: FindingTriageStatus;
+  readonly note: string | null;
+  readonly operatorId: string;
+};
+
+export type SetFindingTriageResult = SetFindingTriageOutcome | { readonly status: "unavailable" };
 
 export type CrawlFindingsRead =
   /** The findings store is not configured on this deployment. */
@@ -94,6 +130,8 @@ export type CrawlServiceOptions = {
   readonly config: CrawlConfig;
   /** Where recorded findings are kept; absent, none are recorded and none read. */
   readonly findings?: CrawlFindingsStore;
+  /** Where operators' decisions about findings are kept; absent, none are read or written. */
+  readonly triage?: CrawlFindingTriageStore;
   /** Injected so a test can drive the engine without a network. */
   readonly engine?: typeof runCrawl;
   readonly engineOverrides?: Partial<EngineOptions>;
@@ -126,7 +164,7 @@ const UNEXPECTED_FAILURE = {
 } as const;
 
 export function createCrawlService(options: CrawlServiceOptions): CrawlService {
-  const { store, projects, config, findings = unavailableCrawlFindingsStore, engine = runCrawl, engineOverrides = {} } = options;
+  const { store, projects, config, findings = unavailableCrawlFindingsStore, triage = unavailableCrawlFindingTriageStore, engine = runCrawl, engineOverrides = {} } = options;
 
   /**
    * The fixed rules over what the crawl just recorded, kept beside it. Only
@@ -328,6 +366,44 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
       if (crawl === null || crawl.projectId !== projectId) return { status: "not-found" };
       const report = await findings.getReport(projectId, crawlId);
       return report === null ? { status: "not-recorded", crawl } : { status: "recorded", crawl, report };
+    },
+
+    async getLatestCrawlFindings(projectId) {
+      if (!findings.storesFindings) return { status: "unavailable" };
+      const latest = await findings.getLatestReportHeader(projectId);
+      if (latest === null) return { status: "none" };
+      // The header names the crawl; the crawl row is the project check, as in
+      // getCrawlFindings, so a header that somehow names another project's
+      // crawl reads as nothing rather than as that project's findings.
+      const crawl = await store.getById(latest.crawlId);
+      if (crawl === null || crawl.projectId !== projectId) return { status: "none" };
+      const report = await findings.getReport(projectId, crawl.id);
+      if (report === null) return { status: "none" };
+      const decisions = triage.storesTriage ? await triage.listForProject(projectId, TRIAGE_READ_LIMIT) : [];
+      return { status: "recorded", crawl, report, triage: decisions };
+    },
+
+    async setFindingTriage(input) {
+      if (!findings.storesFindings || !triage.storesTriage) return { status: "unavailable" };
+      const crawl = await store.getById(input.crawlId);
+      if (crawl === null || crawl.projectId !== input.projectId) return { status: "not-found" };
+      const outcome = await triage.set({
+        projectId: input.projectId,
+        crawlId: crawl.id,
+        findingKey: input.findingKey,
+        status: input.status,
+        note: input.note,
+        operatorId: input.operatorId,
+      });
+      // Ids, the outcome and the statuses only: never the note, which is an operator's free text.
+      logEvent(outcome.status === "set" ? "info" : "warn", "crawl.finding_triage_set", {
+        crawlId: crawl.id,
+        projectId: input.projectId,
+        outcome: outcome.status,
+        status: outcome.status === "set" ? outcome.triage.status : null,
+        from: outcome.status === "set" ? outcome.previous : null,
+      });
+      return outcome;
     },
 
     async getCrawl(id, pageLimit = DEFAULT_PAGE_LIMIT) {

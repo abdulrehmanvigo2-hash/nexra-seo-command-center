@@ -722,6 +722,9 @@ describe("recording the deterministic findings when a crawl finishes (T3)", () =
         reads.push([projectId, crawlId]);
         return options.report ?? null;
       },
+      async getLatestReportHeader() {
+        return options.report?.header ?? null;
+      },
     };
     return { store, recorded, reads };
   }

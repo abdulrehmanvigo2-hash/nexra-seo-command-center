@@ -6,6 +6,9 @@ import { createCrawlService, type CrawlService } from "@/lib/crawl/service";
 import { unavailableCrawlFindingsStore } from "@/lib/crawl/findings/store-contract";
 import type { CrawlFindingsDatabase } from "@/lib/crawl/findings/supabase/schema";
 import { createSupabaseCrawlFindingsStore } from "@/lib/crawl/findings/supabase/store";
+import { unavailableCrawlFindingTriageStore } from "@/lib/crawl/findings/triage/store-contract";
+import type { CrawlFindingTriageDatabase } from "@/lib/crawl/findings/triage/supabase/schema";
+import { createSupabaseCrawlFindingTriageStore } from "@/lib/crawl/findings/triage/supabase/store";
 import type { CrawlsDatabase } from "@/lib/crawl/supabase/schema";
 import { createSupabaseCrawlStore } from "@/lib/crawl/supabase/store";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
@@ -47,11 +50,19 @@ function configuredService(): CrawlService {
       )
     : unavailableCrawlFindingsStore;
 
+  // Decisions about findings are kept where findings are.
+  const triage = storesInSupabase()
+    ? createSupabaseCrawlFindingTriageStore(
+        createSupabaseServerClient<CrawlFindingTriageDatabase>(readSupabaseServerConfig(process.env)),
+      )
+    : unavailableCrawlFindingTriageStore;
+
   return createCrawlService({
     store,
     projects: projectRepository,
     config: readCrawlConfig(process.env),
     findings,
+    triage,
   });
 }
 
@@ -69,11 +80,13 @@ export function crawlService(): CrawlService {
  * tighter than the agent runtime's: ten per operator per ten minutes is enough
  * to work with and not enough to be mistaken for an attack.
  */
-type LimitName = "start" | "read";
+type LimitName = "start" | "read" | "triage";
 
 const LIMITS: Readonly<Record<LimitName, { readonly limit: number; readonly windowSeconds: number }>> = {
   start: { limit: 10, windowSeconds: 600 },
   read: { limit: 120, windowSeconds: 600 },
+  /** One decision per finding at a time is the natural pace; sixty per ten minutes is generous and still bounded. */
+  triage: { limit: 60, windowSeconds: 600 },
 };
 
 export function crawlLimiter(name: LimitName): AsyncRateLimiter {
