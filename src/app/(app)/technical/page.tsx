@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { TechnicalSeo } from "@/components/technical/technical-seo";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 export const metadata: Metadata = {
   title: "Technical SEO",
@@ -15,11 +17,17 @@ export const metadata: Metadata = {
  * the Command Center and from a project land on a filtered view.
  * `useSearchParams` needs a Suspense boundary during static rendering, which is
  * what this shell provides.
+ *
+ * The stored roster comes from the Projects repository (M3): the observed
+ * findings section reads a stored project's own crawl records, which the
+ * modelled registry below it knows nothing about.
  */
-export default function TechnicalSeoPage() {
+export default async function TechnicalSeoPage() {
+  const storedProjects = projectOptionsFrom(await projectRepository.listProjects());
+
   return (
     <Suspense fallback={<TechnicalFallback />}>
-      <TechnicalSeo />
+      <TechnicalSeo storedProjects={storedProjects} />
     </Suspense>
   );
 }
