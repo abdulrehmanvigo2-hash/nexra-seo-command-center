@@ -22,6 +22,7 @@ import { formatSearchConsoleHistory, SEARCH_CONSOLE_HISTORY_LIMITS_NOTE } from "
 import type { SearchConsoleSnapshot } from "../search-console/snapshots/contract.ts";
 import type { SearchPerformanceRow } from "../../types/search-console.ts";
 import { createAiExecutor } from "./ai-executor.ts";
+import { checkStorableJson } from "./safety.ts";
 import type { ExecutionTask } from "./executor.ts";
 import { formatRunGrounding } from "./run-grounding.ts";
 import { createTaskGrounding, type TaskGroundingReaders } from "./task-grounding.ts";
@@ -2564,6 +2565,30 @@ describe("the SEO Director's recorded crawl findings (T6)", () => {
     const none = readers(undefined, undefined, runStore());
     assert.deepEqual(await createTaskGrounding(none)(priorityReviewTask), { ok: false, reason: "source-run-not-found" });
     assert.deepEqual([all.findingsCalls, none.findingsCalls], [[], []]);
+  });
+
+  test("a T2-shaped upstream evidence summary (nested findings counts) is stored as scalars only, so the Director's result metadata is storable with the recorded findings beside it", async () => {
+    const t2Upstream: AgentRun = {
+      ...UPSTREAM_RUN,
+      resultMetadata: {
+        ...UPSTREAM_RUN.resultMetadata,
+        evidence: { ...formatCrawlGrounding(CRAWL, PAGES).summary, findings: { bytes: 3821, rules: 4, status: "available", findings: 5, linksCut: false, rulesCut: [], described: 5, linksRead: 46, cutByBytes: 0, ruleVersion: 2 } },
+      },
+    };
+    const { seen, provider } = capturingProvider();
+    const all = readers(undefined, undefined, runStore(t2Upstream), undefined, undefined, undefined, undefined, undefined, undefined, undefined, findingsReader({ status: "recorded", crawl: CRAWL, report: RECORDED }));
+    const output = await createAiExecutor(provider, createTaskGrounding(all)).execute(priorityReviewTask, new AbortController().signal);
+    const stored = checkStorableJson(output.metadata);
+    assert.equal(stored.ok, true, "the Director's metadata must be storable");
+    const evidence = output.metadata?.evidence as { upstreamEvidence: Record<string, unknown>; recordedFindings: { reportId: string; findings: number } };
+    assert.equal("findings" in evidence.upstreamEvidence, false, "no nested object from the upstream summary is stored");
+    assert.equal(evidence.upstreamEvidence.crawlId, CRAWL.id, "the scalar provenance survives");
+    assert.deepEqual([evidence.recordedFindings.reportId, evidence.recordedFindings.findings], ["rep-1", 2], "the recorded findings summary is stored beside it");
+    assert.match(seen.prompt ?? "", /RECORDED CRAWL FINDINGS/, "the recorded findings still reach the prompt");
+    assert.match(seen.prompt ?? "", /\[http-client-error\] high/);
+    assert.deepEqual(all.findingsCalls, [["nexra-agency", CRAWL.id]], "read for the Director's project and the upstream crawl");
+    // The same summary copied whole is what the run store refused in production.
+    assert.deepEqual(checkStorableJson({ ...output.metadata, evidence: { ...evidence, upstreamEvidence: t2Upstream.resultMetadata?.evidence } }), { ok: false, problem: "too-deep" });
   });
 
   test("the Director's prompt carries both blocks and the instructions that keep them apart; the specialist reviews are untouched", async () => {

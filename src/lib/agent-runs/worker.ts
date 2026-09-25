@@ -144,19 +144,31 @@ function plainObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-/** What an executor answered, if it is safe to keep. */
-function screenOutput(output: unknown): { summary: string; metadata: JsonObject | null } | null {
+/** Why an executor's answer was not kept. A name only: never the answer's text. */
+type ScreenRefusal =
+  | "no-summary"
+  | "summary-empty"
+  | "summary-too-long"
+  | "summary-control-characters"
+  | "summary-secret"
+  | `metadata-${Exclude<ReturnType<typeof checkStorableJson>, { ok: true }>["problem"]}`;
+
+/** What an executor answered, if it is safe to keep, or why it is not. */
+function screenOutput(
+  output: unknown,
+): { ok: true; summary: string; metadata: JsonObject | null } | { ok: false; reason: ScreenRefusal } {
   const object = plainObject(output) as Partial<ExecutionOutput> | null;
-  if (!object || typeof object.summary !== "string") return null;
+  if (!object || typeof object.summary !== "string") return { ok: false, reason: "no-summary" };
 
   const summary = object.summary.trim();
-  if (summary.length === 0 || summary.length > MAX_SUMMARY_LENGTH) return null;
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(summary)) return null;
-  if (looksLikeSecret(summary)) return null;
+  if (summary.length === 0) return { ok: false, reason: "summary-empty" };
+  if (summary.length > MAX_SUMMARY_LENGTH) return { ok: false, reason: "summary-too-long" };
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(summary)) return { ok: false, reason: "summary-control-characters" };
+  if (looksLikeSecret(summary)) return { ok: false, reason: "summary-secret" };
 
-  if (object.metadata === undefined) return { summary, metadata: null };
+  if (object.metadata === undefined) return { ok: true, summary, metadata: null };
   const metadata = checkStorableJson(object.metadata);
-  return metadata.ok ? { summary, metadata: metadata.value } : null;
+  return metadata.ok ? { ok: true, summary, metadata: metadata.value } : { ok: false, reason: `metadata-${metadata.problem}` };
 }
 
 function failure(code: AgentRunErrorCode): AttemptResult {
@@ -312,9 +324,19 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
     if (!outcome.ok) return failure(outcome.code);
 
     const output = screenOutput(outcome.output);
-    return output
-      ? { outcome: "completed", summary: output.summary, metadata: output.metadata }
-      : failure("rejected-output");
+    if (!output.ok) {
+      // The reason's name, so a refusal can be diagnosed from the log; the
+      // answer itself is never logged, since it is what was refused.
+      logEvent("warn", "agent_run.output_rejected", {
+        runId: run.id,
+        projectId: run.projectId,
+        agentId: run.agentId,
+        taskType: run.taskType,
+        reason: output.reason,
+      });
+      return failure("rejected-output");
+    }
+    return { outcome: "completed", summary: output.summary, metadata: output.metadata };
   }
 
   async function execute(runId: string | null): Promise<WorkerOutcome> {
