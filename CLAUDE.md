@@ -3,10 +3,11 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Milestone M2 (crawl enrichment), local development. C1–C6 (with D3), T3–T6 and
-all of M1 (CP1a–CP1c, P4a–P4d) are complete, merged and deployed; the P4c first live query × page
-capture verification is pending the next scheduled worker run. M2 is implemented and verified
-locally only (see §0).**
+**Current stage: Milestone M3 (finding triage and the observed Technical section), local
+development. C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d) and M2 are complete, merged
+and deployed; M2 is production verified on crawl `3398ff1a…`, and the On-Page output bound
+(PR #13, `6760cfc`) is deployed. The P4c first live query × page capture and one On-Page review
+over M2 evidence are pending operator runs. M3 is implemented and verified locally only (see §0).**
 
 ---
 
@@ -98,27 +99,36 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone M2 — remaining crawl enrichment, implemented and verified locally on
-branch `claude/m2-remaining-crawl-enrichment` (from `master` `315323b`, the P4c merge). Two local
-commits (schema and extraction; grounding and rules). Nothing is pushed, no PR is open, nothing is
-deployed, and the M2 migration `20261001120000_extend_crawl_page_content_signals.sql` has **not**
-been applied to production. M1 P4c is merged (`315323b`), its migration `20260930120000` is
-applied and recorded, and it is deployed (`dpl_97VfPSbmSygEPwmCBtdVxBtpTNDs`); its first live
-query × page capture is pending the next scheduled worker run and must not be touched by M2. Each
-further M2 step (push, PR, merge, the production migration) starts only with explicit user approval.
+**Current work:** Milestone M3 — finding triage and the observed section on the Technical SEO
+screen, implemented and verified locally on branch `claude/m3-gap-completion` (from `master`
+`6760cfc`, the On-Page output-bound merge). Nothing is pushed, no PR is open, nothing is deployed,
+and the M3 migration `20261002120000_create_crawl_finding_triage.sql` has **not** been applied to
+production. Each further M3 step (push, PR, merge, the production migration) starts only with
+explicit user approval.
 
-**M2 (local only):** one additive migration adds nine nullable columns to `nexra_crawl_pages` —
-`word_count`, `html_lang`, `hreflang_count`, `hreflang_malformed`, `og_tag_count`, `og_title`,
-`og_image`, `twitter_card`, `response_ms` — each observed off a real fetched response, null when
-not recorded, never fetched or (except the response time) not HTML, and forbidden on a URL never
-reached; it widens the findings category set by `content`. The extractor, fetcher and engine record
-them on every fetch; budgets, guards, robots behaviour and every T5 signal are unchanged. The crawl
-evidence gains one labelled line per signal (a word count is "as served, not rendered"; a response
-time is this server's one fetch, "not a user metric, not a Core Web Vital"); findings rule version 3
-adds `html-lang-missing`, `hreflang-malformed`, `social-metadata-missing` and `thin-page-candidate`
-(150 visible words, "candidate for review, not a verdict"), all low severity. A first H2/H3 was
-judged not worth adding. Harness suites `content` (38 assertions) and `content-upgrade` (7).
+**M3 (local only):** a gap audit found the registry (T1/T5/M2), persistence (T3), the live read
+path and panel (T4), the findings-grounded page reviews (T2, superseded: they recompute the same
+rules) and the Director hand-off (T6) complete, prioritisation covered by severity, category and
+counts, and two gaps: operator triage and a live Technical screen. One additive migration adds
+`nexra_crawl_finding_triage` — one row per project and finding key with `open` / `acknowledged` /
+`resolved` / `ignored`, a note of at most 500 characters, who and when, and the exact finding,
+report and crawl it was last made on; written only by `nexra_crawl_finding_triage_set`
+(`security definer`, advisory lock per key); binding checked on insert and update; identity
+immutable; no direct delete; the findings tables untouched. `GET /api/crawls/latest-findings` and
+`POST /api/crawls/<id>/findings/triage`; the crawl service's `getLatestCrawlFindings` and
+`setFindingTriage`. The Technical SEO page mounts *Observed findings* once above its modelled views,
+with its own stored-project selector, every state kept apart, the 50 most severe findings with true
+totals, decision counts, and one control that records a decision worded as the operator's, never as
+a change to the page. Cross-crawl finding history (appeared / persisted / disappeared) is deferred
+to a later milestone. Harness suites `triage` (84 assertions) and `triage-races` (R1–R3).
 **Deploy order:** the migration must be applied to production before this code is deployed.
+
+**M2 (merged, deployed, production verified):** PR #12 merged as `3b74d99`; migration
+`20261001120000` applied and recorded; deployment `dpl_HWMCwJTSWtJdwYAgVLtuMez6D8T7`; the fresh
+crawl `3398ff1a-59d7-479f-b5e9-44bee4a6ae99` recorded every M2 signal on its five fetched pages
+and a rule-version-3 report. The first On-Page review over it was refused as `rejected-output`;
+PR #13 (`6760cfc`, deployment `dpl_3RHPiV2PKZ9hRhLgUPKbAbDTQdw5`) bounds the On-Page answer to four
+findings and 1,500 characters; one operator-run On-Page review is the pending verification.
 
 **M1 P4c (merged, deployed):** see the M1 notes below; production verification of its first live
 capture is pending.
@@ -604,12 +614,14 @@ foundation, Search Console) are complete. Current work follows the content workf
 | M1 / CP1c | Search Console snapshot persistence: worker step | Complete, merged, deployed |
 | M1 / P4a–P4b, P4d | Stored history comparison, agent grounding, history API and panel section | Complete, merged (`fc2066d`), deployed |
 | M1 / P4c | Query × page Search Console intelligence | Complete, merged (`315323b`), migration applied and recorded, deployed; first live capture verification pending |
-| M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Implemented and verified locally; two local commits; not pushed; migration not applied to production |
+| M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Complete, merged (`3b74d99`), migration applied and recorded, deployed, production verified; On-Page output bound merged (`6760cfc`) and deployed |
+| M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Implemented and verified locally; local commits; not pushed; migration not applied to production |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M2 on its feature
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M3 on its feature
 branch; pushing it, a PR, merge and the production migration start only with explicit approval.
-Work beyond M2 is undecided and is not planned here.
+Work beyond M3 (cross-crawl finding history is the noted candidate) is undecided and is not planned
+here.
 
 ## 15. Definition of Done
 
