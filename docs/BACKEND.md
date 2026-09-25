@@ -127,6 +127,67 @@ ids, outcome names, counts and durations only. Nominal worst case: 240 + 45 +
 5 = 290 s. The cron schedule, `vercel.json`, the worker credential and its
 rate limit are unchanged.
 
+### Query × page rows and overlap (M1 P4c; local only)
+
+`20260930120000_create_search_console_query_pages.sql` adds
+`nexra_search_console_query_pages`: one immutable row per project, property,
+30-day window end, query and page, holding only clicks, impressions, CTR and
+average position for that pair. The capture (`src/lib/search-console/snapshots/capture.ts`)
+makes one more real Search Console request per connected project — the same
+property, credentials, window and failure semantics as the three snapshot
+reads, with `dimensions: ["query", "page"]` and `rowLimit` 250
+(`QUERY_PAGE_ROW_LIMIT`) — strictly after the snapshot is written or found
+already written, inside what is left of that project's budget (never started
+under 2 s left; a hanging read ends at the project's deadline), and records
+the rows as one set through `nexra_search_console_query_pages_record`
+(`security definer`, empty `search_path`, at most 250 well-formed pairs,
+transaction advisory lock per window, `created` with the count, `exists` when
+the window already holds rows, `not-found` for a missing project). The pair
+step's outcome (`recorded`, `exists`, `no-pairs`, `skipped` with
+`snapshot-not-connected`/`time-budget`/`store-unavailable`, `unavailable`
+with its reason, `store-failed`) sits beside the snapshot's in every batch
+entry and never changes it; the worker's response gains one additive `pairs`
+outcome name per entry. Worker budgets, cron, `vercel.json`, the credential
+and its rate limit are unchanged: the pair read costs at most one cached
+Google request per project per hour, inside the same 45 s capture budget.
+
+`src/lib/search-console/query-pages/` holds the pure intelligence over stored
+pairs, with the thresholds written once in `thresholds.ts`: (A) a *potential
+query overlap* is one query on at least 2 of the site's pages in the set; (B)
+a *cannibalization candidate for review* is an overlap in which at least 2
+pages each had at least 20 impressions for the query with average positions
+within 5 places of each other; (C) the *leading page* is the page with the
+most impressions for the query (ties: clicks, then URL), and *page
+concentration* counts the overlaps each page leads; (D) across the newest
+window and the newest eligible earlier one (at least 7 days apart, as P4a;
+under 14 days is low confidence) an overlap appeared or disappeared, the
+leading page changed, or the query's summed impressions moved by at least
+20. The reader (`readSearchConsoleQueryPages`, server-only) lists the
+project's rows through one bounded read (750 rows: three captures' worth, so
+two complete windows are always seen and a cut third is dropped), keeps only
+the property the private mapping names now, and never takes a property from
+a caller. Every reader states what the evidence is not: Search Console
+leaves anonymised queries out and the set is a capped cut by clicks, so it is
+never complete; nothing here is a confirmed cannibalisation, a ranking, a
+search volume, a difficulty, a SERP feature, an indexation state, a ranking
+cause, or a page that owns a query.
+
+`search-query-review` (Keyword & Search Intent) and `performance-review`
+(Analytics & Learning) get a third grounding block after the live report and
+the P4b history — at most 10 overlaps of 5 pages, under 12,000 bytes — and
+only when observed pair evidence exists; no pairs, another property, a
+deployment that keeps none or a failed read adds no block and never fails the
+run. `GET /api/search-console/query-pages?project=<id>&range=30d`
+(`src/app/api/search-console/query-pages/route.ts`) mirrors the history
+route's gates and answers `presentQueryPages` (`query-pages/view.ts`): no
+property, no row id, at most 10 overlaps × 5 pages with true counts. The
+*Query-to-page overlap* section
+(`src/components/search-console/search-console-query-pages.tsx`) sits in the
+Search Console panel beneath the stored history on the summary and queries
+views, with its own load and the states loading, no stored rows, rows for a
+previous property, no overlap observed, overlaps, and read failed. Nothing
+here writes; the migration has **not** been applied to production.
+
 ### Stored history on the panel (M1 P4d)
 
 `GET /api/search-console/history?project=<id>&range=30d`
