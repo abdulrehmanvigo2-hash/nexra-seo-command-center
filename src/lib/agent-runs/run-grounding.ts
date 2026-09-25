@@ -94,8 +94,14 @@ export type RunGrounding = {
     readonly taskType: AgentTaskType;
     readonly completedAt: string | null;
     readonly executor: "ai";
-    /** The upstream run's own evidence summary, as it recorded it. */
-    readonly upstreamEvidence: JsonObject | null;
+    /**
+     * The upstream run's own evidence summary, reduced to its scalar fields.
+     * A summary may nest objects and arrays (a crawl-review's carries its
+     * findings block's counts), and the Director's stored metadata already
+     * sits two levels deeper, so only the scalars are kept: enough for
+     * provenance, never deep enough to be refused by the run store.
+     */
+    readonly upstreamEvidence: ScalarEvidence | null;
     /** Whether the quoted review was cut to fit the byte ceiling. */
     readonly truncated: boolean;
     /** Size of the evidence actually produced, in UTF-8 bytes. */
@@ -103,6 +109,28 @@ export type RunGrounding = {
   };
   readonly source: GroundingSource;
 };
+
+/** An evidence summary's scalar fields only: what is stored about the upstream run's evidence. */
+export type ScalarEvidence = { readonly [key: string]: string | number | boolean | null };
+
+/**
+ * The scalar fields of an evidence summary, in their recorded order, with
+ * every nested object and array left out. What the Director's block says
+ * about the upstream evidence (`describeUpstreamEvidence`) reads only
+ * scalars, so the prompt is unchanged by this; what is stored is bounded to
+ * one level, which the run store's depth limit requires once this object
+ * sits inside the Director's own evidence summary.
+ */
+export function scalarEvidence(evidence: JsonObject | null): ScalarEvidence | null {
+  if (evidence === null) return null;
+  const scalars: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(evidence)) {
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      scalars[key] = value;
+    }
+  }
+  return scalars;
+}
 
 export type RunGroundingResult =
   | { readonly ok: true; readonly grounding: RunGrounding }
@@ -302,7 +330,7 @@ export function formatRunGrounding(run: AgentRun): RunGrounding {
       taskType: run.taskType,
       completedAt: run.finishedAt,
       executor: "ai",
-      upstreamEvidence: evidence,
+      upstreamEvidence: scalarEvidence(evidence),
       truncated,
       bytes: byteLength(block),
     },

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { checkStorableJson } from "./safety.ts";
 import type { AgentRun, AgentRunStatus, AgentTaskType, JsonObject } from "../../types/agent-run.ts";
 import {
   AGENT_RUN_SOURCE,
@@ -13,6 +14,7 @@ import {
   handoffRefusal,
   isUpstreamTaskType,
   readRunGrounding,
+  scalarEvidence,
 } from "./run-grounding.ts";
 
 /**
@@ -424,7 +426,9 @@ describe("the Analytics & Learning performance review as an upstream", () => {
     if (!result.ok) return;
     assert.equal(result.grounding.summary.agentId, "analytics-learning");
     assert.equal(result.grounding.summary.taskType, "performance-review");
-    assert.deepEqual(result.grounding.summary.upstreamEvidence, SEARCH_CONSOLE_EVIDENCE);
+    // Stored as scalars only: the `partial` array is left out, every other field kept.
+    assert.deepEqual(result.grounding.summary.upstreamEvidence, scalarEvidence(SEARCH_CONSOLE_EVIDENCE));
+    assert.equal("partial" in (result.grounding.summary.upstreamEvidence ?? {}), false);
     assert.match(result.grounding.text, /Written by: the Analytics & Learning agent \(analytics-learning\)/);
     assert.match(result.grounding.text, /That agent was given: a Google Search Console report this product read/);
     assert.equal(handoffRefusal(performance), null);
@@ -484,5 +488,56 @@ describe("the AI Visibility answer-readiness review as an upstream", () => {
     for (const taskType of ["project-review", "keyword-research", "priority-review"] as const) {
       assert.deepEqual(await read({ ...readiness, taskType }, PROJECT, readiness.id), { ok: false, reason: "source-task-not-allowed" }, taskType);
     }
+  });
+});
+
+describe("the stored upstream evidence is scalar-only (the T6 rejected-output fix)", () => {
+  /** A crawl-review's evidence summary as T2 records it: the findings block's counts nested inside, with an array. */
+  const T2_CRAWL_EVIDENCE: JsonObject = {
+    bytes: 5404,
+    crawlId: "fc1f6157-4077-48d5-bb0a-d2217fd077f5",
+    findings: { bytes: 3821, rules: 4, status: "available", findings: 5, linksCut: false, rulesCut: [], described: 5, linksRead: 46, cutByBytes: 0, ruleVersion: 2 },
+    hostScope: "nexraagency.com",
+    truncated: false,
+    pagesFetched: 5,
+    pagesIncluded: 5,
+    pagesNotReached: 2,
+    truncatedByBytes: false,
+  };
+  const upstream: AgentRun = { ...UPSTREAM, resultMetadata: { ...UPSTREAM.resultMetadata, evidence: T2_CRAWL_EVIDENCE } };
+  /** The Director's stored metadata, as the AI executor builds it around the grounding summary. */
+  const directorMetadata = (summary: JsonObject) => ({ simulated: false, grounded: true, evidence: summary, taskType: "priority-review", attempt: 1, provider: "anthropic", model: "m", inputTokens: 1, outputTokens: 1 });
+
+  test("copying the nested summary whole was refused by the run store as too deep — the failure the fix removes", () => {
+    const unprojected = { ...formatRunGrounding(upstream).summary, upstreamEvidence: T2_CRAWL_EVIDENCE };
+    assert.deepEqual(checkStorableJson(directorMetadata(unprojected)), { ok: false, problem: "too-deep" });
+  });
+
+  test("keeps every scalar field of the upstream evidence, in order, and no nested object or array", () => {
+    const stored = formatRunGrounding(upstream).summary.upstreamEvidence;
+    assert.deepEqual(stored, { bytes: 5404, crawlId: "fc1f6157-4077-48d5-bb0a-d2217fd077f5", hostScope: "nexraagency.com", truncated: false, pagesFetched: 5, pagesIncluded: 5, pagesNotReached: 2, truncatedByBytes: false });
+    assert.equal("findings" in (stored ?? {}), false);
+    for (const value of Object.values(stored ?? {})) assert.ok(value === null || ["string", "number", "boolean"].includes(typeof value));
+  });
+
+  test("the Director's metadata then passes the run store's check unchanged in its limits, with the recorded findings summary beside it", () => {
+    const summary = formatRunGrounding(upstream).summary;
+    const recordedFindings = { status: "recorded", crawlId: T2_CRAWL_EVIDENCE.crawlId, reportId: "897ea70d-d92b-41d2-bbfa-1dd4f011c94b", ruleVersion: 2, recordedAt: "2026-09-25T03:04:02.270Z", findings: 5, described: 5, rules: 4, rulesCut: [], cutByBytes: 0, readCut: false, bytes: 2454 };
+    const checked = checkStorableJson(directorMetadata({ ...summary, recordedFindings }));
+    assert.equal(checked.ok, true);
+    assert.ok(checked.ok && checked.bytes < 2_000);
+  });
+
+  test("the block the model reads is unchanged by the projection: it describes the upstream evidence from the same scalars", () => {
+    const text = formatRunGrounding(upstream).text;
+    assert.match(text, /a crawl this product recorded \(id fc1f6157-4077-48d5-bb0a-d2217fd077f5\) of host "nexraagency\.com": 5 pages fetched, 5 described to the agent, 2 discovered but never fetched/);
+    assert.equal(text, formatRunGrounding({ ...upstream, resultMetadata: { ...upstream.resultMetadata, evidence: scalarEvidence(T2_CRAWL_EVIDENCE) } }).text);
+  });
+
+  test("scalarEvidence: null stays null, a flat summary is unchanged, and only nested values are dropped", () => {
+    assert.equal(scalarEvidence(null), null);
+    assert.deepEqual(scalarEvidence(CRAWL_EVIDENCE), CRAWL_EVIDENCE);
+    assert.deepEqual(scalarEvidence(SEARCH_CONSOLE_EVIDENCE), Object.fromEntries(Object.entries(SEARCH_CONSOLE_EVIDENCE).filter(([key]) => key !== "partial")));
+    assert.deepEqual(scalarEvidence({ a: 1, b: [1], c: { d: 2 }, e: null, f: "x", g: true }), { a: 1, e: null, f: "x", g: true });
   });
 });
