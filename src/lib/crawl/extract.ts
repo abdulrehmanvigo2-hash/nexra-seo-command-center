@@ -66,6 +66,29 @@ const MAX_REL = 200;
  */
 export const MAX_ANCHOR_TEXT = 200;
 
+/** Bounds on the M2 head signals, matching their columns. */
+const MAX_HTML_LANG = 64;
+const MAX_SOCIAL_TEXT = 1_000;
+const MAX_TWITTER_CARD = 64;
+
+/**
+ * The shape an hreflang value must have to be called well-formed: a BCP 47
+ * language tag as the alternate link standard expects — a 2–3 letter
+ * language, optional subtags of 2–8 alphanumerics — or the literal
+ * `x-default`. Case-insensitive. A stricter grammar would call real, valid
+ * tags malformed; this one catches the common mistakes (empty, `en_US`,
+ * a country alone, a URL, prose).
+ */
+const HREFLANG_PATTERN = /^(x-default|[a-z]{2,3}(-[a-z0-9]{2,8})*)$/i;
+
+/** Whether an hreflang value is one a search engine can read. */
+export function isWellFormedHreflang(value: string): boolean {
+  return HREFLANG_PATTERN.test(value.trim());
+}
+
+/** Elements whose text is never visible and never counted as words. */
+const NON_TEXT_ELEMENTS: ReadonlySet<string> = new Set(["script", "style", "template", "noscript", "svg", "head"]);
+
 export type ExtractedLink = {
   readonly href: string;
   readonly rel: string | null;
@@ -97,6 +120,19 @@ export type ExtractedDocument = {
   readonly schemaBlocks: number;
   readonly schemaParseFailed: boolean;
   readonly links: readonly ExtractedLink[];
+  /** Whitespace-separated words in the document's visible text (outside script, style, template, noscript, svg and the head). */
+  readonly wordCount: number;
+  /** The html element's `lang` attribute as written; null when absent. Empty is empty. */
+  readonly htmlLang: string | null;
+  /** `<link rel="alternate" hreflang>` elements, and how many of them are empty, ill-formed or without an href. */
+  readonly hreflangCount: number;
+  readonly hreflangMalformed: number;
+  /** `<meta property="og:…">` elements, and the first og:title and og:image contents. */
+  readonly ogTagCount: number;
+  readonly ogTitle: string | null;
+  readonly ogImage: string | null;
+  /** The first `<meta name="twitter:card">` content; null when none. */
+  readonly twitterCard: string | null;
 };
 
 function isText(node: ChildNode): node is TextNode {
@@ -216,11 +252,33 @@ export function extractDocument(html: string): ExtractedDocument {
   let schemaParseFailed = false;
   const schemaTypes = new Set<string>();
   const links: ExtractedLink[] = [];
+  let wordCount = 0;
+  let htmlLang: string | null = null;
+  let hreflangCount = 0;
+  let hreflangMalformed = 0;
+  let ogTagCount = 0;
+  let ogTitle: string | null = null;
+  let ogImage: string | null = null;
+  let twitterCard: string | null = null;
 
-  const visit = (node: ChildNode | Document): void => {
+  const visit = (node: ChildNode, visible: boolean): void => {
+    if (isText(node)) {
+      // Words are counted only where a reader could see them: not inside a
+      // script, a style, a template, the head or an SVG.
+      if (visible) {
+        const words = node.value.trim().split(/\s+/).filter((word) => word !== "").length;
+        wordCount += words;
+      }
+      return;
+    }
     if ("tagName" in node) {
       const element = node;
       switch (element.tagName) {
+        case "html": {
+          const lang = attribute(element, "lang");
+          if (lang !== null) htmlLang ??= clamp(lang.replace(/\s+/g, " ").trim(), MAX_HTML_LANG);
+          break;
+        }
         case "title":
           // The first title wins, as it does in a browser.
           title ??= clamp(textOf(element), MAX_TITLE);
@@ -242,14 +300,33 @@ export function extractDocument(html: string): ExtractedDocument {
             if (robotsMeta === null || name === "robots") {
               robotsMeta = clamp(content.replace(/\s+/g, " ").trim(), MAX_ROBOTS_META);
             }
+          } else if (name === "twitter:card") {
+            twitterCard ??= clamp(content.replace(/\s+/g, " ").trim(), MAX_TWITTER_CARD);
+          }
+          // Open Graph uses `property`, not `name`; some pages write both, and
+          // either spelling of the attribute is read as a browser tool would.
+          const property = attribute(element, "property")?.toLowerCase().trim() ?? "";
+          if (property.startsWith("og:")) {
+            ogTagCount += 1;
+            if (property === "og:title") ogTitle ??= clamp(content.replace(/\s+/g, " ").trim(), MAX_SOCIAL_TEXT);
+            else if (property === "og:image") ogImage ??= clamp(content.trim(), MAX_HREF);
           }
           break;
         }
         case "link": {
           const rel = attribute(element, "rel")?.toLowerCase() ?? "";
-          if (rel.split(/\s+/).includes("canonical")) {
+          const rels = rel.split(/\s+/);
+          if (rels.includes("canonical")) {
             const href = attribute(element, "href");
             if (href !== null) canonicalHref ??= clamp(href, MAX_HREF);
+          }
+          if (rels.includes("alternate")) {
+            const hreflang = attribute(element, "hreflang");
+            if (hreflang !== null) {
+              hreflangCount += 1;
+              const href = attribute(element, "href");
+              if (href === null || href.trim() === "" || !isWellFormedHreflang(hreflang)) hreflangMalformed += 1;
+            }
           }
           break;
         }
@@ -300,11 +377,14 @@ export function extractDocument(html: string): ExtractedDocument {
         default:
           break;
       }
+      const childrenVisible = visible && !NON_TEXT_ELEMENTS.has(element.tagName);
+      for (const child of element.childNodes) visit(child, childrenVisible);
+      return;
     }
-    if (hasChildren(node)) for (const child of node.childNodes) visit(child);
+    if (hasChildren(node)) for (const child of node.childNodes) visit(child, visible);
   };
 
-  for (const child of document.childNodes) visit(child);
+  for (const child of document.childNodes) visit(child, true);
 
   return {
     title,
@@ -322,6 +402,14 @@ export function extractDocument(html: string): ExtractedDocument {
     schemaBlocks,
     schemaParseFailed,
     links,
+    wordCount,
+    htmlLang,
+    hreflangCount,
+    hreflangMalformed,
+    ogTagCount,
+    ogTitle,
+    ogImage,
+    twitterCard,
   };
 }
 

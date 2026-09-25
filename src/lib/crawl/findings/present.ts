@@ -42,6 +42,7 @@ export const CATEGORY_LABEL: Readonly<Record<FindingCategory, string>> = {
   structure: "Structure",
   schema: "Structured data",
   images: "Images",
+  content: "Content",
 };
 
 /** Shown wherever an observed value was not established. Never a zero. */

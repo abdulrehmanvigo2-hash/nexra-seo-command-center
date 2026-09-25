@@ -891,3 +891,72 @@ describe("T5 signals", () => {
     }
   });
 });
+
+describe("M2 content signals", () => {
+  test("records word count, language, hreflang, social metadata and this server's response time on a fetched page", async () => {
+    const result = await crawl({
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": {
+        body: `<html lang="en"><head><link rel="alternate" hreflang="en" href="/"><link rel="alternate" hreflang="bad_tag" href="/x"><meta property="og:title" content="Home"><meta property="og:image" content="/og.png"><meta name="twitter:card" content="summary"></head><body><h1>Home page</h1><p>one two three</p><script>ignored words here</script></body></html>`,
+      },
+    });
+    const home = page(result.pages, "https://example.com/");
+    assert.deepEqual(
+      [home.wordCount, home.htmlLang, home.hreflangCount, home.hreflangMalformed, home.ogTagCount, home.ogTitle, home.ogImage, home.twitterCard],
+      [5, "en", 2, 1, 2, "Home", "/og.png", "summary"],
+    );
+    assert.ok(Number.isInteger(home.responseMs) && (home.responseMs ?? -1) >= 0, "response time is a whole non-negative millisecond count");
+  });
+
+  test("a plain page reads zero counts and null values; a URL that never answered, a blocked URL and an unreached URL read null for all of them", async () => {
+    const result = await crawl(
+      {
+        "https://example.com/robots.txt": { type: "text/plain", body: "User-agent: *\nDisallow: /private\n" },
+        "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+        "https://example.com/": { body: `<a href="/down">d</a><a href="/private">p</a><a href="/far">f</a><a href="/near">n</a>` },
+        "https://example.com/down": { fail: "connection" },
+        "https://example.com/near": { body: `<p>near</p>` },
+        "https://example.com/far": { body: `<p>far</p>` },
+      },
+      { budget: { maxPages: 3, maxDepth: 3, maxDurationMs: 60_000 }, concurrency: 1 },
+    );
+    const home = page(result.pages, "https://example.com/");
+    assert.deepEqual([home.wordCount, home.htmlLang, home.hreflangCount, home.hreflangMalformed, home.ogTagCount, home.ogTitle, home.ogImage, home.twitterCard], [4, null, 0, 0, 0, null, null, null]);
+    const nulls = (p: CrawledPage) => [p.wordCount, p.htmlLang, p.hreflangCount, p.hreflangMalformed, p.ogTagCount, p.ogTitle, p.ogImage, p.twitterCard, p.responseMs];
+    assert.deepEqual(nulls(page(result.pages, "https://example.com/down")), Array(9).fill(null));
+    assert.deepEqual(nulls(page(result.pages, "https://example.com/private")), Array(9).fill(null));
+    const unreached = result.pages.find((entry) => entry.fetchState === "budget-skipped");
+    assert.ok(unreached, "the page budget of 3 leaves one discovered URL unreached");
+    assert.deepEqual(nulls(unreached), Array(9).fill(null));
+  });
+
+  test("a non-HTML response keeps a response time and no content signal; an error page that is HTML is still read", async () => {
+    const result = await crawl({
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": { body: `<a href="/file.pdf">file</a><a href="/gone">gone</a>` },
+      "https://example.com/file.pdf": { type: "application/pdf", body: "%PDF" },
+      "https://example.com/gone": { status: 404, body: `<html lang="en"><body><p>not here</p></body></html>` },
+    });
+    const pdf = page(result.pages, "https://example.com/file.pdf");
+    assert.equal(pdf.fetchState, "non-html");
+    assert.ok(Number.isInteger(pdf.responseMs) && (pdf.responseMs ?? -1) >= 0);
+    assert.deepEqual([pdf.wordCount, pdf.htmlLang, pdf.hreflangCount, pdf.ogTagCount, pdf.twitterCard], [null, null, null, null, null]);
+    const gone = page(result.pages, "https://example.com/gone");
+    assert.equal(gone.fetchState, "http-error");
+    assert.deepEqual([gone.wordCount, gone.htmlLang], [2, "en"]);
+  });
+
+  test("the T5 readings are unchanged beside the M2 ones", async () => {
+    const result = await crawl({
+      "https://example.com/robots.txt": ROBOTS_ALLOW_ALL,
+      "https://example.com/sitemap.xml": { status: 404, type: "application/xml" },
+      "https://example.com/": { body: `<h2>A</h2><h3>B</h3><img src="x.png"><a href="/a">Read more</a>`, headers: { "x-robots-tag": "noindex" } },
+      "https://example.com/a": { body: `<p>a</p>` },
+    });
+    const home = page(result.pages, "https://example.com/");
+    assert.deepEqual([home.xRobotsTag, home.robotsNoindex, home.h2Count, home.h3Count, home.imageCount, home.imagesWithoutAlt], ["noindex", true, 1, 1, 1, 1]);
+    assert.deepEqual(result.links.map((link) => link.anchorText), ["Read more"]);
+  });
+});

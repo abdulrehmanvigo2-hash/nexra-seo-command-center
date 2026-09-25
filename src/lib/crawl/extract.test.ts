@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  isWellFormedHreflang,
   MAX_ANCHOR_TEXT,
   MAX_SCHEMA_TYPES,
   MAX_SCHEMA_TYPE_LENGTH,
@@ -289,5 +290,82 @@ describe("metaForbidsIndexing", () => {
 
   test("null is unknown, never noindex", () => {
     assert.equal(metaForbidsIndexing(null), false);
+  });
+});
+
+describe("M2 content signals: words, language, hreflang, social metadata", () => {
+  test("counts visible words outside script, style, template, noscript, svg and the head, collapsing whitespace", () => {
+    const result = extractDocument(`
+      <html lang="en-GB"><head><title>Five words in the title</title><style>.a { color: red }</style></head>
+      <body>
+        <h1>Two words</h1>
+        <p>Three   more
+          words</p>
+        <script>const notCounted = "seven words that must not be counted here";</script>
+        <noscript>not counted either</noscript>
+        <template><p>not counted</p></template>
+        <svg><text>not counted</text></svg>
+        <!-- not counted -->
+      </body></html>`);
+    assert.equal(result.wordCount, 5);
+    assert.equal(result.htmlLang, "en-GB");
+  });
+
+  test("an empty document has zero words and no language; an empty lang is empty, not absent", () => {
+    assert.deepEqual([extractDocument("").wordCount, extractDocument("").htmlLang], [0, null]);
+    assert.equal(extractDocument(`<html lang=""><body>x</body></html>`).htmlLang, "");
+    assert.equal(extractDocument(`<html lang="  fr  "><body></body></html>`).htmlLang, "fr");
+    assert.equal(extractDocument(`<html lang="${"x".repeat(100)}"><body></body></html>`).htmlLang?.length, 64);
+  });
+
+  test("counts hreflang alternates and the ones that are empty, ill-formed, or without an href", () => {
+    const result = extractDocument(`
+      <html><head>
+        <link rel="alternate" hreflang="en" href="/en">
+        <link rel="alternate" hreflang="x-default" href="/">
+        <link rel="ALTERNATE" hreflang="pt-BR" href="/pt-br">
+        <link rel="alternate" hreflang="en_US" href="/us">
+        <link rel="alternate" hreflang="" href="/none">
+        <link rel="alternate" hreflang="de">
+        <link rel="alternate" type="application/rss+xml" href="/feed">
+        <link rel="canonical" href="/">
+      </head></html>`);
+    assert.deepEqual([result.hreflangCount, result.hreflangMalformed], [6, 3]);
+    for (const good of ["en", "EN", "x-default", "pt-BR", "zh-Hant-TW", "es-419"]) assert.equal(isWellFormedHreflang(good), true, good);
+    // A country code alone ("US") reads like a language tag and is not caught: the grammar cannot tell them apart without a registry.
+    for (const bad of ["", "en_US", "english", "https://x.example/", "e", "en-", "en--US"]) assert.equal(isWellFormedHreflang(bad), false, bad);
+  });
+
+  test("counts og: meta tags and keeps the first og:title and og:image, and the twitter:card", () => {
+    const result = extractDocument(`
+      <html><head>
+        <meta property="og:type" content="website">
+        <meta property="OG:Title" content="  Nexra   Agency ">
+        <meta property="og:title" content="Second title, ignored">
+        <meta property="og:image" content=" https://nexraagency.com/og.png ">
+        <meta property="og:description" content="d">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="t">
+        <meta name="description" content="plain description">
+      </head></html>`);
+    assert.deepEqual([result.ogTagCount, result.ogTitle, result.ogImage, result.twitterCard], [5, "Nexra Agency", "https://nexraagency.com/og.png", "summary_large_image"]);
+    assert.equal(result.metaDescription, "plain description");
+  });
+
+  test("a page with none of them reads zero counts and null values, not unknowns", () => {
+    const result = extractDocument("<html><body><p>Plain.</p></body></html>");
+    assert.deepEqual([result.hreflangCount, result.hreflangMalformed, result.ogTagCount, result.ogTitle, result.ogImage, result.twitterCard], [0, 0, 0, null, null, null]);
+  });
+
+  test("social values are bounded and flattened like every other head field", () => {
+    const result = extractDocument(`<meta property="og:title" content="a${"\n".repeat(3)}b${"c".repeat(2000)}"><meta name="twitter:card" content="${"s".repeat(100)}">`);
+    assert.equal(result.ogTitle?.length, 1000);
+    assert.equal(result.ogTitle?.includes("\n"), false);
+    assert.equal(result.twitterCard?.length, 64);
+  });
+
+  test("the T5 readings are unchanged beside the new ones", () => {
+    const result = extractDocument(`<html lang="en"><body><h2>A</h2><h3>B</h3><img src="x.png"><a href="/a">Read more</a></body></html>`);
+    assert.deepEqual([result.h2Count, result.h3Count, result.imageCount, result.imagesWithoutAlt, result.links[0].text], [1, 1, 1, 1, "Read more"]);
   });
 });

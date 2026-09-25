@@ -3,8 +3,9 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Milestone M1 (Search Console persistence), Phase 4. C1–C6 (with D3), T3–T6, M1
-CP1a–CP1c, P4a, P4b and P4d are complete, merged and deployed. P4c is implemented and verified
+**Current stage: Milestone M2 (crawl enrichment), local development. C1–C6 (with D3), T3–T6 and
+all of M1 (CP1a–CP1c, P4a–P4d) are complete, merged and deployed; the P4c first live query × page
+capture verification is pending the next scheduled worker run. M2 is implemented and verified
 locally only (see §0).**
 
 ---
@@ -97,14 +98,30 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone M1 Phase 4 — P4c, query × page Search Console intelligence, implemented
-and verified locally on branch `claude/m1-p4c-query-page-intelligence` (from `master` `fc2066d`,
-the P4d merge). Three local commits (storage and capture; intelligence, grounding and read route;
-UI). Nothing is pushed, no PR is open, nothing is deployed, and the P4c migration
-`20260930120000_create_search_console_query_pages.sql` has **not** been applied to production.
-Earlier M1 work (CP1a–CP1c, P4a, P4b, P4d) and the T3–T6 Technical SEO work are merged and
-deployed (`master` `fc2066d`, deployment `dpl_GWMMCzCn8xRzdMPdzv8teHefVMC7`). Each further P4c step
-(push, PR, merge, the production migration) starts only with explicit user approval.
+**Current work:** Milestone M2 — remaining crawl enrichment, implemented and verified locally on
+branch `claude/m2-remaining-crawl-enrichment` (from `master` `315323b`, the P4c merge). Two local
+commits (schema and extraction; grounding and rules). Nothing is pushed, no PR is open, nothing is
+deployed, and the M2 migration `20261001120000_extend_crawl_page_content_signals.sql` has **not**
+been applied to production. M1 P4c is merged (`315323b`), its migration `20260930120000` is
+applied and recorded, and it is deployed (`dpl_97VfPSbmSygEPwmCBtdVxBtpTNDs`); its first live
+query × page capture is pending the next scheduled worker run and must not be touched by M2. Each
+further M2 step (push, PR, merge, the production migration) starts only with explicit user approval.
+
+**M2 (local only):** one additive migration adds nine nullable columns to `nexra_crawl_pages` —
+`word_count`, `html_lang`, `hreflang_count`, `hreflang_malformed`, `og_tag_count`, `og_title`,
+`og_image`, `twitter_card`, `response_ms` — each observed off a real fetched response, null when
+not recorded, never fetched or (except the response time) not HTML, and forbidden on a URL never
+reached; it widens the findings category set by `content`. The extractor, fetcher and engine record
+them on every fetch; budgets, guards, robots behaviour and every T5 signal are unchanged. The crawl
+evidence gains one labelled line per signal (a word count is "as served, not rendered"; a response
+time is this server's one fetch, "not a user metric, not a Core Web Vital"); findings rule version 3
+adds `html-lang-missing`, `hreflang-malformed`, `social-metadata-missing` and `thin-page-candidate`
+(150 visible words, "candidate for review, not a verdict"), all low severity. A first H2/H3 was
+judged not worth adding. Harness suites `content` (38 assertions) and `content-upgrade` (7).
+**Deploy order:** the migration must be applied to production before this code is deployed.
+
+**M1 P4c (merged, deployed):** see the M1 notes below; production verification of its first live
+capture is pending.
 
 **M1 P4c (local only):** one additive migration, `nexra_search_console_query_pages` — one immutable
 row per project, property, 30-day window end, query and page with only clicks, impressions, CTR and
@@ -586,12 +603,13 @@ foundation, Search Console) are complete. Current work follows the content workf
 | M1 / CP1b | Search Console snapshot persistence: capture module | Implemented and verified locally; pushed to the feature branch; not merged |
 | M1 / CP1c | Search Console snapshot persistence: worker step | Complete, merged, deployed |
 | M1 / P4a–P4b, P4d | Stored history comparison, agent grounding, history API and panel section | Complete, merged (`fc2066d`), deployed |
-| M1 / P4c | Query × page Search Console intelligence | Implemented and verified locally; three local commits; not pushed; migration not applied to production |
+| M1 / P4c | Query × page Search Console intelligence | Complete, merged (`315323b`), migration applied and recorded, deployed; first live capture verification pending |
+| M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Implemented and verified locally; two local commits; not pushed; migration not applied to production |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M1 Phase 4 — P4c on
-its feature branch; pushing it, a PR, merge and the production migration start only with explicit
-approval. Work beyond M1 is undecided and is not planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M2 on its feature
+branch; pushing it, a PR, merge and the production migration start only with explicit approval.
+Work beyond M2 is undecided and is not planned here.
 
 ## 15. Definition of Done
 

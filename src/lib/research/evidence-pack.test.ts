@@ -108,6 +108,7 @@ const OWN_PAGE: CrawlPage = {
   h1Count: 1,
   firstH1: "Services",
   h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
+  wordCount: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null,
   schemaTypes: ["Organization"],
   schemaBlocks: 1,
   schemaParseFailed: false,
@@ -137,6 +138,7 @@ const OWN_SKIPPED: CrawlPage = {
   h1Count: null,
   firstH1: null,
   h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
+  wordCount: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null,
   schemaTypes: [],
   schemaBlocks: 0,
   depth: null,
@@ -154,6 +156,7 @@ const RIVAL_PAGE: CrawlPage = {
   titleLength: 44,
   firstH1: "Pricing",
   h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null,
+  wordCount: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null,
   schemaTypes: ["Product"],
 };
 

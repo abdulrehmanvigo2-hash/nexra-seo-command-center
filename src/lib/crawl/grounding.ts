@@ -259,6 +259,16 @@ function describePage(page: CrawlPage): string {
     `  Internal links out seen in THIS CRAWL: ${page.internalLinksOut}`,
     `  Internal links in seen in THIS CRAWL: ${page.internalLinksIn}`,
     `  Content type: ${page.contentType ?? NOT_ESTABLISHED}`,
+    // M2 content signals, each added as its own line beside what was always
+    // here. Every one is what the fetched markup carried: a word count over
+    // the HTML as served is not a rendered page, and a response time is this
+    // server's one fetch, not a user's experience and not a Core Web Vital.
+    `  Visible word count (fetched HTML as served, not rendered): ${num(page.wordCount, "not recorded for this page")}`,
+    `  Document language (html lang): ${page.htmlLang === null ? (page.wordCount === null ? `${NOT_ESTABLISHED} (not recorded for this page)` : "none declared") : page.htmlLang === "" ? "declared empty" : JSON.stringify(page.htmlLang)}`,
+    `  hreflang alternate links: ${page.hreflangCount === null ? `${NOT_ESTABLISHED} (not recorded for this page)` : `${page.hreflangCount}${page.hreflangMalformed ? ` (${page.hreflangMalformed} with an empty or ill-formed hreflang or no href)` : ""}`}`,
+    `  Open Graph: ${page.ogTagCount === null ? `${NOT_ESTABLISHED} (not recorded for this page)` : page.ogTagCount === 0 ? "no og: meta tags" : `${page.ogTagCount} og: meta tag(s)${page.ogTitle === null ? ", no og:title" : `, og:title ${JSON.stringify(page.ogTitle)}`}${page.ogImage === null ? ", no og:image" : ", og:image present"}`}`,
+    `  Twitter card: ${page.twitterCard === null ? (page.ogTagCount === null ? `${NOT_ESTABLISHED} (not recorded for this page)` : "none declared") : JSON.stringify(page.twitterCard)}`,
+    `  Response time of THIS SERVER'S fetch (final hop, one connection; not a user metric, not a Core Web Vital): ${page.responseMs === null ? `${NOT_ESTABLISHED} (no response recorded)` : `${page.responseMs} ms`}`,
   ].join("\n");
 }
 
@@ -453,7 +463,8 @@ export const LIMITS_NOTE = [
   "- This is a bounded crawl of a few pages, not a full site audit. It cannot establish site-wide counts or completeness.",
   "- Internal link counts above were counted within this crawl only. They are not site-wide, and they cannot show that a page is orphaned.",
   "- Nothing here says whether Google has indexed any URL. An HTTP 200 means the server answered us, not that anyone indexed the page. Indexation is Google Search Console's to report.",
-  "- There are no Core Web Vitals here. Field vitals come from real user measurement; no timing in this crawl describes anyone's experience of the page.",
+  "- There are no Core Web Vitals here. Field vitals come from real user measurement; no timing in this crawl describes anyone's experience of the page. A response time above is this server's one fetch of the final hop, from one place at one moment.",
+  "- A visible word count is over the HTML as served: it does not describe a rendered page, its quality, or its content depth. Language, hreflang, Open Graph and Twitter card readings are what the page's head declared, nothing more.",
   "- There is no search volume, ranking, traffic or competitor data here.",
 ].join("\n");
 
@@ -487,7 +498,7 @@ export const CRAWL_REVIEW_INSTRUCTIONS = [
  * the natural shape of its advice, and advice is all it may be.
  */
 export const ON_PAGE_REVIEW_INSTRUCTIONS = [
-  "Review the on-page elements of the crawled pages supplied with this task: title and its length, meta description and its length, h1 count and the first h1, the canonical declaration, structured-data types, internal links in and out as counted within this crawl, crawl depth, and sitemap presence.",
+  "Review the on-page elements of the crawled pages supplied with this task: title and its length, meta description and its length, h1 count and the first h1, the canonical declaration, structured-data types, internal links in and out as counted within this crawl, crawl depth, sitemap presence, and — where recorded — the document language, hreflang alternates, Open Graph and Twitter card declarations, and the visible word count of the HTML as served (a count, not a judgement of quality or depth).",
   "Structure every finding as: OBSERVED (what the evidence literally states, with the exact URL or URLs it comes from), then INFERENCE (what you conclude from it, and how confident you are), then RECOMMENDATION (one concrete change for a person to make).",
   "Use only the supplied evidence. Every finding must cite at least one crawled URL. Only the pages listed as fetched and read were examined; do not describe any other page.",
   "Where a reading is marked 'not established', say it is unknown and say what would establish it. Never treat it as a pass, a failure, a zero, or a no.",

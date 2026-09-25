@@ -20,6 +20,7 @@ import {
   REDIRECT_CHAIN_MIN_HOPS,
   RULES,
   SEVERITY_RANK,
+  THIN_PAGE_MAX_WORDS,
   TITLE_MAX_LENGTH,
   TITLE_MIN_LENGTH,
 } from "@/lib/crawl/findings/rules";
@@ -150,6 +151,26 @@ function contentRules(pages: readonly CrawlPage[]): Draft[] {
     }
     if (page.imageCount !== null && page.imagesWithoutAlt !== null && page.imagesWithoutAlt > 0) {
       drafts.push(perPage("image-alt-missing", page, { imageCount: page.imageCount, imagesWithoutAlt: page.imagesWithoutAlt }, `${page.imagesWithoutAlt} of ${page.imageCount} images on the page have no alt attribute.`));
+    }
+
+    // M2 content signals. Each reads only a page whose signals were recorded:
+    // a page from before M2 has null for all of them and yields nothing. The
+    // lang rule needs the page to have been read as HTML, which every page
+    // here was; a lang the page never declared is null and is reported as
+    // missing only when the word count (the M2 marker) is known.
+    if (page.wordCount !== null && (page.htmlLang === null || normaliseText(page.htmlLang) === "")) {
+      drafts.push(perPage("html-lang-missing", page, { htmlLang: page.htmlLang }, page.htmlLang === null ? "The html element declares no lang attribute." : "The html element's lang attribute is empty."));
+    }
+    if (page.hreflangCount !== null && page.hreflangMalformed !== null && page.hreflangMalformed > 0) {
+      drafts.push(perPage("hreflang-malformed", page, { hreflangCount: page.hreflangCount, hreflangMalformed: page.hreflangMalformed }, `${page.hreflangMalformed} of ${page.hreflangCount} hreflang alternate link(s) on the page have an empty or ill-formed hreflang value or no href.`));
+    }
+    if (page.ogTagCount !== null && page.ogTagCount === 0 && page.twitterCard === null && page.wordCount !== null) {
+      drafts.push(perPage("social-metadata-missing", page, { ogTagCount: 0, twitterCard: null }, "The page declares no Open Graph and no Twitter card metadata."));
+    }
+    // A thin-page candidate: a page that answered 200, does not say noindex,
+    // and carries under the review threshold of visible words as served.
+    if (page.wordCount !== null && page.wordCount < THIN_PAGE_MAX_WORDS && page.httpStatus === 200 && page.robotsNoindex !== true && !metaForbidsIndexing(page.robotsMeta)) {
+      drafts.push(perPage("thin-page-candidate", page, { wordCount: page.wordCount, threshold: THIN_PAGE_MAX_WORDS }, `The page's fetched HTML carries ${page.wordCount} visible word(s), under the ${THIN_PAGE_MAX_WORDS}-word review threshold: a thin-page candidate for review, not a verdict.`));
     }
 
     if (page.canonicalHref !== null && page.canonicalResolved === null) {

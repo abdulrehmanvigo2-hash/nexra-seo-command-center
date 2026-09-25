@@ -49,11 +49,11 @@ describe("the T5 migration", () => {
     assert.match(MIGRATION, /crawl_page_signals/, "the comment names what must not be touched");
   });
 
-  test("follows the T3 findings migration directly (the M1 P4c migration came after both), and stays byte-for-byte the reviewed file", () => {
+  test("follows the T3 findings migration directly (the M1 P4c and M2 migrations came after), and stays byte-for-byte the reviewed file", () => {
     const migrations = readdirSync(new URL("supabase/migrations", root)).filter((f) => f.endsWith(".sql")).sort();
     const at = migrations.indexOf("20260929120000_extend_crawl_page_signals.sql");
     assert.equal(migrations[at - 1], "20260928120000_create_crawl_findings.sql");
-    assert.deepEqual(migrations.slice(at + 1), ["20260930120000_create_search_console_query_pages.sql"]);
+    assert.deepEqual(migrations.slice(at + 1), ["20260930120000_create_search_console_query_pages.sql", "20261001120000_extend_crawl_page_content_signals.sql"]);
     assert.ok(MIGRATION.endsWith("\n"));
     assert.equal(/\r/.test(MIGRATION), false);
   });
@@ -86,6 +86,15 @@ const PAGE: Omit<CrawlPage, "id" | "crawlId"> = {
   xRobotsTag: "x".repeat(250),
   robotsNoindex: false,
   robotsNofollow: true,
+  wordCount: null,
+  htmlLang: null,
+  hreflangCount: null,
+  hreflangMalformed: null,
+  ogTagCount: null,
+  ogTitle: null,
+  ogImage: null,
+  twitterCard: null,
+  responseMs: null,
   schemaTypes: [],
   schemaBlocks: 0,
   schemaParseFailed: false,
@@ -115,10 +124,11 @@ describe("the mappers agree with the migration", () => {
     assert.equal(linkToInsert("c1", { ...edge, anchorText: "y".repeat(300) }).anchor_text?.length, 200);
   });
 
-  test("the rule set is version 2 and every category a rule uses is one the migration admits", () => {
-    assert.equal(FINDINGS_RULE_VERSION, 2);
+  test("the rule set is version 3 (M2 over T5) and every category a T5 rule uses is one the T5 migration admits", () => {
+    assert.equal(FINDINGS_RULE_VERSION, 3);
     const admitted = [...SQL.matchAll(/category in \(([^)]*)\)/g)].at(-1)![1].split(",").map((s) => s.trim().replace(/'/g, ""));
-    const used = new Set(Object.values(RULES).map((rule) => rule.category as FindingCategory));
+    // The M2 migration admits 'content' on top; every other category a rule uses was admitted here.
+    const used = new Set(Object.values(RULES).map((rule) => rule.category as FindingCategory).filter((category) => category !== "content"));
     for (const category of used) assert.ok(admitted.includes(category), category);
     assert.ok(used.has("images"));
   });
