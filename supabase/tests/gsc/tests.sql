@@ -49,8 +49,8 @@ begin
   perform t.ok(has_function_privilege('service_role', fns[1], 'execute'), 'B service_role executes record');
   perform t.ok(not has_function_privilege('service_role', fns[2], 'execute') and not has_function_privilege('service_role', fns[3], 'execute'), 'B service_role executes no helper or trigger function');
   perform t.ok((select prosecdef from pg_proc where oid = fns[1]::regprocedure) and not (select prosecdef from pg_proc where oid = fns[2]::regprocedure) and not (select prosecdef from pg_proc where oid = fns[3]::regprocedure), 'B only record is security definer');
-  -- The whole-database security definer inventory is asserted in c5/tests.sql; here, the new function is the only new one.
-  perform t.ok((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and prosecdef and proname like 'nexra_search_console%') = 1, 'B one security definer search-console function');
+  -- The whole-database security definer inventory is asserted in c5/tests.sql; here, the snapshot record function and (since 20260930120000, M1 P4c) the query × page record function are the only two.
+  perform t.ok((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and prosecdef and proname like 'nexra_search_console%') = 2, 'B two security definer search-console functions');
 end $$;
 
 -- A direct insert by service_role is refused: the record function is the only write path.

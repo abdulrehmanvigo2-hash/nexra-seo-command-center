@@ -10,6 +10,7 @@ import type {
   SearchConsoleWindow,
   SearchPerformance,
   SearchPerformanceRow,
+  SearchQueryPageRow,
 } from "@/types/search-console";
 import { createProviderCache, type ProviderCache } from "@/lib/search-console/cache";
 import type { SearchConsoleConfig } from "@/lib/search-console/config";
@@ -21,6 +22,7 @@ import {
 import {
   canReadProperty,
   mapDimensionRows,
+  mapQueryPageRows,
   mapSites,
   mapTotals,
 } from "@/lib/search-console/mappers";
@@ -73,12 +75,29 @@ export type SearchConsoleProvider = {
     projectId: string,
     window: SearchConsoleWindow,
   ): Promise<ProviderResult<readonly SearchPerformanceRow[]>>;
+  /**
+   * Google's query × page rows for the window (dimensions query and page, in
+   * that order), at most QUERY_PAGE_ROW_LIMIT of them by clicks (M1, P4c).
+   * One request, cached like the others; the same property, credentials,
+   * window and failure semantics as every other read.
+   */
+  getQueryPagePerformance(
+    projectId: string,
+    window: SearchConsoleWindow,
+  ): Promise<ProviderResult<readonly SearchQueryPageRow[]>>;
 };
 
 export const SITES_FRESH_MS = 10 * 60 * 1000;
 export const PERFORMANCE_FRESH_MS = 60 * 60 * 1000;
 export const STALE_LIMIT_MS = 24 * 60 * 60 * 1000;
 export const TOP_ROWS = 25;
+/**
+ * The most query × page rows one request asks for and one capture stores:
+ * the `rowLimit` sent to Google and the cap the database function enforces
+ * (migration 20260930120000). Google returns the rows with the most clicks
+ * first, so the set is a top cut, never the property's complete demand.
+ */
+export const QUERY_PAGE_ROW_LIMIT = 250;
 
 function failureFrom(error: unknown, property: string | null): ProviderFailure {
   const kind = error instanceof SearchConsoleProviderError ? error.kind : "error";
@@ -103,6 +122,7 @@ export function createMisconfiguredProvider(): SearchConsoleProvider {
     getSearchPerformance: fail,
     getQueryPerformance: fail,
     getPagePerformance: fail,
+    getQueryPagePerformance: fail,
   };
 }
 
@@ -170,16 +190,19 @@ export function createSearchConsoleProvider(options: {
     return { ok: true, property };
   }
 
+  /** A dimensioned read: one dimension's top rows, the query × page pairs, or (no dimension) the totals. */
   async function analytics<T>(
     projectId: string,
     window: SearchConsoleWindow,
-    dimension: "query" | "page" | null,
+    dimensions: readonly ("query" | "page")[],
+    rowLimit: number,
     map: (response: unknown) => T,
   ): Promise<ProviderResult<T>> {
     const resolved = await propertyFor(projectId);
     if (!resolved.ok) return resolved;
     const { property } = resolved;
-    const key = JSON.stringify([property, window.startDate, window.endDate, dimension]);
+    // The cache key names every dimension, so the pair read never shares a cached single-dimension answer.
+    const key = JSON.stringify([property, window.startDate, window.endDate, dimensions.length === 0 ? null : dimensions.length === 1 ? dimensions[0] : dimensions]);
 
     try {
       const read = await performanceCache.read<Timed<T>>(key, async () => ({
@@ -187,8 +210,8 @@ export function createSearchConsoleProvider(options: {
           await client!.querySearchAnalytics(property, {
             startDate: window.startDate,
             endDate: window.endDate,
-            dimensions: dimension ? [dimension] : [],
-            rowLimit: dimension ? TOP_ROWS : 1,
+            dimensions,
+            rowLimit,
           }),
         ),
         fetchedAt: stamp(),
@@ -203,9 +226,10 @@ export function createSearchConsoleProvider(options: {
   return {
     configured: config.status === "configured",
     listSites: sites,
-    getSearchPerformance: (projectId, window) => analytics(projectId, window, null, mapTotals),
-    getQueryPerformance: (projectId, window) => analytics(projectId, window, "query", mapDimensionRows),
-    getPagePerformance: (projectId, window) => analytics(projectId, window, "page", mapDimensionRows),
+    getSearchPerformance: (projectId, window) => analytics(projectId, window, [], 1, mapTotals),
+    getQueryPerformance: (projectId, window) => analytics(projectId, window, ["query"], TOP_ROWS, mapDimensionRows),
+    getPagePerformance: (projectId, window) => analytics(projectId, window, ["page"], TOP_ROWS, mapDimensionRows),
+    getQueryPagePerformance: (projectId, window) => analytics(projectId, window, ["query", "page"], QUERY_PAGE_ROW_LIMIT, mapQueryPageRows),
   };
 }
 

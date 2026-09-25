@@ -1,6 +1,13 @@
 import type { LogFields, LogLevel } from "@/lib/observability/log";
 import { searchConsoleWindows } from "@/lib/search-console/date-windows";
 import type { ProviderResult, SearchConsoleProvider } from "@/lib/search-console/provider";
+import { isAbsoluteHttpUrl } from "@/lib/search-console/mappers";
+import {
+  QUERY_PAGE_MAX_KEY_LENGTH,
+  QUERY_PAGE_ROW_LIMIT,
+  type RecordQueryPagesInput,
+  type SearchConsoleQueryPageStore,
+} from "@/lib/search-console/query-pages/contract";
 import {
   SNAPSHOT_DAYS,
   SNAPSHOT_MAX_KEY_LENGTH,
@@ -17,6 +24,7 @@ import type {
   SearchConsoleWindow,
   SearchPerformance,
   SearchPerformanceRow,
+  SearchQueryPageRow,
 } from "@/types/search-console";
 
 /**
@@ -83,9 +91,29 @@ export type SnapshotCaptureOutcome =
   /** The store threw; nothing is known to have been written. */
   | { readonly status: "store-failed" };
 
+/** What happened to the project's query × page read, after and apart from its snapshot. */
+export type QueryPageCaptureOutcome =
+  /** One set of pairs was written for the window. */
+  | { readonly status: "recorded"; readonly count: number }
+  /** This window already holds a set for the project and property; nothing written. */
+  | { readonly status: "exists"; readonly count: number }
+  /** Google answered, with no readable pair; nothing written, and a later capture may record some. */
+  | { readonly status: "no-pairs" }
+  /** Not attempted: the snapshot was not connected, the budget was spent, or there is nowhere to keep pairs. */
+  | { readonly status: "skipped"; readonly reason: "snapshot-not-connected" | "time-budget" | "store-unavailable" }
+  /** Google could not be read for the pairs, or the answer was stale, for another property, or late. */
+  | {
+      readonly status: "unavailable";
+      readonly reason: SearchConsoleUnavailableReason | SearchConsoleNotConnectedReason | "access-denied" | "stale" | "property-mismatch";
+    }
+  /** The pair store threw; nothing is known to have been written. */
+  | { readonly status: "store-failed" };
+
 export type SnapshotCaptureEntry = {
   readonly projectId: string;
   readonly outcome: SnapshotCaptureOutcome;
+  /** The query × page step for this project; always `skipped` when the snapshot was not connected. */
+  readonly pairs: QueryPageCaptureOutcome;
   readonly durationMs: number;
 };
 
@@ -119,6 +147,8 @@ export type SnapshotCaptureDependencies = {
     getProjectById(id: string): Promise<unknown | null>;
   };
   readonly store: SearchConsoleSnapshotStore;
+  /** Where query × page sets are kept; absent (or not storing) means the pair step is skipped. */
+  readonly queryPages?: SearchConsoleQueryPageStore;
   readonly now?: () => Date;
   readonly log?: SnapshotCaptureLog;
 };
@@ -126,6 +156,8 @@ export type SnapshotCaptureDependencies = {
 export const MAX_CAPTURE_PROJECTS = 50;
 /** The least budget a project may start with: a Google read is not worth starting into less. */
 export const MIN_PROJECT_BUDGET_MS = 3_000;
+/** The least of the project's budget the query × page read may start into, after the snapshot is written. */
+export const MIN_PAIR_BUDGET_MS = 2_000;
 
 /**
  * The product's 30-day Search Console window for `now`: exactly 30 days,
@@ -181,6 +213,28 @@ export function snapshotRows(rows: readonly SearchPerformanceRow[]): readonly Se
   return kept;
 }
 
+/**
+ * Google's query × page rows within what the table stores: at most
+ * QUERY_PAGE_ROW_LIMIT, in Google's order, each a distinct pair of a
+ * non-empty query and an absolute http(s) page, both at most 2,048
+ * characters, with recordable metrics. A row outside that is left out, not
+ * altered.
+ */
+export function queryPageRows(rows: readonly SearchQueryPageRow[]): readonly SearchQueryPageRow[] {
+  const kept: SearchQueryPageRow[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (kept.length >= QUERY_PAGE_ROW_LIMIT) break;
+    if (typeof row.query !== "string" || row.query === "" || row.query.length > QUERY_PAGE_MAX_KEY_LENGTH) continue;
+    if (typeof row.page !== "string" || row.page.length > QUERY_PAGE_MAX_KEY_LENGTH || !isAbsoluteHttpUrl(row.page)) continue;
+    const pair = `${row.query}\n${row.page}`;
+    if (seen.has(pair) || !isRecordableTotals(row)) continue;
+    seen.add(pair);
+    kept.push({ query: row.query, page: row.page, clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position });
+  }
+  return kept;
+}
+
 const TIMED_OUT = Symbol("timed-out");
 
 /** Resolves with the value, or with TIMED_OUT once `ms` have passed. The work itself is not cancelled. */
@@ -213,8 +267,66 @@ function secondaryRows(
   return { rows: snapshotRows(result.value), unavailable: false };
 }
 
+const errorCode = (error: unknown) =>
+  typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code
+    : error instanceof Error
+      ? error.name
+      : "unknown";
+
 export function createSnapshotCapture(deps: SnapshotCaptureDependencies) {
-  const { provider, properties, projects, store, now = () => new Date(), log = () => {} } = deps;
+  const { provider, properties, projects, store, queryPages, now = () => new Date(), log = () => {} } = deps;
+
+  /**
+   * The query × page step for one connected project, after its snapshot:
+   * one read, one write, within `remainingMs` of the project's budget.
+   * Never throws, and nothing it answers touches the snapshot's outcome.
+   */
+  async function capturePairs(
+    projectId: string,
+    property: string,
+    window: SearchConsoleWindow,
+    remainingMs: number,
+  ): Promise<QueryPageCaptureOutcome> {
+    if (!queryPages || !queryPages.storesQueryPages) return { status: "skipped", reason: "store-unavailable" };
+    if (remainingMs < MIN_PAIR_BUDGET_MS) return { status: "skipped", reason: "time-budget" };
+
+    // The provider never throws by contract; if it does, the pair step alone is unavailable — the batch and the snapshot stand.
+    let read: Awaited<ReturnType<typeof provider.getQueryPagePerformance>> | typeof TIMED_OUT;
+    try {
+      read = await withDeadline(provider.getQueryPagePerformance(projectId, window), remainingMs);
+    } catch (error) {
+      log("warn", "search_console.query_pages_read_failed", { projectId, errorCode: error instanceof Error ? error.name : "unknown" });
+      return { status: "unavailable", reason: "error" };
+    }
+    if (read === TIMED_OUT) return { status: "unavailable", reason: "timeout" };
+    if (!read.ok) {
+      const { failure } = read;
+      return { status: "unavailable", reason: failure.state === "unavailable" ? failure.reason : failure.state === "not-connected" ? failure.reason : "access-denied" };
+    }
+    if (read.property !== property) return { status: "unavailable", reason: "property-mismatch" };
+    if (read.stale) return { status: "unavailable", reason: "stale" };
+
+    const pairs = queryPageRows(read.value);
+    if (pairs.length === 0) return { status: "no-pairs" };
+
+    const input: RecordQueryPagesInput = { projectId, property, window, pairs, fetchedAt: read.fetchedAt };
+    try {
+      const recorded = await queryPages.record(input);
+      switch (recorded.status) {
+        case "created":
+          return { status: "recorded", count: recorded.count };
+        case "exists":
+          return { status: "exists", count: recorded.count };
+        case "not-found":
+          // The snapshot was just written for this project, so this is a race with a deletion; nothing to keep.
+          return { status: "skipped", reason: "store-unavailable" };
+      }
+    } catch (error) {
+      log("error", "search_console.query_pages_store_failed", { projectId, errorCode: errorCode(error) });
+      return { status: "store-failed" };
+    }
+  }
 
   /** One project: read Google for its mapped property and record the answer. Never throws. */
   async function captureProject(
@@ -293,15 +405,7 @@ export function createSnapshotCapture(deps: SnapshotCaptureDependencies) {
           return { status: "project-not-found" };
       }
     } catch (error) {
-      log("error", "search_console.snapshot_store_failed", {
-        projectId,
-        errorCode:
-          typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
-            ? error.code
-            : error instanceof Error
-              ? error.name
-              : "unknown",
-      });
+      log("error", "search_console.snapshot_store_failed", { projectId, errorCode: errorCode(error) });
       return { status: "store-failed" };
     }
   }
@@ -327,7 +431,7 @@ export function createSnapshotCapture(deps: SnapshotCaptureDependencies) {
       for (const projectId of await projects.listProjectIds()) {
         // An unmapped project costs nothing and is reported, not counted.
         if (!properties.has(projectId)) {
-          entries.push({ projectId, outcome: { status: "not-connected", reason: "no-property" }, durationMs: 0 });
+          entries.push({ projectId, outcome: { status: "not-connected", reason: "no-property" }, pairs: { status: "skipped", reason: "snapshot-not-connected" }, durationMs: 0 });
           continue;
         }
         if (attempted >= maxProjects) {
@@ -343,14 +447,32 @@ export function createSnapshotCapture(deps: SnapshotCaptureDependencies) {
         attempted += 1;
         const began = performance.now();
         const outcome = await captureProject(projectId, window, remainingMs);
-        const durationMs = Math.round(performance.now() - began);
-        entries.push({ projectId, outcome, durationMs });
+        const snapshotMs = Math.round(performance.now() - began);
         log(outcome.status === "store-failed" ? "error" : "info", "search_console.snapshot", {
           projectId,
           outcome: outcome.status,
           reason: "reason" in outcome ? outcome.reason : null,
-          durationMs,
+          durationMs: snapshotMs,
         });
+
+        // The pair step, only once the snapshot is settled and connected, in what is left of this project's budget.
+        let pairs: QueryPageCaptureOutcome;
+        if ((outcome.status === "created" || outcome.status === "exists") && outcome.snapshot.state === "connected") {
+          const property = properties.get(projectId) ?? "";
+          pairs = await capturePairs(projectId, property, window, remainingMs - snapshotMs);
+          log(pairs.status === "store-failed" ? "error" : "info", "search_console.query_pages", {
+            projectId,
+            outcome: pairs.status,
+            reason: "reason" in pairs ? pairs.reason : null,
+            count: "count" in pairs ? pairs.count : null,
+            durationMs: Math.round(performance.now() - began) - snapshotMs,
+          });
+        } else {
+          pairs = { status: "skipped", reason: "snapshot-not-connected" };
+        }
+
+        const durationMs = Math.round(performance.now() - began);
+        entries.push({ projectId, outcome, pairs, durationMs });
       }
 
       const durationMs = elapsed();

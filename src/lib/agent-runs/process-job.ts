@@ -48,7 +48,13 @@ export type SnapshotStepResult =
   | {
       readonly status: "captured";
       readonly window: SearchConsoleWindow;
-      readonly entries: readonly { readonly projectId: string; readonly outcome: string; readonly reason: string | null }[];
+      readonly entries: readonly {
+        readonly projectId: string;
+        readonly outcome: string;
+        readonly reason: string | null;
+        /** The P4c query × page step's outcome name for the project; a name, never a row. */
+        readonly pairs: string;
+      }[];
       readonly attempted: number;
       readonly stoppedBy: SnapshotCaptureBatch["stoppedBy"];
       readonly budgetMs: number;
@@ -141,6 +147,7 @@ export async function runProcessJob<Refusal>(deps: ProcessJobDependencies<Refusa
                 projectId: entry.projectId,
                 outcome: entry.outcome.status,
                 reason: "reason" in entry.outcome ? entry.outcome.reason : null,
+                pairs: entry.pairs.status,
               })),
               attempted: batch.attempted,
               stoppedBy: batch.stoppedBy,

@@ -3,6 +3,7 @@ import "server-only";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
 import { projectRepository } from "@/lib/projects/repository";
 import { searchConsoleProperties, searchConsoleProvider } from "@/lib/search-console";
+import { searchConsoleQueryPageStore } from "@/lib/search-console/query-pages";
 import { createSnapshotCapture, type SnapshotCapture } from "@/lib/search-console/snapshots/capture";
 import { unavailableSearchConsoleSnapshotStore, type SearchConsoleSnapshotStore } from "@/lib/search-console/snapshots/contract";
 import type { SearchConsoleSnapshotsDatabase } from "@/lib/search-console/snapshots/supabase/schema";
@@ -16,8 +17,8 @@ import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supa
  * projects through the project repository, and writes with
  * `PROJECTS_DATA_SOURCE=supabase` through the one database function; with
  * the fixture roster there is nowhere to keep a snapshot and every project
- * answers `store-unavailable`. Nothing calls this yet: the scheduled worker
- * step is checkpoint 1c and starts only with approval.
+ * answers `store-unavailable`. The scheduled worker's `process` job
+ * (checkpoint 1c) is the one caller.
  */
 
 function configuredStore(): SearchConsoleSnapshotStore {
@@ -42,6 +43,8 @@ function configuredCapture(): SnapshotCapture {
     properties: searchConsoleProperties(),
     projects: projectRepository,
     store: searchConsoleSnapshotStore(),
+    // The P4c pair store, over the same Supabase configuration; the capture skips the pair step when it stores nothing.
+    queryPages: searchConsoleQueryPageStore(),
   });
 }
 
