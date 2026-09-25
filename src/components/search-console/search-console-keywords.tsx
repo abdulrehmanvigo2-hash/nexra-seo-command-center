@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Select } from "@/components/ui/field";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import { formatFullDate, formatNumber, formatPercent } from "@/lib/format";
+import type { ProjectOption } from "@/lib/projects/selection";
 import type { IntentHint } from "@/lib/search-console/keywords/intent";
 import { OPPORTUNITY_LABELS, type OpportunityLabel } from "@/lib/search-console/keywords/thresholds";
 import {
@@ -36,6 +38,7 @@ import {
  */
 
 type Load =
+  | { readonly status: "idle" }
   | { readonly status: "loading" }
   | { readonly status: "failed"; readonly message: string }
   | { readonly status: "loaded"; readonly view: KeywordIntelligenceView };
@@ -52,10 +55,31 @@ const INTENT_TONE: Readonly<Record<IntentHint, "neutral" | "accent" | "positive"
   unclassified: "neutral",
 };
 
-export function SearchConsoleKeywords({ projectId }: { projectId: string }) {
-  const [load, setLoad] = useState<Load>({ status: "loading" });
+/** The option the selector shows until an operator names a stored project. */
+const NO_PROJECT = "";
+
+export function SearchConsoleKeywords({
+  projects,
+  initialProjectId,
+}: {
+  /** The stored roster. The panel reads only these projects' own stored rows. */
+  projects: readonly ProjectOption[];
+  /** The workspace's project filter when it names one project; null for "Every project". */
+  initialProjectId: string | null;
+}) {
+  const selectId = useId();
+  // The panel's own selection: seeded from the workspace filter when that
+  // names a stored project, otherwise nothing is chosen and nothing is read.
+  // The workspace filter sits behind the toolbar's advanced filters, so the
+  // panel must be reachable without it; the selection here never changes
+  // the modelled views above.
+  const [projectId, setProjectId] = useState<string | null>(() =>
+    initialProjectId !== null && projects.some((project) => project.id === initialProjectId) ? initialProjectId : null,
+  );
+  const [load, setLoad] = useState<Load>({ status: "idle" });
 
   useEffect(() => {
+    if (projectId === null) return;
     const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the loading state belongs to this request
     setLoad({ status: "loading" });
@@ -82,13 +106,54 @@ export function SearchConsoleKeywords({ projectId }: { projectId: string }) {
         title="Observed query inventory"
         description="Queries Google reported in this product's stored snapshots and query × page pairs, with fixed-rule labels. Not the modelled keyword universe above: an observed query and a tracked keyword are different records."
         actions={
-          <Badge tone="accent" title="Derived by fixed rules from Search Console rows this product stored. Figures are Google's; intent hints, groups and opportunity labels are derived. Not fixture data.">
-            Observed · derived labels
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="accent" title="Derived by fixed rules from Search Console rows this product stored. Figures are Google's; intent hints, groups and opportunity labels are derived. Not fixture data.">
+              Observed · derived labels
+            </Badge>
+            {projects.length > 0 && (
+              <>
+                <label htmlFor={selectId} className="text-xs text-fg-subtle">
+                  Stored project
+                </label>
+                <Select
+                  id={selectId}
+                  size="sm"
+                  value={projectId ?? NO_PROJECT}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setProjectId(next === NO_PROJECT ? null : next);
+                    if (next === NO_PROJECT) setLoad({ status: "idle" });
+                  }}
+                  options={[
+                    { value: NO_PROJECT, label: "Choose a project" },
+                    ...projects.map((project) => ({ value: project.id, label: project.name })),
+                  ]}
+                />
+              </>
+            )}
+          </div>
         }
       />
 
       <PanelBody>
+        {projects.length === 0 && (
+          <EmptyState
+            size="sm"
+            icon="projects"
+            title="No stored project"
+            description="Stored Search Console rows belong to stored projects. Add a project on the Projects screen."
+          />
+        )}
+
+        {projects.length > 0 && projectId === null && (
+          <EmptyState
+            size="sm"
+            icon="globe"
+            title="Choose a single project"
+            description="Stored snapshots and query × page pairs belong to one project and its Search Console property, so the inventory is shown for one stored project at a time."
+          />
+        )}
+
         {load.status === "loading" && (
           <div className="space-y-2">
             <Skeleton className="h-5 w-full max-w-96" />
