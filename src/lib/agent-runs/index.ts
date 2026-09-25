@@ -25,6 +25,7 @@ import { appRateLimiter } from "@/lib/security/app-rate-limit";
 import type { AsyncRateLimiter } from "@/lib/security/shared-rate-limit";
 import { getSearchConsoleReport, searchConsoleProvider } from "@/lib/search-console";
 import { readSearchConsoleHistory } from "@/lib/search-console/history";
+import { readKeywordIntelligence } from "@/lib/search-console/keywords";
 import { readSearchConsoleQueryPages } from "@/lib/search-console/query-pages";
 import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supabase/server";
 
@@ -128,6 +129,11 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // read through the one bounded store read and analysed by fixed
         // rules; null where this deployment keeps none.
         searchConsoleQueryPages: (projectId) => readSearchConsoleQueryPages(projectId),
+        // Last, for the Keyword & Search Intent review only: the project's
+        // observed query inventory (M4), derived by fixed rules from the
+        // same stored snapshots and pairs; null where this deployment keeps
+        // no snapshots.
+        searchConsoleKeywords: (projectId) => readKeywordIntelligence(projectId),
         // A hand-off reads the upstream run from the same store the runtime
         // keeps its own runs in: one record, read by id, checked against the
         // Director's project before a word of it is formatted.

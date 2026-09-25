@@ -18,6 +18,8 @@ import type { CrawlLink } from "../../types/crawl.ts";
 import { EVIDENCE_PACK_CRAWL_LIMITS, formatEvidencePackGrounding, type EvidencePackReaders } from "../research/evidence-pack.ts";
 import { formatSearchConsoleGrounding } from "../search-console/grounding.ts";
 import { compareSnapshotHistory, type SnapshotHistoryComparison } from "../search-console/history/compare.ts";
+import { formatKeywordGrounding, KEYWORD_LIMITS_NOTE } from "../search-console/keywords/grounding.ts";
+import { buildKeywordInventory, type KeywordIntelligenceInput } from "../search-console/keywords/inventory.ts";
 import { formatQueryPageGrounding, QUERY_PAGE_LIMITS_NOTE } from "../search-console/query-pages/grounding.ts";
 import { buildQueryPageIntelligence, type QueryPageInput } from "../search-console/query-pages/intelligence.ts";
 import type { StoredQueryPage } from "../search-console/query-pages/contract.ts";
@@ -945,6 +947,7 @@ describe("the Keyword & Search Intent agent through the executor", () => {
       ...formatSearchConsoleGrounding(REPORT).summary,
       history: formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "keyword").summary,
       queryPages: formatQueryPageGrounding({ available: false, reason: "not-kept" }, "keyword").summary,
+      keywords: formatKeywordGrounding({ available: false, reason: "not-kept" }).summary,
     });
   });
 
@@ -1200,6 +1203,7 @@ describe("the Analytics & Learning agent through the executor", () => {
       ...formatSearchConsoleGrounding(REPORT).summary,
       history: formatSearchConsoleHistory({ available: false, reason: "not-kept" }, "analytics").summary,
       queryPages: formatQueryPageGrounding({ available: false, reason: "not-kept" }, "analytics").summary,
+      keywords: formatKeywordGrounding({ available: false, reason: "not-kept" }).summary,
     });
   });
 
@@ -2696,5 +2700,90 @@ describe("stored query × page evidence after the history (P4c)", () => {
     const crawlResult = await createTaskGrounding(crawl.readers)(crawlReviewTask);
     assert.ok(crawlResult.ok);
     assert.deepEqual(crawl.calls, []);
+  });
+});
+
+describe("the observed query inventory after the pairs (M4)", () => {
+  const liveText = formatSearchConsoleGrounding(REPORT).text;
+  const historyText = formatSearchConsoleHistory(HISTORY, "keyword").text;
+  const snapshotRow = (key: string, clicks: number, impressions: number, position: number): SearchPerformanceRow => ({ key, clicks, impressions, ctr: clicks / impressions, position });
+  const SNAPSHOT: SearchConsoleSnapshot = {
+    id: "snap-m4", projectId: "nexra-agency", property: REPORT.property, rangeId: "30d", days: 30, startDate: "2026-08-19", endDate: "2026-09-17", state: "connected",
+    totals: { clicks: 300, impressions: 9_000, ctr: 0.0333, position: 8.2 }, queries: [snapshotRow("seo agency london", 15, 420, 5.0), snapshotRow("what is seo", 2, 900, 12.0)], pages: [], partial: [], source: "scheduled",
+    fetchedAt: "2026-09-18T12:00:00.000Z", capturedAt: "2026-09-18T12:00:01.000Z",
+  };
+  const INVENTORY: KeywordIntelligenceInput = buildKeywordInventory({ snapshots: [SNAPSHOT], pairs: [], pairsReadLimit: 750, currentProperty: REPORT.property, brandTokens: ["nexra"] });
+
+  function withKeywords(answer: KeywordIntelligenceInput | null | Error | "absent") {
+    const calls: string[] = [];
+    const base = readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN), projectStore(), comparisonStore(), evidencePackStore(), draftStore(), linkStore(), factCheckStore(), historyStore(HISTORY));
+    if (answer === "absent") return { calls, readers: base };
+    return {
+      calls,
+      readers: {
+        ...base,
+        searchConsoleKeywords: async (projectId: string) => {
+          calls.push(projectId);
+          if (answer instanceof Error) throw answer;
+          return answer;
+        },
+      },
+    };
+  }
+
+  test("the Keyword & Search Intent review gets the inventory last, for the run's own project; the performance review never does", async () => {
+    const r = withKeywords(INVENTORY);
+    const result = await createTaskGrounding(r.readers)(searchQueryTask);
+    assert.ok(result.ok && result.grounding);
+    assert.deepEqual(r.calls, ["nexra-agency"]);
+    assert.ok(result.grounding.text.startsWith(`${liveText}\n\n${historyText}\n\n`), "live report, then history, unchanged and in order");
+    const block = result.grounding.text.slice(liveText.length + 2 + historyText.length + 2);
+    assert.match(block, /^OBSERVED QUERY INVENTORY \(derived by fixed rules/);
+    assert.match(block, /intent hint informational \(word "what"\)/);
+    assert.match(block, /candidate: low ctr, position band/);
+    assert.ok(block.endsWith(KEYWORD_LIMITS_NOTE));
+    const evidence = result.grounding.summary as { keywords?: Record<string, unknown> };
+    assert.deepEqual([evidence.keywords?.keywords, evidence.keywords?.queries, evidence.keywords?.opportunities], ["available", 2, 2]);
+    assert.deepEqual(formatKeywordGrounding(INVENTORY).summary, evidence.keywords, "the stored summary is the block's own");
+
+    const analytics = withKeywords(INVENTORY);
+    const measured = await createTaskGrounding(analytics.readers)(performanceReviewTask);
+    assert.ok(measured.ok && measured.grounding);
+    assert.deepEqual(analytics.calls, [], "the performance review reads no inventory");
+    assert.ok(!measured.grounding.text.includes("OBSERVED QUERY INVENTORY"));
+    assert.equal((measured.grounding.summary as { keywords?: { keywords?: string } }).keywords?.keywords, "not-kept");
+  });
+
+  test("no inventory adds no block: not kept, no snapshots, another property, no queries, an absent reader, a read that throws", async () => {
+    const cases: { answer: KeywordIntelligenceInput | null | "absent" | Error; status: string }[] = [
+      { answer: null, status: "not-kept" },
+      { answer: "absent", status: "not-kept" },
+      { answer: { available: false, reason: "no-snapshots", otherProperty: 0 }, status: "no-snapshots" },
+      { answer: { available: false, reason: "no-history-for-property", otherProperty: 1 }, status: "no-history-for-property" },
+      { answer: { available: false, reason: "no-queries", otherProperty: 0 }, status: "no-queries" },
+      { answer: new Error("snapshot store down"), status: "read-failed" },
+    ];
+    for (const c of cases) {
+      const result = await createTaskGrounding(withKeywords(c.answer).readers)(searchQueryTask);
+      assert.ok(result.ok && result.grounding, c.status);
+      assert.equal(result.grounding.text, `${liveText}\n\n${historyText}`, c.status);
+      assert.equal((result.grounding.summary as { keywords?: { keywords?: string } }).keywords?.keywords, c.status);
+    }
+  });
+
+  test("a refused live report never reaches the inventory reader, no other task type reads it, and the whole summary stays storable", async () => {
+    const refused = withKeywords(INVENTORY);
+    const result = await createTaskGrounding({ ...refused.readers, searchConsole: searchConsole({ projectId: "nexra-agency", source: "search-console", state: "not-connected", reason: "no-property" }).read })(searchQueryTask);
+    assert.deepEqual(result, { ok: false, reason: "search-console-not-connected" });
+    assert.deepEqual(refused.calls, []);
+    const crawl = withKeywords(INVENTORY);
+    assert.ok((await createTaskGrounding(crawl.readers)(crawlReviewTask)).ok);
+    assert.deepEqual(crawl.calls, []);
+
+    const { seen, provider } = capturingProvider();
+    const output = await createAiExecutor(provider, createTaskGrounding(withKeywords(INVENTORY).readers)).execute(searchQueryTask, new AbortController().signal);
+    assert.match(seen.prompt ?? "", /OBSERVED QUERY INVENTORY/);
+    assert.match(seen.prompt ?? "", /an intent hint is a lexical suggestion from the query's own words/, "the instructions name the block");
+    assert.equal(checkStorableJson(output.metadata).ok, true, "the metadata with the inventory summary is storable");
   });
 });

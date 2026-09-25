@@ -19,6 +19,8 @@ import {
 } from "@/lib/search-console/grounding";
 import type { SnapshotHistoryComparison } from "@/lib/search-console/history/compare";
 import { formatSearchConsoleHistory, type HistoryInput } from "@/lib/search-console/history/grounding";
+import { formatKeywordGrounding } from "@/lib/search-console/keywords/grounding";
+import type { KeywordIntelligenceInput } from "@/lib/search-console/keywords/inventory";
 import { formatQueryPageGrounding } from "@/lib/search-console/query-pages/grounding";
 import type { QueryPageInput } from "@/lib/search-console/query-pages/intelligence";
 
@@ -54,6 +56,9 @@ export type SearchConsoleHistoryReader = (projectId: string) => Promise<Snapshot
 /** The stored query × page intelligence for one project (P4c), or null when this deployment keeps no pairs. */
 export type SearchConsoleQueryPageReader = (projectId: string) => Promise<QueryPageInput | null>;
 
+/** The observed query inventory for one project (M4), or null when this deployment keeps no snapshots. */
+export type SearchConsoleKeywordReader = (projectId: string) => Promise<KeywordIntelligenceInput | null>;
+
 /** The findings recorded for one of the project's own crawls (T3), read by project and crawl id, never recomputed. */
 export type CrawlFindingsReader = (projectId: string, crawlId: string) => Promise<CrawlFindingsRead>;
 
@@ -74,6 +79,13 @@ export type TaskGroundingReaders = {
    * block; never a refusal and never a replacement for the live report.
    */
   readonly searchConsoleQueryPages?: SearchConsoleQueryPageReader;
+  /**
+   * `search-query-review` only, after the pairs: the run's own project's
+   * observed query inventory (M4), appended as a fourth block only when an
+   * inventory exists. Absent, or answering null, means no block; never a
+   * refusal and never a replacement for the live report.
+   */
+  readonly searchConsoleKeywords?: SearchConsoleKeywordReader;
   /** The run store itself satisfies this; a test hands in a map. */
   readonly runs: AgentRunReader;
   /**
@@ -179,11 +191,26 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         }
         const pairGrounding = formatQueryPageGrounding(queryPages, audience);
 
+        // The observed query inventory (M4), appended last and for the
+        // Keyword & Search Intent agent only: the performance review
+        // measures figures and gets no lexical hints. A missing reader, a
+        // deployment that keeps no snapshots or a failed read adds no block
+        // and never fails the run.
+        let keywords: KeywordIntelligenceInput = { available: false, reason: "not-kept" };
+        if (task.taskType === "search-query-review") {
+          try {
+            keywords = (await readers.searchConsoleKeywords?.(task.project.id)) ?? { available: false, reason: "not-kept" };
+          } catch {
+            keywords = { available: false, reason: "read-failed" };
+          }
+        }
+        const keywordGrounding = formatKeywordGrounding(keywords);
+
         return {
           ok: true,
           grounding: {
-            text: `${result.grounding.text}\n\n${historyGrounding.text}${pairGrounding.text === null ? "" : `\n\n${pairGrounding.text}`}`,
-            summary: { ...result.grounding.summary, history: historyGrounding.summary, queryPages: pairGrounding.summary },
+            text: `${result.grounding.text}\n\n${historyGrounding.text}${pairGrounding.text === null ? "" : `\n\n${pairGrounding.text}`}${keywordGrounding.text === null ? "" : `\n\n${keywordGrounding.text}`}`,
+            summary: { ...result.grounding.summary, history: historyGrounding.summary, queryPages: pairGrounding.summary, keywords: keywordGrounding.summary },
             source: result.grounding.source,
           },
         };

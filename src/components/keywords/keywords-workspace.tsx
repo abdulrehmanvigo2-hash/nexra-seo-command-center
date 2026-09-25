@@ -63,6 +63,7 @@ import {
   type KeywordSort,
 } from "@/components/keywords/sorting";
 import { UnmeasuredSelectionNotice } from "@/components/projects/unmeasured-selection-notice";
+import { SearchConsoleKeywords } from "@/components/search-console/search-console-keywords";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import type { ProjectOption } from "@/lib/projects/selection";
 import type { RangeId } from "@/types/dashboard";
@@ -687,6 +688,13 @@ export function KeywordsWorkspace({
             rangeId="30d"
             view="queries"
           />
+        )}
+
+        {/* The observed query inventory (M4): derived by fixed rules from the
+            stored snapshots and pairs the panel above reads live. One project
+            at a time, like the panel; never the modelled universe. */}
+        {tab === "keywords" && filters.project !== "all" && (
+          <SearchConsoleKeywords projectId={filters.project} />
         )}
 
         {tab === "clusters" && (
