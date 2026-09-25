@@ -10,7 +10,7 @@ import {
   type CrawlFinding,
   type FindingRuleId,
 } from "./contract.ts";
-import { DEEP_PAGE_DEPTH, META_DESCRIPTION_MAX_LENGTH, RULES, TITLE_MAX_LENGTH, TITLE_MIN_LENGTH, isGenericAnchorText, metaForbidsIndexing, normaliseAnchorText, normaliseText, robotsDirectives } from "./rules.ts";
+import { DEEP_PAGE_DEPTH, META_DESCRIPTION_MAX_LENGTH, RULES, THIN_PAGE_MAX_WORDS, TITLE_MAX_LENGTH, TITLE_MIN_LENGTH, isGenericAnchorText, metaForbidsIndexing, normaliseAnchorText, normaliseText, robotsDirectives } from "./rules.ts";
 
 /**
  * Checkpoint T1. On trial: that every rule fires on exactly the observed
@@ -353,7 +353,7 @@ describe("output discipline", () => {
 
   test("every rule has a category, a severity and a label, and the wording never claims indexation, ranking, vitals or orphans", () => {
     const rules = Object.keys(RULES) as FindingRuleId[];
-    assert.equal(rules.length, 32);
+    assert.equal(rules.length, 36);
     for (const rule of rules) assert.ok(RULES[rule].label.length > 0 && RULES[rule].category && RULES[rule].severity);
     const pages = [
       page("/", { internalLinksIn: 0 }),
@@ -368,11 +368,11 @@ describe("output discipline", () => {
   });
 });
 
-describe("T5 signals (rule version 2)", () => {
-  test("the report is rule version 2, and a page recorded before the signals were kept yields none of the new findings", () => {
+describe("T5 signals (rule version 2, now carried by version 3)", () => {
+  test("the report is rule version 3, and a page recorded before the signals were kept yields none of the new findings", () => {
     const report = run([page("/", { h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null })], [link("/", "/a", { anchorText: null })]);
-    assert.equal(report.ruleVersion, 2);
-    assert.equal(FINDINGS_RULE_VERSION, 2);
+    assert.equal(report.ruleVersion, 3);
+    assert.equal(FINDINGS_RULE_VERSION, 3);
     assert.deepEqual(report.findings, []);
   });
 
@@ -452,5 +452,61 @@ describe("T5 signals (rule version 2)", () => {
       assert.ok(RULES[rule].label.length > 0 && RULES[rule].severity && RULES[rule].category, rule);
     }
     assert.ok(FINDINGS_LIMITATIONS.some((line) => /an empty alt is a deliberate marker/.test(line) && /review prompts, not measurements/.test(line)));
+  });
+});
+
+describe("M2 content signals (rule version 3)", () => {
+  test("a page recorded before the M2 signals were kept yields none of the four new findings", () => {
+    const report = run([page("/", { wordCount: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null })]);
+    assert.deepEqual(report.findings.filter((f) => ["html-lang-missing", "hreflang-malformed", "social-metadata-missing", "thin-page-candidate"].includes(f.rule)), []);
+  });
+
+  test("html-lang-missing fires for an absent or empty lang on a page whose signals were recorded, never on an unrecorded page", () => {
+    const absent = only([page("/a", { wordCount: 500, htmlLang: null, ogTagCount: 1 })], "html-lang-missing");
+    assert.deepEqual([absent.length, absent[0].observed, absent[0].message, absent[0].category], [1, { htmlLang: null }, "The html element declares no lang attribute.", "metadata"]);
+    const empty = only([page("/b", { wordCount: 500, htmlLang: "  ", ogTagCount: 1 })], "html-lang-missing");
+    assert.equal(empty[0].message, "The html element's lang attribute is empty.");
+    assert.equal(only([page("/c", { wordCount: 500, htmlLang: "en", ogTagCount: 1 })], "html-lang-missing").length, 0);
+    assert.equal(only([page("/d", { wordCount: null, htmlLang: null })], "html-lang-missing").length, 0);
+  });
+
+  test("hreflang-malformed reports the malformed alternates against the count, and nothing on zero or unknown", () => {
+    const [found] = only([page("/a", { hreflangCount: 4, hreflangMalformed: 2 })], "hreflang-malformed");
+    assert.deepEqual(found.observed, { hreflangCount: 4, hreflangMalformed: 2 });
+    assert.equal(found.message, "2 of 4 hreflang alternate link(s) on the page have an empty or ill-formed hreflang value or no href.");
+    for (const over of [{ hreflangCount: 4, hreflangMalformed: 0 }, { hreflangCount: null, hreflangMalformed: 2 }, { hreflangCount: 4, hreflangMalformed: null }]) {
+      assert.equal(only([page("/b", over)], "hreflang-malformed").length, 0, JSON.stringify(over));
+    }
+  });
+
+  test("social-metadata-missing fires only when the page was read for both and carries neither", () => {
+    const [found] = only([page("/a", { wordCount: 500, htmlLang: "en", ogTagCount: 0, twitterCard: null })], "social-metadata-missing");
+    assert.deepEqual([found.observed, found.message], [{ ogTagCount: 0, twitterCard: null }, "The page declares no Open Graph and no Twitter card metadata."]);
+    for (const over of [{ wordCount: 500, ogTagCount: 1, twitterCard: null }, { wordCount: 500, ogTagCount: 0, twitterCard: "summary" }, { wordCount: null, ogTagCount: 0, twitterCard: null }, { wordCount: 500, ogTagCount: null, twitterCard: null }]) {
+      assert.equal(only([page("/b", over)], "social-metadata-missing").length, 0, JSON.stringify(over));
+    }
+  });
+
+  test("thin-page-candidate names a 200 page under the threshold that does not say noindex, as a candidate and never a verdict", () => {
+    assert.equal(THIN_PAGE_MAX_WORDS, 150);
+    const [found] = only([page("/a", { wordCount: 40, htmlLang: "en", ogTagCount: 1 })], "thin-page-candidate");
+    assert.deepEqual(found.observed, { wordCount: 40, threshold: 150 });
+    assert.match(found.message, /a thin-page candidate for review, not a verdict/);
+    assert.equal(found.category, "content");
+    assert.equal(found.severity, "low");
+    for (const over of [{ wordCount: 150 }, { wordCount: 900 }, { wordCount: null }, { wordCount: 40, httpStatus: 404, fetchState: "http-error" as const }, { wordCount: 40, robotsNoindex: true }, { wordCount: 40, robotsMeta: "noindex" }]) {
+      assert.equal(only([page("/b", { htmlLang: "en", ogTagCount: 1, ...over })], "thin-page-candidate").length, 0, JSON.stringify(over));
+    }
+  });
+
+  test("the new rules carry a category, severity and label; the version-3 limitation is stated; the wording never claims a penalty or a verdict", () => {
+    for (const rule of ["html-lang-missing", "hreflang-malformed", "social-metadata-missing", "thin-page-candidate"] as const) {
+      assert.ok(RULES[rule].label.length > 0 && RULES[rule].severity === "low" && RULES[rule].category, rule);
+    }
+    assert.ok(FINDINGS_LIMITATIONS.some((line) => /thin-page candidate is a candidate for a person's review, not a judgement of quality/.test(line) && /None of these is a search-engine rule or a penalty/.test(line)));
+    const report = run([page("/x", { wordCount: 3, htmlLang: null, hreflangCount: 1, hreflangMalformed: 1, ogTagCount: 0, twitterCard: null })]);
+    const text = JSON.stringify(report.findings).toLowerCase();
+    for (const word of ["penalty", "penalised", "confirmed", "rendered", "core web vitals", "ranking"]) assert.ok(!text.includes(word), word);
+    assert.equal(report.findings.filter((f) => f.category === "content" || f.rule.startsWith("hreflang") || f.rule.startsWith("html-lang") || f.rule.startsWith("social")).length, 4);
   });
 });

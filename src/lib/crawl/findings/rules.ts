@@ -15,6 +15,13 @@ export const META_DESCRIPTION_MAX_LENGTH = 160;
 export const DEEP_PAGE_DEPTH = 3;
 /** Redirect hops from which a redirect is called a chain. */
 export const REDIRECT_CHAIN_MIN_HOPS = 2;
+/**
+ * Visible words below which a fetched HTML page is a thin-page candidate for
+ * review (M2). A review threshold over the markup as served: a product page
+ * or a contact page may be short by design, which is why the finding is a
+ * candidate and never a verdict.
+ */
+export const THIN_PAGE_MAX_WORDS = 150;
 
 /**
  * Anchor texts that say nothing about their target. Compared after
@@ -78,6 +85,10 @@ export const RULES: Readonly<Record<FindingRuleId, RuleMeta>> = {
   "image-alt-missing": { category: "images", severity: "low", label: "Images without alt attribute" },
   "link-anchor-empty": { category: "links", severity: "low", label: "Internal links with no anchor text" },
   "link-anchor-generic": { category: "links", severity: "low", label: "Internal links with generic anchor text" },
+  "html-lang-missing": { category: "metadata", severity: "low", label: "Missing or empty html lang" },
+  "hreflang-malformed": { category: "metadata", severity: "low", label: "Malformed hreflang alternate" },
+  "social-metadata-missing": { category: "metadata", severity: "low", label: "No Open Graph or Twitter card metadata" },
+  "thin-page-candidate": { category: "content", severity: "low", label: "Thin page candidate for review" },
 };
 
 export const SEVERITY_RANK: Readonly<Record<FindingSeverity, number>> = { critical: 0, high: 1, medium: 2, low: 3 };

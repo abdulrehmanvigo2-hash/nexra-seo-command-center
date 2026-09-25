@@ -63,12 +63,12 @@ describe("the findings block", () => {
   test("names its coverage, the counts per rule, and each finding by rule id, severity, URL, observed values and id", () => {
     const g = format([page("/"), page("/a", { h1Count: 0 }), page("/b", { fetchState: "http-error", httpStatus: 404, inSitemap: true })]);
     assert.match(g.text, /^DETERMINISTIC CRAWL FINDINGS \(fixed rules this product applied[^\n]*observations, not a model's reading\)\n/);
-    assert.match(g.text, /Coverage: 3 pages recorded \(2 fetched and read, 1 not fetched, 0 not reached within the budget\); 0 link edges read; crawl completed, stopped on completed; robots.txt fetched; sitemap absent; host nexraagency\.com; rule version 2\./);
+    assert.match(g.text, /Coverage: 3 pages recorded \(2 fetched and read, 1 not fetched, 0 not reached within the budget\); 0 link edges read; crawl completed, stopped on completed; robots.txt fetched; sitemap absent; host nexraagency\.com; rule version 3\./);
     assert.match(g.text, /Findings: 3 in total across 3 rule\(s\) — h1-missing ×1, http-client-error ×1, sitemap-lists-error ×1\./);
     assert.ok(g.text.includes('- [http-client-error] high · Client error (4xx) · https://nexraagency.com/b · observed: httpStatus=404; fetchState="http-error" · The page answered 404. (id http-client-error:'));
     assert.ok(g.text.includes("- [h1-missing] medium · Missing H1 · https://nexraagency.com/a · observed: h1Count=0 · The page has no H1. (id h1-missing:"));
     assert.ok(g.text.endsWith(FINDINGS_EVIDENCE_LIMITS_NOTE));
-    assert.deepEqual(g.summary, { status: "available", ruleVersion: 2, findings: 3, described: 3, rules: 3, rulesCut: [], cutByBytes: 0, linksRead: 0, linksCut: false, bytes: bytes(g.text) });
+    assert.deepEqual(g.summary, { status: "available", ruleVersion: 3, findings: 3, described: 3, rules: 3, rulesCut: [], cutByBytes: 0, linksRead: 0, linksCut: false, bytes: bytes(g.text) });
   });
 
   test("an empty report says no rule fired and is not a clean bill of health", () => {

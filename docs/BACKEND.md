@@ -1928,6 +1928,56 @@ save its pages. Applying it is a separate §6 approval, and it has been
 applied only to disposable local PostgreSQL 16 clusters (harness suites
 `signals` and `signals-upgrade`).
 
+### Crawl content signals (M2; local only)
+
+Migration `20261001120000_extend_crawl_page_content_signals.sql` adds nine
+nullable columns to `nexra_crawl_pages`, and nothing else: `word_count`
+(observed: whitespace-separated words in the fetched HTML's visible text,
+outside script, style, template, noscript, svg and the head; a count over the
+markup as served, not a rendered page and not a measure of quality),
+`html_lang` (the html element's `lang` as written, at most 64 characters;
+empty when written empty), `hreflang_count` and `hreflang_malformed`
+(`<link rel="alternate" hreflang>` elements, and how many of them carry an
+empty or ill-formed value or no href; a well-formed value is a BCP 47-shaped
+tag or `x-default`), `og_tag_count`, `og_title` and `og_image` (`<meta
+property="og:…">` elements and the first title and image contents, bounded),
+`twitter_card` (the first `twitter:card` content, at most 64 characters) and
+`response_ms` (whole milliseconds this server waited on the final hop, from
+sending the request to reading the body, or the headers when the body was not
+read: one connection from one place at one moment, never a user's experience
+and never a Core Web Vital). Every column is null on a row written before the
+migration, on a URL that never answered, and, for everything but
+`response_ms`, on a non-HTML response; a URL never reached can carry none of
+them (constraint). The migration also lets `nexra_crawl_findings.category`
+be `content`. No grant, policy, trigger or function changes; RLS stays on
+with no policies. The crawler (`extract.ts`, `fetcher.ts`, `engine.ts`)
+records all of them on every fetch; budgets, the address guard, robots.txt
+handling, the allow-list, the user agent and every T5 reading are unchanged.
+Not added, on purpose: a first H2 or H3 (the counts exist and no rule needs
+the text), and nothing about indexation, Core Web Vitals, rankings, traffic
+or a rendered page.
+
+The crawl evidence block adds one line per signal beside the existing ones,
+each labelled for what it is (a word count "as served, not rendered"; a
+response time "of THIS SERVER'S fetch … not a user metric, not a Core Web
+Vital"), with "not established (not recorded for this page)" for a page from
+before M2, and its limits note says what a word count and a response time are
+not. The Technical SEO, On-Page SEO and Answer-readiness reviews and the
+competitor comparison read that block, so all four see the new lines; the
+On-Page instructions name the new signals as counts and declarations, not
+judgements of quality or depth; the Answer-readiness instructions are
+unchanged (their length is pinned by a live-incident test). Findings rule
+version 3 adds four low-severity rules over the new signals, each yielding
+nothing on a page recorded before M2: `html-lang-missing` (absent or empty
+`lang`), `hreflang-malformed` (any malformed alternate), `social-metadata-missing`
+(no og: tag and no twitter:card) and `thin-page-candidate` (a 200 page that
+does not say noindex, under `THIN_PAGE_MAX_WORDS` = 150 visible words, worded
+as a candidate for review, never a verdict). **Deploy order:** the page insert
+names the new columns, so the application built from M2 must be deployed only
+after this migration is applied to production. Applying it is a separate §6
+approval, and it has been applied only to disposable local PostgreSQL 16
+clusters (harness suites `content` and `content-upgrade`).
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`
