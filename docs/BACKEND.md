@@ -227,7 +227,7 @@ view, and always carries the caveats: two windows, not a trend; Search
 Console's average position, not a rank tracker; incomplete top rows; no
 query-to-page mapping and no cannibalisation conclusion. Nothing here writes.
 
-### Observed query inventory (M4; deployed, production verified on run `73f38c16…`)
+### Observed query inventory (M4; deployed, production verified on run `73f38c16…`; browser verified)
 
 M4 began with a gap audit of the Keyword Intelligence roadmap against
 `master` after M1. Overlap and cannibalization-candidate detection (P4c),
@@ -1557,6 +1557,14 @@ the version is refused; for one chosen unit it offers the shared queue/run
 control and one explicit record click. It is labelled "Article fact-check
 only — this does not approve or publish the article."
 
+Live verification: after the counting fix, one operator-queued run
+(`6e2e9659…`, unit 1 `lead-introduction:1` of the production article's
+Version 2, `claude-opus-5`, one attempt) was recorded as `needs-review` with
+both statements unverifiable; its accounting was exact (2 of 2 classified, no
+unnumbered lines, coverage complete), where the earlier unit 0 result
+classified 9 of 8 with one unnumbered line. The malformed-answer path
+(`failed` / `coverage-incomplete`) is covered by the automated tests only.
+
 ### Article approval (Stage 5, Complete Article Assembly, milestone C5)
 
 An operator approves the article's current, exact version — and only when
@@ -2010,7 +2018,7 @@ on the review's inference — say the recorded finding wins a disagreement, and
 forbid stating or estimating any ranking, traffic, click, revenue or vitals
 effect. The specialist reviews' prompts are unchanged.
 
-### The Director's project bundle (M5; deployed; one production run completed)
+### The Director's project bundle (M5; deployed; one production run completed; panel browser verified)
 
 `project-priority-review` is the SEO Director's second task and the first
 hand-off with more than one source. It takes no input at all: the project is
@@ -2080,7 +2088,8 @@ through the worker in `output-screen.test.ts`. The single-run `priority-review`,
 its reader, block, instructions and control are unchanged, and neither
 Director task is ever a hand-off source. After PR #19 (`3121ff3`) tightened
 the instructions, a production run completed on 26 Sep with a stored bundle
-summary.
+summary. The operator verified in the browser that the *Project Director
+review* panel restores that run with its bundle summary.
 
 On screen, the *Project Director review* panel
 (`src/components/projects/project-director-panel.tsx`, on the project screen
@@ -2176,7 +2185,7 @@ after this migration is applied to production. It is applied to production
 and recorded (harness suites `content` and `content-upgrade` cover it
 locally).
 
-### Finding triage and the observed section on the Technical screen (M3; deployed; one triage decision recorded)
+### Finding triage and the observed section on the Technical screen (M3; deployed; one triage decision recorded; browser verified)
 
 M3 began with a gap audit against the original M3 goals. A deterministic
 issue registry (T1, T5, M2), persisted findings per crawl (T3), the live
@@ -2256,7 +2265,9 @@ inside the crawl panel is unchanged and still offers no control.
 code is deployed; the read route answers 503 until then only if the store is
 missing, but the write and the triage read would fail on the missing table.
 It is applied to production and recorded, and one operator decision is
-recorded through the triage route.
+recorded through the triage route. The operator verified in the browser that
+the *Observed findings* section shows the recorded findings and the decision's
+state.
 
 ### Agent tasks: the Project Manager's real task core (deployed, production verified)
 
@@ -2486,7 +2497,10 @@ Anthropic value: the build and the tests use the fixture data source. The scan
 keys, JWTs, provider key prefixes and single-token credential literals — over
 the lines a pull request adds, or the whole tree on a push; a test fixture is
 admitted only by naming its file and pattern in `.github/secret-scan-allowlist`.
-CI verifies and never deploys; Vercel deploys `master` on its own.
+CI verifies and never deploys; Vercel deploys `master` on its own. Branch
+protection on `master` is configured but not enforced on the current GitHub
+plan; merge discipline is the operator's explicit approval plus green CI on
+every pull request.
 
 1. Apply all migrations in order and reload the API schema.
 2. Set the environment variables above in the hosting project (production scope),
