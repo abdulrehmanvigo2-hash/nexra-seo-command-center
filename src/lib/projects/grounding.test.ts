@@ -557,11 +557,37 @@ describe("the intake review task type", () => {
       "nothing here is a measurement",
       "You assign, schedule, contact, publish, edit and trigger nothing",
       "must not describe it as done or as assigned",
-      "Keep the whole answer under 1,500 characters",
+      "Keep the whole answer under 1,300 characters",
       "End with exactly this sentence: Not established by this record: website performance, rankings, traffic, indexation, site health, and the accuracy of agency-entered notes.",
     ]) {
       assert.ok(INTAKE_REVIEW_INSTRUCTIONS.includes(phrase), `missing: ${phrase}`);
     }
+  });
+
+  test("its instructions cap every section and name the task input as provenance, after a handoff run was refused for length", () => {
+    // The earlier 1,500-character ask produced 1,730 to 2,000 characters in
+    // production; the handoff-queued run 1d27b114… came back rejected-output.
+    for (const phrase of [
+      "RECORDED GOAL: one concise line",
+      "RECORDED PROJECT INFORMATION: at most 4 short lines",
+      "AVAILABLE EVIDENCE: at most 4 short lines",
+      "counts of completed grounded reviews by task combined into one line",
+      "MISSING INFORMATION: at most 2 short lines",
+      "SUGGESTED NEXT REVIEW OR OPERATOR ACTION: at most 2 short lines",
+      "The task input, including any sourceTaskId, is provenance only: do not repeat it in the answer.",
+      "Keep the whole answer under 1,300 characters",
+    ]) {
+      assert.ok(INTAKE_REVIEW_INSTRUCTIONS.includes(phrase), `missing: ${phrase}`);
+    }
+    // The old, looser bound is gone, and the bound sits well under the worker's ceiling.
+    assert.equal(INTAKE_REVIEW_INSTRUCTIONS.includes("1,500"), false);
+    assert.ok(1_300 < 2_000);
+    // The closing sentence is stated once and unchanged.
+    assert.equal(
+      INTAKE_REVIEW_INSTRUCTIONS.split("Not established by this record: website performance, rankings, traffic, indexation, site health, and the accuracy of agency-entered notes.").length,
+      2,
+    );
+    assert.ok(INTAKE_REVIEW_INSTRUCTIONS.endsWith("and the accuracy of agency-entered notes."));
   });
 
   test("its instructions stay short enough that a bounded answer follows, and hold no credential", () => {
@@ -586,9 +612,23 @@ describe("the intake review task type", () => {
       "Queue the performance review over the connected Search Console window: the inventory shows the report exists and no measurement review has been made of it.",
       "Not established by this record: website performance, rankings, traffic, indexation, site health, and the accuracy of agency-entered notes.",
     ].join("\n");
-    assert.ok(answer.length <= 1_500, `${answer.length} characters`);
+    assert.ok(answer.length <= 1_300, `${answer.length} characters`);
     assert.ok(answer.length < 2_000);
     assert.equal(looksLikeSecret(answer), false);
+    // The shape the caps describe: one goal line, at most 4, 4, 2 and 2 lines
+    // in the following sections, the review counts on one line.
+    const lines = answer.split("\n");
+    const section = (heading: string, next: string | null) => {
+      const from = lines.indexOf(heading) + 1;
+      const to = next === null ? lines.length : lines.indexOf(next);
+      return lines.slice(from, to);
+    };
+    assert.equal(section("RECORDED GOAL", "RECORDED PROJECT INFORMATION").length, 1);
+    assert.ok(section("RECORDED PROJECT INFORMATION", "AVAILABLE EVIDENCE").length <= 4);
+    assert.ok(section("AVAILABLE EVIDENCE", "MISSING INFORMATION").length <= 4);
+    assert.ok(section("MISSING INFORMATION", "SUGGESTED NEXT REVIEW OR OPERATOR ACTION").length <= 2);
+    // The last section holds its two lines at most, then the fixed closing sentence.
+    assert.ok(section("SUGGESTED NEXT REVIEW OR OPERATOR ACTION", null).length <= 3);
   });
 });
 

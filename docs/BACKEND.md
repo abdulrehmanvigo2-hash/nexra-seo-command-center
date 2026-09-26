@@ -638,8 +638,12 @@ evidence, missing information, and one suggested next review or operator
 action chosen from a closed list (run a crawl, connect or verify Search
 Console, queue one existing named review, or request one specific item from
 the client). It assigns, schedules, contacts, publishes and triggers nothing,
-and its answer is bounded to 1,500 characters with a fixed closing line
-naming what a record cannot establish. It is queued from the Project Manager
+and its answer is bounded to 1,300 characters, each section to a few short
+lines, with a fixed closing line naming what a record cannot establish (the
+earlier 1,500-character ask produced answers up to the worker's
+2,000-character ceiling, and a handoff-queued run was refused; the task
+input, including a handoff's `sourceTaskId`, is named as provenance not to
+be repeated). It is queued from the Project Manager
 panel on an unmeasured project's workspace — the screen every intake-created
 project renders — and takes no input: the project is the run's, read on the
 server from the persisted run, so no caller can name another client's
