@@ -1,4 +1,4 @@
--- C5 article approval gate. Updated for C6: approvals are referenced by a foreign key (TRUNCATE 0A000 / CASCADE 23514), and the security definer inventory names the C6 functions and (since 20260927120000) the M1 Search Console snapshot record function, (since 20260928120000) the T3 crawl findings record function, and (since 20260930120000) the M1 P4c query × page record function, and (since 20261002120000) the M3 finding triage set function.
+-- C5 article approval gate. Updated for C6: approvals are referenced by a foreign key (TRUNCATE 0A000 / CASCADE 23514), and the security definer inventory names the C6 functions and (since 20260927120000) the M1 Search Console snapshot record function, (since 20260928120000) the T3 crawl findings record function, and (since 20260930120000) the M1 P4c query × page record function, and (since 20261002120000) the M3 finding triage set function, and (since 20261003120000) the agent task create function.
 -- Part of the local PostgreSQL test harness; run only through supabase/tests/run.sh,
 -- which creates and destroys its own disposable cluster. Never run against a hosted database.
 
@@ -186,6 +186,7 @@ begin
   perform t.ok((select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where prosecdef and n.nspname not in ('pg_catalog', 'information_schema'))
      = array['agent_run_claim(uuid,text,text,integer)','agent_run_finish(uuid,uuid,text,text,jsonb,text,text)','agent_run_heartbeat(uuid,uuid,integer)',
              'agent_run_recover_expired(integer)','agent_run_schedule_retries(integer)','agent_runs_close_cancelled_attempt()','agent_runtime_status()',
+             'nexra_agent_task_create(text,text,text,text,text,text,uuid)',
              'nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid)',
              'nexra_article_check_unit_record(text,uuid,smallint,uuid,smallint,text,text,smallint,smallint,smallint,text,text,jsonb,uuid,uuid)',
              'nexra_article_create(text,uuid,text,text,jsonb,uuid)',

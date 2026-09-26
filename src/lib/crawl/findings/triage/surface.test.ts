@@ -25,10 +25,11 @@ const FINDINGS_SECTION = read("src/components/crawl/crawl-findings.tsx");
 const RUNNER = read("supabase/tests/run.sh");
 
 describe("the M3 triage migration", () => {
-  test("is the newest migration, additive, prefixed, and touches no findings table", () => {
+  test("follows the M2 content-signals migration, is additive, prefixed, and touches no findings table", () => {
     const migrations = readdirSync(new URL("supabase/migrations", root)).filter((f) => f.endsWith(".sql")).sort();
-    assert.equal(migrations.at(-1), MIGRATION_FILE);
-    assert.equal(migrations.at(-2), "20261001120000_extend_crawl_page_content_signals.sql");
+    const position = migrations.indexOf(MIGRATION_FILE);
+    assert.ok(position >= 1, "the M3 migration is present");
+    assert.equal(migrations[position - 1], "20261001120000_extend_crawl_page_content_signals.sql");
     assert.ok(MIGRATION.endsWith("\n") && !/\r/.test(MIGRATION));
     assert.equal(/\b(drop |delete from|update public\.|truncate public\.|alter table public\.nexra_crawl_findings)/i.test(SQL), false, "creates only, and alters neither findings table");
     assert.match(SQL, /create table public\.nexra_crawl_finding_triage \(/);

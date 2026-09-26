@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { RecordTaskControl } from "@/components/agent-tasks/record-task-control";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/field";
@@ -8,6 +9,7 @@ import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/pane
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import { formatFullDate, formatNumber, formatPercent } from "@/lib/format";
+import { keywordTaskProposal } from "@/lib/agent-tasks/proposals";
 import type { ProjectOption } from "@/lib/projects/selection";
 import type { IntentHint } from "@/lib/search-console/keywords/intent";
 import { OPPORTUNITY_LABELS, type OpportunityLabel } from "@/lib/search-console/keywords/thresholds";
@@ -171,7 +173,7 @@ export function SearchConsoleKeywords({
           <EmptyState size="sm" icon="search" title={describeKeywordStatus(load.view).title} description={describeKeywordStatus(load.view).description} />
         )}
 
-        {view !== null && <InventoryBody view={view} />}
+        {view !== null && projectId !== null && <InventoryBody view={view} projectId={projectId} />}
       </PanelBody>
 
       {view !== null && (
@@ -183,7 +185,7 @@ export function SearchConsoleKeywords({
   );
 }
 
-function InventoryBody({ view }: { view: KeywordInventoryView }) {
+function InventoryBody({ view, projectId }: { view: KeywordInventoryView; projectId: string }) {
   const opportunityTotal = OPPORTUNITY_LABELS.reduce((sum, label) => sum + view.counts.byOpportunity[label], 0);
   return (
     <div className="space-y-4">
@@ -241,11 +243,12 @@ function InventoryBody({ view }: { view: KeywordInventoryView }) {
               <TableHeaderCell align="right">Avg. position</TableHeaderCell>
               <TableHeaderCell>Pages in stored pairs</TableHeaderCell>
               <TableHeaderCell>Candidates</TableHeaderCell>
+              <TableHeaderCell>Task</TableHeaderCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {view.rows.map((row) => (
-              <QueryRow key={row.query} row={row} />
+              <QueryRow key={row.query} row={row} projectId={projectId} />
             ))}
           </TableBody>
         </Table>
@@ -306,7 +309,7 @@ function InventoryBody({ view }: { view: KeywordInventoryView }) {
   );
 }
 
-function QueryRow({ row }: { row: ObservedQueryView }) {
+function QueryRow({ row, projectId }: { row: ObservedQueryView; projectId: string }) {
   const latest = row.latest;
   return (
     <TableRow>
@@ -352,6 +355,10 @@ function QueryRow({ row }: { row: ObservedQueryView }) {
             </Badge>
           ))}
         </span>
+      </TableCell>
+      <TableCell className="min-w-[10rem]">
+        {/* An operator may record this observed query as one persisted task. The exact stored query text is the source; recording runs nothing. */}
+        <RecordTaskControl projectId={projectId} proposal={keywordTaskProposal(row.query)} compact />
       </TableCell>
     </TableRow>
   );

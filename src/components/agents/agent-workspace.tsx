@@ -10,6 +10,8 @@ import { Icon, type IconName } from "@/components/icons";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { SectionHeader } from "@/components/ui/section-header";
 import { getAgentDetail } from "@/lib/mock/agents";
+import type { ProjectOption } from "@/lib/projects/selection";
+import { LiveTasksPanel } from "@/components/agent-tasks/live-tasks-panel";
 import { AgentAssignments } from "@/components/agents/agent-assignments";
 import { AgentBlockers } from "@/components/agents/agent-blockers";
 import { AgentBriefPanel } from "@/components/agents/agent-brief";
@@ -63,7 +65,14 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-export function AgentWorkspace({ agentId }: { agentId: string }) {
+export function AgentWorkspace({
+  agentId,
+  projects = [],
+}: {
+  agentId: string;
+  /** The stored roster, for the Project Manager's live tasks; the modelled tabs never read it. */
+  projects?: readonly ProjectOption[];
+}) {
   const [tab, setTab] = useState<TabId>("overview");
 
   const detail = useMemo(() => getAgentDetail(agentId), [agentId]);
@@ -250,6 +259,13 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
           />
         )}
 
+        {/*
+          The one live section on this screen: the persisted tasks operators
+          recorded (Project Manager real task core), read from the task store
+          for one stored project. Only the Project Manager's workspace shows
+          it, above the modelled board, which stays labelled as modelled.
+        */}
+        {tab === "tasks" && agentId === "project-manager" && <LiveTasksPanel projects={projects} />}
         {tab === "tasks" && (
           <AgentTasks
             tasks={detail.tasks}
@@ -258,7 +274,7 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
             referenceIso={detail.generatedAt}
             hideAgent
             title="Assigned Tasks"
-            description={`Every task ${configuration.displayName} owns, across all of its projects.`}
+            description={`Modelled: every fixture task ${configuration.displayName} owns, across the modelled projects. Not the live tasks above.`}
           />
         )}
 

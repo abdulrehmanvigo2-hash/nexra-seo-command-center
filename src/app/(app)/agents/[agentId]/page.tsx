@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AgentWorkspace } from "@/components/agents/agent-workspace";
 import { getAgentIds, getAgentRecord } from "@/lib/mock/agents";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 type PageParams = { params: Promise<{ agentId: string }> };
 
@@ -38,5 +40,9 @@ export default async function AgentPage({ params }: PageParams) {
     notFound();
   }
 
-  return <AgentWorkspace agentId={agentId} />;
+  // The stored roster, read the way the Agents overview reads it, so the
+  // Project Manager's live tasks can name a stored project. The modelled
+  // tabs never read it.
+  const projects = projectOptionsFrom(await projectRepository.listProjects());
+  return <AgentWorkspace agentId={agentId} projects={projects} />;
 }
