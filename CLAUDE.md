@@ -3,17 +3,18 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Project Manager task workflow (status transitions, owner changes, specialist
-handoff, event history), merged and production verified end-to-end; next: Phase 1 baseline truth
-and gates (see §14).
+**Current stage: Phase 1 (baseline truth and gates) complete — docs reconciliation, security and
+worker tests, CI gates, browser verifications and the C4 new-parser live check; next: Phase 2,
+Project Manager loop closure (see §14).
+The Project Manager task workflow (status transitions, owner changes, specialist handoff, event
+history) is merged and production verified end-to-end.
 C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3, M4 and M5 are complete, merged and
 deployed (M5: PR #17, `62ae593`, deployment `dpl_Ck286bMi6dkewMgPV2JRH3HBggv8`; one production
-project Director run completed on 26 Sep after an earlier refusal; browser verification of the
-panel pending); M2 is production verified on crawl `3398ff1a…` and its On-Page bound on two
+project Director run completed on 26 Sep after an earlier refusal; panel browser verified); M2 is production verified on crawl `3398ff1a…` and its On-Page bound on two
 completed reviews; M3 (PR #14, `db7afdb`, migration `20261002120000` applied and recorded) is
-deployed, one triage decision recorded in production, browser verification pending; M4 (PR #15,
-`3510493`, and the selector fix PR #16, `220c732`) is deployed and production verified on
-search-query-review run `73f38c16…`. The scheduled snapshot capture is production verified (two
+deployed, one triage decision recorded in production, browser verified; M4 (PR #15,
+`3510493`, and the selector fix PR #16, `220c732`) is deployed, production verified on
+search-query-review run `73f38c16…` and browser verified. The scheduled snapshot capture is production verified (two
 connected snapshots, 25 and 26 Sep) and P4c captured its first 10 query × page pairs. The task
 core and task workflow are merged and production verified (see §0).**
 
@@ -21,15 +22,15 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `3a31612408257a531fa78e73bb3d9b47070f617f` (merge of PR #24,
-`claude/phase1-security-tests` at `ff2b695`, the Phase 1 security and worker test coverage;
-preceded by PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
+GitHub `master`: `6363db538e3a7f3e4e39766c22adc0bb870ca308` (merge of PR #25,
+`claude/phase1-ci`, the Phase 1 CI gates; preceded by PR #24 `3a316124…` (security and worker
+tests), PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_3asSXd6pRgXWGeCmjqwBnKUW4CAv`, READY, built from `master` at
-`3a316124`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_88CT3mHwHUeYN9eyXGYca4vosS97` at `97aa0018`).
+Production deployment: `dpl_81HyhhSYcdzMWc3CJjkE3ttpKPZj`, READY, built from `master` at
+`6363db53`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_3asSXd6pRgXWGeCmjqwBnKUW4CAv` at `3a316124`).
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
 source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
@@ -44,7 +45,29 @@ timeout and lease race decide ahead of.
 the full test suite and a secret scan (`scripts/secret-scan.mjs`, fixtures admitted one by one in
 `.github/secret-scan-allowlist`) on every pull request and every push to `master`, with no
 credential of any kind; superseded runs on a pull request are cancelled. CI verifies; it never
-deploys.
+deploys. PR #25 merged as `6363db53…`; deployment `dpl_81Hyhh…` READY; the first `master` CI run,
+`36260453844`, passed all five jobs, including the full-tree secret scan. Branch protection on master is configured but not enforced on the current GitHub plan; merge discipline is the operator's explicit approval plus green CI on every pull request.
+
+**Phase 1 checkpoint 1.5 (browser verifications, 26–27 Sep, operator):**
+
+- M3: the *Observed findings* section shows the recorded findings and the triage decision's state.
+- M4: the *Observed query inventory* on `/keywords` (Keywords tab) shows real Nexra Agency Search
+  Console queries.
+- M5: the *Project Director review* panel restores the completed 26 Sep run with its bundle
+  summary.
+
+**Phase 1 checkpoint 1.6 (C4 new-parser live check, 26 Sep):** one operator-queued
+`article-check-unit` run, `6e2e9659…`, on unit 1 (`lead-introduction:1`) of article
+`c89182f9…` Version 2, executed by Run Now: completed, 1 attempt, `claude-opus-5`, 587-character
+summary. Recorded as unit `0022ff3f…`, **needs-review** — both statements unverifiable, an evidence
+result, not a parser fault. Statement accounting exact: 2 of 2 classified, no unnumbered lines,
+no missing or duplicate statements, coverage complete (against unit 0's 9 of 8 with 1 unnumbered
+line). The parser's malformed-answer path (`failed` / `coverage-incomplete`) stays covered by
+automated tests only. After it: 41 runs, 41 attempts; units 0 and 1 recorded (both needs-review),
+units 2 and 3 unchecked.
+
+**Phase 1 complete:** PR #23 (docs reconciliation), PR #24 (security and worker tests), PR #25
+(CI gates), the browser verifications (1.5) and the C4 live check (1.6).
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 
@@ -74,8 +97,8 @@ deploys.
 - Stage 5 / Complete Article Assembly — Milestone C2: Article Persistence (live verified)
 - Stage 5 / Complete Article Assembly — Milestone C3: Writer Section Choice (live verified)
 - Stage 5 / Complete Article Assembly — Milestone C4: Article Check Units, Option A
-  (implementation complete; deployment and existing-result browser verification complete;
-  new-parser live verification pending)
+  (implementation complete; deployment, existing-result browser verification and new-parser
+  live verification complete)
 - Stage 5 / Complete Article Assembly — Milestone C5: Article Approval Gate (complete, merged,
   deployed, production verified)
 - Stage 5 / Complete Article Assembly — Milestone C6: Article Publication Proposal
@@ -120,10 +143,11 @@ Unit 0 (`metadata:1`) was checked by a real Research & Evidence run
 (`e322fc1d-01b4-478e-9b4e-7726dc5b8644`) and recorded as **needs-review**; that saved result
 remained unchanged after the deployment, and the updated UI shows its original coverage
 discrepancy honestly: 9 of 8 numbered statements classified, coverage incomplete, 1 unnumbered
-line. The remaining three units are unchecked. The article remains `drafting` — not checked, not
-approved, not published. **Pending:** the corrected counting behaviour is covered by automated
-tests (focused C4 87 passed; full suite 1,367 passed), but a NEW result produced with the
-corrected parser has not been live-tested.
+line. The remaining three units were then unchecked. The article remains `drafting` — not
+checked, not approved, not published. The corrected counting behaviour is covered by automated
+tests (focused C4 87 passed; full suite 1,367 passed) and was live-verified on 26 Sep with a new
+result on unit 1 (run `6e2e9659…`, unit `0022ff3f…`, needs-review, 2 of 2 statements classified,
+coverage complete; see Phase 1 checkpoint 1.6); units 2 and 3 are unchecked.
 
 **C5 notes:** an operator approves one exact, immutable article version, and only when every C4
 check unit of that exact version passed, the article is `checked`, the topic decision is
@@ -190,8 +214,8 @@ No automatic creation, no assignment, no agent execution. Harness suite `tasks` 
 
 **M5 (merged, deployed):** PR #17 merged as `62ae593`; deployment `dpl_Ck286bMi6dkewMgPV2JRH3HBggv8`
 READY; no migration. One production `project-priority-review` run completed on 26 Sep (after the
-refused `d2cbdcc7…`, see below); the browser verification of the *Project Director review* panel
-remains pending.
+refused `d2cbdcc7…`, see below); the *Project Director review* panel is browser verified
+(checkpoint 1.5): it restores that run with its bundle summary.
 
 **M5 (as delivered):** a gap audit found the T6 single-run hand-off complete (one upstream run by id,
 project-checked, labelled, OBSERVED/PROPOSED separation, output screening, provenance on screen, run
@@ -219,8 +243,8 @@ unchanged; neither Director task is a hand-off source; no agent write, page edit
 **M4 (merged, deployed, production verified):** PR #15 merged as `3510493`, the Keywords-tab
 selector fix PR #16 merged as `220c732`; deployments READY; run `73f38c16…` stored the fourth
 grounding block (`keywords: "available"`, 9 queries) beside the report, history and query-page
-blocks, with the output keeping OBSERVED / INFERENCE / RECOMMENDATION apart. Browser verification of
-the *Observed query inventory* panel remains with the operator.
+blocks, with the output keeping OBSERVED / INFERENCE / RECOMMENDATION apart. The *Observed query
+inventory* panel is browser verified (checkpoint 1.5) with real Nexra Agency queries.
 
 **M4 (as delivered):** a gap audit found overlap and cannibalization-candidate detection (P4c), Search
 Console grounding (M1, P4b, P4c), stored history and movement (P4a, P4d) and the live panel complete;
@@ -245,8 +269,8 @@ classification are deferred.
 
 **M3 (merged, deployed):** PR #14 merged as `db7afdb`; migration `20261002120000` applied and
 recorded; deployment `dpl_4bSxM9oBQHTA4auwToyRVRd1cR1v` READY; the triage table holds one operator
-decision recorded through the triage route; browser verification of the *Observed findings*
-section is not yet recorded.
+decision recorded through the triage route; the *Observed findings* section is browser verified
+(checkpoint 1.5), showing the recorded findings and the decision's state.
 
 **M2 (merged, deployed, production verified):** PR #12 merged as `3b74d99`; migration
 `20261001120000` applied and recorded; deployment `dpl_HWMCwJTSWtJdwYAgVLtuMez6D8T7`; the fresh
@@ -451,8 +475,8 @@ overwrite live content.
   holds no rows.
 - The content workflow has no Create PR, Merge, Deploy or Publish control; C6 records proposal
   state only.
-- Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `drafting`: one check unit needs review,
-  three are unchecked, and it is neither checked, approved nor published. Its Version 2 can never
+- Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `drafting`: two check units need review
+  (units 0 and 1), two are unchecked, and it is neither checked, approved nor published. Its Version 2 can never
   be approved (a needs-review result is final for its version), so it cannot receive a C6 proposal.
 - Vercel deploys every push to `master` to production automatically.
 - Any external write requires explicit user approval (§6).
@@ -599,6 +623,7 @@ Ask the user and wait for explicit approval before any of these:
   `npm run lint`, `npm run build`, `npm run secret-scan`, and `npm run db:seed:check` when the
   seed or projects change. The same gates run in GitHub Actions on every pull request and push
   to `master` (`.github/workflows/ci.yml`); a red check is fixed before a merge.
+  Branch protection on master is configured but not enforced on the current GitHub plan; merge discipline is the operator's explicit approval plus green CI on every pull request.
 - Add unit tests beside the code for every new server module, contract or renderer.
 
 ## 10. Git as a Checkpoint System
@@ -735,7 +760,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C1 | Complete Article Assembly: Pure Article Contract | Complete, live verified |
 | Stage 5 / C2 | Complete Article Assembly: Article Persistence | Complete, live verified |
 | Stage 5 / C3 | Complete Article Assembly: Writer Section Choice | Complete, live verified |
-| Stage 5 / C4 | Complete Article Assembly: Article Check Units | Implementation complete; deployment and existing-result browser verification complete; new-parser live verification pending |
+| Stage 5 / C4 | Complete Article Assembly: Article Check Units | Complete; deployment, existing-result browser verification and new-parser live verification (run `6e2e9659…`) complete |
 | Stage 5 / C5 | Complete Article Assembly: Article Approval Gate | Complete, merged, deployed, production verified |
 | Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Complete, merged (`f28cd35`), migrations applied, deployed, production verified |
 | M1 / CP1a | Search Console snapshot persistence: database | Complete, merged, migration applied and recorded, deployed |
@@ -744,17 +769,18 @@ foundation, Search Console) are complete. Current work follows the content workf
 | M1 / P4a–P4b, P4d | Stored history comparison, agent grounding, history API and panel section | Complete, merged (`fc2066d`), deployed |
 | M1 / P4c | Query × page Search Console intelligence | Complete, merged (`315323b`), migration applied and recorded, deployed; first live capture verified (10 pairs, 25 Sep) |
 | M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Complete, merged (`3b74d99`), migration applied and recorded, deployed, production verified; On-Page output bound merged (`6760cfc`), deployed and verified on two completed reviews |
-| M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Complete, merged (`db7afdb`), migration applied and recorded, deployed; one triage decision recorded in production; browser verification pending |
-| M4 | Observed keyword intelligence: query inventory, lexical intent hints and groups, page mapping, fixed opportunity rules, Keywords panel, agent grounding | Complete, merged (`3510493`, selector fix `220c732`), deployed, production verified on run `73f38c16…`; no migration |
-| M5 | SEO Director project-level orchestration: deterministic multi-source selection, bounded bundle, deduplicated plan instructions, project Director panel | Complete, merged (`62ae593`), deployed; no migration; one production run completed (26 Sep); panel browser verification pending |
+| M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Complete, merged (`db7afdb`), migration applied and recorded, deployed; one triage decision recorded in production; browser verified |
+| M4 | Observed keyword intelligence: query inventory, lexical intent hints and groups, page mapping, fixed opportunity rules, Keywords panel, agent grounding | Complete, merged (`3510493`, selector fix `220c732`), deployed, production verified on run `73f38c16…`; browser verified; no migration |
+| M5 | SEO Director project-level orchestration: deterministic multi-source selection, bounded bundle, deduplicated plan instructions, project Director panel | Complete, merged (`62ae593`), deployed; no migration; one production run completed (26 Sep); panel browser verified |
 | PM task core | Persisted agent tasks: `nexra_agent_tasks`, create function, project-scoped API, Record as task from Director results and observed queries, Live tasks section | Complete, merged (`6e345c5`), migration `20261003120000` applied, deployed, production verified (one real backlog task) |
 | PM task workflow | Status transitions along a fixed map, owner changes, specialist handoff (one queued run, never executed here), append-only event history, task route, Live tasks controls | Complete, merged (`47fae75d`), migration `20261004120000` applied and recorded, deployed; restore fix (`073bf85e`) and intake bound (`2e8116ce`) merged; production verified end-to-end on run `be1b692e…` |
+| Phase 1 | Baseline truth and gates: docs reconciliation, security and worker tests, CI gates, browser verifications (M3, M4, M5), C4 new-parser live check | Complete: PR #23 (`97aa0018`), PR #24 (`3a316124`), PR #25 (`6363db53`); checkpoints 1.5 and 1.6 verified in production |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: no feature branch open.
-Next, each under explicit approval: Phase 1 (documentation reconciliation, CI and security tests,
-pending browser verifications), then the Project Manager loop (handoff outcome read-back, handoff
-for the six deferred agents, task grounding and a task-plan review). Work beyond that (cross-crawl
+Phase 1 is complete. Next: Phase 2, Project Manager loop closure — handoff outcome read-back, then
+handoffs for the six deferred agents, then tasks as grounding and a Project Manager task-plan
+review — each step under its own explicit approval. Work beyond that (cross-crawl
 finding history, a curated keyword entity, further Director sources) is planned in the roadmap but
 not started.
 
