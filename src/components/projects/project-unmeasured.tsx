@@ -10,6 +10,7 @@ import { ArticlePanel } from "@/components/content/article-panel";
 import { ContentPlanPanel } from "@/components/projects/content-plan-panel";
 import { EvidencePackPanel } from "@/components/projects/evidence-pack-panel";
 import { IntakeReviewPanel } from "@/components/projects/intake-review-panel";
+import { ProjectDirectorPanel } from "@/components/projects/project-director-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -186,6 +187,15 @@ export function ProjectUnmeasured({
         fact-check, approval or publication control.
       */}
       <ArticlePanel projectId={project.id} />
+
+      {/*
+        The SEO Director's project-level review (M5), beneath every specialist
+        control it draws on. Its sources are the newest completed, grounded
+        Technical SEO, On-Page SEO and Keyword & Search Intent reviews of this
+        project, chosen on the server by a fixed rule; the panel previews that
+        rule over the same run listing and needs only the project id here.
+      */}
+      <ProjectDirectorPanel projectId={project.id} />
 
       {/*
         Competitor domains and competitor sites, beneath the project's own

@@ -365,7 +365,7 @@ describe("the task type — outbound-link-review", () => {
     assert.equal(definition?.evidence, "crawl-links");
     assert.equal(definition?.label, "Outbound link review");
     assert.equal(definition?.instructions, OUTBOUND_LINK_REVIEW_INSTRUCTIONS);
-    assert.equal(TASK_TYPES.length, 16);
+    assert.equal(TASK_TYPES.length, 17);
     assert.equal(TASK_TYPES.filter((task) => task.evidence === "crawl-links").length, 1);
     // The Authority agent has this one task and no other agent has it.
     for (const task of TASK_TYPES) {

@@ -1,4 +1,13 @@
 import { CRAWL_SOURCE, type GroundingReader } from "@/lib/agent-runs/ai-executor";
+import {
+  MAX_FINDINGS_CRAWLS,
+  NO_ELIGIBLE_SOURCES,
+  findingsCrawlIds,
+  formatDirectorBundle,
+  readDirectorSources,
+  selectedSources,
+  type DirectorSourceReader,
+} from "@/lib/agent-runs/director-bundle";
 import { readRunGrounding, type AgentRunReader } from "@/lib/agent-runs/run-grounding";
 import { getTaskType } from "@/lib/agent-runs/task-types";
 import { readLinkGrounding, type LinkGroundingReaders } from "@/lib/authority/link-grounding";
@@ -35,6 +44,9 @@ import type { QueryPageInput } from "@/lib/search-console/query-pages/intelligen
  * run's own project and the window in its input (`search-query-review`); one
  * declaring `evidence: "agent-run"` is given one other agent's completed,
  * grounded review from the same project (`priority-review`); one declaring
+ * `evidence: "agent-runs"` is given the latest completed, grounded review of
+ * each supported specialist task on the run's own project, selected on the
+ * server (`project-priority-review`); one declaring
  * `evidence: "project"` is given the run's own stored project record and an
  * inventory of the evidence this product holds for it (`intake-review`); one
  * declaring `evidence: "competitor-comparison"` is given the newest recorded
@@ -88,6 +100,12 @@ export type TaskGroundingReaders = {
   readonly searchConsoleKeywords?: SearchConsoleKeywordReader;
   /** The run store itself satisfies this; a test hands in a map. */
   readonly runs: AgentRunReader;
+  /**
+   * `agent-runs` tasks: the per-agent listing the Director's project bundle
+   * selects its sources from — the run store itself, read by the run's own
+   * project and each supported task's agent, newest first and bounded.
+   */
+  readonly sourceRuns: DirectorSourceReader;
   /**
    * `agent-run` tasks, after the quoted upstream review: when that review
    * was written over a crawl this product recorded, the findings recorded
@@ -249,6 +267,27 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
             source: result.grounding.source,
           },
         };
+      }
+
+      case "agent-runs": {
+        // No input is read: the project is the run's own, and the sources
+        // are found from it by fixed rules — one per supported specialist
+        // task, the newest eligible run of that agent on this project. A
+        // bundle with no eligible source is refused before any provider is
+        // reached: there is nothing to plan from.
+        const sources = await readDirectorSources(readers.sourceRuns, task.project.id);
+        if (selectedSources(sources).length === 0) return { ok: false, reason: NO_ELIGIBLE_SOURCES };
+
+        // The findings recorded (T3) for the crawls the selected reviews
+        // were written over, read once per distinct crawl for the Director's
+        // own project, at most MAX_FINDINGS_CRAWLS, in source order.
+        const crawlIds = findingsCrawlIds(sources);
+        const findings = [];
+        for (const crawlId of crawlIds.slice(0, MAX_FINDINGS_CRAWLS)) {
+          findings.push({ crawlId, read: await readers.crawlFindings(task.project.id, crawlId) });
+        }
+        const bundle = formatDirectorBundle(sources, findings, crawlIds.length);
+        return { ok: true, grounding: { text: bundle.text, summary: { ...bundle.summary }, source: bundle.source } };
       }
 
       case "project": {
