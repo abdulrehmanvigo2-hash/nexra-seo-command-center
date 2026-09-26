@@ -2214,6 +2214,50 @@ code is deployed; the read route answers 503 until then only if the store is
 missing, but the write and the triage read would fail on the missing table.
 It has been applied only to disposable local PostgreSQL 16 clusters.
 
+### Agent tasks: the Project Manager's real task core (local only)
+
+The Project Manager's detail tabs are modelled (`src/lib/mock/agents`), and
+until this checkpoint nothing in the product could hold a task an operator
+actually decided on. `nexra_agent_tasks` (migration `20261003120000`) is the
+smallest persisted task entity: one row per operator decision naming the
+project, a title, the owning registry agent, a status (new rows are
+`backlog`), a priority and — always — the record it came from. Two source
+kinds exist. `director-run`: the source ref is the id of an `agent_runs` row
+that the database checks is the same project's, completed, and the SEO
+Director's (`priority-review` or `project-priority-review`); another
+project's run answers `run-not-found`, never which of the two. `keyword`: the
+source ref is the exact query text as Google reported it and this product
+stored it — a `key` of a snapshot's `queries` rows or a `query` of a query ×
+page row for the same project — so the identity is the one those immutable
+rows already carry and no keyword id is invented; a query this product never
+stored for the project answers `keyword-not-found`. No uniqueness is declared
+on (project, source): a Director run proposes several actions and two
+operator-approved tasks are never collapsed.
+
+The one write is `nexra_agent_task_create` (`security definer`, empty
+`search_path`), reached through `src/lib/agent-tasks` — a contract
+(`contract.ts`: the fixed sets, the request parsers), a store contract, the
+Supabase store (one `rpc`, one bounded project-scoped read newest first by
+`created_at` then `id`, at most 100), the service (`listTasks`, `createTask`;
+never queues, executes or assigns anything) and `agentTaskService()` wiring
+with the fixture roster answering `unavailable`. `GET /api/agent-tasks?project=…[&status=…][&limit=…]`
+and `POST /api/agent-tasks` (`{ project, title, sourceKind, sourceRef,
+owningAgent, priority? }`, same origin, operator, 30 per ten minutes) are the
+route; a caller never chooses the status. On screen, *Record as task*
+(`src/components/agent-tasks/record-task-control.tsx`) sits beneath a
+completed SEO Director result in the shared review control and in a *Task*
+column of the *Observed query inventory* rows: the first click opens a form
+with a proposed title (the Director review's closing first-action line, or
+`Review the observed query "…"`), a prefilled owning agent (Project Manager,
+or Keyword & Search Intent) and `medium` priority; only *Create task* posts,
+once. The Project Manager's Tasks tab gains one live section, *Live tasks*
+(`live-tasks-panel.tsx`, labelled *Live · persisted*), reading the endpoint
+for one stored project and showing title, owning agent, status, priority,
+source and recorded time; the modelled board beneath it is now labelled
+modelled. No task is created automatically, no agent is assigned or run by a
+task existing, and no status change path exists yet. Harness suite `tasks`
+(80 assertions); focused tests under `src/lib/agent-tasks`.
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`

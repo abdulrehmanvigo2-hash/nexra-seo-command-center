@@ -3,13 +3,14 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Milestone M5 (SEO Director project-level orchestration), local development.
-C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3 and M4 are complete, merged and
-deployed; M2 is production verified on crawl `3398ff1a…`; M3 (PR #14, `db7afdb`, migration
+**Current stage: Project Manager real task core (persisted agent tasks), local development.
+C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3, M4 and M5 are complete, merged and
+deployed (M5: PR #17, `62ae593`, deployment `dpl_Ck286bMi6dkewMgPV2JRH3HBggv8`, one production
+project Director run pending approval); M2 is production verified on crawl `3398ff1a…`; M3 (PR #14, `db7afdb`, migration
 `20261002120000` applied and recorded) is deployed with its browser verification pending; M4
 (PR #15, `3510493`, and the selector fix PR #16, `220c732`) is deployed and production verified on
 search-query-review run `73f38c16…`. The P4c first live query × page capture is pending the next
-scheduled worker run. M5 is implemented and verified locally only (see §0).**
+scheduled worker run. The task core is implemented and verified locally only (see §0).**
 
 ---
 
@@ -101,12 +102,31 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone M5 — SEO Director project-level orchestration, implemented and
-verified locally on branch `claude/m5-director-orchestration-gap` (from `master` `220c732`, the M4
-selector-fix merge). Nothing is pushed, no PR is open, nothing is deployed. M5 adds **no
-migration**. Each further M5 step (push, PR, merge) starts only with explicit user approval.
+**Current work:** the Project Manager real task core — a persisted task entity, implemented and
+verified locally on branch `claude/project-manager-real-task-core` (from `master` `62ae593`, the M5
+merge). Nothing is pushed, no PR is open, nothing is deployed, and the migration
+`20261003120000_create_agent_tasks.sql` is **not applied** to production. Each further step (push,
+PR, applying the migration, merge) starts only with explicit user approval.
 
-**M5 (local only):** a gap audit found the T6 single-run hand-off complete (one upstream run by id,
+**Task core (local only):** an audit found every Project Manager tab modelled and no task table.
+Migration `20261003120000` adds `nexra_agent_tasks`: one row per operator-approved task — project,
+title (1–200), owning registry agent (twelve ids restated in a CHECK, drift-tested), status (seven
+values; new rows `backlog`), priority (four; default `medium`), creator, timestamps, and always a
+source: `director-run` (a completed SEO Director run of the same project, by run id) or `keyword`
+(the exact query text stored in the project's snapshot or query × page rows; no keyword id is
+invented). No uniqueness on the source. The one write is `nexra_agent_task_create` (`security
+definer`); no update, delete or truncate path exists; RLS on, no policies, `service_role` SELECT and
+EXECUTE only. `src/lib/agent-tasks` (contract, store, service, wiring), `GET`/`POST /api/agent-tasks`
+(operator, same origin, project-scoped, bounded), *Record as task* beneath a completed Director
+result and on each observed query row (a form first, one confirmed POST), and one *Live tasks*
+section on the Project Manager's Tasks tab, labelled live, above the board now labelled modelled.
+No automatic creation, no assignment, no agent execution. Harness suite `tasks` (80 assertions).
+
+**M5 (merged, deployed):** PR #17 merged as `62ae593`; deployment `dpl_Ck286bMi6dkewMgPV2JRH3HBggv8`
+READY; no migration. One production `project-priority-review` run and the browser verification of the
+*Project Director review* panel remain pending, each under its own approval.
+
+**M5 (as delivered):** a gap audit found the T6 single-run hand-off complete (one upstream run by id,
 project-checked, labelled, OBSERVED/PROPOSED separation, output screening, provenance on screen, run
 history, no automation) and one core gap: no project-level Director review over more than one
 specialist run. M5 adds one read-only task, `project-priority-review` (SEO Director, no input): the
@@ -652,13 +672,14 @@ foundation, Search Console) are complete. Current work follows the content workf
 | M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Complete, merged (`3b74d99`), migration applied and recorded, deployed, production verified; On-Page output bound merged (`6760cfc`) and deployed |
 | M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Complete, merged (`db7afdb`), migration applied and recorded, deployed; browser verification pending |
 | M4 | Observed keyword intelligence: query inventory, lexical intent hints and groups, page mapping, fixed opportunity rules, Keywords panel, agent grounding | Complete, merged (`3510493`, selector fix `220c732`), deployed, production verified on run `73f38c16…`; no migration |
-| M5 | SEO Director project-level orchestration: deterministic multi-source selection, bounded bundle, deduplicated plan instructions, project Director panel | Implemented and verified locally; local commits; not pushed; no migration |
+| M5 | SEO Director project-level orchestration: deterministic multi-source selection, bounded bundle, deduplicated plan instructions, project Director panel | Complete, merged (`62ae593`), deployed; no migration; one production run pending approval |
+| PM task core | Persisted agent tasks: `nexra_agent_tasks`, create function, project-scoped API, Record as task from Director results and observed queries, Live tasks section | Implemented and verified locally; local commits; not pushed; migration not applied |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M5 on its feature
-branch; pushing it, a PR and merge start only with explicit approval. Work beyond M5 (cross-crawl
-finding history, a curated keyword entity and further Director sources such as the answer-readiness
-and performance reviews are the noted candidates) is undecided and is not planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: the Project Manager task
+core on its feature branch; pushing it, a PR, applying its migration and a merge start only with
+explicit approval. Work beyond it (a task status path, cross-crawl finding history, a curated keyword
+entity and further Director sources) is undecided and is not planned here.
 
 ## 15. Definition of Done
 
