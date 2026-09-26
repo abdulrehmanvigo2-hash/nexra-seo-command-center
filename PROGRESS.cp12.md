@@ -9,11 +9,12 @@ Branch `claude/phase1-docs-reconciliation` from `2e8116ce`. Delete this file in 
   `supabase/tests/task-workflow/tests.sql`; both suites load `c4/setup.sql` and `gsc/setup.sql` first (`run.sh:453,459`).
 
 ## Rows applied
+- docs/BACKEND.md: rows 43-72 (row 72 needs no edit once row 29 landed; row 59 applied as an appended sentence) + 7 mirrored facts.
 - supabase/README.md: rows 29-42, plus additional row 87 (see deviations).
 - CLAUDE.md: rows 1-8, 10-28 (row 9 unchanged by design; rows 12 and 13 applied as one merged paragraph) + 7 verification facts under §0.
 
 ## Rows remaining
-43-86
+73-86
 
 ## Deviations
 - Row 2: the closing `**` was kept, because it closes the bold opened at line 6 ("**Current stage:"); it is not stray.
