@@ -21,18 +21,30 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `97aa00183598cec0cd42345626db6cd4139afd70` (merge of PR #23,
-`claude/phase1-docs-reconciliation` at `0a06d27`, the Phase 1 documentation reconciliation;
-preceded by PR #22 `2e8116ce…` (intake bound), PR #21 `073bf85e…` (handoff-run restore) and PR #20
-`47fae75d…` (task workflow, `bdd541c`); the C6 merge, PR #3, is `f28cd35e…`; the C5 merge, PR #2,
-is `304ac146…`).
+GitHub `master`: `3a31612408257a531fa78e73bb3d9b47070f617f` (merge of PR #24,
+`claude/phase1-security-tests` at `ff2b695`, the Phase 1 security and worker test coverage;
+preceded by PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
+`073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
+PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_88CT3mHwHUeYN9eyXGYca4vosS97`, READY, built from `master` at
-`97aa0018`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_5fzqndKaWWWHUGs1VuuR146ATwmA` at `2e8116ce`).
+Production deployment: `dpl_3asSXd6pRgXWGeCmjqwBnKUW4CAv`, READY, built from `master` at
+`3a316124`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_88CT3mHwHUeYN9eyXGYca4vosS97` at `97aa0018`).
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
 source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
+
+**Phase 1 checkpoint 1.3 (security and worker tests, 26 Sep):** PR #24 merged as `3a316124…`;
+tests only (113 new cases, `npm test` 2,189 passed), no behaviour change, no migration;
+deployment `dpl_3asSXd6p…` READY. One documented question: the Anthropic provider classifies a
+caller abort as `rejected` (the SDK's status-less `APIUserAbortError`), which the worker's own
+timeout and lease race decide ahead of.
+
+**Phase 1 checkpoint 1.4 (CI gates):** `.github/workflows/ci.yml` runs typecheck, lint, build,
+the full test suite and a secret scan (`scripts/secret-scan.mjs`, fixtures admitted one by one in
+`.github/secret-scan-allowlist`) on every pull request and every push to `master`, with no
+credential of any kind; superseded runs on a pull request are cancelled. CI verifies; it never
+deploys.
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 
@@ -584,7 +596,9 @@ Ask the user and wait for explicit approval before any of these:
 - Verify responsive behaviour at mobile, tablet, and desktop widths.
 - Verify no regressions in previously working screens.
 - Run the available checks before committing: `npm test`, `npm run typecheck`,
-  `npm run lint`, `npm run build`, and `npm run db:seed:check` when the seed or projects change.
+  `npm run lint`, `npm run build`, `npm run secret-scan`, and `npm run db:seed:check` when the
+  seed or projects change. The same gates run in GitHub Actions on every pull request and push
+  to `master` (`.github/workflows/ci.yml`); a red check is fixed before a merge.
 - Add unit tests beside the code for every new server module, contract or renderer.
 
 ## 10. Git as a Checkpoint System

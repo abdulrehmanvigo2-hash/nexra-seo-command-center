@@ -2477,6 +2477,17 @@ All server-only. `.env.example` has placeholders.
 
 ## Deployment requirements
 
+Continuous integration (`.github/workflows/ci.yml`) runs typecheck, lint, the
+production build, the full `node --test` suite and a secret scan on every pull
+request and every push to `master`, on Node 22 with no Supabase, Vercel or
+Anthropic value: the build and the tests use the fixture data source. The scan
+(`scripts/secret-scan.mjs`, `npm run secret-scan`) refuses the credential shapes
+`safety.ts` and the sign-in configuration refuse — private keys, `sb_secret_`
+keys, JWTs, provider key prefixes and single-token credential literals — over
+the lines a pull request adds, or the whole tree on a push; a test fixture is
+admitted only by naming its file and pattern in `.github/secret-scan-allowlist`.
+CI verifies and never deploys; Vercel deploys `master` on its own.
+
 1. Apply all migrations in order and reload the API schema.
 2. Set the environment variables above in the hosting project (production scope),
    including a fresh random `CRON_SECRET` (`openssl rand -hex 32`).
