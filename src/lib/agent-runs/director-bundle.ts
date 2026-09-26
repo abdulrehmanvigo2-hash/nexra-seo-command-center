@@ -393,16 +393,29 @@ export function summarisedSources(evidence: JsonObject | null): readonly {
  * the ones more sources agree on first, then the more confident. Missing
  * sources and unestablished readings are named as blockers. The plan is a
  * proposal: the Director changes nothing, assigns nothing, and says so.
+ *
+ * Every part is bounded, because the worker refuses any summary over 2,000
+ * characters as `rejected-output`, and the first production run of this task
+ * (`d2cbdcc7-82e9-4b30-9e00-f6f27184a436`) was refused that way: four items
+ * of six labelled fields each, with full URLs and whole findings quoted in
+ * SOURCES, plus three fixed lines, is more than a character budget alone
+ * holds a model to. The bounds below are sized so that an answer at every
+ * one of them stays under 1,500 characters with ordinary words and under the
+ * 2,000 ceiling with long ones — the labels and the two fixed lines cost
+ * about 300 on their own — and the answer is told what to cut first if it
+ * must cut, and what it may never cut: SOURCES and BLOCKERS stay whatever
+ * is dropped, since an item without its provenance is not traceable and a
+ * plan without its blockers hides a gap.
  */
 export const PROJECT_PRIORITY_REVIEW_INSTRUCTIONS = [
   "Produce one prioritised action plan for this project from the specialist agent reviews supplied with this task and, where they are supplied beneath them, the recorded crawl findings, and from nothing else.",
-  "Give at most four items, fewer where the evidence supports fewer, ranked 1 first, each under 50 words, and keep the whole answer under 1,500 characters. Structure every item as: PRIORITY (its rank), BASIS (OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on a review's inference), ACTION (one concrete next step for a person to take), SOURCES (every source it rests on: for a recorded finding its rule id and the URL it names, quoted from the findings block; for a review the agent's name and the exact finding it comes from, quoted from that review), WHY THIS RANK (the severity of any recorded finding cited, how many sources agree, and how confident you are), then VERIFY (what a person must check before acting).",
+  "Give at most three items, fewer where the evidence supports fewer, ranked 1 first, each under 35 words and concise, and keep the whole answer under 1,200 characters. Structure every item as: PRIORITY (its rank), BASIS (OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on a review's inference), ACTION (one concrete next step for a person to take), SOURCES (every source it rests on: for a recorded finding its rule id and the URL path it names, for example h1-missing /contact; for a review the agent's name and a short quoted phrase of under 8 words from that review; never a full URL and never a whole finding), WHY THIS RANK (the severity of any recorded finding cited, how many sources agree, and your confidence, in a few words), then VERIFY (in under 8 words, what a person must check before acting).",
   "Rank in this order and no other: items resting on a recorded finding before items resting on inference alone; among recorded findings, higher severity first; among inferences, those more sources agree on first, then the more confident. Give no numeric score.",
   "Where two reviews, or a review and a recorded finding, name the same page and the same problem, make one item that cites both and say they agree; never make two items for one problem. Where they disagree, the recorded finding is the observation and the review is the inference, and you must say so; where two reviews disagree, say both readings are inferences and rank only what a person can verify.",
-  "Before the closing line, give one line headed BLOCKERS naming each supported review the bundle marks MISSING and each reading a review marks 'not established' that the plan depends on. The only action you may rank on a missing review is running it; the only action on an unestablished reading is establishing it.",
+  "Before the final line, give one line headed BLOCKERS, under 20 words, naming each supported review the bundle marks MISSING and each reading a review marks 'not established' that the plan depends on; write BLOCKERS: none when there are none. The only action you may rank on a missing review is running it; the only action on an unestablished reading is establishing it.",
   "Never state or estimate a ranking, traffic, click, revenue, indexation or Core Web Vitals effect for any item: nothing supplied measures them. Figures a Search Console review quotes are that agent's description of Google's report, not something you have seen, and a recorded finding is one rule's observation within one crawl, not a site-wide count and not an indexation fact.",
   "The reviews are advice from other models, written at different times and unaware of each other. Do not restate their inferences as facts, do not describe their evidence as something you have seen, and do not merge their claims into a picture none of them made.",
-  "Say plainly what the plan does not cover: it reflects at most the supported reviews listed, over the evidence each had, and it is not a strategy for the project.",
   "You change nothing and assign nothing: the plan is a proposal for an operator to review, and you must not describe any item as scheduled, assigned, or done.",
-  "End with one line naming the single first action and why it comes before the rest.",
+  "End with one line, under 25 words, that names the single first action and why it comes before the rest, and says the plan covers only the supported reviews listed, over the evidence each had, and is not a strategy for the project.",
+  "If the answer would exceed 1,200 characters, drop the lowest-ranked item first, then shorten ACTION and WHY THIS RANK; never shorten or drop SOURCES or the BLOCKERS line to fit.",
 ].join(" ");

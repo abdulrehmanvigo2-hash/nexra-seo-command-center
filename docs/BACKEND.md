@@ -2028,16 +2028,32 @@ the depth where the run store refuses a further nested container; the
 executor's metadata with three sources and two findings summaries passes
 `checkStorableJson` under 8,192 bytes.
 
-The instructions ask for at most four items, each under 50 words, the whole
-under 1,500 characters; BASIS OBSERVED or PROPOSED; SOURCES naming every
-source an item rests on; a stated ranking rule in words (recorded findings
-before inference; among recorded findings higher severity first; among
-inferences those more sources agree on first, then the more confident; no
-numeric score); one item where sources agree, with the recorded finding
-winning a disagreement and two disagreeing reviews left as two inferences;
-a BLOCKERS line naming each missing review and each unestablished reading;
-no ranking, traffic, click, revenue, indexation or vitals effect; and no
-merged picture none of the reviews made. The single-run `priority-review`,
+The instructions ask for at most three items, each under 35 words, the whole
+under 1,200 characters; BASIS OBSERVED or PROPOSED; SOURCES naming every
+source an item rests on in a short form (a recorded finding by rule id and
+URL path, a review by agent name and a quoted phrase under 8 words; never a
+full URL or a whole finding); WHY THIS RANK and VERIFY in a few words; a
+stated ranking rule in words (recorded findings before inference; among
+recorded findings higher severity first; among inferences those more
+sources agree on first, then the more confident; no numeric score); one item
+where sources agree, with the recorded finding winning a disagreement and
+two disagreeing reviews left as two inferences; a BLOCKERS line under 20
+words naming each missing review and each unestablished reading (`BLOCKERS:
+none` otherwise); one final line under 25 words naming the first action and
+what the plan does not cover; a cut order when the answer would run over
+(drop the lowest-ranked item first, then shorten ACTION and WHY THIS RANK,
+never SOURCES or BLOCKERS); no ranking, traffic, click, revenue, indexation
+or vitals effect; and no merged picture none of the reviews made. The first
+production run of this task, `d2cbdcc7-82e9-4b30-9e00-f6f27184a436`, was
+refused as `rejected-output` under the earlier bounds (four items under 50
+words with full URLs and whole findings quoted, the whole under 1,500
+characters); the provider was called, the bundle was 15,350 bytes with no
+source cut and the metadata passed the run store's check, so the answer's
+length over the worker's unchanged 2,000-character ceiling is the most
+supported cause. The bounds are sized so that an answer at every one of
+them stays under 1,500 characters with ordinary words and under the ceiling
+with long ones, checked by arithmetic in `director-bundle.test.ts` and
+through the worker in `output-screen.test.ts`. The single-run `priority-review`,
 its reader, block, instructions and control are unchanged, and neither
 Director task is ever a hand-off source.
 

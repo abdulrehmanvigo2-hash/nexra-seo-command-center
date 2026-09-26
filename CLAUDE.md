@@ -138,7 +138,9 @@ as MISSING with why; a bundle with no eligible source is refused before any prov
 source keeps the T6 header and JSON-quoted review under 6,000 bytes; the recorded crawl findings
 (T3) follow once per distinct crawl, at most two; one limits note; the whole under 54,000 bytes; the
 stored summary (`source: "agent-runs"`) is scalar-only inside its arrays and passes the run store's
-check. Instructions: at most four items under 1,500 characters, BASIS OBSERVED/PROPOSED, SOURCES per
+check. Instructions: at most three items under 35 words each, the whole under 1,200 characters (tightened
+after the first production run, `d2cbdcc7…`, was refused as `rejected-output`; the worker's 2,000-character
+ceiling is unchanged), BASIS OBSERVED/PROPOSED, short-form SOURCES per
 item, a worded ranking rule (recorded findings first, then severity, then agreement, then
 confidence; no score), one item where sources agree, a BLOCKERS line for missing reviews and
 unestablished readings, no traffic/ranking/indexation/vitals claims. UI: the *Project Director

@@ -6,7 +6,7 @@ import type { StoredCrawlFinding, StoredCrawlFindingsReport } from "../crawl/fin
 import { MAX_FINDINGS_EVIDENCE_BYTES } from "../crawl/findings/grounding.ts";
 import { NO_RECORDED_FINDINGS_NOTE } from "../crawl/findings/director-grounding.ts";
 import type { CrawlFindingsRead } from "../crawl/service.ts";
-import { checkStorableJson } from "./safety.ts";
+import { checkStorableJson, looksLikeSecret } from "./safety.ts";
 import { formatRunGrounding, MAX_EVIDENCE_BYTES, UPSTREAM_TASK_TYPES } from "./run-grounding.ts";
 import {
   AGENT_RUNS_SOURCE,
@@ -467,7 +467,13 @@ describe("the Director's instructions", () => {
   test("demand a bounded, deduplicated, traced plan with a stated ranking rule, blockers, and no unsupported claims", () => {
     const i = PROJECT_PRIORITY_REVIEW_INSTRUCTIONS;
     assert.match(i, /from the specialist agent reviews supplied with this task and, where they are supplied beneath them, the recorded crawl findings, and from nothing else/);
-    assert.match(i, /at most four items, fewer where the evidence supports fewer, ranked 1 first, each under 50 words, and keep the whole answer under 1,500 characters/);
+    assert.match(i, /at most three items, fewer where the evidence supports fewer, ranked 1 first, each under 35 words and concise, and keep the whole answer under 1,200 characters/);
+    assert.match(i, /for a recorded finding its rule id and the URL path it names, for example h1-missing \/contact; for a review the agent's name and a short quoted phrase of under 8 words from that review; never a full URL and never a whole finding/);
+    assert.match(i, /VERIFY \(in under 8 words, what a person must check before acting\)/);
+    assert.match(i, /one line headed BLOCKERS, under 20 words/);
+    assert.match(i, /write BLOCKERS: none when there are none/);
+    assert.match(i, /drop the lowest-ranked item first, then shorten ACTION and WHY THIS RANK; never shorten or drop SOURCES or the BLOCKERS line to fit/);
+    assert.doesNotMatch(i, /at most four items|under 50 words|under 1,500 characters/);
     for (const field of ["PRIORITY", "BASIS", "ACTION", "SOURCES", "WHY THIS RANK", "VERIFY", "BLOCKERS"]) assert.ok(i.includes(field), field);
     assert.match(i, /OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on a review's inference/);
     assert.match(i, /items resting on a recorded finding before items resting on inference alone; among recorded findings, higher severity first; among inferences, those more sources agree on first, then the more confident\. Give no numeric score\./);
@@ -479,8 +485,46 @@ describe("the Director's instructions", () => {
     assert.match(i, /Figures a Search Console review quotes are that agent's description of Google's report, not something you have seen/);
     assert.match(i, /do not merge their claims into a picture none of them made/);
     assert.match(i, /You change nothing and assign nothing/);
-    assert.match(i, /End with one line naming the single first action/);
+    assert.match(i, /End with one line, under 25 words, that names the single first action and why it comes before the rest, and says the plan covers only the supported reviews listed, over the evidence each had, and is not a strategy for the project/);
     assert.equal(NO_ELIGIBLE_SOURCES, "no-eligible-sources");
+  });
+
+  test("an answer at every bound fits under 1,500 characters with ordinary words, and under the 2,000 ceiling with long ones", () => {
+    // The first production run (d2cbdcc7) was refused as rejected-output; the
+    // refused text is never stored, so the bounds are checked by arithmetic:
+    // three items, each at 35 words across ACTION, WHY THIS RANK and VERIFY,
+    // SOURCES in the short form, a BLOCKERS line at 20 words and a final line
+    // at 25 words, with five-letter words and then with eight-letter words.
+    const atBounds = (word: string) => {
+      const words = (n: number) => Array.from({ length: n }, () => word).join(" ");
+      const item = (rank: number, basis: "OBSERVED" | "PROPOSED", sources: string) =>
+        [
+          `PRIORITY ${rank}`,
+          `BASIS ${basis}`,
+          `ACTION ${words(13)}`,
+          `SOURCES ${sources}`,
+          `WHY THIS RANK ${words(9)}`,
+          `VERIFY ${words(7)}`,
+        ].join("\n");
+      return [
+        item(1, "OBSERVED", `h1-missing /contact; Technical SEO "${words(7)}"; On-Page SEO "${words(7)}"`),
+        item(2, "OBSERVED", `meta-description-long /; On-Page SEO "${words(7)}"`),
+        item(3, "PROPOSED", `Keyword & Search Intent "${words(7)}"`),
+        `BLOCKERS ${words(19)}`,
+        words(24),
+      ].join("\n\n");
+    };
+    const ordinary = atBounds("title");
+    assert.ok(ordinary.length < 1_500, `${ordinary.length} characters with five-letter words`);
+    const long = atBounds("declares");
+    assert.ok(long.length < 2_000, `${long.length} characters with eight-letter words`);
+    assert.ok(long.length <= 1_800, `${long.length} characters leaves too little margin under the ceiling`);
+    for (const answer of [ordinary, long]) {
+      assert.equal(looksLikeSecret(answer), false);
+      for (const field of ["PRIORITY 1", "PRIORITY 3", "BASIS OBSERVED", "BASIS PROPOSED", "SOURCES", "WHY THIS RANK", "VERIFY", "BLOCKERS"]) assert.ok(answer.includes(field), field);
+      assert.doesNotMatch(answer, /PRIORITY 4/);
+      assert.doesNotMatch(answer, /https?:\/\//, "SOURCES cite paths, never full URLs");
+    }
   });
 });
 
