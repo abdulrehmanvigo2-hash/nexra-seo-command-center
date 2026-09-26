@@ -126,7 +126,7 @@ export function CommandCenter({
   };
 
   /**
-   * Re-reads the fixtures. There is no network in this milestone, so the busy
+   * Re-reads the fixtures. This screen has no live fetch yet, so the busy
    * state is held briefly to show the loading treatment the real fetch would
    * put the cards through.
    */
@@ -139,7 +139,7 @@ export function CommandCenter({
     }, 700);
   };
 
-  /** Queues an analysis run. Mock interaction: no agent runtime exists yet. */
+  /** Simulates queueing an analysis. The real agent runtime is reached from the project workspace panels, not from this screen. */
   const runAnalysis = () => {
     setAnalysisQueued(true);
     schedule(() => setAnalysisQueued(false), 4_000);

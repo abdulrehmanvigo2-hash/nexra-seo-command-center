@@ -23,6 +23,11 @@ Vercel Cron ── /api/worker/* ── agent runtime worker ── executor (mo
 | Search Console | `src/lib/search-console`, `/api/search-console/report` | Google API (read-only) |
 | Agent runtime | `src/lib/agent-runs`, `/api/agent-runs/*`, `/api/worker/*` | `public.agent_runs`, `public.agent_run_attempts` |
 | Crawl foundation | `src/lib/crawl`, `/api/crawls/*` | `public.nexra_crawls`, `public.nexra_crawl_pages`, `public.nexra_crawl_links` |
+| Search Console history | `src/lib/search-console/{snapshots,history,query-pages,keywords}`, `/api/search-console/{history,query-pages,keywords}` | `public.nexra_search_console_snapshots`, `public.nexra_search_console_query_pages` |
+| Crawl findings and triage | `src/lib/crawl/findings`, `/api/crawls/*/findings*`, `/api/crawls/latest-findings` | `public.nexra_crawl_findings_reports`, `public.nexra_crawl_findings`, `public.nexra_crawl_finding_triage` |
+| Content drafts | `src/lib/content/drafts`, `src/lib/content/publications`, `/api/content-drafts`, `/api/content-publications` | `public.nexra_content_drafts`, `public.nexra_content_draft_versions`, `public.nexra_content_publication_proposals` |
+| Articles | `src/lib/content/articles`, `/api/content-article*` | `public.nexra_articles`, `public.nexra_article_versions`, `public.nexra_article_version_sources`, `public.nexra_article_check_units`, `public.nexra_article_approvals`, `public.nexra_article_publication_proposals` |
+| Agent tasks | `src/lib/agent-tasks`, `/api/agent-tasks/*` | `public.nexra_agent_tasks`, `public.nexra_agent_task_events` |
 | Shared rate limits | `src/lib/security/shared-rate-limit.ts` | `public.rate_limit_windows` |
 | Logs | `src/lib/observability/log.ts` | stdout (JSON lines) |
 
@@ -37,7 +42,11 @@ modelled views, which stay fixture data and still say so.
 
 ## Supabase
 
-Postgres holds projects, agent runs, attempts, and rate-limit windows. Every
+Postgres holds projects, agent runs and attempts, rate-limit windows, crawls
+with their pages, links, findings and triage, Search Console snapshots and
+query × page rows, content drafts, versions and proposals, articles with their
+versions, check units, approvals and proposals, and agent tasks with their
+event history. Every
 table has row level security with no policies: no browser-side client can read
 or write it. The server uses the secret (`service_role`) key, which never leaves
 the server. The rules that matter are enforced in the database, for every
@@ -87,7 +96,7 @@ reading written as "not established" — and refuses every non-connected state
 before anything is formatted. No caller can name a property or a query: the
 input carries a range and nothing else.
 
-**Snapshot capture (milestone M1, checkpoints 1b and 1c; local only).**
+**Snapshot capture (milestone M1, checkpoints 1b and 1c; deployed, production verified).**
 `src/lib/search-console/snapshots/capture.ts` reads the 30-day window for each
 stored project that `SEARCH_CONSOLE_PROPERTIES` maps to a property and records
 what Google reported through the one CP1a database function,
@@ -127,9 +136,11 @@ error name. Whatever the capture does, the queue's answer is returned as
 before; the response gains one additive field, `snapshots`, holding project
 ids, outcome names, counts and durations only. Nominal worst case: 240 + 45 +
 5 = 290 s. The cron schedule, `vercel.json`, the worker credential and its
-rate limit are unchanged.
+rate limit are unchanged. Production verified: the scheduled job recorded two
+connected `nexra-agency` snapshots (windows ending 21 and 22 Sep, captured
+25 and 26 Sep, `source: scheduled`).
 
-### Query × page rows and overlap (M1 P4c; local only)
+### Query × page rows and overlap (M1 P4c; deployed, production verified)
 
 `20260930120000_create_search_console_query_pages.sql` adds
 `nexra_search_console_query_pages`: one immutable row per project, property,
@@ -188,7 +199,8 @@ property, no row id, at most 10 overlaps × 5 pages with true counts. The
 Search Console panel beneath the stored history on the summary and queries
 views, with its own load and the states loading, no stored rows, rows for a
 previous property, no overlap observed, overlaps, and read failed. Nothing
-here writes; the migration has **not** been applied to production.
+here writes; the migration is applied and recorded in production, and the
+first capture recorded 10 query × page pairs for `nexra-agency` on 25 Sep.
 
 ### Stored history on the panel (M1 P4d)
 
@@ -215,7 +227,7 @@ view, and always carries the caveats: two windows, not a trend; Search
 Console's average position, not a rank tracker; incomplete top rows; no
 query-to-page mapping and no cannibalisation conclusion. Nothing here writes.
 
-### Observed query inventory (M4; local only)
+### Observed query inventory (M4; deployed, production verified on run `73f38c16…`)
 
 M4 began with a gap audit of the Keyword Intelligence roadmap against
 `master` after M1. Overlap and cannibalization-candidate detection (P4c),
@@ -332,8 +344,8 @@ review* below); the evidence pack takes no input and is grounded in the
 project's newest own-site crawl, its default Search Console window and the
 competitor crawls on record (see *Evidence pack* below); the content plan
 takes no input and reads the same records through the same reader (see
-*Content plan* below); the section draft takes one input, a plan run id,
-and is grounded in that plan quoted as a proposal beside the records re-read
+*Content plan* below); the section draft takes two inputs, a plan run id
+and an operator-chosen section index, and is grounded in that plan quoted as a proposal beside the records re-read
 (see *Section draft* below); the outbound link review takes one input, a
 crawl id, and is grounded in that crawl's stored link edges (see *Outbound
 link review* below).
@@ -530,11 +542,12 @@ or per operator. That control has to come from the provider account.
   domain, and the validated input passed as labelled data. The model has no
   tools or live data and is told so. The answer is screened like any executor
   output; stored metadata is provider, model, token counts, and `grounded`.
-  `grounded` is `true` only when a record this product holds was actually
-  loaded and put in the prompt — the tasks whose type declares
-  `evidence: "crawl"` (`crawl-review`, `on-page-review`, `answer-readiness-review`),
-  `evidence: "search-console"` (`search-query-review`, `performance-review`) or
-  `evidence: "agent-run"` (`priority-review`). Their metadata also carries an
+  `grounded` is `true` whenever a record this product holds was actually
+  loaded and put in the prompt, which is every evidence kind: `crawl`,
+  `crawl-links`, `search-console`, `agent-run`, `agent-runs`, `project`,
+  `competitor-comparison`, `evidence-pack`, `content-draft`, `draft-version`
+  and `article-unit`; only the ungrounded `project-review` and
+  `keyword-research` store `false`. Their metadata also carries an
   `evidence` object saying which record: the crawl and its page counts; the
   property, window and query count; or, for a hand-off, the upstream run, its
   agent and task, and that run's own evidence summary under
@@ -552,7 +565,9 @@ or per operator. That control has to come from the provider account.
   dropped.
 
 The provider was verified in this repository against simulated HTTP responses
-(success, refusal, truncation, 400/401/404, 429/500/529, network failure). The
+(400, 429 and 500 in `retry-cost.test.ts`, each attempted exactly once, and a
+refusal as terminal; the refusal and truncation stop reasons are handled in
+`providers/anthropic.ts`). The
 deployment has since executed a run through the AI executor by the operator's
 Run Now control, which is the live verification; this development environment
 holds no provider key, so every check here still runs against fakes.
@@ -950,9 +965,10 @@ Nothing queues it when a plan completes. A completed draft is not a
 hand-off source and offers no further control; the Director's list and
 refusal rules are unchanged. The `draft` policy runs without an approval
 workflow because a draft changes nothing: publishing stays on the
-prohibited-actions list, and no draft storage, editing or publishing
-surface exists — a draft lives in the run's 2,000-character summary and is
-read in Run History.
+prohibited-actions list; a draft is saved from the run into
+`nexra_content_drafts` (Stage 1), edited into immutable versions (Stage 2),
+fact-checked and approved per exact version (Stages 3–4) and proposed for
+publication record-only (Stage 5A); publishing does not exist.
 
 ### Outbound link review
 
@@ -1086,8 +1102,9 @@ else. On a page load the control reads `GET /api/content-drafts?project=…&
 writerRun=…` (operators only, a read) and shows the saved draft instead of
 the button, so nothing is saved twice and nothing saves on its own. The
 draft panel shows the current version, the section, body and creation
-time, and says that fact-checking, approval and publishing do not exist yet.
-There is no fact-check, approve, publish or delete control. The Content
+time, offers the exact-version fact-check and approval controls (Stages 3–4),
+and says that publishing does not exist. There is no publish or delete
+control. The Content
 Studio remains fixture-only: no real draft row reaches it and no fixture
 reaches a draft.
 
@@ -1387,9 +1404,9 @@ run and from exact, immutable section-draft versions. Its content is the C1
 contract (`src/lib/content/articles/validate.ts`) serialised canonically
 (`nexra-article-content/1`) and stored once, as text, with its SHA-256.
 Nothing here fact-checks, approves, proposes or publishes. (The panel's
-notice now reads "Article persistence and article fact-check only — no
-approval or publication occurs here.", since C4 adds the article's own
-check.)
+notice now reads "Article persistence, article fact-check and approval only —
+no publication occurs here.", since C4 adds the article's own check and C5
+the approval.)
 
 Tables (`20260923120000_create_articles.sql`): `nexra_articles` — project,
 source plan run (unique: one article per plan, so a repeated create answers
@@ -1432,8 +1449,8 @@ Panel (`src/components/content/article-panel.tsx`), on the project
 workspace below the content plan: status, current version, version
 history, each version's content and source provenance, "New article"
 (version 1) and "Edit as version N+1". Milestone C4 adds the article's own
-fact-check beneath each version (below). There is no approval, proposal,
-publish or delete control.
+fact-check beneath each version (below); the C5 approval and C6 record-only
+proposal sections sit beneath it. There is no publish or delete control.
 
 ### Article check units (Stage 5, Complete Article Assembly, milestone C4)
 
@@ -1728,8 +1745,9 @@ submitted, no state changed anywhere but our own tables.
 **Three agent tasks read this data** — `crawl-review`, `on-page-review` and
 `answer-readiness-review`, all through one serialisation with one ownership
 check — and the crawl panel on
-the project workspace lists the recorded pages. The Technical SEO screens are
-unchanged and still render fixtures. Connecting those is a separate feature.
+the project workspace lists the recorded pages. The Technical SEO screen shows
+the latest recorded findings and their triage in its *Observed findings*
+section (M3); its other tabs still render fixtures.
 
 ### Competitor site crawls
 
@@ -1912,7 +1930,8 @@ does.
 
 ### Deterministic crawl findings (T1–T5)
 
-`src/lib/crawl/findings` applies 32 fixed rules (rule version 2) to what one
+`src/lib/crawl/findings` applies 36 fixed rules (rule version 3; T5 added the
+version-2 rules, M2 the version-3 rules) to what one
 crawl recorded (`compute.ts`, `rules.ts`, `contract.ts`): titles, meta
 descriptions, H1s, canonicals, 4xx/5xx, redirect chains and loops, broken
 internal links (only when the target page was fetched with an error),
@@ -1991,7 +2010,7 @@ on the review's inference — say the recorded finding wins a disagreement, and
 forbid stating or estimating any ranking, traffic, click, revenue or vitals
 effect. The specialist reviews' prompts are unchanged.
 
-### The Director's project bundle (M5; local only)
+### The Director's project bundle (M5; deployed; one production run completed)
 
 `project-priority-review` is the SEO Director's second task and the first
 hand-off with more than one source. It takes no input at all: the project is
@@ -2059,7 +2078,9 @@ them stays under 1,500 characters with ordinary words and under the ceiling
 with long ones, checked by arithmetic in `director-bundle.test.ts` and
 through the worker in `output-screen.test.ts`. The single-run `priority-review`,
 its reader, block, instructions and control are unchanged, and neither
-Director task is ever a hand-off source.
+Director task is ever a hand-off source. After PR #19 (`3121ff3`) tightened
+the instructions, a production run completed on 26 Sep with a stored bundle
+summary.
 
 On screen, the *Project Director review* panel
 (`src/components/projects/project-director-panel.tsx`, on the project screen
@@ -2099,11 +2120,10 @@ guard, robots.txt handling, the allow-list and the user agent are unchanged.
 **Deploy order:** the page and link inserts name the new columns, so the
 application built from T5 must be deployed only after this migration is
 applied to production; until then a crawl on that deployment would fail to
-save its pages. Applying it is a separate §6 approval, and it has been
-applied only to disposable local PostgreSQL 16 clusters (harness suites
-`signals` and `signals-upgrade`).
+save its pages. It is applied to production and recorded (harness suites
+`signals` and `signals-upgrade` cover it locally).
 
-### Crawl content signals (M2; local only)
+### Crawl content signals (M2; deployed, production verified)
 
 Migration `20261001120000_extend_crawl_page_content_signals.sql` adds nine
 nullable columns to `nexra_crawl_pages`, and nothing else: `word_count`
@@ -2140,8 +2160,11 @@ before M2, and its limits note says what a word count and a response time are
 not. The Technical SEO, On-Page SEO and Answer-readiness reviews and the
 competitor comparison read that block, so all four see the new lines; the
 On-Page instructions name the new signals as counts and declarations, not
-judgements of quality or depth; the Answer-readiness instructions are
-unchanged (their length is pinned by a live-incident test). Findings rule
+judgements of quality or depth, and bound the answer to four findings under
+1,500 characters (PR #13, `6760cfc`, after the first On-Page review over the
+M2 crawl was refused; two reviews have since completed under the bound, the
+latest 25 Sep); the Answer-readiness instructions are unchanged (their length
+is pinned by a live-incident test). Findings rule
 version 3 adds four low-severity rules over the new signals, each yielding
 nothing on a page recorded before M2: `html-lang-missing` (absent or empty
 `lang`), `hreflang-malformed` (any malformed alternate), `social-metadata-missing`
@@ -2149,11 +2172,11 @@ nothing on a page recorded before M2: `html-lang-missing` (absent or empty
 does not say noindex, under `THIN_PAGE_MAX_WORDS` = 150 visible words, worded
 as a candidate for review, never a verdict). **Deploy order:** the page insert
 names the new columns, so the application built from M2 must be deployed only
-after this migration is applied to production. Applying it is a separate §6
-approval, and it has been applied only to disposable local PostgreSQL 16
-clusters (harness suites `content` and `content-upgrade`).
+after this migration is applied to production. It is applied to production
+and recorded (harness suites `content` and `content-upgrade` cover it
+locally).
 
-### Finding triage and the observed section on the Technical screen (M3; local only)
+### Finding triage and the observed section on the Technical screen (M3; deployed; one triage decision recorded)
 
 M3 began with a gap audit against the original M3 goals. A deterministic
 issue registry (T1, T5, M2), persisted findings per crawl (T3), the live
@@ -2232,9 +2255,10 @@ inside the crawl panel is unchanged and still offers no control.
 **Deploy order:** the migration must be applied to production before this
 code is deployed; the read route answers 503 until then only if the store is
 missing, but the write and the triage read would fail on the missing table.
-It has been applied only to disposable local PostgreSQL 16 clusters.
+It is applied to production and recorded, and one operator decision is
+recorded through the triage route.
 
-### Agent tasks: the Project Manager's real task core (local only)
+### Agent tasks: the Project Manager's real task core (deployed, production verified)
 
 The Project Manager's detail tabs are modelled (`src/lib/mock/agents`), and
 until this checkpoint nothing in the product could hold a task an operator
@@ -2278,7 +2302,7 @@ modelled. No task is created automatically, no agent is assigned or run by a
 task existing, and no status change path exists yet. Harness suite `tasks`
 (80 assertions); focused tests under `src/lib/agent-tasks`.
 
-### Agent task workflow: status, owner, handoff, history (local only)
+### Agent task workflow: status, owner, handoff, history (deployed, production verified end-to-end)
 
 The task core recorded a task and refused every later change. Migration
 `20261004120000` adds the smallest workflow that keeps an operator in front
@@ -2340,6 +2364,16 @@ the task type the agent would be handed and that nothing runs on confirm, then
 shows no control. Harness suite `task-workflow` (150 assertions); focused
 tests `contract`, `service`, `handoff`, `surface` under `src/lib/agent-tasks`
 and the provenance case in `agent-runs/create-run.test.ts`.
+
+**Release.** PR #20 (`47fae75d…`) merged the workflow and its migration was
+applied and recorded. PR #21 (`073bf85e…`): the review panels' restore treats
+`sourceTaskId` as provenance, not evidence, and shows a running run before a
+queued one before finished ones, so a handoff-queued run is restored and
+*Run now* executes it instead of queueing a plain run. PR #22 (`2e8116ce…`):
+the 1,300-character intake bound above. Verified in production on task
+`30e79092…` and run `be1b692e…`: handoff-requested and handoff-run-linked
+events, one completed attempt (`claude-opus-5`, 1,552-character screened
+summary), no duplicate run, no provenance leak, task unchanged.
 
 ### Safety boundaries
 
@@ -2403,7 +2437,11 @@ and the provenance case in `agent-runs/create-run.test.ts`.
   project creation 10/10 min, run creation 30/10 min, run actions 60/10 min,
   crawl starts 10/10 min, crawl reads 120/10 min, finding triage decisions
   60/10 min, and manual worker triggers 30/10 min per operator; scheduled jobs
-  60/hour per job.
+  60/hour per job. Agent tasks: create 30, read 120 and action 60 per 10 min.
+  Server Actions per operator per 10 min: draft save 30, edit 60, fact-check
+  30, approve 20; article create 10, save 60, check record 120, approve 30,
+  propose 30; draft publication propose 10, withdraw 20; competitor list
+  update 10; project create 10.
   Refusals are 429 with `Retry-After` (sign-in: a fixed "too many attempts"
   message). If the shared count cannot be read, the request is refused. On the
   fixture data source, counts are per process.
@@ -2432,6 +2470,10 @@ All server-only. `.env.example` has placeholders.
 | `NEXRA_AI_PROVIDER` | with `ai` | no | `anthropic` |
 | `ANTHROPIC_API_KEY` | with `ai` | **yes** | provider key |
 | `NEXRA_AI_MODEL` | no | no | defaults to `claude-opus-5` |
+| `CRAWL_ENABLED` | production, for crawls | no | enables the crawler |
+| `CRAWL_ALLOWED_HOSTS` | with crawls | no | exact-host allow-list |
+| `CRAWL_USER_AGENT` | no | no | fetch identity |
+| `CRAWL_MAX_PAGES`, `CRAWL_MAX_DEPTH`, `CRAWL_CONCURRENCY` | no | no | budgets; refused when out of range |
 
 ## Deployment requirements
 
@@ -2446,8 +2488,10 @@ All server-only. `.env.example` has placeholders.
    check that counts return and `expiredLeases` stays at 0.
 
 The application is deployed with the daily schedule, and the operator has
-exercised a live crawl, the Search Console panel and an AI-executed Run Now on
-it. The deployment plan was not verifiable from this repository.
+exercised live crawls, the Search Console panel, AI-executed reviews for every
+agent, the scheduled snapshot capture, article persistence and checks, finding
+triage, and the Project Manager task workflow. The deployment plan was not
+verifiable from this repository.
 
 ## Known limitations
 
@@ -2463,7 +2507,9 @@ it. The deployment plan was not verifiable from this repository.
   One served as something else is recorded as `unavailable`, which leaves
   sitemap membership unknown rather than false.
 - Only the crawl panels and the three crawl-grounded agent tasks read crawl
-  data: the Technical SEO screens are entirely fixture data.
+  data, beside the Technical SEO screen's *Observed findings* section, which
+  reads recorded findings and triage; its other tabs and the page detail
+  screen are fixture data.
 - A competitor crawl is read by one task, the comparison review, and only
   beside the project's own newest crawl; the evidence pack sees only that a
   competitor crawl exists. The Market & Competitor Intelligence agent's
@@ -2476,10 +2522,10 @@ it. The deployment plan was not verifiable from this repository.
   an own-site crawl run afterwards on the same page is not seen until the
   page is reloaded. The content plan reads the same records and has the
   same limitation. The Writer's section draft is one section per run, held
-  in the run's 2,000-character summary: no draft table, no version history,
-  no editing, no fact-check pass, no approval workflow and no publishing
-  exist, and the Content Studio's drafts, briefs, coverage, linking and
-  recommendations remain fixtures. The Authority & Backlink agent's
+  in the run's 2,000-character summary until it is saved from the run into a
+  draft table with immutable versions, exact-version fact-check and approval
+  (Stages 1–4); no publishing exists, and the Content Studio's drafts, briefs,
+  coverage, linking and recommendations remain fixtures. The Authority & Backlink agent's
   outbound link review reads only the edges one own-site crawl recorded:
   no backlink data provider, verified inbound link, referring-domain,
   anchor-text or placement record exists, none is derived from outbound

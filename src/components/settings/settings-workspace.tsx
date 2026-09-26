@@ -257,9 +257,9 @@ export function SettingsWorkspace({
             </SettingList>
             <PanelFooter>
               <span>
-                Agent behaviour is not configurable here. The agents are
-                simulated in this milestone — nothing executes a run, so there
-                is nothing to tune.
+                Agent behaviour is not configurable here. Runs are started from
+                the project workspace panels; executor, provider and model are
+                server environment settings that need approval to change.
               </span>
             </PanelFooter>
           </Panel>

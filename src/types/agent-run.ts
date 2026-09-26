@@ -4,8 +4,9 @@
  * An agent run is one request for one of the twelve registry agents to carry
  * out one task on one project, and the record of how it ended. It is the
  * executed counterpart of the fixture task board in `@/types/agent`, not a
- * replacement for it: the board is still modelled, and nothing on screen reads
- * runs yet.
+ * replacement for it: the board is still modelled; runs are read on screen by
+ * the review controls, the run history on the Agents screen and the task
+ * history.
  *
  * Vocabulary: `queued` and `completed` mean what they mean on the task board.
  * A run says `running` rather than the board's `working`, because it names one

@@ -183,8 +183,9 @@ export function ProjectUnmeasured({
 
       {/*
         Complete articles assembled from a completed content plan and exact
-        section-draft versions (Stage 5, milestone C2). Persistence only: no
-        fact-check, approval or publication control.
+        section-draft versions (Stage 5, milestone C2). Persistence, check
+        units (C4), exact-version approval (C5) and record-only publication
+        proposal (C6); no publication control.
       */}
       <ArticlePanel projectId={project.id} />
 

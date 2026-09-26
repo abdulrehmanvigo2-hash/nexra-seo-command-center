@@ -132,6 +132,31 @@ Editor (or run with the Supabase CLI against a linked project):
 5. `20260917120000_agent_runtime_production.sql`
 6. `20260918120000_cancel_uses_database_time.sql` — cancellation times from the
    database clock
+7. `20260920120000_create_crawls.sql` — crawls, pages, links
+8. `20260920120100_grant_crawls_to_service_role.sql`
+9. `20260922120000_create_content_drafts.sql` — drafts and versions
+10. `20260922120100_grant_content_drafts_to_service_role.sql`
+11. `20260922130000_content_draft_save_version.sql` — immutable version save
+12. `20260922130100_content_draft_versions_guard_delete.sql`
+13. `20260922140000_create_content_publication_proposals.sql` — draft proposals
+14. `20260923120000_create_articles.sql` — articles (recorded in production as
+    `20260923043554`; see *Content drafts* below)
+15. `20260923180000_create_article_check_units.sql` — C4 check units
+16. `20260924120000_create_article_approvals.sql` — C5 approvals
+17. `20260925120000_create_article_publication_proposals.sql` — C6 proposals
+18. `20260926120000_publication_proposals_cross_table_slug_lock.sql` — D3
+19. `20260927120000_create_search_console_snapshots.sql` — M1 CP1a
+20. `20260928120000_create_crawl_findings.sql` — T3 findings
+21. `20260929120000_extend_crawl_page_signals.sql` — T5 signals
+22. `20260930120000_create_search_console_query_pages.sql` — M1 P4c
+23. `20261001120000_extend_crawl_page_content_signals.sql` — M2 content signals
+24. `20261002120000_create_crawl_finding_triage.sql` — M3 triage
+25. `20261003120000_create_agent_tasks.sql` — Project Manager task core
+26. `20261004120000_agent_task_workflow.sql` — Project Manager task workflow
+
+All twenty-six are applied to production and recorded in its migration
+history (27 versions: the articles migration is recorded under
+`20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0).
 
 After each, run `NOTIFY pgrst, 'reload schema';` on its own so the API sees the
 new tables and functions.
@@ -233,8 +258,9 @@ from the stored row before inserting; anything else is answered as JSON
 all`, so Supabase's default privileges cannot leave INSERT or DELETE
 behind) and EXECUTE on the function; `anon` and `authenticated` get
 nothing. No existing table, column, function or grant is changed. Apply it
-after `20260922130100`, then `NOTIFY pgrst, 'reload schema';`. It has been
-applied only to a throwaway local PostgreSQL 16 for validation.
+after `20260922130100`, then `NOTIFY pgrst, 'reload schema';`. Applied to
+production and recorded (the D3 trigger of `20260926120000` is attached to
+this table in production).
 
 `20260923120000_create_articles.sql` adds article-level persistence for
 Complete Article Assembly (Stage 5, milestone C2): `nexra_articles` (one
@@ -255,8 +281,9 @@ article is archived, never deleted. `service_role` gets SELECT on the three
 tables and EXECUTE on the two functions, nothing else; `anon` and
 `authenticated` get nothing. No existing table, column, function or grant
 is changed. Apply it after `20260922140000`, then `NOTIFY pgrst, 'reload
-schema';`. It has been applied only to a throwaway local PostgreSQL 16 for
-validation.
+schema';`. Applied to production and recorded as `20260923043554`; the
+repository file keeps its own version and the mismatch is left untouched
+(CLAUDE.md §0).
 
 `20260923180000_create_article_check_units.sql` adds article-level
 fact-check results for Complete Article Assembly (Stage 5, milestone C4):
@@ -284,8 +311,7 @@ nothing; the three helpers are executable by no API role. No existing
 table, column, function or grant is changed; the draft fact-check and the
 publication proposals are not touched. Apply it after `20260923120000`
 (applied in production as `20260923043554`), then `NOTIFY pgrst, 'reload
-schema';`. It has been applied only to a throwaway local PostgreSQL 16 for
-validation.
+schema';`. Applied to production and recorded.
 
 `20260924120000_create_article_approvals.sql` adds the article approval
 gate (Stage 5, milestone C5): `nexra_article_approvals`, append-only
@@ -306,8 +332,8 @@ complete, digest equal), the topic decision and unresolved placeholders,
 then writes the approval row and the parent's `approved` status and
 pointer together. `service_role` gets SELECT on the table and EXECUTE on
 that function, nothing else; `anon` and `authenticated` get nothing. Apply
-it after `20260923180000`, then `NOTIFY pgrst, 'reload schema';`. It has
-been applied only to a throwaway local PostgreSQL 16 for validation.
+it after `20260923180000`, then `NOTIFY pgrst, 'reload schema';`. Applied
+to production and recorded.
 
 `20260925120000_create_article_publication_proposals.sql` adds the article
 publication proposal (Stage 5, milestone C6, record-only):
@@ -339,9 +365,9 @@ approvals is now refused by PostgreSQL (0A000) before the C5 guard. No
 existing table, column, function or grant is changed. A proposal publishes
 nothing and writes nowhere outside this database. Apply it after
 `20260924120000`, then `NOTIFY pgrst, 'reload schema';`. Its header calls
-the draft/article slug race a known gap; `20260926120000` closes it. It has
-been applied only to disposable local PostgreSQL 16 clusters (the harness in
-`tests/`); it has **not** been applied to production.
+the draft/article slug race a known gap; `20260926120000` closes it. Applied
+to production and recorded (`supabase migration repair --status applied
+20260925120000 --linked`); the harness in `tests/` covers it locally.
 
 `20260926120000_publication_proposals_cross_table_slug_lock.sql` (decision
 D3, Option A) keeps at most one active proposal per destination and slug
@@ -361,8 +387,8 @@ setting changes. A preflight block refuses to apply the migration while
 any destination and slug is active in both tables. The protection holds
 only while both triggers stay enabled; a superuser who disables triggers
 bypasses it. Apply it after `20260925120000`, then `NOTIFY pgrst, 'reload
-schema';`. It has been applied only to disposable local PostgreSQL 16
-clusters; it has **not** been applied to production.
+schema';`. Applied to production and recorded after a read-only preflight
+(0 cross-table duplicates).
 
 ## Search Console snapshots
 
@@ -387,11 +413,10 @@ constraints check the shape for any writer. The project-to-property mapping is
 the server's private configuration (`SEARCH_CONSOLE_PROPERTIES`) and is not
 checked by the database. `service_role` gets SELECT on the table and EXECUTE
 on that function, nothing else; `anon` and `authenticated` get nothing. No
-existing object is changed. Nothing reads or writes this table yet: the
-capture module and worker step are later checkpoints. Apply it after
-`20260926120000`, then `NOTIFY pgrst, 'reload schema';`. It has been applied
-only to disposable local PostgreSQL 16 clusters; it has **not** been applied
-to production.
+existing object is changed. The scheduled worker's capture step writes it
+and the history, query × page and keyword readers read it. Apply it after
+`20260926120000`, then `NOTIFY pgrst, 'reload schema';`. Applied to
+production and recorded; first rows captured 25 Sep.
 
 ## Search Console query × page rows
 
@@ -415,8 +440,8 @@ otherwise inserts every pair in one statement and answers `created` with the
 count. At most 250 rows per project per property per day. `service_role` gets
 SELECT on the table and EXECUTE on that function, nothing else; RLS on with no
 policies; no existing object is changed. Apply it after `20260929120000`, then
-`NOTIFY pgrst, 'reload schema';`. It has been applied only to disposable local
-PostgreSQL 16 clusters; it has **not** been applied to production.
+`NOTIFY pgrst, 'reload schema';`. Applied to production and recorded; first set
+of 10 pairs captured 25 Sep.
 
 ## Crawl findings
 
@@ -446,9 +471,9 @@ whole recording back. No column exists for indexation, vitals, rankings,
 traffic or volume. `service_role` gets SELECT on both tables and EXECUTE on
 that function, nothing else; `anon` and `authenticated` get nothing. No
 existing object is changed, and the unprefixed crawl subsystem is not named.
-Apply it after `20260927120000`, then `NOTIFY pgrst, 'reload schema';`. It
-has been applied only to disposable local PostgreSQL 16 clusters; it has
-**not** been applied to production.
+Apply it after `20260927120000`, then `NOTIFY pgrst, 'reload schema';`.
+Applied to production and recorded; production holds recorded reports at
+rule version 3.
 
 ## Crawl signals
 
@@ -468,8 +493,8 @@ never zero or false. `service_role`'s existing table-level privileges cover
 the new columns. Apply it after `20260928120000`, then
 `NOTIFY pgrst, 'reload schema';`. **The application built from T5 must be
 deployed only after this migration is applied**: its page and link inserts
-name the new columns. It has been applied only to disposable local PostgreSQL
-16 clusters; it has **not** been applied to production.
+name the new columns. Applied to production and recorded before the T5
+application was deployed.
 
 ## Crawl content signals
 
@@ -489,8 +514,8 @@ recorded", never zero or false. `service_role`'s existing table-level
 privileges cover the new columns. Apply it after `20260930120000`, then
 `NOTIFY pgrst, 'reload schema';`. **The application built from M2 must be
 deployed only after this migration is applied**: its page insert names the
-new columns. It has been applied only to disposable local PostgreSQL 16
-clusters; it has **not** been applied to production.
+new columns. Applied to production and recorded before the M2 application
+was deployed (CLAUDE.md M2 notes).
 
 ## Crawl finding triage
 
@@ -508,9 +533,8 @@ advisory lock per project and key), answering `set` with the previous status,
 EXECUTE on that function only; RLS on, no policies. The findings tables are
 not touched: no column, grant, trigger or policy changes. Apply it after
 `20261001120000`, then `NOTIFY pgrst, 'reload schema';`. **The application
-built from M3 must be deployed only after this migration is applied.** It has
-been applied only to disposable local PostgreSQL 16 clusters; it has **not**
-been applied to production.
+built from M3 must be deployed only after this migration is applied.**
+Applied to production and recorded; one triage decision recorded.
 
 ## Agent tasks (Project Manager real task core)
 
@@ -534,7 +558,8 @@ No update, delete or truncate path exists in this checkpoint: guard triggers
 refuse them for every caller. RLS is on with no policies; `service_role`
 holds SELECT on the table and EXECUTE on the create function only; `anon`
 and `authenticated` hold nothing. Nothing here dispatches an agent, queues a
-run or changes a page. Harness suite `tasks` (80 assertions).
+run or changes a page. Harness suite `tasks` (80 assertions). Applied to
+production and recorded; one real task recorded.
 
 ## Agent task workflow (status, owner, handoff, history)
 
@@ -571,7 +596,8 @@ any update outside those functions; there is still no UPDATE grant. RLS on,
 no policies; `service_role` gains SELECT on the events table and EXECUTE on
 the four functions. None of this creates or executes a run: a handoff's one
 run is created by the application through the existing run path. Harness
-suite `task-workflow` (150 assertions). **Not applied to production.**
+suite `task-workflow` (150 assertions). Applied to production and recorded;
+production verified on task `30e79092…` (eight events).
 
 ## Crawls
 

@@ -4,26 +4,47 @@ Professional, agency-grade AI SEO platform. This file defines the operating rule
 project. Read it before writing any code.
 
 **Current stage: Project Manager task workflow (status transitions, owner changes, specialist
-handoff, event history), local development.
+handoff, event history), merged and production verified end-to-end; next: Phase 1 baseline truth
+and gates (see §14).
 C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3, M4 and M5 are complete, merged and
-deployed (M5: PR #17, `62ae593`, deployment `dpl_Ck286bMi6dkewMgPV2JRH3HBggv8`, one production
-project Director run pending approval); M2 is production verified on crawl `3398ff1a…`; M3 (PR #14, `db7afdb`, migration
-`20261002120000` applied and recorded) is deployed with its browser verification pending; M4
-(PR #15, `3510493`, and the selector fix PR #16, `220c732`) is deployed and production verified on
-search-query-review run `73f38c16…`. The P4c first live query × page capture is pending the next
-scheduled worker run. The task core is implemented and verified locally only (see §0).**
+deployed (M5: PR #17, `62ae593`, deployment `dpl_Ck286bMi6dkewMgPV2JRH3HBggv8`; one production
+project Director run completed on 26 Sep after an earlier refusal; browser verification of the
+panel pending); M2 is production verified on crawl `3398ff1a…` and its On-Page bound on two
+completed reviews; M3 (PR #14, `db7afdb`, migration `20261002120000` applied and recorded) is
+deployed, one triage decision recorded in production, browser verification pending; M4 (PR #15,
+`3510493`, and the selector fix PR #16, `220c732`) is deployed and production verified on
+search-query-review run `73f38c16…`. The scheduled snapshot capture is production verified (two
+connected snapshots, 25 and 26 Sep) and P4c captured its first 10 query × page pairs. The task
+core and task workflow are merged and production verified (see §0).**
 
 ---
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `f28cd35e554033aed59b841a200fba8254a905d0` (merge of PR #3,
-`claude/c6-article-proposal-db` at `d6025ce`, which delivered C6 and D3; the previous `master`
-was `7fb652a`, the C6 scope docs; the C5 merge, PR #2, is
-`304ac1461860119f7a4fd47f94369de0a0894d9a`).
+GitHub `master`: `2e8116ce1bb07e63a384f9541efb4d4334d220f7` (merge of PR #22,
+`claude/fix-intake-review-output-bound` at `85e6b1b`; preceded by PR #21 `073bf85e…` (handoff-run
+restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge, PR #3, is `f28cd35e…`;
+the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_HusNWgcGQx8xu5vc2Co8d5QNskxh`, READY, built from `master` at
-`f28cd35`, serving `nexra-seo-command-center.vercel.app`.
+Production deployment: `dpl_5fzqndKaWWWHUGs1VuuR146ATwmA`, READY, built from `master` at
+`2e8116ce`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_3NGboYJ6CKGKxVCFrYtRU88umZWH` at `073bf85e`).
+
+**Phase 1 verification facts (26 Sep, read-only production reads):**
+
+- Scheduled snapshot capture verified: two connected `nexra-agency` snapshots, windows ending
+  21 and 22 Sep, captured 25 and 26 Sep (`source: scheduled`).
+- P4c first capture verified: 10 query × page pairs for `nexra-agency`, captured 25 Sep.
+- M5: one `project-priority-review` run completed on 26 Sep 04:53 UTC, after the refused
+  `d2cbdcc7…`.
+- M2 On-Page bound: two `on-page-review` runs completed under the bound (latest 25 Sep 13:06 UTC).
+- M3: one finding triage decision recorded in production through the triage route.
+- Project Manager workflow end-to-end: task `30e79092…`, events seq 7–8 (`handoff-requested`,
+  `handoff-run-linked`), run `be1b692e…` queued with `sourceTaskId`, restored into the panel,
+  executed by operator Run Now, one completed attempt (`claude-opus-5`, 1,552-character screened
+  summary), no duplicate run, no provenance leak, task unchanged.
+- PR #20 merged as `47fae75d…`; PR #21 as `073bf85e…` (deployment `dpl_3NGboYJ6…`); PR #22 as
+  `2e8116ce…` (deployment `dpl_5fzqnd…`).
 
 **Completed content-workflow stages:**
 
@@ -103,15 +124,20 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** the Project Manager task workflow, implemented and verified locally on branch
-`claude/project-manager-task-workflow` (from `master` `3121ff3`, the PR #19 merge). The task core
-(PR #18, `6e345c5`; migration `20261003120000` applied to production; one real backlog task on
-`nexra-agency`, production verified) is its baseline. Nothing is pushed, no PR is open, nothing is
-deployed, and the migration `20261004120000_agent_task_workflow.sql` is **not applied** to
-production. Each further step (push, PR, applying the migration, merge) starts only with explicit
-user approval.
+**Current work:** none open. The Project Manager task workflow (branch
+`claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
+PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
+production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
+(`2e8116ce…`) bounded the intake review to 1,300 characters. The task core (PR #18, `6e345c5`;
+migration `20261003120000` applied to production; one real backlog task on `nexra-agency`,
+production verified) is its baseline. Production verified end-to-end on task `30e79092…`:
+handoff-requested and handoff-run-linked events (seq 7–8), queued run `be1b692e…` with
+`sourceTaskId`, panel restore, operator Run Now, one completed grounded attempt (1,552-character
+screened summary), no duplicate run, no provenance leak, task unchanged. The earlier handoff run
+`1d27b114…` failed `rejected-output` under the 1,500-character ask and was not retried. Each
+further step starts only with explicit user approval.
 
-**Task workflow (local only):** migration `20261004120000` adds `nexra_agent_task_events`
+**Task workflow (merged, deployed, production verified):** migration `20261004120000` adds `nexra_agent_task_events`
 (append-only: `created` by trigger and backfilled, `status-changed`, `owner-changed`,
 `handoff-requested`, `handoff-run-linked`; identity `seq` order; guards refuse update, delete,
 truncate) and four `security definer` functions, each taking the project beside the task and
@@ -132,7 +158,7 @@ run path with the task id as provenance and executes nothing; supported owners a
 (`search-query-review`, `30d`) and Analytics & Learning (`performance-review`, `30d`); the other
 six are deferred and show *Handoff not supported yet*. Harness suite `task-workflow` (150).
 
-**Task core (local only):** an audit found every Project Manager tab modelled and no task table.
+**Task core (merged, deployed, production verified):** an audit found every Project Manager tab modelled and no task table.
 Migration `20261003120000` adds `nexra_agent_tasks`: one row per operator-approved task — project,
 title (1–200), owning registry agent (twelve ids restated in a CHECK, drift-tested), status (seven
 values; new rows `backlog`), priority (four; default `medium`), creator, timestamps, and always a
@@ -147,8 +173,9 @@ section on the Project Manager's Tasks tab, labelled live, above the board now l
 No automatic creation, no assignment, no agent execution. Harness suite `tasks` (80 assertions).
 
 **M5 (merged, deployed):** PR #17 merged as `62ae593`; deployment `dpl_Ck286bMi6dkewMgPV2JRH3HBggv8`
-READY; no migration. One production `project-priority-review` run and the browser verification of the
-*Project Director review* panel remain pending, each under its own approval.
+READY; no migration. One production `project-priority-review` run completed on 26 Sep (after the
+refused `d2cbdcc7…`, see below); the browser verification of the *Project Director review* panel
+remains pending.
 
 **M5 (as delivered):** a gap audit found the T6 single-run hand-off complete (one upstream run by id,
 project-checked, labelled, OBSERVED/PROPOSED separation, output screening, provenance on screen, run
@@ -201,20 +228,21 @@ predicted gain. A persisted operator-curated keyword entity and AI-assisted inte
 classification are deferred.
 
 **M3 (merged, deployed):** PR #14 merged as `db7afdb`; migration `20261002120000` applied and
-recorded; deployment `dpl_4bSxM9oBQHTA4auwToyRVRd1cR1v` READY; the triage table holds 0 rows;
-browser verification of the *Observed findings* section is pending.
+recorded; deployment `dpl_4bSxM9oBQHTA4auwToyRVRd1cR1v` READY; the triage table holds one operator
+decision recorded through the triage route; browser verification of the *Observed findings*
+section is not yet recorded.
 
 **M2 (merged, deployed, production verified):** PR #12 merged as `3b74d99`; migration
 `20261001120000` applied and recorded; deployment `dpl_HWMCwJTSWtJdwYAgVLtuMez6D8T7`; the fresh
 crawl `3398ff1a-59d7-479f-b5e9-44bee4a6ae99` recorded every M2 signal on its five fetched pages
 and a rule-version-3 report. The first On-Page review over it was refused as `rejected-output`;
 PR #13 (`6760cfc`, deployment `dpl_3RHPiV2PKZ9hRhLgUPKbAbDTQdw5`) bounds the On-Page answer to four
-findings and 1,500 characters; one operator-run On-Page review is the pending verification.
+findings and 1,500 characters; two On-Page reviews completed under the bound (latest 25 Sep),
+which is the verification.
 
-**M1 P4c (merged, deployed):** see the M1 notes below; production verification of its first live
-capture is pending.
-
-**M1 P4c (local only):** one additive migration, `nexra_search_console_query_pages` — one immutable
+**M1 P4c (merged, deployed, production verified: the first 10 query × page pairs for
+`nexra-agency` were captured by the scheduled worker beside the 25 Sep snapshot):** one additive
+migration, `nexra_search_console_query_pages` — one immutable
 row per project, property, 30-day window end, query and page with only clicks, impressions, CTR and
 position; at most 250 pairs per capture, written as one set by
 `nexra_search_console_query_pages_record` (`security definer`, advisory lock per window, `exists`
@@ -230,7 +258,7 @@ for `search-query-review` and `performance-review` only when pair evidence exist
 cannibalisation, a ranking, a search volume, a difficulty, a SERP feature, an indexation state, a
 cause or an owned query. Harness suites `gsc-pairs` (94 assertions) and `gsc-pairs-races` (P1–P3).
 
-**M1 CP1a (local only):** migration `20260927120000_create_search_console_snapshots.sql` —
+**M1 CP1a (merged, deployed, migration applied):** migration `20260927120000_create_search_console_snapshots.sql` —
 `nexra_search_console_snapshots`, one immutable row per project, property and 30-day window end
 (unique key; a repeated or concurrent capture answers `exists`); `connected` totals or a `no-data`
 row with nulls; top 25 queries and pages as JSONB checked by the immutable validator
@@ -238,12 +266,12 @@ row with nulls; top 25 queries and pages as JSONB checked by the immutable valid
 write is `nexra_search_console_snapshot_record` (`security definer`, empty `search_path`,
 window must end before today, unknown project answers `not-found`); `service_role` gets SELECT
 and EXECUTE on that function only; RLS on with no policies. The project-to-property mapping is
-the server's private configuration and is not checked by the database. Nothing reads or writes
-the table yet. Harness suites `gsc` (100 assertions) and `gsc-races` (G1–G3) added; the C5
-`security definer` inventory names the new function. The migration has **not** been applied to
-production; applying it is a separate §6 approval.
+the server's private configuration and is not checked by the database. The capture (CP1b/CP1c),
+history (P4a/P4d) and keyword inventory (M4) read and write it. Harness suites `gsc` (100
+assertions) and `gsc-races` (G1–G3) added; the C5 `security definer` inventory names the new
+function. The migration is applied and recorded in production.
 
-**M1 CP1b (local only):** `src/lib/search-console/snapshots/` — the server-side capture module
+**M1 CP1b (merged, deployed):** `src/lib/search-console/snapshots/` — the server-side capture module
 (`capture.ts`), its store contract, the Supabase store over the CP1a record function and the
 process wiring (`index.ts`), which nothing calls yet. It reads the 30-day window through the
 existing cached provider for each stored project the private `SEARCH_CONSOLE_PROPERTIES` mapping
@@ -253,15 +281,15 @@ property, from a fresh answer that names that exact property; a failed read is n
 row; rows stay within the table's limits; logs carry ids, outcomes and durations only. The worker,
 cron, UI, environment and migrations are unchanged. See `docs/BACKEND.md` (*Search Console*).
 
-**M1 CP1c (local only):** the scheduled `process` job (`src/lib/agent-runs/process-job.ts`,
+**M1 CP1c (merged, deployed, production verified):** the scheduled `process` job (`src/lib/agent-runs/process-job.ts`,
 `/api/worker/process`) runs the agent-run queue first, unchanged (5 runs, 240 s), then the
 snapshot capture in the time left: at most 45 s, never into a 15 s response margin, skipped as
 `time-budget` when under the capture's 3 s minimum, and cut off at a hard deadline of budget plus
 5 s grace (`timed-out`); a throwing capture answers `failed`. The queue's answer is returned
 whatever the capture does; the response gains one additive `snapshots` field with ids, outcome
 names and counts only. Worker credential, rate limit, cron schedule and `vercel.json` unchanged.
-The production migration is still not applied, so in production the capture would answer
-`store-failed` until it is; applying it is a separate §6 approval.
+Production verified: the scheduled worker recorded connected snapshots for `nexra-agency` on
+25 and 26 Sep (`source: scheduled`).
 
 C6 records an operator's intention to publish one exact approved article version. It records
 proposal state only.
@@ -573,7 +601,9 @@ Local Project → Localhost Testing → Git Checkpoint → GitHub → Vercel
 ```
 
 **Production hardening must happen before public deployment.** No deployment step is taken
-until the user asks for it and the hardening pass is complete.
+until the user asks for it and the hardening pass is complete. Since the production Vercel project
+auto-deploys every push to `master`, a merge into `master` is the deployment step and is approved
+as one (§0, §6).
 
 ## 12. Product Standards
 
@@ -690,23 +720,25 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Stage 5 / C4 | Complete Article Assembly: Article Check Units | Implementation complete; deployment and existing-result browser verification complete; new-parser live verification pending |
 | Stage 5 / C5 | Complete Article Assembly: Article Approval Gate | Complete, merged, deployed, production verified |
 | Stage 5 / C6 | Complete Article Assembly: Article Publication Proposal (record-only) | Complete, merged (`f28cd35`), migrations applied, deployed, production verified |
-| M1 / CP1a | Search Console snapshot persistence: database | Implemented and verified locally; not pushed; not applied to production |
-| M1 / CP1b | Search Console snapshot persistence: capture module | Implemented and verified locally; pushed to the feature branch; not merged |
-| M1 / CP1c | Search Console snapshot persistence: worker step | Complete, merged, deployed |
+| M1 / CP1a | Search Console snapshot persistence: database | Complete, merged, migration applied and recorded, deployed |
+| M1 / CP1b | Search Console snapshot persistence: capture module | Complete, merged, deployed |
+| M1 / CP1c | Search Console snapshot persistence: worker step | Complete, merged, deployed, production verified (scheduled snapshots 25 and 26 Sep) |
 | M1 / P4a–P4b, P4d | Stored history comparison, agent grounding, history API and panel section | Complete, merged (`fc2066d`), deployed |
-| M1 / P4c | Query × page Search Console intelligence | Complete, merged (`315323b`), migration applied and recorded, deployed; first live capture verification pending |
-| M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Complete, merged (`3b74d99`), migration applied and recorded, deployed, production verified; On-Page output bound merged (`6760cfc`) and deployed |
-| M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Complete, merged (`db7afdb`), migration applied and recorded, deployed; browser verification pending |
+| M1 / P4c | Query × page Search Console intelligence | Complete, merged (`315323b`), migration applied and recorded, deployed; first live capture verified (10 pairs, 25 Sep) |
+| M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Complete, merged (`3b74d99`), migration applied and recorded, deployed, production verified; On-Page output bound merged (`6760cfc`), deployed and verified on two completed reviews |
+| M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Complete, merged (`db7afdb`), migration applied and recorded, deployed; one triage decision recorded in production; browser verification pending |
 | M4 | Observed keyword intelligence: query inventory, lexical intent hints and groups, page mapping, fixed opportunity rules, Keywords panel, agent grounding | Complete, merged (`3510493`, selector fix `220c732`), deployed, production verified on run `73f38c16…`; no migration |
-| M5 | SEO Director project-level orchestration: deterministic multi-source selection, bounded bundle, deduplicated plan instructions, project Director panel | Complete, merged (`62ae593`), deployed; no migration; one production run pending approval |
+| M5 | SEO Director project-level orchestration: deterministic multi-source selection, bounded bundle, deduplicated plan instructions, project Director panel | Complete, merged (`62ae593`), deployed; no migration; one production run completed (26 Sep); panel browser verification pending |
 | PM task core | Persisted agent tasks: `nexra_agent_tasks`, create function, project-scoped API, Record as task from Director results and observed queries, Live tasks section | Complete, merged (`6e345c5`), migration `20261003120000` applied, deployed, production verified (one real backlog task) |
-| PM task workflow | Status transitions along a fixed map, owner changes, specialist handoff (one queued run, never executed here), append-only event history, task route, Live tasks controls | Implemented and verified locally; local commit; not pushed; migration `20261004120000` not applied |
+| PM task workflow | Status transitions along a fixed map, owner changes, specialist handoff (one queued run, never executed here), append-only event history, task route, Live tasks controls | Complete, merged (`47fae75d`), migration `20261004120000` applied and recorded, deployed; restore fix (`073bf85e`) and intake bound (`2e8116ce`) merged; production verified end-to-end on run `be1b692e…` |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: the Project Manager task
-workflow on its feature branch; pushing it, a PR, applying its migration and a merge start only with
-explicit approval. Work beyond it (handoff for the six deferred agents, cross-crawl finding history, a
-curated keyword entity and further Director sources) is undecided and is not planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: no feature branch open.
+Next, each under explicit approval: Phase 1 (documentation reconciliation, CI and security tests,
+pending browser verifications), then the Project Manager loop (handoff outcome read-back, handoff
+for the six deferred agents, task grounding and a task-plan review). Work beyond that (cross-crawl
+finding history, a curated keyword entity, further Director sources) is planned in the roadmap but
+not started.
 
 ## 15. Definition of Done
 
