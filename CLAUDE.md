@@ -21,14 +21,18 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `2e8116ce1bb07e63a384f9541efb4d4334d220f7` (merge of PR #22,
-`claude/fix-intake-review-output-bound` at `85e6b1b`; preceded by PR #21 `073bf85e…` (handoff-run
-restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge, PR #3, is `f28cd35e…`;
-the C5 merge, PR #2, is `304ac146…`).
+GitHub `master`: `97aa00183598cec0cd42345626db6cd4139afd70` (merge of PR #23,
+`claude/phase1-docs-reconciliation` at `0a06d27`, the Phase 1 documentation reconciliation;
+preceded by PR #22 `2e8116ce…` (intake bound), PR #21 `073bf85e…` (handoff-run restore) and PR #20
+`47fae75d…` (task workflow, `bdd541c`); the C6 merge, PR #3, is `f28cd35e…`; the C5 merge, PR #2,
+is `304ac146…`).
 
-Production deployment: `dpl_5fzqndKaWWWHUGs1VuuR146ATwmA`, READY, built from `master` at
-`2e8116ce`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_3NGboYJ6CKGKxVCFrYtRU88umZWH` at `073bf85e`).
+Production deployment: `dpl_88CT3mHwHUeYN9eyXGYca4vosS97`, READY, built from `master` at
+`97aa0018`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_5fzqndKaWWWHUGs1VuuR146ATwmA` at `2e8116ce`).
+
+**Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
+source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 

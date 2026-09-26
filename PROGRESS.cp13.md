@@ -10,7 +10,7 @@ Branch `claude/phase1-security-tests` from `97aa0018`. Delete this file in the f
 5. providers/config — `src/lib/agent-runs/provider-config.test.ts` — done (9 cases)
 
 ## Docs
-- CLAUDE.md §0 anchor update (master 97aa0018…, deployment dpl_88CT3m…, PR #23) — pending
+- CLAUDE.md §0 anchor update (master 97aa0018…, deployment dpl_88CT3m…, PR #23) — done
 
 ## Findings / questions
 - providers/anthropic.ts `classify`: a caller abort surfaces as the SDK's `APIUserAbortError` (an `APIError` with no status) and is answered `rejected`, while the source comment says an abort is treated as transient (`unavailable`). Not security-critical; the worker's own timeout/lease race decides first. Behaviour documented in `provider-responses.test.ts`, not changed.
