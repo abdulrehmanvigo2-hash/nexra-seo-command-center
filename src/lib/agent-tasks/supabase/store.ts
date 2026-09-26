@@ -1,16 +1,28 @@
 import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
-import { TASK_READ_DEFAULT_LIMIT, TASK_READ_LIMIT } from "@/lib/agent-tasks/contract";
+import { TASK_EVENT_READ_LIMIT, TASK_READ_DEFAULT_LIMIT, TASK_READ_LIMIT } from "@/lib/agent-tasks/contract";
 import type { AgentTaskStore } from "@/lib/agent-tasks/store-contract";
-import { createResultToOutcome, TASK_READ_COLUMNS, taskRowToTask, type AgentTasksDatabase } from "@/lib/agent-tasks/supabase/schema";
+import {
+  createResultToOutcome,
+  eventRowToEvent,
+  handoffLinkResultToOutcome,
+  handoffRequestResultToOutcome,
+  ownerResultToOutcome,
+  statusResultToOutcome,
+  TASK_EVENT_READ_COLUMNS,
+  TASK_READ_COLUMNS,
+  taskRowToTask,
+  type AgentTasksDatabase,
+} from "@/lib/agent-tasks/supabase/schema";
 
 /**
  * The task store over `nexra_agent_tasks`. A thin translation into Supabase
  * calls: the one database function and the table's constraints enforce the
  * provenance, the agent set, the status and priority sets and the title
- * length again for any caller. The only write is that function; the read is
- * bounded and scoped to one project.
+ * length again for any caller. The writes are the five database functions
+ * (create, set status, set owner, handoff request, handoff link); every
+ * read is bounded and scoped to one project.
  */
 
 export class AgentTaskStoreError extends Error {
@@ -53,6 +65,67 @@ export function createSupabaseAgentTaskStore(client: SupabaseClient<AgentTasksDa
       });
       if (error) throw new AgentTaskStoreError("create task", error);
       return createResultToOutcome(data);
+    },
+
+    async getForProject(projectId, taskId) {
+      const { data, error } = await client.from("nexra_agent_tasks").select(TASK_READ_COLUMNS).eq("project_id", projectId).eq("id", taskId).maybeSingle();
+      if (error) throw new AgentTaskStoreError("get task", error);
+      return data === null ? null : taskRowToTask(data);
+    },
+
+    async listEvents(projectId, taskId) {
+      const { data, error } = await client
+        .from("nexra_agent_task_events")
+        .select(TASK_EVENT_READ_COLUMNS)
+        .eq("project_id", projectId)
+        .eq("task_id", taskId)
+        .order("seq", { ascending: true })
+        .limit(TASK_EVENT_READ_LIMIT);
+      if (error) throw new AgentTaskStoreError("list task events", error);
+      return data.map(eventRowToEvent);
+    },
+
+    async setStatus(input) {
+      const { data, error } = await client.rpc("nexra_agent_task_set_status", {
+        p_project_id: input.projectId,
+        p_task_id: input.taskId,
+        p_status: input.status,
+        p_operator: input.operatorId,
+      });
+      if (error) throw new AgentTaskStoreError("set task status", error);
+      return statusResultToOutcome(data);
+    },
+
+    async setOwner(input) {
+      const { data, error } = await client.rpc("nexra_agent_task_set_owner", {
+        p_project_id: input.projectId,
+        p_task_id: input.taskId,
+        p_owning_agent: input.owningAgent,
+        p_operator: input.operatorId,
+      });
+      if (error) throw new AgentTaskStoreError("set task owner", error);
+      return ownerResultToOutcome(data);
+    },
+
+    async handoffRequest(input) {
+      const { data, error } = await client.rpc("nexra_agent_task_handoff_request", {
+        p_project_id: input.projectId,
+        p_task_id: input.taskId,
+        p_operator: input.operatorId,
+      });
+      if (error) throw new AgentTaskStoreError("request task handoff", error);
+      return handoffRequestResultToOutcome(data);
+    },
+
+    async handoffLink(input) {
+      const { data, error } = await client.rpc("nexra_agent_task_handoff_link", {
+        p_project_id: input.projectId,
+        p_task_id: input.taskId,
+        p_run_id: input.runId,
+        p_operator: input.operatorId,
+      });
+      if (error) throw new AgentTaskStoreError("link task handoff run", error);
+      return handoffLinkResultToOutcome(data);
     },
   };
 }

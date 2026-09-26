@@ -536,6 +536,43 @@ holds SELECT on the table and EXECUTE on the create function only; `anon`
 and `authenticated` hold nothing. Nothing here dispatches an agent, queues a
 run or changes a page. Harness suite `tasks` (80 assertions).
 
+## Agent task workflow (status, owner, handoff, history)
+
+`20261004120000_agent_task_workflow.sql` adds `nexra_agent_task_events`, the
+append-only history of a task — `seq` (identity, the write order), task,
+project, `event_type` (`created`, `status-changed`, `owner-changed`,
+`handoff-requested`, `handoff-run-linked`), the statuses or agents before
+and after where the type has them, the linked `agent_runs` id on
+`handoff-run-linked` only (a shape CHECK ties each type to exactly its
+fields), the actor and the time; update, delete and truncate are refused
+for every caller. An AFTER INSERT trigger on `nexra_agent_tasks` writes the
+`created` event, and the migration backfills one for every task recorded
+before it, so `nexra_agent_task_create` is unchanged. Four `security
+definer` functions (empty `search_path`, each taking the project id beside
+the task id, each locking the task row, updating only its own fields under a
+transaction-local flag and appending one event): `nexra_agent_task_set_status`
+moves a task along the fixed map — `backlog` → ready, blocked, cancelled;
+`ready` → in-progress, blocked, cancelled; `in-progress` → review, blocked,
+cancelled; `blocked` → ready, in-progress, cancelled; `review` → in-progress,
+completed, blocked; `completed` and `cancelled` are terminal — answering
+`transitioned`, `task-not-found`, `same-status`, `terminal` or
+`transition-not-allowed` (the map itself is the immutable
+`nexra_agent_task_transition_allowed`); `nexra_agent_task_set_owner` sets one
+of the twelve registry agents (`owner-changed`, `task-not-found`,
+`same-owner`, `terminal`); `nexra_agent_task_handoff_request` records an
+operator's request to hand the task to its owning agent and refuses
+`handoff-active` while a linked run is still queued or running;
+`nexra_agent_task_handoff_link` links the run the application created,
+which must be the same project's, the owning agent's, and carry the task id
+as `sourceTaskId` in its input (`linked`, `task-not-found`, `run-not-found`,
+`already-linked`). The task update guard is replaced: it now refuses any
+change to id, project, title, source, priority, creator or created_at, and
+any update outside those functions; there is still no UPDATE grant. RLS on,
+no policies; `service_role` gains SELECT on the events table and EXECUTE on
+the four functions. None of this creates or executes a run: a handoff's one
+run is created by the application through the existing run path. Harness
+suite `task-workflow` (150 assertions). **Not applied to production.**
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

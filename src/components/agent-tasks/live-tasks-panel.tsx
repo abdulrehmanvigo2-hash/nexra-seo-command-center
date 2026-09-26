@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { TaskRowControls } from "@/components/agent-tasks/task-row-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -25,9 +26,11 @@ import type { ProjectOption } from "@/lib/projects/selection";
  *
  * This is the one live section on an otherwise modelled screen, and it says
  * so. It reads only what the store holds — no fixture task, count or
- * handoff is mixed in — and it offers no control: a task is recorded from
- * the record it came from (a Director result, an observed query), and
- * nothing here moves, assigns or runs one.
+ * handoff is mixed in. A task is recorded from the record it came from (a
+ * Director result, an observed query); here an operator moves its status
+ * along the fixed map, changes its owning agent, hands it off (one queued
+ * run for that agent, executed by nothing on this screen) and reads its
+ * history. Each control is one confirmed write to the task endpoint.
  */
 
 type Load =
@@ -37,7 +40,7 @@ type Load =
   | { readonly status: "failed" }
   | { readonly status: "loaded"; readonly tasks: readonly AgentTask[] };
 
-const COLUMNS = 6;
+const COLUMNS = 7;
 
 export function LiveTasksPanel({ projects }: { projects: readonly ProjectOption[] }) {
   const [projectId, setProjectId] = useState<string>(() => projects.find((project) => project.measured)?.id ?? projects[0]?.id ?? "");
@@ -64,6 +67,8 @@ export function LiveTasksPanel({ projects }: { projects: readonly ProjectOption[
   }, [projectId, refreshKey]);
 
   const projectName = projects.find((project) => project.id === projectId)?.name ?? projectId;
+  const replaceTask = (changed: AgentTask) =>
+    setLoad((current) => (current.status === "loaded" ? { status: "loaded", tasks: current.tasks.map((task) => (task.id === changed.id ? changed : task)) } : current));
 
   return (
     <Panel aria-busy={load.status === "loading" || undefined}>
@@ -104,6 +109,7 @@ export function LiveTasksPanel({ projects }: { projects: readonly ProjectOption[
               <TableHeaderCell>Priority</TableHeaderCell>
               <TableHeaderCell>Source</TableHeaderCell>
               <TableHeaderCell>Recorded</TableHeaderCell>
+              <TableHeaderCell>Actions</TableHeaderCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -113,7 +119,7 @@ export function LiveTasksPanel({ projects }: { projects: readonly ProjectOption[
                   <EmptyState size="sm" icon="inbox" title="No live tasks yet" description={`No operator has recorded a task for ${projectName}. Record one from a completed SEO Director review or an observed query.`} />
                 </TableEmptyRow>
               ) : (
-                load.tasks.map((task) => <LiveTaskRow key={task.id} task={task} />)
+                load.tasks.map((task) => <LiveTaskRow key={task.id} task={task} onChanged={replaceTask} />)
               )
             ) : (
               <TableSkeletonRows columns={COLUMNS} rows={3} />
@@ -123,15 +129,15 @@ export function LiveTasksPanel({ projects }: { projects: readonly ProjectOption[
       )}
       <PanelFooter>
         <span>
-          Read-only here. A task is a record of an operator&apos;s intention; nothing on this screen assigns it, moves it or runs an agent. At most{" "}
-          {TASK_READ_DEFAULT_LIMIT} newest tasks are shown.
+          A task is a record of an operator&apos;s intention. Status moves only along the fixed map; an owner is chosen, never inferred; a handoff queues one run
+          for the owning agent and executes nothing — the scheduled worker or a separate Run now does. At most {TASK_READ_DEFAULT_LIMIT} newest tasks are shown.
         </span>
       </PanelFooter>
     </Panel>
   );
 }
 
-function LiveTaskRow({ task }: { task: AgentTask }) {
+function LiveTaskRow({ task, onChanged }: { task: AgentTask; onChanged: (task: AgentTask) => void }) {
   const status = TASK_STATUS_META[task.status];
   const priority = TASK_PRIORITY_META[task.priority];
   const source = TASK_SOURCE_META[task.sourceKind];
@@ -161,6 +167,9 @@ function LiveTaskRow({ task }: { task: AgentTask }) {
       </TableCell>
       <TableCell className="whitespace-nowrap text-fg-muted">
         {formatFullDate(task.createdAt)} {formatTimeUtc(task.createdAt)}
+      </TableCell>
+      <TableCell className="min-w-[16rem]">
+        <TaskRowControls task={task} onChanged={onChanged} />
       </TableCell>
     </TableRow>
   );

@@ -220,3 +220,149 @@ export function agentTasksUrl(projectId: string, options: { readonly status?: Ag
   if (options.limit !== undefined) params.set("limit", String(options.limit));
   return `/api/agent-tasks?${params.toString()}`;
 }
+
+// ---------------------------------------------------------------------------
+// Workflow (migration 20261004120000): status transitions, owner changes,
+// handoff, and the immutable event history behind each.
+
+/** The statuses nothing follows. */
+export const TASK_TERMINAL_STATUSES = ["completed", "cancelled"] as const satisfies readonly AgentTaskStatus[];
+
+/**
+ * The fixed transition map, exactly as `nexra_agent_task_transition_allowed`
+ * restates it in SQL. The database decides; this copy lets the panel offer
+ * only the moves that can succeed.
+ */
+export const TASK_TRANSITIONS: Readonly<Record<AgentTaskStatus, readonly AgentTaskStatus[]>> = {
+  backlog: ["ready", "blocked", "cancelled"],
+  ready: ["in-progress", "blocked", "cancelled"],
+  "in-progress": ["review", "blocked", "cancelled"],
+  blocked: ["ready", "in-progress", "cancelled"],
+  review: ["in-progress", "completed", "blocked"],
+  completed: [],
+  cancelled: [],
+};
+
+export function isTerminalTaskStatus(status: AgentTaskStatus): boolean {
+  return (TASK_TERMINAL_STATUSES as readonly string[]).includes(status);
+}
+
+export function canTransitionTask(from: AgentTaskStatus, to: AgentTaskStatus): boolean {
+  return TASK_TRANSITIONS[from].includes(to);
+}
+
+export const TASK_EVENT_TYPES = ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked"] as const;
+export type AgentTaskEventType = (typeof TASK_EVENT_TYPES)[number];
+
+export function isTaskEventType(value: unknown): value is AgentTaskEventType {
+  return typeof value === "string" && (TASK_EVENT_TYPES as readonly string[]).includes(value);
+}
+
+/** One row of `nexra_agent_task_events`: a change an operator made, never edited. */
+export type AgentTaskEvent = {
+  readonly id: string;
+  /** The order the events were written in. */
+  readonly seq: number;
+  readonly taskId: string;
+  readonly projectId: string;
+  readonly type: AgentTaskEventType;
+  readonly fromStatus: AgentTaskStatus | null;
+  readonly toStatus: AgentTaskStatus | null;
+  readonly fromAgent: TaskOwningAgent | null;
+  readonly toAgent: TaskOwningAgent | null;
+  /** The run a handoff produced, on `handoff-run-linked` only. */
+  readonly runId: string | null;
+  readonly actor: string;
+  readonly createdAt: string;
+};
+
+export const TASK_EVENT_META: Readonly<Record<AgentTaskEventType, string>> = {
+  created: "Recorded",
+  "status-changed": "Status changed",
+  "owner-changed": "Owner changed",
+  "handoff-requested": "Handoff requested",
+  "handoff-run-linked": "Handoff run queued",
+};
+
+/** The most events one read returns; a task sees far fewer. */
+export const TASK_EVENT_READ_LIMIT = 200;
+
+export type ChangeTaskStatusInput = { readonly projectId: string; readonly taskId: string; readonly status: AgentTaskStatus; readonly operatorId: string };
+export type ChangeTaskStatusOutcome =
+  | { readonly status: "transitioned"; readonly task: AgentTask; readonly event: AgentTaskEvent }
+  /** No such task, or another project's. Never says which. */
+  | { readonly status: "task-not-found" }
+  | { readonly status: "same-status"; readonly task: AgentTask }
+  | { readonly status: "terminal"; readonly task: AgentTask }
+  | { readonly status: "transition-not-allowed"; readonly task: AgentTask };
+
+export type ChangeTaskOwnerInput = { readonly projectId: string; readonly taskId: string; readonly owningAgent: TaskOwningAgent; readonly operatorId: string };
+export type ChangeTaskOwnerOutcome =
+  | { readonly status: "owner-changed"; readonly task: AgentTask; readonly event: AgentTaskEvent }
+  | { readonly status: "task-not-found" }
+  | { readonly status: "same-owner"; readonly task: AgentTask }
+  | { readonly status: "terminal"; readonly task: AgentTask };
+
+export type HandoffRequestInput = { readonly projectId: string; readonly taskId: string; readonly operatorId: string };
+export type HandoffRequestOutcome =
+  | { readonly status: "requested"; readonly task: AgentTask; readonly event: AgentTaskEvent }
+  | { readonly status: "task-not-found" }
+  | { readonly status: "terminal"; readonly task: AgentTask }
+  /** A run this task was handed off to is still queued or running. */
+  | { readonly status: "handoff-active"; readonly task: AgentTask; readonly runId: string };
+
+export type HandoffLinkInput = { readonly projectId: string; readonly taskId: string; readonly runId: string; readonly operatorId: string };
+export type HandoffLinkOutcome =
+  | { readonly status: "linked"; readonly task: AgentTask; readonly runId: string; readonly event: AgentTaskEvent }
+  | { readonly status: "task-not-found" }
+  /** No such run, another project's, another agent's, or one without this task in its input. Never says which. */
+  | { readonly status: "run-not-found" }
+  | { readonly status: "already-linked"; readonly task: AgentTask; readonly runId: string };
+
+export const TASK_ACTIONS = ["status", "owner", "handoff"] as const;
+export type TaskActionName = (typeof TASK_ACTIONS)[number];
+
+export type TaskActionRequest =
+  | { readonly ok: true; readonly projectId: string; readonly action: "status"; readonly status: AgentTaskStatus }
+  | { readonly ok: true; readonly projectId: string; readonly action: "owner"; readonly owningAgent: TaskOwningAgent }
+  | { readonly ok: true; readonly projectId: string; readonly action: "handoff" }
+  | { readonly ok: false; readonly error: "invalid" };
+
+/**
+ * An action request as the task route receives it: `{ project, action,
+ * status? | owningAgent? }` and nothing else. A handoff names no agent, no
+ * task type and no input — the server maps the task's owning agent to the
+ * one executable task type it supports, or refuses.
+ */
+export function parseTaskActionRequest(body: unknown): TaskActionRequest {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return { ok: false, error: "invalid" };
+  const fields = body as Record<string, unknown>;
+  const { project, action } = fields;
+  if (typeof project !== "string" || project.length > 64 || !PROJECT_ID.test(project)) return { ok: false, error: "invalid" };
+  const keys = Object.keys(fields);
+  switch (action) {
+    case "status": {
+      if (keys.length !== 3 || !keys.includes("status") || !isTaskStatus(fields.status)) return { ok: false, error: "invalid" };
+      return { ok: true, projectId: project, action, status: fields.status };
+    }
+    case "owner": {
+      if (keys.length !== 3 || !keys.includes("owningAgent") || !isTaskOwningAgent(fields.owningAgent)) return { ok: false, error: "invalid" };
+      return { ok: true, projectId: project, action, owningAgent: fields.owningAgent };
+    }
+    case "handoff": {
+      if (keys.length !== 2) return { ok: false, error: "invalid" };
+      return { ok: true, projectId: project, action };
+    }
+    default:
+      return { ok: false, error: "invalid" };
+  }
+}
+
+export function isTaskId(value: unknown): value is string {
+  return typeof value === "string" && UUID.test(value);
+}
+
+/** One task and its history, at the task endpoint. */
+export function agentTaskUrl(taskId: string, projectId: string): string {
+  return `/api/agent-tasks/${encodeURIComponent(taskId)}?${new URLSearchParams({ project: projectId }).toString()}`;
+}

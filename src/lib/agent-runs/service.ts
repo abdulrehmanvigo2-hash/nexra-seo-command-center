@@ -119,9 +119,19 @@ export type RuntimeStatusResult =
   | { readonly ok: true; readonly status: RuntimeStatus }
   | AgentRunFailure;
 
+/**
+ * Server-side provenance a run may carry beside its validated input. Never
+ * part of the request body: a task handoff names the task it came from, and
+ * the run path stores it as `sourceTaskId` in the input so the run row says
+ * where it came from and the task's link can be verified.
+ */
+export type CreateRunOptions = {
+  readonly sourceTaskId?: string;
+};
+
 export type AgentRunService = {
   readonly storesRuns: boolean;
-  createRun(operatorId: string, request: unknown): Promise<CreateAgentRunResult>;
+  createRun(operatorId: string, request: unknown, options?: CreateRunOptions): Promise<CreateAgentRunResult>;
   /** Claims a queued run, runs one attempt under a lease, and records how it ended. */
   executeRun(runId: string): Promise<AgentRunResult>;
   /** Claims and runs the oldest queued run no other worker holds. */
@@ -228,9 +238,12 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
   return {
     storesRuns: store.storesRuns,
 
-    async createRun(operatorId, request) {
+    async createRun(operatorId, request, options = {}) {
       if (!store.storesRuns) return UNAVAILABLE;
       if (!isRunId(operatorId)) throw new Error("createRun: the operator id is not a user id.");
+      if (options.sourceTaskId !== undefined && !isRunId(options.sourceTaskId)) {
+        throw new Error("createRun: the source task id is not an id.");
+      }
 
       const body = plainObject(request);
       if (!body) return invalid("The request must be an object.");
@@ -253,7 +266,10 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
 
       const parsed = definition.parseInput(body.input);
       if (!parsed.ok) return invalid(parsed.error);
-      const storable = checkStorableJson(parsed.value);
+      // Provenance is added after the task type has parsed its own input, so
+      // no task type accepts it from a request and none can lose it.
+      const withProvenance = options.sourceTaskId === undefined ? parsed.value : { ...parsed.value, sourceTaskId: options.sourceTaskId.toLowerCase() };
+      const storable = checkStorableJson(withProvenance);
       if (!storable.ok) return invalid(STORABLE_PROBLEMS[storable.problem]);
 
       if ((await projects.getProjectById(projectId)) === null) {

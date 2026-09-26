@@ -2274,6 +2274,69 @@ modelled. No task is created automatically, no agent is assigned or run by a
 task existing, and no status change path exists yet. Harness suite `tasks`
 (80 assertions); focused tests under `src/lib/agent-tasks`.
 
+### Agent task workflow: status, owner, handoff, history (local only)
+
+The task core recorded a task and refused every later change. Migration
+`20261004120000` adds the smallest workflow that keeps an operator in front
+of each change (`supabase/README.md`, *Agent task workflow*): an append-only
+`nexra_agent_task_events` history (`created` by trigger and backfilled,
+`status-changed`, `owner-changed`, `handoff-requested`, `handoff-run-linked`,
+ordered by an identity `seq`), the fixed transition map restated once in SQL
+and once in `TASK_TRANSITIONS` (`contract.ts`, drift-tested against the
+migration), and four `security definer` functions each taking the project
+beside the task, so a task of another project answers `task-not-found`, never
+which. `src/lib/agent-tasks` grows: the store contract and Supabase store gain
+`getForProject`, `listEvents` (by `seq`, at most 200), `setStatus`,
+`setOwner`, `handoffRequest` and `handoffLink` (one `rpc` each, answers checked
+field by field); the service gains `readTask`, `changeStatus`, `changeOwner`
+and `handoff`. `GET /api/agent-tasks/<id>?project=…` answers the task with its
+history; `POST /api/agent-tasks/<id>` takes exactly `{ project, action:
+"status", status }`, `{ project, action: "owner", owningAgent }` or
+`{ project, action: "handoff" }` (operator, same origin, sixty per operator per
+ten minutes; 404 `task-not-found`, 409 with the fixed code and the unchanged
+task for `same-status`, `terminal`, `transition-not-allowed`, `same-owner`,
+`handoff-active`, `handoff-unsupported`, `run-refused`).
+
+**Handoff.** A handoff creates at most one queued run for the task's owning
+agent and executes nothing; the scheduled worker or a separate *Run now* on
+the agent's run history does. Which task the agent is handed is the server's
+knowledge, never the browser's: `handoff.ts` maps an agent only when it has
+one own read-only review whose input the server fills without choosing a
+record — SEO Director → `project-priority-review`, Project Manager →
+`intake-review`, Research & Evidence → `evidence-pack-review`, Content
+Strategist → `content-plan-review` (no input), Keyword & Search Intent →
+`search-query-review` and Analytics & Learning → `performance-review` (the
+product's own `INVENTORY_RANGE_ID` window). Technical SEO, On-Page SEO, AI
+Visibility and Authority & Backlink (a chosen crawl), Market & Competitor
+Intelligence (a chosen competitor domain) and the Writer (a chosen plan run
+and section; a draft, not a review) are deferred: the panel says *Handoff not
+supported yet* and nothing is recorded. A drift test checks every mapping
+against the task-type definitions (the agent may run it, policy read-only,
+the input parses) and that no deferred agent has an own read-only task that
+would have parsed without a record. The flow is: the service reads the task
+and refuses an unsupported owner before writing; `handoffRequest` records the
+intention under the row lock (refused `handoff-active` while a linked run is
+queued or running); the existing `createRun` of the run service is called
+with a server-side `CreateRunOptions.sourceTaskId`, which is merged into the
+stored input after the task type has parsed its own (a request body carrying
+`sourceTaskId` is refused as an unknown field), so the run row says where it
+came from and the run path's own duplicate rule treats the same handoff twice
+as one run; `handoffLink` verifies the same project, the owning agent and the
+provenance and appends the link, once. A refused run path leaves the request
+in the history and answers `run-refused`. No specialist instruction changes.
+
+**UI.** The *Live tasks* panel (still *Live · persisted*, above the modelled
+board, which is unchanged) gains an *Actions* column with
+`task-row-controls.tsx`: *Change status* offers only the moves the map allows
+from the current status; *Change owner* offers the twelve registry agents;
+*Hand off* is enabled only for a mapped owner and opens a confirmation naming
+the task type the agent would be handed and that nothing runs on confirm, then
+*Confirm handoff* posts once and shows the queued run's id and status;
+*View history* reads the task endpoint and lists the events. A terminal task
+shows no control. Harness suite `task-workflow` (150 assertions); focused
+tests `contract`, `service`, `handoff`, `surface` under `src/lib/agent-tasks`
+and the provenance case in `agent-runs/create-run.test.ts`.
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`

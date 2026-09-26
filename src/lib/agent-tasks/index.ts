@@ -1,6 +1,7 @@
 import "server-only";
 
-import { createAgentTaskService, type AgentTaskService } from "@/lib/agent-tasks/service";
+import { agentRunService } from "@/lib/agent-runs";
+import { createAgentTaskService, type AgentTaskService, type HandoffRunCreator } from "@/lib/agent-tasks/service";
 import { unavailableAgentTaskStore } from "@/lib/agent-tasks/store-contract";
 import type { AgentTasksDatabase } from "@/lib/agent-tasks/supabase/schema";
 import { createSupabaseAgentTaskStore } from "@/lib/agent-tasks/supabase/store";
@@ -22,21 +23,35 @@ function storesInSupabase(): boolean {
 
 let service: AgentTaskService | null = null;
 
+/**
+ * A handoff's one run goes through the same run service the agent-runs
+ * routes use — same validation, same duplicate rule, same queue — with the
+ * task id as provenance. Resolved lazily so the run service is built only
+ * when a handoff happens.
+ */
+const handoffRuns: HandoffRunCreator = {
+  createRun(operatorId, request, options) {
+    return agentRunService().createRun(operatorId, request, options);
+  },
+};
+
 export function agentTaskService(): AgentTaskService {
   service ??= createAgentTaskService(
     storesInSupabase()
       ? createSupabaseAgentTaskStore(createSupabaseServerClient<AgentTasksDatabase>(readSupabaseServerConfig(process.env)))
       : unavailableAgentTaskStore,
+    storesInSupabase() ? handoffRuns : null,
   );
   return service;
 }
 
-type LimitName = "create" | "read";
+type LimitName = "create" | "read" | "action";
 
-/** Recording a task is an operator's deliberate act: thirty per operator per ten minutes, as for runs. */
+/** Recording or changing a task is an operator's deliberate act: thirty creates and sixty actions per operator per ten minutes, as for runs. */
 const LIMITS: Record<LimitName, { readonly limit: number; readonly windowSeconds: number }> = {
   create: { limit: 30, windowSeconds: 600 },
   read: { limit: 120, windowSeconds: 600 },
+  action: { limit: 60, windowSeconds: 600 },
 };
 
 export function agentTaskLimiter(name: LimitName): AsyncRateLimiter {

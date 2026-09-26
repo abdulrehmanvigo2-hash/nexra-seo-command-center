@@ -35,6 +35,52 @@ describe("the migration", () => {
   });
 });
 
+describe("the workflow migration", () => {
+  test("adds the append-only events table, four security definer functions with empty search_path, the narrowed guard, and grants nothing but SELECT and EXECUTE", async () => {
+    const sql = await read("../../../supabase/migrations/20261004120000_agent_task_workflow.sql");
+    assert.match(sql, /create table public\.nexra_agent_task_events/);
+    assert.match(sql, /seq bigint not null generated always as identity/);
+    assert.match(sql, /alter table public\.nexra_agent_task_events enable row level security;/);
+    assert.doesNotMatch(sql, /create policy/);
+    assert.match(sql, /grant select on table public\.nexra_agent_task_events to service_role;/);
+    assert.equal((sql.match(/^\s*grant /gm) ?? []).length, 5, "one table grant, four execute grants");
+    assert.doesNotMatch(sql, /grant (insert|update|delete)/i);
+    assert.equal((sql.match(/^security definer$/gm) ?? []).length, 4, "four security definer clauses; the header mentions the phrase once more");
+    for (const fn of ["nexra_agent_task_set_status", "nexra_agent_task_set_owner", "nexra_agent_task_handoff_request", "nexra_agent_task_handoff_link"]) {
+      assert.match(sql, new RegExp(`create function public\\.${fn}\\([\\s\\S]*?security definer\\s+set search_path = ''`), fn);
+      assert.match(sql, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to service_role;`), fn);
+    }
+    assert.match(sql, /for update;/);
+    assert.match(sql, /set_config\('nexra\.agent_task_write', v_task\.id::text, true\)/);
+    assert.match(sql, /create or replace function public\.nexra_agent_tasks_guard_update\(\)/);
+    assert.match(sql, /new\.title is distinct from old\.title/);
+    assert.match(sql, /new\.priority is distinct from old\.priority/);
+    assert.doesNotMatch(sql, /create or replace function public\.nexra_agent_task_create|alter table public\.nexra_agent_tasks (add|alter|drop)/, "the task table and the create function are unchanged");
+    assert.match(sql, /event_type in \('created', 'status-changed', 'owner-changed', 'handoff-requested', 'handoff-run-linked'\)/);
+    assert.match(sql, /r\.status in \('queued', 'running'\)/, "one active handoff at a time");
+    assert.doesNotMatch(sql, /insert into public\.agent_runs|update public\.agent_runs|agent_run_claim|pg_notify|dblink|http_/i, "no run is created or executed by the functions");
+    assert.doesNotMatch(sql, /crawls|crawl_pages|crawl_urls|crawl_page_signals/, "never names the unprefixed crawl subsystem");
+  });
+});
+
+describe("the task route", () => {
+  test("reads one task with its history and applies one of three actions, operator and same origin, through the service only", async () => {
+    const route = await read("../../app/api/agent-tasks/[taskId]/route.ts");
+    assert.match(route, /export async function GET/);
+    assert.match(route, /export async function POST/);
+    assert.equal((route.match(/getOperator\(\)/g) ?? []).length, 2);
+    assert.match(route, /isSameOrigin\(request\)/);
+    assert.match(route, /parseTaskActionRequest\(/);
+    assert.match(route, /agentTaskLimiter\("action"\)/);
+    assert.match(route, /service\.changeStatus\(/);
+    assert.match(route, /service\.changeOwner\(/);
+    assert.match(route, /service\.handoff\(base\)/);
+    assert.match(route, /operatorId: operator\.id/);
+    assert.doesNotMatch(route, /executeRun|agentRunService|action: "execute"|\.from\(|\.rpc\(/);
+    assert.doesNotMatch(route, /CRON_SECRET|SERVICE_ROLE|Bearer/);
+  });
+});
+
 describe("the route", () => {
   test("lists for one project and records through the service only; no execute, no worker, no direct table write", async () => {
     const route = await read("../../app/api/agent-tasks/route.ts");
@@ -50,10 +96,13 @@ describe("the route", () => {
     assert.doesNotMatch(route, /CRON_SECRET|SERVICE_ROLE|Bearer/);
   });
 
-  test("the store writes through the one function and reads one project, bounded and newest first", async () => {
+  test("the store writes through the five functions only and reads one project, bounded and newest first", async () => {
     const store = await read("./supabase/store.ts");
     assert.match(store, /client\.rpc\("nexra_agent_task_create"/);
-    assert.equal((store.match(/\.rpc\(/g) ?? []).length, 1);
+    for (const fn of ["nexra_agent_task_set_status", "nexra_agent_task_set_owner", "nexra_agent_task_handoff_request", "nexra_agent_task_handoff_link"]) assert.match(store, new RegExp(`client\\.rpc\\("${fn}"`));
+    assert.equal((store.match(/\.rpc\(/g) ?? []).length, 5);
+    assert.match(store, /\.eq\("project_id", projectId\)\.eq\("id", taskId\)\.maybeSingle\(\)/);
+    assert.match(store, /\.eq\("project_id", projectId\)\s*\.eq\("task_id", taskId\)\s*\.order\("seq", \{ ascending: true \}\)\s*\.limit\(TASK_EVENT_READ_LIMIT\)/);
     assert.doesNotMatch(store, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
     assert.match(store, /\.eq\("project_id", filter\.projectId\)/);
     assert.match(store, /\.order\("created_at", \{ ascending: false \}\)\s*\.order\("id", \{ ascending: false \}\)/);
@@ -86,19 +135,40 @@ describe("the operator controls", () => {
 });
 
 describe("the live tasks panel", () => {
-  test("reads the tasks endpoint for one stored project, shows the six fields, offers no control, and imports no fixture", async () => {
+  test("reads the tasks endpoint for one stored project, shows the six fields plus the row controls, and imports no fixture", async () => {
     const panel = await read("../../components/agent-tasks/live-tasks-panel.tsx");
     assert.match(panel, /^"use client";/);
     assert.match(panel, /fetch\(agentTasksUrl\(projectId, \{ limit: TASK_READ_DEFAULT_LIMIT \}\)/);
-    assert.equal((panel.match(/fetch\(/g) ?? []).length, 1);
+    assert.equal((panel.match(/fetch\(/g) ?? []).length, 1, "the panel itself only reads; every write lives in the row controls");
     assert.doesNotMatch(panel, /method: "POST"|@\/lib\/mock\/(?!agents\/registry)|getAgentTasks|getAgentDetail|tasks\.ts/);
-    for (const heading of ["Title", "Owning agent", "Status", "Priority", "Source", "Recorded"]) assert.ok(panel.includes(`<TableHeaderCell>${heading}</TableHeaderCell>`), heading);
+    for (const heading of ["Title", "Owning agent", "Status", "Priority", "Source", "Recorded", "Actions"]) assert.ok(panel.includes(`<TableHeaderCell>${heading}</TableHeaderCell>`), heading);
     assert.match(panel, /eyebrow="Live · persisted"/);
     assert.match(panel, /title="Live tasks"/);
     assert.match(panel, /No live tasks yet/);
     assert.match(panel, /Tasks are not kept on this deployment/);
-    assert.match(panel, /nothing on this screen assigns it, moves it or runs an agent/);
+    assert.match(panel, /a handoff queues one run\s*for the owning agent and executes nothing/);
+    assert.match(panel, /<TaskRowControls task=\{task\} onChanged=\{onChanged\} \/>/);
     assert.doesNotMatch(panel, /<RecordTaskControl|Record as task/);
+  });
+
+  test("the row controls: status along the map, owner from the registry, a confirmed handoff that executes nothing, and the history read", async () => {
+    const controls = await read("../../components/agent-tasks/task-row-controls.tsx");
+    assert.match(controls, /^"use client";/);
+    assert.match(controls, /fetch\(`\/api\/agent-tasks\/\$\{encodeURIComponent\(task\.id\)\}`, \{\s*method: "POST"/);
+    assert.match(controls, /fetch\(agentTaskUrl\(task\.id, task\.projectId\), \{ cache: "no-store" \}\)/);
+    assert.equal((controls.match(/fetch\(/g) ?? []).length, 2, "one write path, one history read");
+    assert.match(controls, /if \(sending\.current\) return;/);
+    assert.match(controls, /const allowed = TASK_TRANSITIONS\[task\.status\];/);
+    assert.match(controls, /options=\{allowed\.map/);
+    assert.match(controls, /options=\{TASK_OWNING_AGENTS\.map/);
+    assert.match(controls, /Confirm handoff/);
+    assert.match(controls, /Nothing runs when you confirm\./);
+    assert.match(controls, /Handoff not supported yet for/);
+    assert.match(controls, /disabled=\{terminal \|\| busy \|\| mapping === null\}/);
+    assert.match(controls, /void post\(\{ action: "handoff" \}/);
+    assert.doesNotMatch(controls, /action: "execute"|agent-runs\/|executeRun|taskType:|agentId:/, "the browser names no agent, task type, input or execution");
+    assert.doesNotMatch(controls, /useEffect/, "nothing fires on mount");
+    assert.doesNotMatch(controls, /@\/lib\/mock\/(?!agents\/registry)/);
   });
 
   test("is mounted once, on the Project Manager's Tasks tab only, above the board that stays labelled modelled", async () => {
