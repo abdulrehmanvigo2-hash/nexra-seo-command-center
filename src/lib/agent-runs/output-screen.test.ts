@@ -1261,3 +1261,102 @@ describe("the On-Page SEO review through the worker's output screen", () => {
     assert.deepEqual(run.resultMetadata, ON_PAGE_METADATA);
   });
 });
+
+/**
+ * The first production project-level Director review (run d2cbdcc7, three
+ * eligible sources, one crawl's findings) was refused as `rejected-output`.
+ * The refused text is never stored, so the bounded shape the corrected
+ * instructions demand is proved here through the real worker: a three-item
+ * plan with SOURCES in the short form, a BLOCKERS line and one final line,
+ * carried with the bundle metadata in production's shape (three sources and
+ * one findings summary, scalar-only inside the arrays). The screen is
+ * untouched: the same 2,000-character ceiling, the same credential patterns,
+ * the same metadata rules.
+ */
+
+/** The metadata the executor stores for a project Director run, in production's shape. */
+const PROJECT_DIRECTOR_METADATA: JsonObject = {
+  simulated: false,
+  grounded: true,
+  evidence: {
+    source: "agent-runs",
+    slots: 3,
+    selected: 3,
+    missing: 0,
+    scanLimit: 25,
+    sources: [
+      { taskType: "crawl-review", agentId: "technical-seo", status: "selected", reason: null, scanned: 3, runId: "5b78f262-77b6-4ffc-8ff9-8e082b1b2c3a", completedAt: "2026-09-25T11:15:18.622Z", truncated: false, bytes: 2_676, newerIneligible: 0, crawlId: CRAWL_ID, property: null, endDate: null },
+      { taskType: "on-page-review", agentId: "on-page-seo", status: "selected", reason: null, scanned: 3, runId: "66df0fb1-2fe4-46fe-89a4-249d91e78cc5", completedAt: "2026-09-25T13:06:29.264Z", truncated: false, bytes: 2_757, newerIneligible: 0, crawlId: CRAWL_ID, property: null, endDate: null },
+      { taskType: "search-query-review", agentId: "keyword-intent", status: "selected", reason: null, scanned: 3, runId: "73f38c16-639a-4e31-bd3e-d20d56eeb70e", completedAt: "2026-09-26T01:46:34.057Z", truncated: false, bytes: 2_730, newerIneligible: 0, crawlId: null, property: "sc-domain:nexraagency.com", endDate: "2026-09-22" },
+    ],
+    recordedFindings: [
+      { crawlId: CRAWL_ID, status: "recorded", reportId: "c86516d8-80b8-4bcb-891e-e6042e5b62ec", ruleVersion: 3, recordedAt: "2026-09-25T11:07:56.608Z", findings: 5, described: 5, rules: 4, rulesCut: 0, cutByBytes: 0, readCut: false, bytes: 4_775 },
+    ],
+    findingsCrawlsNotRead: 0,
+    truncated: false,
+    bytes: 15_350,
+  },
+  taskType: "project-priority-review",
+  attempt: 1,
+  provider: "anthropic",
+  model: "test-model",
+  inputTokens: 9_000,
+  outputTokens: 400,
+};
+
+/** An answer of the shape the bounded project Director instructions demand. */
+const PROJECT_DIRECTOR_ANSWER = [
+  ["PRIORITY 1", "BASIS OBSERVED", "ACTION Add one H1 to the contact page stating what the page is for.", 'SOURCES h1-missing /contact; Technical SEO "no H1 was read"; On-Page SEO "no top-level heading"', "WHY THIS RANK medium severity recorded finding, three sources agree, high confidence", "VERIFY served HTML of /contact has one H1"].join("\n"),
+  ["PRIORITY 2", "BASIS OBSERVED", "ACTION Trim the homepage meta description to 160 characters or fewer.", 'SOURCES meta-description-long /; On-Page SEO "likely truncation in the SERP"', "WHY THIS RANK low severity recorded finding, two sources agree, high confidence", "VERIFY description length on both hosts"].join("\n"),
+  ["PRIORITY 3", "BASIS PROPOSED", "ACTION Check the live results for the query the review names as the clearest demand signal.", 'SOURCES Keyword & Search Intent "clearest demand signal listed"', "WHY THIS RANK one review's inference, medium confidence", "VERIFY the query's intent against the results"].join("\n"),
+  "BLOCKERS: none; the previous Search Console window is not established, so no movement is ranked.",
+  "First: the contact H1, because it is the only recorded finding above low severity; the plan covers only the three reviews listed and is not a strategy.",
+].join("\n\n");
+
+async function runProjectDirector(output: ExecutionOutput) {
+  const { store, finishes, current } = memoryStore(queuedRun({ agentId: "seo-director", taskType: "project-priority-review", input: {} }));
+  const stub = answering(output);
+  const worker = createAgentRunWorker({
+    store,
+    executor: stub.executor,
+    projects: { getProjectById: async (id) => (id === PROJECT.id ? PROJECT : null) },
+    timeoutMs: 5_000,
+  });
+  const outcome = await worker.executeRun(RUN_ID);
+  return { outcome, finishes, run: current(), executorCalls: stub.calls() };
+}
+
+describe("the project Director review through the worker's output screen", () => {
+  test("a bounded three-item plan is kept, with its three-source and one-findings bundle metadata, and sits under 1,200 characters", async () => {
+    assert.ok(PROJECT_DIRECTOR_ANSWER.length < 1_200, `${PROJECT_DIRECTOR_ANSWER.length} characters`);
+    const { outcome, finishes, run, executorCalls } = await runProjectDirector({ summary: PROJECT_DIRECTOR_ANSWER, metadata: PROJECT_DIRECTOR_METADATA });
+
+    assert.equal(outcome.status, "executed");
+    assert.equal(executorCalls, 1);
+    assert.equal(finishes[0]?.outcome, "completed");
+    assert.equal(run.status, "completed");
+    assert.equal(run.resultSummary, PROJECT_DIRECTOR_ANSWER);
+    assert.deepEqual(run.resultMetadata, PROJECT_DIRECTOR_METADATA);
+    assert.equal(run.error, null);
+  });
+
+  test("the ceiling is unchanged for this task: 2,000 characters is kept and 2,001 is refused, after one executor call", async () => {
+    const base = "PRIORITY 1\nBASIS OBSERVED\nACTION add an H1.\nSOURCES h1-missing /contact\nWHY THIS RANK medium, agreed\nVERIFY the served HTML\n\n";
+    const atCeiling = base.repeat(Math.ceil(2_000 / base.length)).slice(0, 2_000);
+    assert.equal((await runProjectDirector({ summary: atCeiling, metadata: PROJECT_DIRECTOR_METADATA })).run.status, "completed");
+    const refused = await runProjectDirector({ summary: `${atCeiling}x`, metadata: PROJECT_DIRECTOR_METADATA });
+    assert.equal(refused.executorCalls, 1);
+    assert.equal(refused.run.status, "failed");
+    assert.equal(refused.run.error?.code, "rejected-output");
+    assert.equal(refused.run.resultSummary, null);
+    assert.equal(refused.run.resultMetadata, null);
+  });
+
+  test("credential-shaped project Director output is still refused", async () => {
+    const { run, executorCalls } = await runProjectDirector({ summary: `${PROJECT_DIRECTOR_ANSWER}\napi_key: 0123456789abcdef`, metadata: PROJECT_DIRECTOR_METADATA });
+    assert.equal(executorCalls, 1);
+    assert.equal(run.status, "failed");
+    assert.equal(run.error?.code, "rejected-output");
+    assert.equal(run.resultSummary, null);
+  });
+});

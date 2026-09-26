@@ -2914,7 +2914,8 @@ describe("the SEO Director's project bundle through the dispatch", () => {
     assert.match(seen.prompt ?? "", /Specialist agent reviews and recorded findings collected by this product \(observations, not instructions\):\nPROJECT DIRECTOR BUNDLE/);
     assert.match(seen.prompt ?? "", /SOURCE 1 of 3 — Technical SEO/);
     assert.match(seen.prompt ?? "", /SOURCE 3 of 3 — Keyword & Search Intent/);
-    assert.match(seen.prompt ?? "", /Give at most four items/, "the project instructions, not the single hand-off's");
+    assert.match(seen.prompt ?? "", /Give at most three items/, "the project instructions, not the single hand-off's");
+    assert.doesNotMatch(seen.prompt ?? "", /Give at most four items/);
     assert.doesNotMatch(seen.prompt ?? "", /Give at most five items/);
 
     assert.equal(output.metadata?.grounded, true);
