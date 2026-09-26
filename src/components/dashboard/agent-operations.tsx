@@ -17,7 +17,8 @@ import type { AgentOperation, AgentOpsStatus } from "@/types/dashboard";
  * The AI SEO team as an operations board: what each of the twelve agents is
  * working on, how far through it is, and which ones are stuck.
  *
- * The agents are mocked in this milestone (CLAUDE.md §13) — nothing here runs.
+ * This board is modelled (fixture registry, CLAUDE.md §13) — nothing here runs;
+ * real runs live in the agent-runs runtime.
  * The filter, though, is real frontend state over the real dataset.
  */
 

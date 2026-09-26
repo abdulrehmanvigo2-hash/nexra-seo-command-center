@@ -7,9 +7,9 @@
  * on a tie.
  *
  * A file that cannot be read at all is *not* treated as permission. The caller
- * gets `unavailable` and decides; the engine refuses to crawl on it, because
- * "we could not check whether we are allowed" is not the same as "we are
- * allowed".
+ * gets `unavailable` and decides; the engine records `robotsTxtAllowed` as null
+ * for every page and crawls on, so the operator sees that permission was never
+ * checked rather than a claim either way.
  */
 
 /** The largest robots.txt this crawler will read, in bytes. */

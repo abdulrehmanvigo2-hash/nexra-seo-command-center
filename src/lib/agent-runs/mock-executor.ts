@@ -2,7 +2,8 @@ import type { AgentExecutor } from "@/lib/agent-runs/executor";
 import type { JsonObject } from "@/types/agent-run";
 
 /**
- * The only executor in this milestone: it simulates a task and says so.
+ * The default executor (`NEXRA_AGENT_EXECUTOR` unset or `mock`): it simulates a
+ * task and says so; the `ai` executor is `./ai-executor`.
  *
  * No network, no model, no credentials, no side effects. Its summary states
  * plainly that nothing was analysed, and its metadata carries

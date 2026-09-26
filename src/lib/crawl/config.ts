@@ -7,9 +7,10 @@
  * all, and `CRAWL_ALLOWED_HOSTS` says which sites. A deployment that acquires
  * the first without the second still cannot crawl anything.
  *
- * The allow-list is also the current mitigation for the DNS-rebinding gap
- * documented in `./network-guard`: while that gap is open, this crawler must
- * only ever be pointed at hosts the operator controls and has named.
+ * The allow-list is a second line beside the pinned connection in
+ * `./pinned-request`, which closes the DNS-rebinding gap documented in
+ * `./network-guard`: this crawler is still only ever pointed at hosts the
+ * operator controls and has named.
  *
  * Nothing here is a secret. No value carries a credential, so none of these
  * variables is one — but none carries a `NEXT_PUBLIC_` name either, because

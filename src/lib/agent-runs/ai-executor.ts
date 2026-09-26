@@ -15,8 +15,10 @@ import type { JsonObject } from "@/types/agent-run";
  * are passed as data, labelled, not as instructions.
  *
  * The model has no tools and no live data: it cannot browse, crawl, publish,
- * or send anything, and it is told so. Its answer is advice, and the stored
- * metadata says `grounded: false` so nothing presents it as measurement.
+ * or send anything, and it is told so. Its answer is advice: the stored
+ * metadata says `grounded: true` only when a record this product holds was put
+ * in the prompt, and names which, so nothing presents the answer itself as
+ * measurement.
  *
  * What is kept: the answer text (screened by the worker like any executor
  * output) and non-sensitive metadata — provider, model, token counts. The raw

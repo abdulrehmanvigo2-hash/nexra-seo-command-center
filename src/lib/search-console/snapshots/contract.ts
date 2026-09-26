@@ -12,8 +12,9 @@ import type { SearchConsoleWindow, SearchPerformance, SearchPerformanceRow } fro
  * (the project is no longer stored). The capture holds every other rule —
  * which property a project reads, that Google's answer was for that property,
  * that it was fresh — and the table's constraints re-check the row's shape
- * for any caller. Nothing here reads a snapshot back into a screen or an
- * agent; that is a later checkpoint.
+ * for any caller. Snapshots are read back by the history comparison, the
+ * query × page view and the keyword inventory, for screens and for the two
+ * Search Console agent tasks.
  */
 
 export const SNAPSHOT_RANGE_ID = "30d" as const;

@@ -5,8 +5,9 @@
  * individual domain files below are implementation detail. Re-exports are
  * explicit so it stays obvious what this layer offers.
  *
- * Everything here is a fixture. There is no API, database, or fetching layer
- * in this milestone (CLAUDE.md §4) — modules import these values directly.
+ * Everything here is a fixture. The live data layer (projects, runs, crawls,
+ * Search Console, content, tasks) is under `src/lib`, not here (CLAUDE.md §2);
+ * modules import these values directly.
  */
 export { AGENT_ACTIVITY, AGENT_NAMES } from "./agents";
 export { AI_VISIBILITY } from "./ai-visibility";

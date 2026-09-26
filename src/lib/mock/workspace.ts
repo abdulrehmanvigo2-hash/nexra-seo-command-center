@@ -1,7 +1,8 @@
 /**
  * Mock workspace and account data for the application shell.
  *
- * Fixtures only — there is no backend, auth, or API in this milestone.
+ * Fixtures only for the shell's workspace and account chrome; the backend, auth
+ * and APIs live outside `@/lib/mock`.
  * Module-level mock SEO datasets arrive with their own phases.
  */
 

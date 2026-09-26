@@ -9,14 +9,16 @@ Branch `claude/phase1-docs-reconciliation` from `2e8116ce`. Delete this file in 
   `supabase/tests/task-workflow/tests.sql`; both suites load `c4/setup.sql` and `gsc/setup.sql` first (`run.sh:453,459`).
 
 ## Rows applied
+- source comments: rows 74-86 (13 replacements in 11 files).
 - supabase/tests/README.md: row 73 (actual file names from run.sh:453,459).
 - docs/BACKEND.md: rows 43-72 (row 72 needs no edit once row 29 landed; row 59 applied as an appended sentence) + 7 mirrored facts.
 - supabase/README.md: rows 29-42, plus additional row 87 (see deviations).
 - CLAUDE.md: rows 1-8, 10-28 (row 9 unchanged by design; rows 12 and 13 applied as one merged paragraph) + 7 verification facts under §0.
 
 ## Rows remaining
-74-86
+none; gates pending
 
 ## Deviations
 - Row 2: the closing `**` was kept, because it closes the bold opened at line 6 ("**Current stage:"); it is not stray.
 - Additional row 87: supabase/README.md:261-262, the `20260922140000` (draft publication proposals) note "applied only to a throwaway local PostgreSQL 16" was also stale and is corrected to applied and recorded.
+- Row 82 replaces user-visible footer copy in settings-workspace.tsx (approved text), not a source comment; no behaviour change.

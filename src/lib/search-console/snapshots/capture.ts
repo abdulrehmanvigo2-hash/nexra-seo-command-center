@@ -34,8 +34,9 @@ import type {
  * configuration maps to a Search Console property, and records what Google
  * reported as one immutable snapshot. Sequential across projects, bounded by
  * a project limit and a time budget, and every project answers with an
- * outcome that says what happened. Nothing here is reachable from a request:
- * no route, worker step or screen calls it yet (that is checkpoint 1c).
+ * outcome that says what happened. Reachable only from the scheduled `process`
+ * job (`@/lib/agent-runs/process-job`), after the run queue and within its own
+ * time budget; no route or screen calls it.
  *
  * WHAT IS VERIFIED BEFORE A ROW IS WRITTEN.
  *
