@@ -75,7 +75,7 @@ describe("checkStorableJson: bounded plain JSON, free of credentials", () => {
     assert.deepEqual(checkStorableJson({ n: Number.NaN }), { ok: false, problem: "not-json" });
     assert.deepEqual(checkStorableJson({ n: Number.POSITIVE_INFINITY }), { ok: false, problem: "not-json" });
     assert.deepEqual(checkStorableJson({ u: undefined }), { ok: false, problem: "not-json" });
-    assert.deepEqual(checkStorableJson({ big: 1n }), { ok: false, problem: "not-json" });
+    assert.deepEqual(checkStorableJson({ big: BigInt(1) }), { ok: false, problem: "not-json" });
   });
 
   test("depth, key count, array length and byte size are all bounded", () => {
