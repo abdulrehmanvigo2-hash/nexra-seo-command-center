@@ -512,6 +512,30 @@ built from M3 must be deployed only after this migration is applied.** It has
 been applied only to disposable local PostgreSQL 16 clusters; it has **not**
 been applied to production.
 
+## Agent tasks (Project Manager real task core)
+
+`20261003120000_create_agent_tasks.sql` adds `nexra_agent_tasks`: one row per
+operator-approved task — the project, a title of 1 to 200 characters, the
+owning registry agent (the twelve ids restated in a CHECK, drift-tested
+against the registry), a status (`backlog`, `ready`, `in-progress`,
+`blocked`, `review`, `completed`, `cancelled`; new rows are `backlog`), a
+priority (`low`, `medium`, `high`, `critical`; default `medium`), who
+recorded it and when — and, always, where it came from: `source_kind`
+`director-run` with `source_ref` the id of a completed SEO Director run of
+the same project, or `source_kind` `keyword` with `source_ref` the exact
+query text as stored in one of the project's Search Console snapshot rows or
+query × page rows. No uniqueness is declared on the source: two
+operator-approved tasks are never collapsed. The one write is
+`nexra_agent_task_create` (`security definer`, empty `search_path`), which
+validates every argument, answers `project-not-found`, `run-not-found`
+(missing or another project's, never which), `run-not-completed`,
+`run-not-director` or `keyword-not-found`, and inserts one row in `backlog`.
+No update, delete or truncate path exists in this checkpoint: guard triggers
+refuse them for every caller. RLS is on with no policies; `service_role`
+holds SELECT on the table and EXECUTE on the create function only; `anon`
+and `authenticated` hold nothing. Nothing here dispatches an agent, queues a
+run or changes a page. Harness suite `tasks` (80 assertions).
+
 ## Crawls
 
 `public.nexra_crawls`, `public.nexra_crawl_pages` and

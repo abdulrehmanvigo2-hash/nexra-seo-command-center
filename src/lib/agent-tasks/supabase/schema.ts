@@ -1,0 +1,115 @@
+import {
+  isTaskOwningAgent,
+  isTaskPriority,
+  isTaskSourceKind,
+  isTaskStatus,
+  type AgentTask,
+  type CreateAgentTaskOutcome,
+} from "@/lib/agent-tasks/contract";
+
+/**
+ * The shape of `nexra_agent_tasks`, of what `nexra_agent_task_create`
+ * answers, and the translation into the application's types. The table
+ * grants no INSERT, UPDATE or DELETE: the function is the only way in, so
+ * no write type exists here. A row that does not match what the migration
+ * declares is refused at read time rather than passed on.
+ */
+
+export class AgentTaskRowError extends Error {
+  constructor(message: string) {
+    super(`Agent task row: ${message}`);
+    this.name = "AgentTaskRowError";
+  }
+}
+
+export type AgentTaskRow = {
+  id: string;
+  project_id: string;
+  title: string;
+  source_kind: string;
+  source_ref: string;
+  owning_agent: string;
+  status: string;
+  priority: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ReadOnly<Row> = { Row: Row; Insert: never; Update: never; Relationships: [] };
+
+export type AgentTasksDatabase = {
+  public: {
+    Tables: {
+      nexra_agent_tasks: ReadOnly<AgentTaskRow>;
+    };
+    Views: { [_ in never]: never };
+    Functions: {
+      nexra_agent_task_create: {
+        Args: {
+          p_project_id: string;
+          p_title: string;
+          p_source_kind: string;
+          p_source_ref: string;
+          p_owning_agent: string;
+          p_priority: string;
+          p_operator: string;
+        };
+        Returns: unknown;
+      };
+    };
+  };
+};
+
+export const TASK_READ_COLUMNS = "id, project_id, title, source_kind, source_ref, owning_agent, status, priority, created_by, created_at, updated_at";
+
+function record(value: unknown, what: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new AgentTaskRowError(`${what} is not an object.`);
+  return value as Record<string, unknown>;
+}
+function text(value: unknown, field: string): string {
+  if (typeof value !== "string") throw new AgentTaskRowError(`${field} is not a string.`);
+  return value;
+}
+
+export function taskRowToTask(row: unknown): AgentTask {
+  const r = record(row, "the task row");
+  const sourceKind = text(r.source_kind, "source_kind");
+  if (!isTaskSourceKind(sourceKind)) throw new AgentTaskRowError(`source_kind "${sourceKind}" is not one this product knows.`);
+  const owningAgent = text(r.owning_agent, "owning_agent");
+  if (!isTaskOwningAgent(owningAgent)) throw new AgentTaskRowError(`owning_agent "${owningAgent}" is not a registry agent.`);
+  const status = text(r.status, "status");
+  if (!isTaskStatus(status)) throw new AgentTaskRowError(`status "${status}" is not one this product knows.`);
+  const priority = text(r.priority, "priority");
+  if (!isTaskPriority(priority)) throw new AgentTaskRowError(`priority "${priority}" is not one this product knows.`);
+  return {
+    id: text(r.id, "id"),
+    projectId: text(r.project_id, "project_id"),
+    title: text(r.title, "title"),
+    sourceKind,
+    sourceRef: text(r.source_ref, "source_ref"),
+    owningAgent,
+    status,
+    priority,
+    createdBy: text(r.created_by, "created_by"),
+    createdAt: text(r.created_at, "created_at"),
+    updatedAt: text(r.updated_at, "updated_at"),
+  };
+}
+
+/** What the function answers, checked field by field: a shape it did not promise is an error, not a guess. */
+export function createResultToOutcome(data: unknown): CreateAgentTaskOutcome {
+  const result = record(data, "the function's answer");
+  switch (result.outcome) {
+    case "created":
+      return { status: "created", task: taskRowToTask(result.task) };
+    case "project-not-found":
+    case "run-not-found":
+    case "run-not-completed":
+    case "run-not-director":
+    case "keyword-not-found":
+      return { status: result.outcome };
+    default:
+      throw new AgentTaskRowError(`the function answered "${String(result.outcome)}", which this product does not recognise.`);
+  }
+}

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { RecordTaskControl } from "@/components/agent-tasks/record-task-control";
 import { SaveDraftControl } from "@/components/content/draft-panel";
+import { directorTaskProposal, offersDirectorTask } from "@/lib/agent-tasks/proposals";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -359,6 +361,8 @@ export function QueuedReview({
           </p>
 
           {projectId !== null && offersHandoff(run) && <DirectorHandoff projectId={projectId} source={run} />}
+          {/* A completed Director review may be recorded as one persisted task, by an operator, for one agent. Recording runs nothing. */}
+          {projectId !== null && offersDirectorTask(run) && <RecordTaskControl key={run.id} projectId={projectId} proposal={directorTaskProposal(run)} />}
           {projectId !== null && offersDraft(run) && <WriterDraft projectId={projectId} plan={run} />}
           {projectId !== null && offersSaveAsDraft(run) && <SaveDraftControl key={run.id} projectId={projectId} run={run} />}
         </div>

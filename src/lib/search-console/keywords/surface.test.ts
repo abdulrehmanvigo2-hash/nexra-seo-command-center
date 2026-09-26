@@ -26,7 +26,8 @@ const INVENTORY = read("src/lib/search-console/keywords/inventory.ts");
 describe("M4 keeps no new raw data", () => {
   test("adds no migration and reads through the two existing stores only", () => {
     const migrations = readdirSync(new URL("supabase/migrations", root)).filter((f) => f.endsWith(".sql")).sort();
-    assert.equal(migrations.at(-1), "20261002120000_create_crawl_finding_triage.sql", "the newest migration is still M3's");
+    assert.ok(migrations.includes("20261002120000_create_crawl_finding_triage.sql"), "the M3 migration is present");
+    assert.equal(migrations.some((file) => /keyword|search_console_keywords|inventory/.test(file)), false, "M4 added no migration of its own");
     assert.match(READER, /searchConsoleSnapshotStore\(\)/);
     assert.match(READER, /searchConsoleQueryPageStore\(\)/);
     assert.match(READER, /searchConsoleProperties\(\)\.get\(projectId\)/);
