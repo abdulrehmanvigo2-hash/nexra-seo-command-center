@@ -1,10 +1,16 @@
 import {
+  isTaskEventType,
   isTaskOwningAgent,
   isTaskPriority,
   isTaskSourceKind,
   isTaskStatus,
   type AgentTask,
+  type AgentTaskEvent,
+  type ChangeTaskOwnerOutcome,
+  type ChangeTaskStatusOutcome,
   type CreateAgentTaskOutcome,
+  type HandoffLinkOutcome,
+  type HandoffRequestOutcome,
 } from "@/lib/agent-tasks/contract";
 
 /**
@@ -36,12 +42,28 @@ export type AgentTaskRow = {
   updated_at: string;
 };
 
+export type AgentTaskEventRow = {
+  id: string;
+  seq: number;
+  task_id: string;
+  project_id: string;
+  event_type: string;
+  from_status: string | null;
+  to_status: string | null;
+  from_agent: string | null;
+  to_agent: string | null;
+  run_id: string | null;
+  actor: string;
+  created_at: string;
+};
+
 type ReadOnly<Row> = { Row: Row; Insert: never; Update: never; Relationships: [] };
 
 export type AgentTasksDatabase = {
   public: {
     Tables: {
       nexra_agent_tasks: ReadOnly<AgentTaskRow>;
+      nexra_agent_task_events: ReadOnly<AgentTaskEventRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -57,11 +79,28 @@ export type AgentTasksDatabase = {
         };
         Returns: unknown;
       };
+      nexra_agent_task_set_status: {
+        Args: { p_project_id: string; p_task_id: string; p_status: string; p_operator: string };
+        Returns: unknown;
+      };
+      nexra_agent_task_set_owner: {
+        Args: { p_project_id: string; p_task_id: string; p_owning_agent: string; p_operator: string };
+        Returns: unknown;
+      };
+      nexra_agent_task_handoff_request: {
+        Args: { p_project_id: string; p_task_id: string; p_operator: string };
+        Returns: unknown;
+      };
+      nexra_agent_task_handoff_link: {
+        Args: { p_project_id: string; p_task_id: string; p_run_id: string; p_operator: string };
+        Returns: unknown;
+      };
     };
   };
 };
 
 export const TASK_READ_COLUMNS = "id, project_id, title, source_kind, source_ref, owning_agent, status, priority, created_by, created_at, updated_at";
+export const TASK_EVENT_READ_COLUMNS = "id, seq, task_id, project_id, event_type, from_status, to_status, from_agent, to_agent, run_id, actor, created_at";
 
 function record(value: unknown, what: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new AgentTaskRowError(`${what} is not an object.`);
@@ -95,6 +134,107 @@ export function taskRowToTask(row: unknown): AgentTask {
     createdAt: text(r.created_at, "created_at"),
     updatedAt: text(r.updated_at, "updated_at"),
   };
+}
+
+function nullableText(value: unknown, field: string): string | null {
+  if (value === null || value === undefined) return null;
+  return text(value, field);
+}
+
+export function eventRowToEvent(row: unknown): AgentTaskEvent {
+  const r = record(row, "the event row");
+  const type = text(r.event_type, "event_type");
+  if (!isTaskEventType(type)) throw new AgentTaskRowError(`event_type "${type}" is not one this product knows.`);
+  const fromStatus = nullableText(r.from_status, "from_status");
+  const toStatus = nullableText(r.to_status, "to_status");
+  const fromAgent = nullableText(r.from_agent, "from_agent");
+  const toAgent = nullableText(r.to_agent, "to_agent");
+  if (fromStatus !== null && !isTaskStatus(fromStatus)) throw new AgentTaskRowError(`from_status "${fromStatus}" is not one this product knows.`);
+  if (toStatus !== null && !isTaskStatus(toStatus)) throw new AgentTaskRowError(`to_status "${toStatus}" is not one this product knows.`);
+  if (fromAgent !== null && !isTaskOwningAgent(fromAgent)) throw new AgentTaskRowError(`from_agent "${fromAgent}" is not a registry agent.`);
+  if (toAgent !== null && !isTaskOwningAgent(toAgent)) throw new AgentTaskRowError(`to_agent "${toAgent}" is not a registry agent.`);
+  const seq = typeof r.seq === "number" ? r.seq : typeof r.seq === "string" && /^\d+$/.test(r.seq) ? Number(r.seq) : NaN;
+  if (!Number.isSafeInteger(seq)) throw new AgentTaskRowError("seq is not a whole number.");
+  return {
+    id: text(r.id, "id"),
+    seq,
+    taskId: text(r.task_id, "task_id"),
+    projectId: text(r.project_id, "project_id"),
+    type,
+    fromStatus,
+    toStatus,
+    fromAgent,
+    toAgent,
+    runId: nullableText(r.run_id, "run_id"),
+    actor: text(r.actor, "actor"),
+    createdAt: text(r.created_at, "created_at"),
+  };
+}
+
+function unexpected(result: Record<string, unknown>): never {
+  throw new AgentTaskRowError(`the function answered "${String(result.outcome)}", which this product does not recognise.`);
+}
+
+export function statusResultToOutcome(data: unknown): ChangeTaskStatusOutcome {
+  const result = record(data, "the function's answer");
+  switch (result.outcome) {
+    case "transitioned":
+      return { status: "transitioned", task: taskRowToTask(result.task), event: eventRowToEvent(result.event) };
+    case "task-not-found":
+      return { status: "task-not-found" };
+    case "same-status":
+    case "terminal":
+    case "transition-not-allowed":
+      return { status: result.outcome, task: taskRowToTask(result.task) };
+    default:
+      return unexpected(result);
+  }
+}
+
+export function ownerResultToOutcome(data: unknown): ChangeTaskOwnerOutcome {
+  const result = record(data, "the function's answer");
+  switch (result.outcome) {
+    case "owner-changed":
+      return { status: "owner-changed", task: taskRowToTask(result.task), event: eventRowToEvent(result.event) };
+    case "task-not-found":
+      return { status: "task-not-found" };
+    case "same-owner":
+    case "terminal":
+      return { status: result.outcome, task: taskRowToTask(result.task) };
+    default:
+      return unexpected(result);
+  }
+}
+
+export function handoffRequestResultToOutcome(data: unknown): HandoffRequestOutcome {
+  const result = record(data, "the function's answer");
+  switch (result.outcome) {
+    case "requested":
+      return { status: "requested", task: taskRowToTask(result.task), event: eventRowToEvent(result.event) };
+    case "task-not-found":
+      return { status: "task-not-found" };
+    case "terminal":
+      return { status: "terminal", task: taskRowToTask(result.task) };
+    case "handoff-active":
+      return { status: "handoff-active", task: taskRowToTask(result.task), runId: text(result.run_id, "run_id") };
+    default:
+      return unexpected(result);
+  }
+}
+
+export function handoffLinkResultToOutcome(data: unknown): HandoffLinkOutcome {
+  const result = record(data, "the function's answer");
+  switch (result.outcome) {
+    case "linked":
+      return { status: "linked", task: taskRowToTask(result.task), runId: text(result.run_id, "run_id"), event: eventRowToEvent(result.event) };
+    case "task-not-found":
+    case "run-not-found":
+      return { status: result.outcome };
+    case "already-linked":
+      return { status: "already-linked", task: taskRowToTask(result.task), runId: text(result.run_id, "run_id") };
+    default:
+      return unexpected(result);
+  }
 }
 
 /** What the function answers, checked field by field: a shape it did not promise is an error, not a guess. */

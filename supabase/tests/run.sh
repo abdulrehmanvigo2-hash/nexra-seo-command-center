@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks and their workflow).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -31,7 +31,7 @@ T5_MIGRATION="$MIGRATIONS/20260929120000_extend_crawl_page_signals.sql"
 M2_MIGRATION="$MIGRATIONS/20261001120000_extend_crawl_page_content_signals.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -453,7 +453,13 @@ suite_tasks() {
   run_sql_suite tasks "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/tasks/tests.sql"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks)
+# Agent task workflow: events, the transition map, owner changes, handoff request and link, guards.
+suite_task_workflow() {
+  fresh_db
+  run_sql_suite task-workflow "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/task-workflow/tests.sql"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -467,7 +473,7 @@ for s in "${SUITES[@]}"; do
     signals) suite_signals ;; signals-upgrade) suite_signals_upgrade ;;
     content) suite_content ;; content-upgrade) suite_content_upgrade ;;
     triage) suite_triage ;; triage-races) suite_triage_races ;;
-    tasks) suite_tasks ;;
+    tasks) suite_tasks ;; task-workflow) suite_task_workflow ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

@@ -147,3 +147,115 @@ describe("the stored row and the function's answer", () => {
     assert.throws(() => createResultToOutcome(null), /not an object/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The workflow (20261004120000).
+
+import { readFile } from "node:fs/promises";
+import {
+  TASK_EVENT_TYPES,
+  TASK_TERMINAL_STATUSES,
+  TASK_TRANSITIONS,
+  agentTaskUrl,
+  canTransitionTask,
+  isTaskId,
+  isTerminalTaskStatus,
+  parseTaskActionRequest,
+} from "./contract.ts";
+import { eventRowToEvent, handoffLinkResultToOutcome, handoffRequestResultToOutcome, ownerResultToOutcome, statusResultToOutcome } from "./supabase/schema.ts";
+
+describe("the transition map", () => {
+  test("is the one the user fixed, fifteen moves, terminal states allow nothing", () => {
+    assert.deepEqual(TASK_TRANSITIONS, {
+      backlog: ["ready", "blocked", "cancelled"],
+      ready: ["in-progress", "blocked", "cancelled"],
+      "in-progress": ["review", "blocked", "cancelled"],
+      blocked: ["ready", "in-progress", "cancelled"],
+      review: ["in-progress", "completed", "blocked"],
+      completed: [],
+      cancelled: [],
+    });
+    assert.equal(Object.values(TASK_TRANSITIONS).flat().length, 15);
+    assert.deepEqual([...TASK_TERMINAL_STATUSES], ["completed", "cancelled"]);
+    assert.ok(isTerminalTaskStatus("completed") && isTerminalTaskStatus("cancelled") && !isTerminalTaskStatus("review"));
+    assert.ok(canTransitionTask("backlog", "ready") && !canTransitionTask("backlog", "completed") && !canTransitionTask("review", "cancelled"));
+    for (const status of TASK_STATUSES) assert.ok(!canTransitionTask(status, status), `${status} → ${status} is never a transition`);
+  });
+
+  test("restates the SQL function exactly, so the panel offers only moves the database allows", async () => {
+    const sql = await readFile(new URL("../../../supabase/migrations/20261004120000_agent_task_workflow.sql", import.meta.url), "utf8");
+    const body = sql.slice(sql.indexOf("nexra_agent_task_transition_allowed(p_from text, p_to text)"), sql.indexOf("$$;", sql.indexOf("nexra_agent_task_transition_allowed(p_from text, p_to text)")));
+    for (const [from, targets] of Object.entries(TASK_TRANSITIONS)) {
+      if (targets.length === 0) {
+        assert.doesNotMatch(body, new RegExp(`when '${from}'`), `${from} has no clause: else false`);
+        continue;
+      }
+      const quoted = targets.map((target) => `'${target}'`).join(", ");
+      assert.ok(body.includes(`when '${from}' then p_to in (${quoted})`), `${from} → ${quoted}`);
+    }
+    assert.match(body, /else false/);
+  });
+});
+
+describe("the action request", () => {
+  test("accepts exactly one of the three shapes and nothing more", () => {
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "status", status: "ready" }), { ok: true, projectId: "nexra-agency", action: "status", status: "ready" });
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "owner", owningAgent: "writer" }), { ok: true, projectId: "nexra-agency", action: "owner", owningAgent: "writer" });
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "handoff" }), { ok: true, projectId: "nexra-agency", action: "handoff" });
+    const invalid: unknown[] = [
+      null,
+      [],
+      "status",
+      { action: "status", status: "ready" },
+      { project: "Nexra Agency", action: "status", status: "ready" },
+      { project: "nexra-agency", action: "status", status: "done" },
+      { project: "nexra-agency", action: "status" },
+      { project: "nexra-agency", action: "status", status: "ready", owningAgent: "writer" },
+      { project: "nexra-agency", action: "owner", owningAgent: "ghost" },
+      { project: "nexra-agency", action: "owner", owningAgent: "writer", status: "ready" },
+      { project: "nexra-agency", action: "handoff", agentId: "writer" },
+      { project: "nexra-agency", action: "handoff", taskType: "crawl-review" },
+      { project: "nexra-agency", action: "handoff", input: {} },
+      { project: "nexra-agency", action: "execute" },
+      { project: "nexra-agency", action: "delete" },
+    ];
+    for (const body of invalid) assert.deepEqual(parseTaskActionRequest(body), { ok: false, error: "invalid" }, JSON.stringify(body));
+  });
+
+  test("a task id is a uuid; the task url names the task and its project", () => {
+    assert.ok(isTaskId("30e79092-6258-4fff-8d1f-c1e2921764b8") && isTaskId("30E79092-6258-4FFF-8D1F-C1E2921764B8"));
+    assert.ok(!isTaskId("30e79092") && !isTaskId(42) && !isTaskId(""));
+    assert.equal(agentTaskUrl("30e79092-6258-4fff-8d1f-c1e2921764b8", "nexra-agency"), "/api/agent-tasks/30e79092-6258-4fff-8d1f-c1e2921764b8?project=nexra-agency");
+  });
+});
+
+describe("the event rows and the function answers", () => {
+  const taskRow = { id: "30e79092-6258-4fff-8d1f-c1e2921764b8", project_id: "nexra-agency", title: "T", source_kind: "director-run", source_ref: RUN_ID, owning_agent: "project-manager", status: "ready", priority: "medium", created_by: "00000000-0000-4000-8000-0000000000aa", created_at: "2026-09-26T03:00:00+00:00", updated_at: "2026-09-26T04:00:00+00:00" };
+  const eventRow = { id: "e0000000-0000-4000-8000-000000000001", seq: 2, task_id: taskRow.id, project_id: "nexra-agency", event_type: "status-changed", from_status: "backlog", to_status: "ready", from_agent: null, to_agent: null, run_id: null, actor: taskRow.created_by, created_at: "2026-09-26T04:00:00+00:00" };
+
+  test("the five event types; a row is translated field by field and a row that names the unknown is refused", () => {
+    assert.deepEqual([...TASK_EVENT_TYPES], ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked"]);
+    const event = eventRowToEvent(eventRow);
+    assert.deepEqual(event, { id: eventRow.id, seq: 2, taskId: taskRow.id, projectId: "nexra-agency", type: "status-changed", fromStatus: "backlog", toStatus: "ready", fromAgent: null, toAgent: null, runId: null, actor: taskRow.created_by, createdAt: eventRow.created_at });
+    assert.equal(eventRowToEvent({ ...eventRow, seq: "17" }).seq, 17, "a bigint that arrives as text");
+    assert.throws(() => eventRowToEvent({ ...eventRow, event_type: "deleted" }), /event_type "deleted"/);
+    assert.throws(() => eventRowToEvent({ ...eventRow, to_status: "done" }), /to_status "done"/);
+    assert.throws(() => eventRowToEvent({ ...eventRow, to_agent: "ghost" }), /to_agent "ghost"/);
+    assert.throws(() => eventRowToEvent({ ...eventRow, seq: "x" }), /seq/);
+  });
+
+  test("each function answer is checked, and an answer the function never promised is an error", () => {
+    assert.equal(statusResultToOutcome({ outcome: "transitioned", task: taskRow, event: eventRow }).status, "transitioned");
+    assert.deepEqual(statusResultToOutcome({ outcome: "task-not-found" }), { status: "task-not-found" });
+    for (const outcome of ["same-status", "terminal", "transition-not-allowed"]) assert.equal(statusResultToOutcome({ outcome, task: taskRow }).status, outcome);
+    assert.throws(() => statusResultToOutcome({ outcome: "moved" }), /"moved"/);
+    assert.equal(ownerResultToOutcome({ outcome: "owner-changed", task: taskRow, event: { ...eventRow, event_type: "owner-changed", from_status: null, to_status: null, from_agent: "project-manager", to_agent: "writer" } }).status, "owner-changed");
+    assert.throws(() => ownerResultToOutcome({ outcome: "transitioned", task: taskRow }), /"transitioned"/);
+    const request = handoffRequestResultToOutcome({ outcome: "handoff-active", task: taskRow, run_id: RUN_ID });
+    assert.deepEqual(request.status === "handoff-active" ? request.runId : null, RUN_ID);
+    assert.equal(handoffRequestResultToOutcome({ outcome: "requested", task: taskRow, event: { ...eventRow, event_type: "handoff-requested", from_status: null, to_status: null, to_agent: "project-manager" } }).status, "requested");
+    assert.equal(handoffLinkResultToOutcome({ outcome: "linked", task: taskRow, run_id: RUN_ID, event: { ...eventRow, event_type: "handoff-run-linked", from_status: null, to_status: null, to_agent: "project-manager", run_id: RUN_ID } }).status, "linked");
+    assert.deepEqual(handoffLinkResultToOutcome({ outcome: "run-not-found" }), { status: "run-not-found" });
+    assert.throws(() => handoffLinkResultToOutcome({ outcome: "requested" }), /"requested"/);
+  });
+});

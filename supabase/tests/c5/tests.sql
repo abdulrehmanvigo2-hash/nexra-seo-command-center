@@ -187,6 +187,8 @@ begin
      = array['agent_run_claim(uuid,text,text,integer)','agent_run_finish(uuid,uuid,text,text,jsonb,text,text)','agent_run_heartbeat(uuid,uuid,integer)',
              'agent_run_recover_expired(integer)','agent_run_schedule_retries(integer)','agent_runs_close_cancelled_attempt()','agent_runtime_status()',
              'nexra_agent_task_create(text,text,text,text,text,text,uuid)',
+             'nexra_agent_task_handoff_link(text,uuid,uuid,uuid)','nexra_agent_task_handoff_request(text,uuid,uuid)',
+             'nexra_agent_task_set_owner(text,uuid,text,uuid)','nexra_agent_task_set_status(text,uuid,text,uuid)',
              'nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid)',
              'nexra_article_check_unit_record(text,uuid,smallint,uuid,smallint,text,text,smallint,smallint,smallint,text,text,jsonb,uuid,uuid)',
              'nexra_article_create(text,uuid,text,text,jsonb,uuid)',

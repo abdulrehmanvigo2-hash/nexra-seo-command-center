@@ -3,7 +3,8 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Project Manager real task core (persisted agent tasks), local development.
+**Current stage: Project Manager task workflow (status transitions, owner changes, specialist
+handoff, event history), local development.
 C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3, M4 and M5 are complete, merged and
 deployed (M5: PR #17, `62ae593`, deployment `dpl_Ck286bMi6dkewMgPV2JRH3HBggv8`, one production
 project Director run pending approval); M2 is production verified on crawl `3398ff1a…`; M3 (PR #14, `db7afdb`, migration
@@ -102,11 +103,34 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** the Project Manager real task core — a persisted task entity, implemented and
-verified locally on branch `claude/project-manager-real-task-core` (from `master` `62ae593`, the M5
-merge). Nothing is pushed, no PR is open, nothing is deployed, and the migration
-`20261003120000_create_agent_tasks.sql` is **not applied** to production. Each further step (push,
-PR, applying the migration, merge) starts only with explicit user approval.
+**Current work:** the Project Manager task workflow, implemented and verified locally on branch
+`claude/project-manager-task-workflow` (from `master` `3121ff3`, the PR #19 merge). The task core
+(PR #18, `6e345c5`; migration `20261003120000` applied to production; one real backlog task on
+`nexra-agency`, production verified) is its baseline. Nothing is pushed, no PR is open, nothing is
+deployed, and the migration `20261004120000_agent_task_workflow.sql` is **not applied** to
+production. Each further step (push, PR, applying the migration, merge) starts only with explicit
+user approval.
+
+**Task workflow (local only):** migration `20261004120000` adds `nexra_agent_task_events`
+(append-only: `created` by trigger and backfilled, `status-changed`, `owner-changed`,
+`handoff-requested`, `handoff-run-linked`; identity `seq` order; guards refuse update, delete,
+truncate) and four `security definer` functions, each taking the project beside the task and
+locking the row: `nexra_agent_task_set_status` along the fixed map (backlog → ready | blocked |
+cancelled; ready → in-progress | blocked | cancelled; in-progress → review | blocked | cancelled;
+blocked → ready | in-progress | cancelled; review → in-progress | completed | blocked; completed
+and cancelled terminal), `nexra_agent_task_set_owner` (the twelve registry agents, never inferred),
+`nexra_agent_task_handoff_request` (refused `handoff-active` while a linked run is queued or
+running) and `nexra_agent_task_handoff_link` (same project, the owning agent, `sourceTaskId` in the
+run's input). The update guard now allows only status, owning_agent and updated_at, only under the
+functions' transaction flag; no UPDATE grant exists; `service_role` holds SELECT and EXECUTE only.
+`GET`/`POST /api/agent-tasks/[taskId]` (operator, same origin, 60 actions per ten minutes) and
+the *Actions* column of *Live tasks* (change status, change owner, hand off after a confirmation,
+view history). A handoff creates at most one queued run for the owning agent through the existing
+run path with the task id as provenance and executes nothing; supported owners are SEO Director
+(`project-priority-review`), Project Manager (`intake-review`), Research & Evidence
+(`evidence-pack-review`), Content Strategist (`content-plan-review`), Keyword & Search Intent
+(`search-query-review`, `30d`) and Analytics & Learning (`performance-review`, `30d`); the other
+six are deferred and show *Handoff not supported yet*. Harness suite `task-workflow` (150).
 
 **Task core (local only):** an audit found every Project Manager tab modelled and no task table.
 Migration `20261003120000` adds `nexra_agent_tasks`: one row per operator-approved task — project,
@@ -675,13 +699,14 @@ foundation, Search Console) are complete. Current work follows the content workf
 | M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Complete, merged (`db7afdb`), migration applied and recorded, deployed; browser verification pending |
 | M4 | Observed keyword intelligence: query inventory, lexical intent hints and groups, page mapping, fixed opportunity rules, Keywords panel, agent grounding | Complete, merged (`3510493`, selector fix `220c732`), deployed, production verified on run `73f38c16…`; no migration |
 | M5 | SEO Director project-level orchestration: deterministic multi-source selection, bounded bundle, deduplicated plan instructions, project Director panel | Complete, merged (`62ae593`), deployed; no migration; one production run pending approval |
-| PM task core | Persisted agent tasks: `nexra_agent_tasks`, create function, project-scoped API, Record as task from Director results and observed queries, Live tasks section | Implemented and verified locally; local commits; not pushed; migration not applied |
+| PM task core | Persisted agent tasks: `nexra_agent_tasks`, create function, project-scoped API, Record as task from Director results and observed queries, Live tasks section | Complete, merged (`6e345c5`), migration `20261003120000` applied, deployed, production verified (one real backlog task) |
+| PM task workflow | Status transitions along a fixed map, owner changes, specialist handoff (one queued run, never executed here), append-only event history, task route, Live tasks controls | Implemented and verified locally; local commit; not pushed; migration `20261004120000` not applied |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: the Project Manager task
-core on its feature branch; pushing it, a PR, applying its migration and a merge start only with
-explicit approval. Work beyond it (a task status path, cross-crawl finding history, a curated keyword
-entity and further Director sources) is undecided and is not planned here.
+workflow on its feature branch; pushing it, a PR, applying its migration and a merge start only with
+explicit approval. Work beyond it (handoff for the six deferred agents, cross-crawl finding history, a
+curated keyword entity and further Director sources) is undecided and is not planned here.
 
 ## 15. Definition of Done
 

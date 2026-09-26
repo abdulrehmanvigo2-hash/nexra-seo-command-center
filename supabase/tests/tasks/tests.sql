@@ -27,7 +27,7 @@ begin
   perform t.ok((select column_default from information_schema.columns where table_name = 'nexra_agent_tasks' and column_name = 'status') = '''backlog''::text', 'A status defaults to backlog');
   perform t.ok((select column_default from information_schema.columns where table_name = 'nexra_agent_tasks' and column_name = 'priority') = '''medium''::text', 'A priority defaults to medium');
   perform t.ok((select array_agg(tgname::text order by tgname) from pg_trigger where tgrelid = 'public.nexra_agent_tasks'::regclass and not tgisinternal)
-    = array['nexra_agent_tasks_guard_delete','nexra_agent_tasks_guard_truncate','nexra_agent_tasks_guard_update'], 'A triggers: three guards');
+    = array['nexra_agent_tasks_guard_delete','nexra_agent_tasks_guard_truncate','nexra_agent_tasks_guard_update','nexra_agent_tasks_record_created'], 'A triggers: three guards and the created recorder (20261004120000)');
   perform t.ok((select bool_and(tgenabled = 'O') from pg_trigger where tgrelid = 'public.nexra_agent_tasks'::regclass and not tgisinternal), 'A all triggers enabled');
   perform t.ok((select count(*) from pg_indexes where tablename = 'nexra_agent_tasks' and indexname = 'nexra_agent_tasks_project_created_idx') = 1, 'A the project/created read index exists');
   perform t.ok((select array_agg(column_name::text order by ordinal_position) from information_schema.columns where table_name = 'agent_runs' and column_name in ('id','project_id','agent_id','task_type','status')) = array['id','project_id','agent_id','task_type','status'], 'A agent_runs is unchanged');
@@ -51,7 +51,7 @@ begin
     perform t.ok((select proconfig = array['search_path=""'] from pg_proc where proname = f), 'B empty search_path: ' || f);
     perform t.ok((select pg_get_userbyid(proowner) from pg_proc where proname = f) = 'postgres', 'B owned by postgres: ' || f);
   end loop;
-  perform t.ok((select array_agg(proname order by proname) from pg_proc where proname like 'nexra_agent_task%' and prosecdef) = array['nexra_agent_task_create']::name[], 'B only the create function is security definer');
+  perform t.ok((select array_agg(proname order by proname) from pg_proc where proname like 'nexra_agent_task%' and prosecdef) = array['nexra_agent_task_create','nexra_agent_task_handoff_link','nexra_agent_task_handoff_request','nexra_agent_task_set_owner','nexra_agent_task_set_status']::name[], 'B the create function and the four workflow functions (20261004120000) are security definer, nothing else');
 end $$;
 
 -- B, as service_role: no direct write; the function is the way in.
@@ -119,7 +119,7 @@ begin
   perform t.ok(t.err($q$update public.nexra_agent_tasks set status = 'ready'$q$) = '23514', 'D even the owner cannot update a task in this checkpoint (23514)');
   perform t.ok(t.err($q$update public.nexra_agent_tasks set project_id = 'verdant-home'$q$) = '23514', 'D a task never moves to another project (23514)');
   perform t.ok(t.err($q$delete from public.nexra_agent_tasks$q$) = '23514', 'D a task is never deleted (23514)');
-  perform t.ok(t.err($q$truncate public.nexra_agent_tasks$q$) = '23514', 'D a task is never truncated (23514)');
+  perform t.ok(t.err($q$truncate public.nexra_agent_tasks$q$) in ('23514', '0A000'), 'D a task is never truncated (23514, or 0A000 once 20261004120000 references it from the events table)');
   perform t.ok(t.err($q$delete from public.projects where id = 'halcyon-fintech'$q$) = '23503', 'D a project with tasks is not deleted (23503)');
   perform t.ok((select count(*) from nexra_agent_tasks) = 5, 'D five tasks remain');
   perform t.ok((select count(*) from nexra_agent_tasks where project_id = 'verdant-home') = 1 and (select count(*) from nexra_agent_tasks where project_id = 'halcyon-fintech') = 4, 'D each task belongs to the project it was recorded for');

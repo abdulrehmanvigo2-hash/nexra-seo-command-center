@@ -1229,3 +1229,30 @@ describe("queueing an outbound link review — the Authority & Backlink agent", 
     }
   });
 });
+
+describe("provenance from a task handoff", () => {
+  test("a source task id given by the server is stored in the input; the request body can never supply it", async () => {
+    const { store, runs, inserts } = memoryStore();
+    const runtime = service(store, forbiddenExecutor().executor);
+    const taskId = "30e79092-6258-4fff-8d1f-c1e2921764b8";
+
+    const handed = await runtime.createRun(OPERATOR, ON_PAGE_REQUEST, { sourceTaskId: taskId.toUpperCase() });
+    assert.equal(handed.ok, true);
+    if (!handed.ok) return;
+    assert.deepEqual(handed.run.input, { crawlId: CRAWL_ID, sourceTaskId: taskId });
+    assert.equal(handed.run.status, "queued");
+
+    const again = await runtime.createRun(OPERATOR, ON_PAGE_REQUEST, { sourceTaskId: taskId });
+    assert.ok(again.ok && again.duplicate && again.run.id === handed.run.id, "the same handoff twice is one run");
+    const plain = await runtime.createRun(OPERATOR, ON_PAGE_REQUEST);
+    assert.ok(plain.ok && !plain.duplicate && plain.run.id !== handed.run.id, "a plain operator run of the same task is a different run");
+    assert.equal(inserts(), 2);
+    assert.equal(runs.length, 2);
+
+    const fromBody = await runtime.createRun(OPERATOR, { ...ON_PAGE_REQUEST, input: { crawlId: CRAWL_ID, sourceTaskId: taskId } });
+    assert.equal(fromBody.ok, false);
+    if (fromBody.ok) return;
+    assert.equal(fromBody.reason, "invalid");
+    await assert.rejects(runtime.createRun(OPERATOR, ON_PAGE_REQUEST, { sourceTaskId: "not-an-id" }), /source task id/);
+  });
+});
