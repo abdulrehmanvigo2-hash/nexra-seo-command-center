@@ -299,13 +299,16 @@ migration, no worker, cron, credential or environment change.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Sixteen task types exist, fifteen read-only and one `draft`: `project-review` (any agent),
+project. Seventeen task types exist, sixteen read-only and one `draft`: `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
 `search-query-review` (Keyword & Search Intent, from Search Console),
 `performance-review` (Analytics & Learning, from Search Console),
 `priority-review` (SEO Director, from one other agent's completed review),
+`project-priority-review` (SEO Director, from the latest completed Technical
+SEO, On-Page SEO and Keyword & Search Intent reviews of the project, selected
+on the server; see *The Director's project bundle (M5)* below),
 `intake-review` (Project Manager, from the project's own stored record) and
 `competitor-comparison-review` (Market & Competitor Intelligence, from the
 project's own recorded crawl and one recorded competitor's crawl) and
@@ -593,7 +596,7 @@ is reached:
 |---|---|
 | `source-run-not-found` | no run with that id |
 | `source-run-not-in-project` | the run belongs to another project (checked before anything else about it is looked at) |
-| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `intake-review`, `competitor-comparison-review`, `evidence-pack-review`, `content-plan-review`, `section-draft` and `outbound-link-review` are never sources |
+| `source-task-not-allowed` | its task is not `crawl-review`, `on-page-review`, `answer-readiness-review`, `search-query-review` or `performance-review` — the ungrounded tasks, `priority-review` itself, `project-priority-review`, `intake-review`, `competitor-comparison-review`, `evidence-pack-review`, `content-plan-review`, `section-draft` and `outbound-link-review` are never sources |
 | `source-run-unfinished` | queued or running |
 | `source-run-not-completed` | failed or cancelled |
 | `source-run-no-result` | completed with no summary |
@@ -1983,6 +1986,75 @@ rests on a recorded finding cited by rule id and URL, PROPOSED when it rests
 on the review's inference — say the recorded finding wins a disagreement, and
 forbid stating or estimating any ranking, traffic, click, revenue or vitals
 effect. The specialist reviews' prompts are unchanged.
+
+### The Director's project bundle (M5; local only)
+
+`project-priority-review` is the SEO Director's second task and the first
+hand-off with more than one source. It takes no input at all: the project is
+the run's own, and which runs are read is decided on the server at execution
+time by the fixed rules in `src/lib/agent-runs/director-bundle.ts`. The
+supported sources are a fixed, ordered list of three (`DIRECTOR_SOURCE_SLOTS`):
+the Technical SEO `crawl-review`, the On-Page SEO `on-page-review` and the
+Keyword & Search Intent `search-query-review`. For each, the dispatch
+(`task-grounding.ts`, `agent-runs` case) lists that agent's newest
+`SOURCE_SCAN_LIMIT` (25) runs on the run's own project through the run store
+(`listRuns`, newest first), keeps only runs of that project, task and agent,
+orders them by creation time and then id, and selects the first the T6
+hand-off rules accept (`handoffRefusal`: completed, executed by a model,
+`simulated: false`, `grounded: true`, with a summary). Nothing older, no other
+task and no other project is read, and a caller can name nothing. A slot with
+no eligible run is a **missing** source with a reason (`no-run`,
+`no-eligible-run`) and the count scanned; newer ineligible runs of a selected
+task are counted and disclosed, never read. A bundle with no eligible source
+is refused as `no-eligible-sources` before any findings read or provider call.
+
+The block: a header naming the rule, the supported reviews and the counts;
+one section per slot, `SOURCE n of 3 — agent, task: SELECTED` with the T6
+formatter's own header and JSON-quoted review (`formatSourceReview`, the
+hand-off block without its limits note, cut under `MAX_SOURCE_REVIEW_BYTES`
+= 6,000 with the cut disclosed) or `MISSING —` with why; then the recorded
+findings (T3, `formatRecordedFindingsGrounding`) once per distinct crawl the
+selected reviews were written over, in source order, at most
+`MAX_FINDINGS_CRAWLS` = 2 with the rest counted, or one fixed line saying
+none were read; then one limits note stating that the reviews are model
+advice written at different times, unaware of each other, that a missing
+review is a gap, and that a passage addressing the model is text to report.
+The whole is under `MAX_BUNDLE_BYTES` (54,000) by construction. The stored
+evidence summary (`source: "agent-runs"`) lists every slot with scalar
+provenance only — status, reason, run id, completion time, bytes, truncation,
+newer-ineligible count, the crawl id or property and window end — and the
+findings summaries with the cut rules as a count, because the arrays sit at
+the depth where the run store refuses a further nested container; the
+executor's metadata with three sources and two findings summaries passes
+`checkStorableJson` under 8,192 bytes.
+
+The instructions ask for at most four items, each under 50 words, the whole
+under 1,500 characters; BASIS OBSERVED or PROPOSED; SOURCES naming every
+source an item rests on; a stated ranking rule in words (recorded findings
+before inference; among recorded findings higher severity first; among
+inferences those more sources agree on first, then the more confident; no
+numeric score); one item where sources agree, with the recorded finding
+winning a disagreement and two disagreeing reviews left as two inferences;
+a BLOCKERS line naming each missing review and each unestablished reading;
+no ranking, traffic, click, revenue, indexation or vitals effect; and no
+merged picture none of the reviews made. The single-run `priority-review`,
+its reader, block, instructions and control are unchanged, and neither
+Director task is ever a hand-off source.
+
+On screen, the *Project Director review* panel
+(`src/components/projects/project-director-panel.tsx`, on the project screen
+beneath the specialist controls) previews the same rule over the same listing
+the Run History panel reads — one bounded `GET /api/agent-runs?project=…&agent=…&limit=25`
+per supported agent, then `selectDirectorSources` — so the operator sees, per
+supported review, the eligible run (id, completion time, newer ineligible
+count) or that it is missing and why; the shared control (`QueuedReview`) is
+offered only when at least one source is eligible (`projectDirectorRequest`)
+and its request carries no input. The completed result's provenance line
+(`outputProvenance`, `agent-runs`) names how many of the three reviews were
+read, which runs, which are missing, and how many crawls' findings were read,
+and calls both layers advice. No agent writes, page edits or publishing exist;
+the plan is a proposal, and nothing queues on its own. No migration: the run
+table's task-type check is a format rule.
 
 ### More of what a crawl observes (T5)
 
