@@ -1154,20 +1154,53 @@ export function queuedNote(state: {
  */
 export type ReviewInput = ReviewPayload["input"];
 
-/** True when a stored run's input names exactly this evidence and nothing else. */
+/**
+ * The one stored key that is provenance, not evidence.
+ *
+ * A run queued by a task handoff carries the task's id under this key beside
+ * the evidence the review names. It says where the run came from, never what
+ * it reads, so it is set aside when a stored input is compared with a panel's
+ * request; every other key still has to match exactly.
+ */
+const PROVENANCE_KEY = "sourceTaskId";
+
+/** True when a stored run's input names exactly this evidence and nothing else, provenance aside. */
 function sameInput(stored: JsonObject, input: ReviewInput): boolean {
   const wanted = input as Readonly<Record<string, string | number>>;
   const keys = Object.keys(wanted);
-  return Object.keys(stored).length === keys.length && keys.every((key) => stored[key] === wanted[key]);
+  const storedKeys = Object.keys(stored).filter((key) => key !== PROVENANCE_KEY);
+  return storedKeys.length === keys.length && keys.every((key) => stored[key] === wanted[key]);
 }
 
 /**
- * The newest persisted run of this review over this evidence, or null.
+ * Which run to show first when more than one matches: one being worked on,
+ * then one waiting, then the finished ones. A queued run an operator can
+ * still start must not be hidden behind a newer run that already ended.
+ */
+function activityRank(status: AgentRun["status"]): number {
+  if (status === "running") return 0;
+  if (status === "queued") return 1;
+  return 2;
+}
+
+/** True when `candidate` should be shown rather than `current`. */
+function precedes(candidate: AgentRun, current: AgentRun): boolean {
+  const rank = activityRank(candidate.status) - activityRank(current.status);
+  if (rank !== 0) return rank < 0;
+  if (candidate.createdAt !== current.createdAt) return candidate.createdAt > current.createdAt;
+  return candidate.id < current.id;
+}
+
+/**
+ * The persisted run of this review over this evidence to show, or null.
  *
  * A run is the same review only when the agent, the task and the whole input
  * match: a crawl review of another crawl, an on-page review of this crawl, or
- * a search query review of another window is somebody else's run. Newest by
- * creation time, whatever order the list arrived in.
+ * a search query review of another window is somebody else's run. A handoff's
+ * `sourceTaskId` is provenance and does not count. Among matches, a running
+ * run comes first, then a queued one, then the finished ones; within a class
+ * the newest by creation time wins, then the smaller id, whatever order the
+ * list arrived in.
  */
 export function latestReviewRun(
   runs: readonly AgentRun[],
@@ -1178,7 +1211,7 @@ export function latestReviewRun(
   for (const run of runs) {
     if (run.agentId !== review.agentId || run.taskType !== review.taskType) continue;
     if (!sameInput(run.input, input)) continue;
-    if (latest === null || run.createdAt > latest.createdAt) latest = run;
+    if (latest === null || precedes(run, latest)) latest = run;
   }
   return latest;
 }

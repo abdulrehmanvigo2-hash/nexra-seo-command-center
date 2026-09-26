@@ -1026,6 +1026,130 @@ describe("restoring a review's run after the page loads", () => {
       assert.equal(executability(failed).ok, false);
       assert.equal(executability({ ...failed, status: "queued", error: null }).ok, true);
     });
+
+    describe("a handoff's sourceTaskId is provenance, not evidence", () => {
+      const TASK_ID = "30e79092-6258-4fff-8d1f-c1e2921764b8";
+      const queuedRun = (id: string, minute: number, overrides: Partial<AgentRun> = {}): AgentRun => ({
+        ...RUN,
+        id,
+        status: "queued",
+        createdAt: at(minute),
+        updatedAt: at(minute),
+        ...overrides,
+      });
+
+      test("an intake review expecting {} restores a queued handoff run whose only stored key is sourceTaskId", () => {
+        const handoff = queuedRun("11111111-0000-4000-8000-000000000030", 9, {
+          agentId: INTAKE_REVIEW.agentId,
+          taskType: INTAKE_REVIEW.taskType,
+          input: { sourceTaskId: TASK_ID },
+        });
+        const picked = latestReviewRun([handoff], INTAKE_REVIEW, {});
+        assert.equal(picked?.id, handoff.id);
+        // The run is handed back as stored: its provenance is not stripped.
+        assert.deepEqual(picked?.input, { sourceTaskId: TASK_ID });
+        assert.equal(executability(picked).ok, true);
+      });
+
+      test("a review with real evidence fields still matches when sourceTaskId is the only extra stored key", () => {
+        const handoff = queuedRun("11111111-0000-4000-8000-000000000031", 9, {
+          agentId: "keyword-intent",
+          taskType: "search-query-review",
+          input: { range: "30d", sourceTaskId: TASK_ID },
+        });
+        assert.equal(latestReviewRun([handoff], SEARCH_QUERY_REVIEW, { range: "30d" })?.id, handoff.id);
+        const crawlHandoff = queuedRun("11111111-0000-4000-8000-000000000032", 9, { input: { crawlId: CRAWL.id, sourceTaskId: TASK_ID } });
+        assert.equal(latestReviewRun([crawlHandoff], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id })?.id, crawlHandoff.id);
+      });
+
+      test("any other extra key still fails to match, with or without sourceTaskId beside it", () => {
+        const focus = queuedRun("11111111-0000-4000-8000-000000000033", 9, { input: { crawlId: CRAWL.id, focus: "x" } });
+        const both = queuedRun("11111111-0000-4000-8000-000000000034", 9, { input: { crawlId: CRAWL.id, sourceTaskId: TASK_ID, focus: "x" } });
+        const intakeExtra = queuedRun("11111111-0000-4000-8000-000000000035", 9, {
+          agentId: INTAKE_REVIEW.agentId,
+          taskType: INTAKE_REVIEW.taskType,
+          input: { sourceTaskId: TASK_ID, notes: "x" },
+        });
+        assert.equal(latestReviewRun([focus, both], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+        assert.equal(latestReviewRun([intakeExtra], INTAKE_REVIEW, {}), null);
+      });
+
+      test("a mismatched evidence field still fails to match even when sourceTaskId is present", () => {
+        const otherCrawl = queuedRun("11111111-0000-4000-8000-000000000036", 9, { input: { crawlId: OTHER_CRAWL, sourceTaskId: TASK_ID } });
+        const otherRange = queuedRun("11111111-0000-4000-8000-000000000037", 9, {
+          agentId: "keyword-intent",
+          taskType: "search-query-review",
+          input: { range: "7d", sourceTaskId: TASK_ID },
+        });
+        const missingField = queuedRun("11111111-0000-4000-8000-000000000038", 9, { input: { sourceTaskId: TASK_ID } });
+        assert.equal(latestReviewRun([otherCrawl, missingField], CRAWL_REVIEWS["crawl-review"], { crawlId: CRAWL.id }), null);
+        assert.equal(latestReviewRun([otherRange], SEARCH_QUERY_REVIEW, { range: "30d" }), null);
+      });
+    });
+
+    describe("an active run is shown before a finished one", () => {
+      const TASK_ID = "30e79092-6258-4fff-8d1f-c1e2921764b8";
+      const intake = (id: string, minute: number, overrides: Partial<AgentRun> = {}): AgentRun => ({
+        ...RUN,
+        id,
+        agentId: INTAKE_REVIEW.agentId,
+        taskType: INTAKE_REVIEW.taskType,
+        input: {},
+        status: "queued",
+        createdAt: at(minute),
+        updatedAt: at(minute),
+        ...overrides,
+      });
+      const finished = (id: string, minute: number, overrides: Partial<AgentRun> = {}): AgentRun =>
+        intake(id, minute, {
+          status: "completed",
+          executor: "ai",
+          attemptCount: 1,
+          resultSummary: "RECORDED GOAL\nleads.",
+          resultMetadata: { simulated: false, grounded: true, evidence: { source: "project" } },
+          startedAt: at(minute),
+          finishedAt: at(minute + 1),
+          ...overrides,
+        });
+
+      test("a queued handoff run wins over a newer completed plain run — the production shape", () => {
+        const handoff = intake("11111111-0000-4000-8000-000000000040", 3, { input: { sourceTaskId: TASK_ID } });
+        const plain = finished("11111111-0000-4000-8000-000000000041", 9);
+        assert.equal(latestReviewRun([plain, handoff], INTAKE_REVIEW, {})?.id, handoff.id);
+        assert.equal(latestReviewRun([handoff, plain], INTAKE_REVIEW, {})?.id, handoff.id);
+      });
+
+      test("a running run wins over a queued one, whatever their ages", () => {
+        const running = intake("11111111-0000-4000-8000-000000000042", 2, { status: "running", attemptCount: 1, startedAt: at(2) });
+        const queued = intake("11111111-0000-4000-8000-000000000043", 9);
+        assert.equal(latestReviewRun([queued, running], INTAKE_REVIEW, {})?.id, running.id);
+        assert.equal(latestReviewRun([running, queued], INTAKE_REVIEW, {})?.id, running.id);
+      });
+
+      test("the newest queued run wins among queued runs, and equal times fall back to the smaller id", () => {
+        const older = intake("11111111-0000-4000-8000-000000000044", 3);
+        const newest = intake("11111111-0000-4000-8000-000000000045", 9);
+        const middle = intake("11111111-0000-4000-8000-000000000046", 5);
+        assert.equal(latestReviewRun([older, newest, middle], INTAKE_REVIEW, {})?.id, newest.id);
+        const twinB = intake("11111111-0000-4000-8000-000000000048", 9);
+        const twinA = intake("11111111-0000-4000-8000-000000000047", 9);
+        assert.equal(latestReviewRun([twinB, twinA], INTAKE_REVIEW, {})?.id, twinA.id);
+        assert.equal(latestReviewRun([twinA, twinB], INTAKE_REVIEW, {})?.id, twinA.id);
+      });
+
+      test("with no active run, the finished runs are still ordered newest first, failed and cancelled alike", () => {
+        const older = finished("11111111-0000-4000-8000-000000000049", 1);
+        const newest = finished("11111111-0000-4000-8000-000000000050", 9, {
+          status: "failed",
+          resultSummary: null,
+          resultMetadata: null,
+          error: { code: "rejected-output", message: "refused" },
+        });
+        const middle = finished("11111111-0000-4000-8000-000000000051", 5, { status: "cancelled" });
+        assert.equal(latestReviewRun([older, newest, middle], INTAKE_REVIEW, {})?.id, newest.id);
+        assert.equal(latestReviewRun([middle, older, newest], INTAKE_REVIEW, {})?.id, newest.id);
+      });
+    });
   });
 
   describe("the read", () => {
