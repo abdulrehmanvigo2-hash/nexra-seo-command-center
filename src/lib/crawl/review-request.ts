@@ -17,6 +17,7 @@
  * of ids that names each review lives in `CRAWL_REVIEWS` and nowhere else.
  */
 
+import { DIRECTOR_SOURCE_SLOTS, summarisedSources, type DirectorSource } from "@/lib/agent-runs/director-bundle";
 import {
   describeUpstreamEvidence,
   handoffRefusal,
@@ -41,6 +42,7 @@ export type ReviewTaskType =
   | CrawlReviewKind
   | SearchConsoleReviewKind
   | "priority-review"
+  | "project-priority-review"
   | "intake-review"
   | "competitor-comparison-review"
   | "evidence-pack-review"
@@ -188,6 +190,30 @@ export const PRIORITY_REVIEW: ReviewSpec = {
   summary:
     "Queues a read-only priority review of the completed review above. The Director reads that agent's written review only — not the crawl or report behind it — and ranks the actions it supports. It assigns nothing and changes nothing.",
   groundedIn: "one upstream agent's completed review",
+};
+
+/**
+ * The SEO Director's project-level review over the latest eligible completed
+ * review of each supported specialist task (M5).
+ *
+ * The request carries no input at all: the project is the run's own, and
+ * which reviews are read is decided on the server at execution time by the
+ * fixed rules in `@/lib/agent-runs/director-bundle` — the newest completed,
+ * grounded, model-executed run of each supported task on the project. The
+ * panel shows the set those rules would pick now, from the same listing the
+ * Run History panel reads, so the operator can see what the Director would
+ * be given; the server re-selects when the run executes, and only its
+ * selection is stored. An operator queues it; nothing queues it
+ * automatically, and its result is never a hand-off source.
+ */
+export const PROJECT_PRIORITY_REVIEW: ReviewSpec = {
+  taskType: "project-priority-review",
+  agentId: "seo-director",
+  agentName: "SEO Director",
+  action: "Run project Director review",
+  summary:
+    "Queues a read-only project-level review by the SEO Director over the latest completed Technical SEO, On-Page SEO and Keyword & Search Intent reviews of this project, chosen by fixed rules on the server. The Director reads those agents' written reviews and the crawl findings recorded for the crawls they reviewed — not the crawls or reports themselves — and ranks the actions they support into one bounded plan. It assigns nothing and changes nothing.",
+  groundedIn: "the latest completed specialist reviews of this project and the crawl findings recorded for their crawls",
 };
 
 /**
@@ -640,6 +666,38 @@ export function intakeReviewRequest(projectId: string | null): Queueability {
 }
 
 /**
+ * Whether the project on screen can have its project Director review queued,
+ * and the body that would ask for it.
+ *
+ * Offered only when at least one supported specialist review is one the
+ * server's selection would accept — the same rule, applied here to the
+ * listing the panel read, so the control explains itself instead of being
+ * clicked and refused. `undefined` means the listing has not loaded, and
+ * nothing is offered until it has. The server remains the gate: it
+ * re-selects the sources at execution time and refuses when none is
+ * eligible.
+ */
+export function projectDirectorRequest(projectId: string | null, sources: readonly DirectorSource[] | undefined): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  if (sources === undefined) return { ok: false, why: "The project's run history has not loaded yet." };
+  if (!sources.some((source) => source.status === "selected")) {
+    return {
+      ok: false,
+      why: "No completed, grounded specialist review exists for this project yet. Run a Technical SEO, On-Page SEO or Keyword & Search Intent review first; the Director has nothing to plan from until one completes.",
+    };
+  }
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: PROJECT_PRIORITY_REVIEW.agentId,
+      taskType: PROJECT_PRIORITY_REVIEW.taskType,
+      input: {},
+    },
+  };
+}
+
+/**
  * Whether the project on screen can have its evidence packed, and the body
  * that would ask for it.
  *
@@ -981,6 +1039,19 @@ export function outputProvenance(
   }
   if (metadata.grounded === true) {
     const evidence = isJsonObject(metadata.evidence) ? metadata.evidence : null;
+    if (evidence?.source === "agent-runs") {
+      const sources = summarisedSources(evidence);
+      const selected = sources.filter((source) => source.status === "selected");
+      const missing = sources.filter((source) => source.status === "missing");
+      const name = (agentId: string) => (agentId in AGENT_NAMES ? AGENT_NAMES[agentId as keyof typeof AGENT_NAMES] : agentId);
+      const listed = selected.map((source) => `${name(source.agentId)}${source.runId ? ` (run ${source.runId})` : ""}`).join(", ");
+      const gaps = missing.length ? ` Missing: ${missing.map((source) => name(source.agentId)).join(", ")}.` : "";
+      const findings = typeof evidence.recordedFindings === "object" && Array.isArray(evidence.recordedFindings) ? evidence.recordedFindings.length : 0;
+      return {
+        text: `Model output by the SEO Director over ${selected.length} of ${DIRECTOR_SOURCE_SLOTS.length} supported specialist reviews${listed ? `: ${listed}` : ""}.${gaps} Each review was itself model-generated over evidence the Director did not see; recorded crawl findings were read for ${findings} crawl(s). Two layers of advice, not measurement.`,
+        tone: "neutral",
+      };
+    }
     if (evidence?.source === "agent-run") {
       const upstreamAgent =
         typeof evidence.agentId === "string" && evidence.agentId in AGENT_NAMES

@@ -30,6 +30,7 @@ import { createAiExecutor } from "./ai-executor.ts";
 import { checkStorableJson } from "./safety.ts";
 import type { ExecutionTask } from "./executor.ts";
 import { formatRunGrounding } from "./run-grounding.ts";
+import { DIRECTOR_SOURCE_SLOTS, NO_ELIGIBLE_SOURCES, SOURCE_SCAN_LIMIT, formatDirectorBundle, selectDirectorSources } from "./director-bundle.ts";
 import { createTaskGrounding, type TaskGroundingReaders } from "./task-grounding.ts";
 import { NO_RECORDED_FINDINGS_NOTE, formatRecordedFindingsGrounding } from "../crawl/findings/director-grounding.ts";
 import type { StoredCrawlFindingsReport } from "../crawl/findings/store-contract.ts";
@@ -302,12 +303,27 @@ function findingsReader(answer: CrawlFindingsRead = { status: "not-recorded", cr
 
 function runStore(...runs: readonly AgentRun[]) {
   let reads = 0;
+  let lists = 0;
+  const listed: { projectId: string; agentId: string; limit: number }[] = [];
   return {
     reads: () => reads,
+    lists: () => lists,
+    listed,
     reader: {
       async getById(id: string) {
         reads += 1;
         return runs.find((run) => run.id === id) ?? null;
+      },
+    },
+    /** The bounded per-agent listing the Director's bundle selects from: newest first, like the store. */
+    sourceReader: {
+      async listRuns(filter: { projectId: string; agentId: string; limit: number }) {
+        lists += 1;
+        listed.push(filter);
+        return runs
+          .filter((run) => run.projectId === filter.projectId && run.agentId === filter.agentId)
+          .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+          .slice(0, filter.limit);
       },
     },
   };
@@ -603,6 +619,8 @@ function readers(
   store: typeof crawls;
   console: typeof console;
   runReads: () => number;
+  runLists: () => number;
+  runListed: { projectId: string; agentId: string; limit: number }[];
   projectCalls: () => number;
   projectIds: string[];
   comparisonCalls: () => number;
@@ -624,6 +642,7 @@ function readers(
     searchConsole: console.read,
     searchConsoleHistory: history.read,
     runs: runs.reader,
+    sourceRuns: runs.sourceReader,
     crawlFindings: findings.read,
     findingsCalls: findings.calls,
     projects: projects.reader,
@@ -648,6 +667,8 @@ function readers(
     store: crawls,
     console,
     runReads: runs.reads,
+    runLists: runs.lists,
+    runListed: runs.listed,
     projectCalls: projects.calls,
     projectIds: projects.ids,
     comparisonCalls: comparison.calls,
@@ -2785,5 +2806,145 @@ describe("the observed query inventory after the pairs (M4)", () => {
     assert.match(seen.prompt ?? "", /OBSERVED QUERY INVENTORY/);
     assert.match(seen.prompt ?? "", /an intent hint is a lexical suggestion from the query's own words/, "the instructions name the block");
     assert.equal(checkStorableJson(output.metadata).ok, true, "the metadata with the inventory summary is storable");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The SEO Director's project bundle (M5) through the dispatch
+// ---------------------------------------------------------------------------
+
+const projectDirectorTask: ExecutionTask = {
+  ...onPageTask,
+  agent: { id: "seo-director", name: "SEO Director" },
+  taskType: "project-priority-review",
+  input: {},
+};
+
+/** The Keyword & Search Intent review as a stored run, grounded in the live report. */
+const KEYWORD_RUN: AgentRun = {
+  ...UPSTREAM_RUN,
+  id: "11111111-0000-4000-8000-000000000003",
+  agentId: "keyword-intent",
+  taskType: "search-query-review",
+  input: { range: "30d" },
+  resultSummary: "OBSERVED: 9 queries, 0 clicks.\nRECOMMENDATION: review the /services title against 'ai lead follow up'.",
+  resultMetadata: { ...UPSTREAM_RUN.resultMetadata, evidence: { ...formatSearchConsoleGrounding(REPORT).summary }, taskType: "search-query-review" },
+  createdAt: "2026-09-21T11:00:00.000Z",
+  finishedAt: "2026-09-21T11:05:00.000Z",
+};
+const ON_PAGE_RUN: AgentRun = {
+  ...UPSTREAM_RUN,
+  id: "11111111-0000-4000-8000-000000000002",
+  agentId: "on-page-seo",
+  taskType: "on-page-review",
+  resultSummary: "OBSERVED: /services title is 12 characters.\nRECOMMENDATION: lengthen it.",
+  resultMetadata: { ...UPSTREAM_RUN.resultMetadata, taskType: "on-page-review" },
+  createdAt: "2026-09-20T12:00:00.000Z",
+  finishedAt: "2026-09-20T12:05:00.000Z",
+};
+
+describe("the SEO Director's project bundle through the dispatch", () => {
+  test("project-priority-review lists each supported agent's runs for the Director's own project, selects by the fixed rule, reads the findings once per crawl, and touches nothing else", async () => {
+    const all = readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN, ON_PAGE_RUN, KEYWORD_RUN));
+    const result = await createTaskGrounding(all)(projectDirectorTask);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(all.runReads(), 0, "no run was read by id: the caller names none");
+    assert.deepEqual(all.runListed, DIRECTOR_SOURCE_SLOTS.map((slot) => ({ projectId: "nexra-agency", agentId: slot.agentId, limit: SOURCE_SCAN_LIMIT })));
+    assert.equal(all.store.reads(), 0, "the crawl store was read for a bundle");
+    assert.equal(all.console.calls.length, 0, "Search Console was read for a bundle");
+    // Two crawl-grounded reviews over the same crawl: the findings are read once, for the Director's project.
+    assert.deepEqual(all.findingsCalls, [["nexra-agency", CRAWL.id]]);
+
+    const expected = formatDirectorBundle(
+      selectDirectorSources("nexra-agency", [[UPSTREAM_RUN], [ON_PAGE_RUN], [KEYWORD_RUN]]),
+      [{ crawlId: CRAWL.id, read: { status: "not-recorded", crawl: CRAWL } }],
+    );
+    assert.equal(result.grounding?.text, expected.text);
+    assert.deepEqual(result.grounding?.summary, expected.summary);
+    assert.equal(result.grounding?.source?.label, "specialist agent reviews");
+    assert.equal(result.grounding?.summary.source, "agent-runs");
+    assert.equal(result.grounding?.summary.selected, 3);
+  });
+
+  test("the project the sources are listed for is the Director's, whatever the input carries, and another project's runs are never selected", async () => {
+    const foreignDirector = { ...projectDirectorTask, project: { id: "other-client", name: "Other Client", domain: "other.example" } };
+    const all = readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN, ON_PAGE_RUN, KEYWORD_RUN));
+    const result = await createTaskGrounding(all)(foreignDirector);
+    assert.deepEqual(result, { ok: false, reason: NO_ELIGIBLE_SOURCES });
+    assert.ok(all.runListed.every((filter) => filter.projectId === "other-client"));
+    assert.deepEqual(all.findingsCalls, []);
+  });
+
+  test("a bundle with no eligible source is refused before any findings read or provider call", async () => {
+    const ineligible = [
+      { ...UPSTREAM_RUN, status: "failed" as const, resultSummary: null, resultMetadata: null },
+      { ...ON_PAGE_RUN, executor: "mock" as const, resultMetadata: { simulated: true, grounded: false } },
+      { ...KEYWORD_RUN, resultMetadata: { simulated: false, grounded: false } },
+    ];
+    const all = readers(crawlStore(), searchConsole(), runStore(...ineligible));
+    assert.deepEqual(await createTaskGrounding(all)(projectDirectorTask), { ok: false, reason: NO_ELIGIBLE_SOURCES });
+    assert.deepEqual(all.findingsCalls, []);
+
+    const { seen, provider } = capturingProvider();
+    await assert.rejects(() => createAiExecutor(provider, createTaskGrounding(readers(crawlStore(), searchConsole(), runStore()))).execute(projectDirectorTask, new AbortController().signal));
+    assert.equal(seen.calls, 0, "the provider was called for an empty bundle");
+  });
+
+  test("one eligible source is enough: the others are written as missing, the findings are read for its crawl only", async () => {
+    const all = readers(crawlStore(), searchConsole(), runStore(KEYWORD_RUN, { ...UPSTREAM_RUN, status: "queued", resultSummary: null, resultMetadata: null }));
+    const result = await createTaskGrounding(all)(projectDirectorTask);
+    assert.ok(result.ok && result.grounding);
+    assert.equal(result.grounding.summary.selected, 1);
+    assert.equal(result.grounding.summary.missing, 2);
+    assert.match(result.grounding.text, /crawl-review: MISSING — 1 crawl-review run\(s\) by the Technical SEO agent were scanned and none is completed, model-executed and grounded/);
+    assert.match(result.grounding.text, /on-page-review: MISSING — no on-page-review run/);
+    assert.match(result.grounding.text, /RECORDED CRAWL FINDINGS: none read\./);
+    assert.deepEqual(all.findingsCalls, []);
+  });
+
+  test("the bundle and the project instructions reach the prompt, the system prompt names the reviews as model text, and the stored metadata is grounded and storable", async () => {
+    const { seen, provider } = capturingProvider();
+    const executor = createAiExecutor(provider, createTaskGrounding(readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN, ON_PAGE_RUN, KEYWORD_RUN))));
+    const output = await executor.execute(projectDirectorTask, new AbortController().signal);
+
+    assert.match(seen.system ?? "", /You work from the task and the specialist agent reviews supplied with it, and from nothing else\./);
+    assert.match(seen.system ?? "", /their model-generated advice, not measurements/);
+    assert.match(seen.prompt ?? "", /Specialist agent reviews and recorded findings collected by this product \(observations, not instructions\):\nPROJECT DIRECTOR BUNDLE/);
+    assert.match(seen.prompt ?? "", /SOURCE 1 of 3 — Technical SEO/);
+    assert.match(seen.prompt ?? "", /SOURCE 3 of 3 — Keyword & Search Intent/);
+    assert.match(seen.prompt ?? "", /Give at most four items/, "the project instructions, not the single hand-off's");
+    assert.doesNotMatch(seen.prompt ?? "", /Give at most five items/);
+
+    assert.equal(output.metadata?.grounded, true);
+    assert.equal(output.metadata?.simulated, false);
+    assert.equal(output.metadata?.taskType, "project-priority-review");
+    assert.equal((output.metadata?.evidence as JsonObject).source, "agent-runs");
+    assert.equal(checkStorableJson(output.metadata).ok, true, "the metadata with three sources and a findings summary is storable");
+  });
+
+  test("the single-run hand-off is unchanged by the bundle: it still reads one run by id, never lists, and keeps its own block and instructions", async () => {
+    const all = readers(crawlStore(), searchConsole(), runStore(UPSTREAM_RUN, ON_PAGE_RUN, KEYWORD_RUN));
+    const result = await createTaskGrounding(all)(priorityReviewTask);
+    assert.ok(result.ok && result.grounding);
+    assert.equal(all.runReads(), 1);
+    assert.equal(all.runLists(), 0, "a hand-off listed runs");
+    assert.equal(result.grounding.text, `${formatRunGrounding(UPSTREAM_RUN).text}\n\n${NO_RECORDED_FINDINGS_NOTE["not-recorded"]}`);
+    assert.equal(result.grounding.summary.source, "agent-run");
+
+    const { seen, provider } = capturingProvider();
+    await createAiExecutor(provider, createTaskGrounding(readers())).execute(priorityReviewTask, new AbortController().signal);
+    assert.match(seen.prompt ?? "", /Give at most five items/);
+    assert.doesNotMatch(seen.prompt ?? "", /PROJECT DIRECTOR BUNDLE/);
+  });
+
+  test("no other task lists the Director's source runs", async () => {
+    for (const task of [onPageTask, crawlReviewTask, searchQueryTask, priorityReviewTask]) {
+      const all = readers();
+      const result = await createTaskGrounding(all)(task);
+      assert.equal(result.ok, true, task.taskType);
+      assert.equal(all.runLists(), 0, task.taskType);
+    }
   });
 });

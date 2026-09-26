@@ -3,12 +3,13 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Milestone M4 (observed keyword intelligence), local development. C1–C6 (with
-D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2 and M3 are complete, merged and deployed; M2 is
-production verified on crawl `3398ff1a…`, the On-Page output bound (PR #13, `6760cfc`) is deployed,
-and M3 (PR #14, `db7afdb`, migration `20261002120000` applied and recorded) is deployed with its
-browser verification pending. The P4c first live query × page capture is pending the next scheduled
-worker run. M4 is implemented and verified locally only (see §0).**
+**Current stage: Milestone M5 (SEO Director project-level orchestration), local development.
+C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3 and M4 are complete, merged and
+deployed; M2 is production verified on crawl `3398ff1a…`; M3 (PR #14, `db7afdb`, migration
+`20261002120000` applied and recorded) is deployed with its browser verification pending; M4
+(PR #15, `3510493`, and the selector fix PR #16, `220c732`) is deployed and production verified on
+search-query-review run `73f38c16…`. The P4c first live query × page capture is pending the next
+scheduled worker run. M5 is implemented and verified locally only (see §0).**
 
 ---
 
@@ -100,12 +101,39 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Milestone M4 — observed keyword intelligence, implemented and verified locally
-on branch `claude/m4-keyword-intelligence-gap` (from `master` `db7afdb`, the M3 merge). Nothing is
-pushed, no PR is open, nothing is deployed. M4 adds **no migration**. Each further M4 step (push,
-PR, merge) starts only with explicit user approval.
+**Current work:** Milestone M5 — SEO Director project-level orchestration, implemented and
+verified locally on branch `claude/m5-director-orchestration-gap` (from `master` `220c732`, the M4
+selector-fix merge). Nothing is pushed, no PR is open, nothing is deployed. M5 adds **no
+migration**. Each further M5 step (push, PR, merge) starts only with explicit user approval.
 
-**M4 (local only):** a gap audit found overlap and cannibalization-candidate detection (P4c), Search
+**M5 (local only):** a gap audit found the T6 single-run hand-off complete (one upstream run by id,
+project-checked, labelled, OBSERVED/PROPOSED separation, output screening, provenance on screen, run
+history, no automation) and one core gap: no project-level Director review over more than one
+specialist run. M5 adds one read-only task, `project-priority-review` (SEO Director, no input): the
+server selects, by fixed rules in `src/lib/agent-runs/director-bundle.ts`, the newest completed,
+model-executed, grounded run of each of three supported tasks — Technical SEO `crawl-review`,
+On-Page SEO `on-page-review`, Keyword & Search Intent `search-query-review` — among that agent's 25
+newest runs on the run's own project, ordered by creation time then id; a slot with none is written
+as MISSING with why; a bundle with no eligible source is refused before any provider call. Each
+source keeps the T6 header and JSON-quoted review under 6,000 bytes; the recorded crawl findings
+(T3) follow once per distinct crawl, at most two; one limits note; the whole under 54,000 bytes; the
+stored summary (`source: "agent-runs"`) is scalar-only inside its arrays and passes the run store's
+check. Instructions: at most four items under 1,500 characters, BASIS OBSERVED/PROPOSED, SOURCES per
+item, a worded ranking rule (recorded findings first, then severity, then agreement, then
+confidence; no score), one item where sources agree, a BLOCKERS line for missing reviews and
+unestablished readings, no traffic/ranking/indexation/vitals claims. UI: the *Project Director
+review* panel on the project screen previews the same rule over the run list and offers "Run
+project Director review" through the shared control; the result's provenance line names the source
+runs and the missing reviews. The single-run hand-off, its block, instructions and control are
+unchanged; neither Director task is a hand-off source; no agent write, page edit or publishing.
+
+**M4 (merged, deployed, production verified):** PR #15 merged as `3510493`, the Keywords-tab
+selector fix PR #16 merged as `220c732`; deployments READY; run `73f38c16…` stored the fourth
+grounding block (`keywords: "available"`, 9 queries) beside the report, history and query-page
+blocks, with the output keeping OBSERVED / INFERENCE / RECOMMENDATION apart. Browser verification of
+the *Observed query inventory* panel remains with the operator.
+
+**M4 (as delivered):** a gap audit found overlap and cannibalization-candidate detection (P4c), Search
 Console grounding (M1, P4b, P4c), stored history and movement (P4a, P4d) and the live panel complete;
 missing were a project-level observed query inventory, structured intent labels, grouping, a
 query-to-page mapping beyond overlaps, fixed opportunity rules and a live keyword surface. All are
@@ -623,13 +651,14 @@ foundation, Search Console) are complete. Current work follows the content workf
 | M1 / P4c | Query × page Search Console intelligence | Complete, merged (`315323b`), migration applied and recorded, deployed; first live capture verification pending |
 | M2 | Remaining crawl enrichment: word count, html lang, hreflang, Open Graph, Twitter card, response time; rule version 3 | Complete, merged (`3b74d99`), migration applied and recorded, deployed, production verified; On-Page output bound merged (`6760cfc`) and deployed |
 | M3 | Finding triage (operator decisions kept apart from findings) and the observed findings section on the Technical SEO screen | Complete, merged (`db7afdb`), migration applied and recorded, deployed; browser verification pending |
-| M4 | Observed keyword intelligence: query inventory, lexical intent hints and groups, page mapping, fixed opportunity rules, Keywords panel, agent grounding | Implemented and verified locally; local commits; not pushed; no migration |
+| M4 | Observed keyword intelligence: query inventory, lexical intent hints and groups, page mapping, fixed opportunity rules, Keywords panel, agent grounding | Complete, merged (`3510493`, selector fix `220c732`), deployed, production verified on run `73f38c16…`; no migration |
+| M5 | SEO Director project-level orchestration: deterministic multi-source selection, bounded bundle, deduplicated plan instructions, project Director panel | Implemented and verified locally; local commits; not pushed; no migration |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M4 on its feature
-branch; pushing it, a PR and merge start only with explicit approval. Work beyond M4 (cross-crawl
-finding history and a curated keyword entity are the noted candidates) is undecided and is not
-planned here.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: M5 on its feature
+branch; pushing it, a PR and merge start only with explicit approval. Work beyond M5 (cross-crawl
+finding history, a curated keyword entity and further Director sources such as the answer-readiness
+and performance reviews are the noted candidates) is undecided and is not planned here.
 
 ## 15. Definition of Done
 

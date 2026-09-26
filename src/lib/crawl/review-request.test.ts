@@ -16,6 +16,8 @@ import {
   evidencePackRequest,
   PERFORMANCE_REVIEW,
   PRIORITY_REVIEW,
+  PROJECT_PRIORITY_REVIEW,
+  projectDirectorRequest,
   REVIEW_AGENT_ID,
   SECTION_DRAFT,
   draftRequest,
@@ -2102,5 +2104,74 @@ describe("the draft fact-check review", () => {
     // A completed fact-check is never itself a hand-off or draft source.
     assert.equal(factCheck.offersHandoff(run), false);
     assert.equal(factCheck.offersDraft(run), false);
+  });
+});
+
+describe("the SEO Director's project review request (M5)", () => {
+  const selected = { slot: { taskType: "crawl-review" as const, agentId: "technical-seo" as const }, status: "selected" as const, run: RUN, newerIneligible: 0, scanned: 1 };
+  const missing = { slot: { taskType: "on-page-review" as const, agentId: "on-page-seo" as const }, status: "missing" as const, reason: "no-run" as const, scanned: 0 };
+
+  test("names the SEO Director, the project task, and no input at all", () => {
+    assert.deepEqual(projectDirectorRequest("nexra-agency", [selected, missing]), {
+      ok: true,
+      payload: { projectId: "nexra-agency", agentId: "seo-director", taskType: "project-priority-review", input: {} },
+    });
+    assert.equal(PROJECT_PRIORITY_REVIEW.agentId, "seo-director");
+    assert.equal(PROJECT_PRIORITY_REVIEW.taskType, "project-priority-review");
+    assert.equal(PROJECT_PRIORITY_REVIEW.action, "Run project Director review");
+    assert.match(PROJECT_PRIORITY_REVIEW.summary, /chosen by fixed rules on the server/);
+    assert.match(PROJECT_PRIORITY_REVIEW.summary, /not the crawls or reports themselves/);
+    assert.match(PROJECT_PRIORITY_REVIEW.summary, /It assigns nothing and changes nothing\./);
+  });
+
+  test("is not offered without a project, before the listing loads, or when no supported review is eligible", () => {
+    assert.deepEqual(projectDirectorRequest(null, [selected]), { ok: false, why: "No project is selected." });
+    assert.deepEqual(projectDirectorRequest("nexra-agency", undefined), { ok: false, why: "The project's run history has not loaded yet." });
+    const none = projectDirectorRequest("nexra-agency", [missing, { ...missing, slot: { taskType: "search-query-review", agentId: "keyword-intent" }, reason: "no-eligible-run", scanned: 3 }]);
+    assert.equal(none.ok, false);
+    if (none.ok) return;
+    assert.match(none.why, /No completed, grounded specialist review exists for this project yet\. Run a Technical SEO, On-Page SEO or Keyword & Search Intent review first/);
+  });
+
+  test("its completed result is never a hand-off source and offers no further Director control", () => {
+    const completed: AgentRun = { ...RUN, agentId: "seo-director", taskType: "project-priority-review", input: {}, status: "completed", executor: "ai", resultSummary: "PRIORITY 1 …" };
+    assert.equal(offersHandoff(completed), false);
+    assert.equal(handoffRequest("nexra-agency", completed).ok, false);
+  });
+
+  test("the provenance line names how many supported reviews it read, which runs, which are missing, and calls both layers advice", () => {
+    const completed: AgentRun = {
+      ...RUN,
+      agentId: "seo-director",
+      taskType: "project-priority-review",
+      input: {},
+      status: "completed",
+      executor: "ai",
+      resultSummary: "PRIORITY 1 …",
+      resultMetadata: {
+        simulated: false,
+        grounded: true,
+        evidence: {
+          source: "agent-runs",
+          slots: 3,
+          selected: 2,
+          missing: 1,
+          sources: [
+            { taskType: "crawl-review", agentId: "technical-seo", status: "selected", runId: "11111111-0000-4000-8000-000000000001" },
+            { taskType: "on-page-review", agentId: "on-page-seo", status: "missing", runId: null },
+            { taskType: "search-query-review", agentId: "keyword-intent", status: "selected", runId: "11111111-0000-4000-8000-000000000003" },
+          ],
+          recordedFindings: [{ crawlId: CRAWL.id, status: "recorded" }],
+        },
+      },
+    };
+    const provenance = outputProvenance(completed, PROJECT_PRIORITY_REVIEW.groundedIn);
+    assert.equal(provenance?.tone, "neutral");
+    assert.equal(
+      provenance?.text,
+      "Model output by the SEO Director over 2 of 3 supported specialist reviews: Technical SEO (run 11111111-0000-4000-8000-000000000001), Keyword & Search Intent (run 11111111-0000-4000-8000-000000000003). Missing: On-Page SEO. Each review was itself model-generated over evidence the Director did not see; recorded crawl findings were read for 1 crawl(s). Two layers of advice, not measurement.",
+    );
+    // A stored summary of another shape falls through to the ordinary grounded wording, never to the bundle's.
+    assert.match(outputProvenance({ ...completed, resultMetadata: { simulated: false, grounded: true, evidence: { source: "agent-runs" } } })?.text ?? "", /over 0 of 3 supported specialist reviews\./);
   });
 });

@@ -6,6 +6,7 @@ import {
   CRAWL_REVIEW_INSTRUCTIONS,
   ON_PAGE_REVIEW_INSTRUCTIONS,
 } from "@/lib/crawl/grounding";
+import { PROJECT_PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/director-bundle";
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
@@ -60,7 +61,11 @@ export type TaskTypeDefinition = {
    * reader. `none` tasks reach the model with the validated input alone.
    * `agent-run` tasks are given one other agent's completed, grounded review
    * — model-generated advice, labelled as such, never the recorded evidence
-   * it was written over. `project` tasks are given the run's own stored
+   * it was written over. `agent-runs` tasks are given the latest completed,
+   * grounded review of each supported specialist task on the run's own
+   * project, selected on the server by fixed rules and never named by a
+   * caller — the same kind of advice, labelled per source, with a missing
+   * source stated as missing. `project` tasks are given the run's own stored
    * project record and an inventory of the evidence this product holds for
    * it — agency-entered text, labelled unverified, never a measurement.
    * `competitor-comparison` tasks are given two crawls this product recorded
@@ -98,6 +103,7 @@ export type TaskTypeDefinition = {
     | "crawl"
     | "search-console"
     | "agent-run"
+    | "agent-runs"
     | "project"
     | "competitor-comparison"
     | "evidence-pack"
@@ -361,6 +367,36 @@ const priorityReview: TaskTypeDefinition = {
       return { ok: false, error: "sourceRunId must be the id of a completed run on this project." };
     }
     return { ok: true, value: { sourceRunId: sourceRunId.toLowerCase() } };
+  },
+};
+
+/**
+ * The SEO Director's project-level priority review over the latest eligible
+ * completed review of each supported specialist task (M5).
+ *
+ * The second hand-off between agents, and the first with more than one
+ * source. The input names nothing: the project is the run's own, and which
+ * runs are read is decided on the server, at execution time, by the fixed
+ * rules in `@/lib/agent-runs/director-bundle` — one slot per supported task,
+ * the newest run of it on the project that is completed, executed by a
+ * model and grounded, among that agent's newest runs. A caller cannot name a
+ * source, widen the set, or reach another project. Read-only, like every
+ * task here: it proposes one bounded plan, assigns nothing, and changes
+ * nothing. Operator-triggered only; nothing queues it automatically.
+ */
+const projectPriorityReview: TaskTypeDefinition = {
+  id: "project-priority-review",
+  label: "Project Director review",
+  description:
+    "Rank the actions the latest completed Technical SEO, On-Page SEO and Keyword & Search Intent reviews of this project support into one bounded plan.",
+  agents: ["seo-director"],
+  policy: "read-only",
+  evidence: "agent-runs",
+  instructions: PROJECT_PRIORITY_REVIEW_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, []);
+    if (!object.ok) return object;
+    return { ok: true, value: {} };
   },
 };
 
@@ -680,6 +716,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   searchQueryReview,
   performanceReview,
   priorityReview,
+  projectPriorityReview,
   intakeReview,
   competitorComparisonReview,
   evidencePackReview,

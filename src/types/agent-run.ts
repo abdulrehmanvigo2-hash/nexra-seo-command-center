@@ -36,6 +36,7 @@ export type AgentTaskType =
   | "search-query-review"
   | "performance-review"
   | "priority-review"
+  | "project-priority-review"
   | "intake-review"
   | "competitor-comparison-review"
   | "evidence-pack-review"

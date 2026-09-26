@@ -138,6 +138,10 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // keeps its own runs in: one record, read by id, checked against the
         // Director's project before a word of it is formatted.
         runs: store,
+        // The Director's project bundle (M5) selects its sources from the
+        // same store: each supported task's agent's newest runs on the run's
+        // own project, listed bounded, and chosen by fixed rules.
+        sourceRuns: store,
         // After the review, the findings recorded (T3) for the crawl that
         // review was written over, read by the Director's own project and
         // that crawl id through the crawl service; never recomputed.

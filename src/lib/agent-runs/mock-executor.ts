@@ -89,6 +89,21 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "project-priority-review": {
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no specialist review. `grounded: false`,
+          // as for every simulated result: it looked at nothing and ranked
+          // nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+        };
+        return {
+          summary: `Simulated project Director review by ${subject}. The mock executor read no specialist review or recorded finding and ranked nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "intake-review": {
         const metadata: JsonObject = {
           simulated: true,
