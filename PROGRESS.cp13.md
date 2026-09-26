@@ -7,7 +7,7 @@ Branch `claude/phase1-security-tests` from `97aa0018`. Delete this file in the f
 2. security + safety — `src/lib/security/security.test.ts`, `src/lib/agent-runs/safety.test.ts` — done (34 cases)
 3. observability/log — `src/lib/observability/log.test.ts` — done (7 cases)
 4. worker leases/recovery + provider HTTP paths — `src/lib/agent-runs/worker-lease.test.ts`, `provider-responses.test.ts` — done (30 cases)
-5. providers/config — pending
+5. providers/config — `src/lib/agent-runs/provider-config.test.ts` — done (9 cases)
 
 ## Docs
 - CLAUDE.md §0 anchor update (master 97aa0018…, deployment dpl_88CT3m…, PR #23) — pending
