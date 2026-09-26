@@ -4,7 +4,7 @@ Branch `claude/phase1-security-tests` from `97aa0018`. Delete this file in the f
 
 ## Suites
 1. auth — `src/lib/auth/access.test.ts`, `config.test.ts`, `sign-in-limits.test.ts` — done (33 cases)
-2. security + safety — pending
+2. security + safety — `src/lib/security/security.test.ts`, `src/lib/agent-runs/safety.test.ts` — done (34 cases)
 3. observability/log — pending
 4. worker leases/recovery + provider HTTP paths — pending
 5. providers/config — pending
