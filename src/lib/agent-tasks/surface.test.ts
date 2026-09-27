@@ -182,6 +182,17 @@ describe("the live tasks panel", () => {
     assert.doesNotMatch(controls, /@\/lib\/mock\/(?!agents\/registry)/);
   });
 
+  test("the history view shows the handoff outcome the read returned, with no control of its own (cp 2.2)", async () => {
+    const controls = await read("../../components/agent-tasks/task-row-controls.tsx");
+    assert.match(controls, /<HandoffOutcome outcome=\{history\.outcome\} \/>/);
+    assert.match(controls, /describeTaskRunOutcome\(outcome\)/);
+    assert.match(controls, /The task&apos;s status is not changed by its run\./);
+    assert.match(controls, /The handoff outcome could not be read\. Nothing here is estimated\./);
+    const block = controls.slice(controls.indexOf("function HandoffOutcome("), controls.indexOf("function describeEvent("));
+    assert.ok(block.length > 0);
+    assert.doesNotMatch(block, /<Button|onClick|fetch\(|useEffect|useState/, "the outcome is shown, never acted on");
+  });
+
   test("is mounted once, on the Project Manager's Tasks tab only, above the board that stays labelled modelled", async () => {
     const workspace = await read("../../components/agents/agent-workspace.tsx");
     assert.equal((workspace.match(/<LiveTasksPanel projects=\{projects\} \/>/g) ?? []).length, 1);

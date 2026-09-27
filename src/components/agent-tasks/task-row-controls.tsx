@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import {
@@ -17,6 +17,7 @@ import {
   type TaskOwningAgent,
 } from "@/lib/agent-tasks/contract";
 import { handoffFor, handoffUnsupportedReason, taskActionFailure } from "@/lib/agent-tasks/handoff";
+import { describeTaskRunOutcome, type TaskRunOutcome } from "@/lib/agent-tasks/outcome";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import { AGENT_NAMES } from "@/lib/mock/agents/registry";
 import type { AgentRun } from "@/types/agent-run";
@@ -33,7 +34,9 @@ import type { AgentRun } from "@/types/agent-run";
  * handoff" posts, once, and the answer names the queued run — which the
  * scheduled worker or a separate "Run now" on the agent's run history
  * executes, never this control. An owner with no supported handoff shows
- * that, and offers nothing.
+ * that, and offers nothing. The history view also shows what became of the
+ * newest handoff, as the server computed it from the linked run: read only,
+ * and the task's status is never changed by it.
  */
 
 type Mode = "idle" | "status" | "owner" | "handoff" | "history";
@@ -47,7 +50,7 @@ type Outcome =
 type History =
   | { readonly status: "loading" }
   | { readonly status: "failed" }
-  | { readonly status: "loaded"; readonly events: readonly AgentTaskEvent[] };
+  | { readonly status: "loaded"; readonly events: readonly AgentTaskEvent[]; readonly outcome: TaskRunOutcome | null };
 
 export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChanged: (task: AgentTask) => void }) {
   const ids = { status: useId(), owner: useId() };
@@ -106,8 +109,9 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
     try {
       const response = await fetch(agentTaskUrl(task.id, task.projectId), { cache: "no-store" });
       if (!response.ok) return setHistory({ status: "failed" });
-      const body = (await response.json()) as { events?: AgentTaskEvent[] };
-      setHistory({ status: "loaded", events: Array.isArray(body.events) ? body.events : [] });
+      const body = (await response.json()) as { events?: AgentTaskEvent[]; outcome?: TaskRunOutcome };
+      const outcome = body.outcome && typeof body.outcome === "object" && typeof body.outcome.status === "string" ? body.outcome : null;
+      setHistory({ status: "loaded", events: Array.isArray(body.events) ? body.events : [], outcome });
     } catch {
       setHistory({ status: "failed" });
     }
@@ -247,17 +251,20 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
               The history could not be read. Nothing here is estimated.
             </p>
           ) : (
-            <ol className="space-y-1 text-[11.5px]">
-              {history.events.map((event) => (
-                <li key={event.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                  <span className="whitespace-nowrap font-mono text-fg-subtle">
-                    {formatFullDate(event.createdAt)} {formatTimeUtc(event.createdAt)}
-                  </span>
-                  <Badge tone="neutral">{TASK_EVENT_META[event.type]}</Badge>
-                  <span className="text-fg-muted">{describeEvent(event)}</span>
-                </li>
-              ))}
-            </ol>
+            <div className="space-y-2">
+              <HandoffOutcome outcome={history.outcome} />
+              <ol className="space-y-1 text-[11.5px]">
+                {history.events.map((event) => (
+                  <li key={event.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="whitespace-nowrap font-mono text-fg-subtle">
+                      {formatFullDate(event.createdAt)} {formatTimeUtc(event.createdAt)}
+                    </span>
+                    <Badge tone="neutral">{TASK_EVENT_META[event.type]}</Badge>
+                    <span className="text-fg-muted">{describeEvent(event)}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
         </div>
       )}
@@ -270,6 +277,56 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
       {outcome.kind === "applied" && (
         <p className="text-[11.5px] text-fg-muted" role="status">
           <span className="font-medium text-fg">Recorded.</span> {outcome.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const OUTCOME_BADGE: Readonly<Record<TaskRunOutcome["status"], { readonly label: string; readonly tone: BadgeTone }>> = {
+  none: { label: "No handoff", tone: "neutral" },
+  unavailable: { label: "Outcome unavailable", tone: "warning" },
+  queued: { label: "Run queued", tone: "neutral" },
+  running: { label: "Run running", tone: "accent" },
+  retrying: { label: "Run retrying", tone: "warning" },
+  completed: { label: "Run completed", tone: "positive" },
+  failed: { label: "Run failed", tone: "critical" },
+  cancelled: { label: "Run cancelled", tone: "neutral" },
+};
+
+/**
+ * What became of the newest handoff, as read from its run now. Mirrors the
+ * review panels' rendering of a run — the fixed error code and message, the
+ * screened summary — and offers no control: nothing here runs, retries or
+ * changes the task.
+ */
+function HandoffOutcome({ outcome }: { outcome: TaskRunOutcome | null }) {
+  if (outcome === null) {
+    return (
+      <p className="text-[11.5px] text-warning" role="status">
+        The handoff outcome could not be read. Nothing here is estimated.
+      </p>
+    );
+  }
+  const badge = OUTCOME_BADGE[outcome.status];
+  return (
+    <div className="space-y-1 border-b border-border pb-2 text-[11.5px]">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="font-medium text-fg">Handoff outcome</span>
+        <Badge tone={badge.tone}>{badge.label}</Badge>
+        <span className="text-fg-muted">{describeTaskRunOutcome(outcome)}</span>
+      </div>
+      {"error" in outcome && outcome.error && (
+        <p className="text-critical">
+          <span className="font-medium">{outcome.error.code}</span> — {outcome.error.message}
+        </p>
+      )}
+      {outcome.status === "completed" && outcome.resultSummary && (
+        <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-fg-muted">{outcome.resultSummary}</p>
+      )}
+      {outcome.status !== "none" && outcome.status !== "unavailable" && (
+        <p className="text-fg-subtle">
+          The task&apos;s status is not changed by its run. Full run history, including attempts, is on the Agents screen.
         </p>
       )}
     </div>
