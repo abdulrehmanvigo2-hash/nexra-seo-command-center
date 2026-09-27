@@ -124,7 +124,7 @@ export const STATUS_LABEL: Readonly<
   },
 };
 
-const STOP_REASON: Readonly<Record<CrawlStopReason, string>> = {
+export const STOP_REASON: Readonly<Record<CrawlStopReason, string>> = {
   completed: "Every reachable in-scope URL was visited",
   "page-budget": "Stopped on the page budget",
   "time-budget": "Stopped on the time budget",

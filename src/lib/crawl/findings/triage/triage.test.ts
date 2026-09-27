@@ -265,6 +265,8 @@ describe("the latest findings with their decisions, presented", () => {
     assert.match(view.provenance, /within this crawl, not site-wide/);
     assert.match(view.provenance, /nothing here is fixture data/);
     assert.match(view.coverage, /5 of 7 recorded pages fetched/);
+    // Checkpoint 3.2: the crawl's own outcome leads, so a partial crawl never reads as a full one.
+    assert.match(view.coverage, /^Stopped on the page budget\. 5 of 7/);
     for (const text of [NO_RECORDED_FINDINGS_WORDING, LATEST_FINDINGS_UNAVAILABLE_WORDING]) {
       assert.doesNotMatch(text, /no issues|clean|healthy/i);
     }

@@ -117,14 +117,17 @@ describe("the triage write route", () => {
 });
 
 describe("the observed findings section on the Technical SEO screen", () => {
-  test("is mounted once, fed the stored roster by the page, and the modelled views keep their own fixture options", () => {
+  test("is mounted once, as the Issues tab, following the screen's project (checkpoint 3.2)", () => {
     assert.match(PAGE, /projectOptionsFrom\(await projectRepository\.listProjects\(\)\)/);
     assert.match(PAGE, /<TechnicalSeo storedProjects=\{storedProjects\} \/>/);
     assert.match(TECHNICAL, /import \{ ObservedFindings \} from "@\/components\/technical\/observed-findings"/);
     assert.equal((TECHNICAL.match(/<ObservedFindings /g) ?? []).length, 1);
-    assert.match(TECHNICAL, /<ObservedFindings projects=\{storedProjects\} initialProjectId=\{initialProject\} \/>/);
-    assert.match(TECHNICAL, /projects = getTechnicalProjectOptions\(\)/, "the modelled filters still range over the fixture roster");
-    assert.match(TECHNICAL, /Modelled data over the/, "the modelled views stay labelled");
+    assert.match(TECHNICAL, /tab === "issues" && \(/);
+    assert.match(TECHNICAL, /<ObservedFindings projects=\{storedProjects\} initialProjectId=\{null\} projectId=\{projectId\} \/>/);
+    // The fake session-only triage and every fixture are gone from the screen.
+    assert.doesNotMatch(TECHNICAL, /@\/lib\/mock|IssuesView|setStatuses|Modelled data over the/);
+    // A controlled section shows no selector of its own.
+    assert.match(SECTION, /!controlled && projects\.length > 0 &&/);
   });
 
   test("reads through the latest-findings endpoint, writes only a decision through the triage endpoint, and labels itself observed", () => {
@@ -135,7 +138,7 @@ describe("the observed findings section on the Technical SEO screen", () => {
     assert.doesNotMatch(SECTION, /@\/lib\/mock/);
     assert.doesNotMatch(SECTION, /api\/agent-runs|api\/crawls"|startCrawl|useQueuedReview/);
     assert.match(SECTION, /Not fixture data/);
-    assert.match(SECTION, /Not the modelled registry below/);
+    assert.match(SECTION, /Nothing here is fixture data/);
     assert.match(SECTION, /view\.provenance/);
   });
 

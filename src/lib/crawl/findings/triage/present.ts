@@ -15,6 +15,7 @@
  */
 
 import { CATEGORY_LABEL, SEVERITY_LABEL, SEVERITY_ORDER, coverageLine, type Tone } from "@/lib/crawl/findings/present";
+import { STOP_REASON } from "@/lib/crawl/panel-state";
 import { RULES } from "@/lib/crawl/findings/rules";
 import type { FindingCategory, FindingRuleId, FindingSeverity } from "@/lib/crawl/findings/contract";
 import type { StoredCrawlFinding, StoredCrawlFindingsReport } from "@/lib/crawl/findings/store-contract";
@@ -165,7 +166,8 @@ export function presentTriagedFindings(
     total: header.findingsTotal,
     read: report.findings.length,
     listed: rows.length,
-    coverage: coverageLine(header),
+    // The crawl's own outcome leads, so a partial crawl never reads as a full one (checkpoint 3.2).
+    coverage: `${crawl.stopReason === null ? "Still running" : STOP_REASON[crawl.stopReason]}. ${coverageLine(header)}`,
     rows,
     notes,
     provenance: TRIAGED_FINDINGS_PROVENANCE_NOTE,

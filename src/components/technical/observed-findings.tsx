@@ -60,16 +60,25 @@ const STATUS_OPTIONS = TRIAGE_STATUSES.map((status) => ({ value: status, label: 
 export function ObservedFindings({
   projects,
   initialProjectId,
+  projectId: controlledProjectId,
 }: {
   /** The stored roster. The section reads only these projects' own records. */
   projects: readonly ProjectOption[];
   /** A deep link's project, honoured only when it is a stored project. */
   initialProjectId: string | null;
+  /**
+   * Set when the screen around this section owns the project choice (the
+   * live Technical SEO screen, checkpoint 3.2): the section follows it and
+   * shows no selector of its own.
+   */
+  projectId?: string | null;
 }) {
   const selectId = useId();
-  const [projectId, setProjectId] = useState<string | null>(() =>
+  const [ownProjectId, setProjectId] = useState<string | null>(() =>
     initialProjectId !== null && projects.some((project) => project.id === initialProjectId) ? initialProjectId : (projects[0]?.id ?? null),
   );
+  const controlled = controlledProjectId !== undefined;
+  const projectId = controlled ? controlledProjectId : ownProjectId;
   const [load, setLoad] = useState<Load>({ status: "idle" });
 
   useEffect(() => {
@@ -113,13 +122,13 @@ export function ObservedFindings({
       <PanelHeader
         eyebrow="Latest recorded crawl"
         title="Observed findings"
-        description="What fixed rules found in the pages this product's own crawl fetched, recorded when the crawl finished, with the decisions operators have recorded against them. Not the modelled registry below."
+        description="What fixed rules found in the pages this product's own crawl fetched, recorded when the crawl finished, with the decisions operators have recorded against them. Nothing here is fixture data."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="accent" title="Read from this product's own crawl records. Not fixture data.">
               Observed
             </Badge>
-            {projects.length > 0 && (
+            {!controlled && projects.length > 0 && (
               <>
                 <label htmlFor={selectId} className="text-xs text-fg-subtle">
                   Stored project

@@ -72,7 +72,8 @@ describe("the findings section", () => {
     assert.match(SECTION, /Observed findings/);
     assert.match(SECTION, /Not fixture data/);
     assert.match(SECTION, /view\.provenance/);
-    assert.match(TECHNICAL, /Modelled data over the/, "the Technical SEO screen still labels its fixtures");
-    assert.doesNotMatch(TECHNICAL, /crawl-findings|CrawlFindings/, "the modelled screen is not rewired");
+    // Checkpoint 3.2: the Technical SEO screen is observed data only — no fixture, no "Modelled" label.
+    assert.doesNotMatch(TECHNICAL, /@\/lib\/mock|Modelled data over the/, "the Technical SEO screen reads no fixture");
+    assert.doesNotMatch(TECHNICAL, /crawl-findings|CrawlFindings/, "the project crawl panel's findings view is not remounted there");
   });
 });
