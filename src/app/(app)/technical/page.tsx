@@ -9,18 +9,17 @@ import { projectOptionsFrom } from "@/lib/projects/selection";
 export const metadata: Metadata = {
   title: "Technical SEO",
   description:
-    "Site health across the published inventory: crawlability, indexation, the unified issue registry, and the technical state of every page.",
+    "What this product's own crawl of a stored project observed: how its pages answered, what they declared, and what fixed rules found.",
 };
 
 /**
- * The workspace reads its initial project from the query string, so links from
- * the Command Center and from a project land on a filtered view.
+ * The workspace reads its initial project and tab from the query string, so
+ * links from the Command Center and from a project land on that project.
  * `useSearchParams` needs a Suspense boundary during static rendering, which is
  * what this shell provides.
  *
- * The stored roster comes from the Projects repository (M3): the observed
- * findings section reads a stored project's own crawl records, which the
- * modelled registry below it knows nothing about.
+ * The stored roster comes from the Projects repository: every section reads a
+ * stored project's own crawl records (checkpoint 3.2); nothing is fixture data.
  */
 export default async function TechnicalSeoPage() {
   const storedProjects = projectOptionsFrom(await projectRepository.listProjects());

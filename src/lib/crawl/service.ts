@@ -8,6 +8,7 @@ import { runCrawl, type CrawlResult, type EngineOptions } from "@/lib/crawl/engi
 import { computeCrawlFindings } from "@/lib/crawl/findings/compute";
 import { FINDINGS_LINK_LIMIT } from "@/lib/crawl/findings/grounding";
 import { unavailableCrawlFindingsStore, type CrawlFindingsStore, type StoredCrawlFindingsReport } from "@/lib/crawl/findings/store-contract";
+import { OVERVIEW_LINK_LIMIT, OVERVIEW_PAGE_LIMIT, overviewReport, summarizeLinks, type CrawlOverview } from "@/lib/crawl/overview/contract";
 import type { FindingTriage, FindingTriageStatus, SetFindingTriageOutcome } from "@/lib/crawl/findings/triage/contract";
 import { TRIAGE_READ_LIMIT, unavailableCrawlFindingTriageStore, type CrawlFindingTriageStore } from "@/lib/crawl/findings/triage/store-contract";
 import { hostScopeFromDomain, startUrlForDomain } from "@/lib/crawl/url-policy";
@@ -95,6 +96,14 @@ export type CrawlService = {
    * `not-recorded`. Nothing about the finding itself changes.
    */
   setFindingTriage(input: SetFindingTriageRequest): Promise<SetFindingTriageResult>;
+  /**
+   * The project's latest own-site crawl as the live Technical SEO screen
+   * reads it (Phase 3, checkpoint 3.2): the crawl, its pages (bounded), a
+   * summary of its recorded edges, and its findings at the current rule
+   * version. Read only. `unavailable` when crawls are not stored, `none`
+   * when the project has no own-site crawl; a competitor crawl is never it.
+   */
+  getLatestCrawlOverview(projectId: string): Promise<CrawlOverview>;
 };
 
 export type LatestCrawlFindingsRead =
@@ -404,6 +413,31 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
         from: outcome.status === "set" ? outcome.previous : null,
       });
       return outcome;
+    },
+
+    async getLatestCrawlOverview(projectId) {
+      if (!store.storesCrawls) return { status: "unavailable" };
+      const project = await projects.getProjectById(projectId);
+      if (project === null) return { status: "none" };
+      const projectHost = hostScopeFromDomain(project.domain);
+      if (projectHost === null) return { status: "none" };
+      // The newest crawl confined to exactly the project's own host: the same
+      // rule listCrawls applies, so a competitor crawl is never the latest.
+      const [crawl] = await store.listByProject(projectId, 1, projectHost);
+      if (crawl === undefined || crawl.projectId !== projectId) return { status: "none" };
+      const [pages, links, report] = await Promise.all([
+        store.listPages(crawl.id, OVERVIEW_PAGE_LIMIT),
+        store.listLinks(crawl.id, OVERVIEW_LINK_LIMIT),
+        findings.storesFindings ? findings.getReport(projectId, crawl.id) : Promise.resolve(null),
+      ]);
+      return {
+        status: "crawled",
+        crawl,
+        pages,
+        pagesCut: pages.length >= OVERVIEW_PAGE_LIMIT,
+        links: summarizeLinks(links, OVERVIEW_LINK_LIMIT),
+        report: overviewReport(report),
+      };
     },
 
     async getCrawl(id, pageLimit = DEFAULT_PAGE_LIMIT) {

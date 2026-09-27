@@ -2263,6 +2263,31 @@ observed data, decisions as an operator's record, within this crawl, no
 indexation, ranking, traffic or vitals, and nothing fixture. The T4 section
 inside the crawl panel is unchanged and still offers no control.
 
+**Checkpoint 3.2 (the live Technical SEO screen).** The screen no longer
+mounts any fixture: the modelled views are gone from it, and *Observed
+findings* is its Issues tab, following the screen's own stored-project
+selector (the section shows no selector of its own when the screen passes a
+project). One read, `GET /api/crawls/latest-overview?project=<id>` (operators
+only; the project id shape, then the crawl read limit, then the project is
+checked before the service; 503 when crawls are not stored), answers `none`
+or `crawled` with the project's latest own-site crawl (the crawl confined to
+exactly the project's host, so never a competitor's), its pages (at most
+500, `pagesCut` at the bound), a count summary of its recorded edges
+(internal, external, nofollow, external hosts; no edge list leaves the
+server) and its report at the current rule version (`recorded`,
+`not-recorded`, or `other-rules` for a report under earlier rules). The
+presenter (`src/lib/crawl/overview/present.ts`) derives live tiles, the
+Overview panels (findings by severity and category, pages by their highest
+severity, declared signals at a glance with unknown readings counted apart,
+top findings, most affected pages), Crawlability, Schema (detected types
+only), Internal links (no inbound link from the fetched pages) and Pages
+(rows link to `/technical/pages/<crawl-page id>`). Every section carries one
+coverage banner in the crawl panel's wording, and every aggregate says it is
+of the fetched pages. Core Web Vitals, Opportunities, answer-engine access,
+index coverage and the health score are hidden: this product holds nothing
+to back them. The findings coverage line now leads with the crawl's stop
+reason. No schema change.
+
 **Deploy order:** the migration must be applied to production before this
 code is deployed; the read route answers 503 until then only if the store is
 missing, but the write and the triage read would fail on the missing table.
