@@ -67,6 +67,12 @@ export type CrawlFindingsStore = {
    * the caller reads the report through `getReport` once it knows the crawl.
    */
   getLatestReportHeader(projectId: string): Promise<StoredCrawlFindingsReportHeader | null>;
+  /**
+   * The headers of the project's recorded reports, newest recorded first,
+   * at most `limit` (checkpoint 3.3: finding history is derived from them
+   * on read). Headers only; never another project's.
+   */
+  listReportHeaders(projectId: string, limit: number): Promise<readonly StoredCrawlFindingsReportHeader[]>;
 };
 
 /** The store used when crawls are not persisted anywhere. It refuses rather than pretends. */
@@ -80,6 +86,9 @@ export const unavailableCrawlFindingsStore: CrawlFindingsStore = {
   },
   async getLatestReportHeader() {
     return null;
+  },
+  async listReportHeaders() {
+    return [];
   },
 };
 

@@ -1,43 +1,48 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { TechnicalPageWorkspace } from "@/components/technical/page-workspace";
-import { getTechnicalPage, getTechnicalPageIds } from "@/lib/mock/technical";
+import { LivePageDetail, PageDetailNotice } from "@/components/technical/live-page-detail";
+import { getOperator } from "@/lib/auth/session";
+import { crawlLimiter, crawlService } from "@/lib/crawl";
+import { presentPageDetail } from "@/lib/crawl/page-detail";
 
 type PageParams = { params: Promise<{ pageId: string }> };
 
+/** A crawl page's own id. The fixture `tech-*` ids never match, so they fall through to not-found. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const metadata: Metadata = {
+  title: "Page detail · Technical",
+  description: "What this product's own crawl recorded for one page: how it answered, what it declared, what it carried, how it linked, and the findings that name it.",
+};
+
 /**
- * Every published URL is prerendered: the inventory is derived from the content
- * layer at build time, so an id outside it is a broken link rather than a page
- * we have not diagnosed yet. An unknown id renders on demand and falls through
- * to `notFound()`, as in Projects.
+ * One recorded page of one of a stored project's own crawls (Phase 3,
+ * checkpoint 3.3), by the crawl page's own id.
+ *
+ * Rendered on the server for every request — nothing is prerendered, and the
+ * modelled inventory is gone. The operator is checked and the crawl read
+ * limit consumed before anything is read; the service checks the page →
+ * crawl → project chain, so an unknown id, a fixture id, a competitor
+ * crawl's page or a page whose project is gone is not found.
  */
-export function generateStaticParams() {
-  return getTechnicalPageIds().map((pageId) => ({ pageId }));
-}
-
-export async function generateMetadata({
-  params,
-}: PageParams): Promise<Metadata> {
-  const { pageId } = await params;
-  const page = getTechnicalPage(decodeURIComponent(pageId));
-
-  if (!page) {
-    return { title: "Page not found" };
-  }
-
-  return {
-    title: `${page.title} · Technical`,
-    description: `Technical diagnostics for ${page.path} on ${page.projectName}: response, indexing, metadata, internal linking, Core Web Vitals, structured data, and every finding open against the URL.`,
-  };
-}
-
 export default async function TechnicalPageDetailPage({ params }: PageParams) {
   const { pageId } = await params;
   const id = decodeURIComponent(pageId);
+  if (!UUID.test(id)) notFound();
 
-  if (!getTechnicalPage(id)) {
-    notFound();
+  const operator = await getOperator();
+  if (!operator) notFound();
+
+  const allowance = await crawlLimiter("read").consume(operator.id);
+  if (!allowance.allowed) {
+    return <PageDetailNotice title="Too many reads in a short time" description="Wait a moment and reload. Nothing is shown in place of the page's records." />;
   }
 
-  return <TechnicalPageWorkspace pageId={id} />;
+  const detail = await crawlService().getCrawlPageDetail(id.toLowerCase());
+  if (detail.status === "unavailable") {
+    return <PageDetailNotice title="Crawls are not stored on this deployment" description="There is no recorded page to show. Nothing is shown in its place." />;
+  }
+  if (detail.status === "not-found") notFound();
+
+  return <LivePageDetail view={presentPageDetail(detail)} />;
 }

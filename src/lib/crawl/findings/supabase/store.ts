@@ -97,5 +97,16 @@ export function createSupabaseCrawlFindingsStore(client: SupabaseClient<CrawlFin
       if (reports.error) throw new CrawlFindingsStoreError("read latest crawl findings report", reports.error);
       return reports.data.length === 0 ? null : reportRowToHeader(reports.data[0]);
     },
+
+    async listReportHeaders(projectId, limit) {
+      const reports = await client
+        .from("nexra_crawl_findings_reports")
+        .select(REPORT_READ_COLUMNS)
+        .eq("project_id", projectId)
+        .order("recorded_at", { ascending: false })
+        .limit(limit);
+      if (reports.error) throw new CrawlFindingsStoreError("list crawl findings reports", reports.error);
+      return reports.data.map(reportRowToHeader);
+    },
   };
 }

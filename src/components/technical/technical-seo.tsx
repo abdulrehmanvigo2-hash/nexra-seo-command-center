@@ -11,6 +11,7 @@ import { Panel, PanelBody, PanelFooter } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
+import { FindingHistoryPanel } from "@/components/technical/finding-history";
 import { ObservedFindings } from "@/components/technical/observed-findings";
 import { CoverageBanner, LiveCrawlability, LiveLinks, LiveOverview, LivePages, LiveSchema } from "@/components/technical/live-views";
 import type { FindingCategory, FindingSeverity } from "@/lib/crawl/findings/contract";
@@ -268,6 +269,8 @@ export function TechnicalSeo({
                 {/* The existing observed-findings section (M3), following this screen's project: the same
                     recorded findings with the decisions operators have made. Its own filters are its own. */}
                 <ObservedFindings projects={storedProjects} initialProjectId={null} projectId={projectId} />
+                {/* Checkpoint 3.3: what became of each finding across the project's crawls, derived on read. */}
+                {projectId !== null && <FindingHistoryPanel projectId={projectId} />}
               </div>
             )}
             {tab === "crawlability" && <LiveCrawlability view={view} />}

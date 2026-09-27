@@ -9,7 +9,8 @@ crawl-review bound (2.3c, then structurally 2.3d) and task priority change (2.3b
 migration, applied and recorded); and step (c), tasks as grounding and the Project Manager task
 plan review (checkpoint 2.4) — each merged, deployed and production verified (PR #27–#32). Phase 3,
 Technical & Keywords realification (the MVP target), is under way: its design note (checkpoint 3.1)
-is approved, and the live Technical SEO tabs (checkpoint 3.2) are on their branch.
+is approved, the live Technical SEO tabs (checkpoint 3.2) are merged and deployed, and the live page
+detail with derived finding history (checkpoint 3.3) is on its branch.
 Phase 1 (baseline truth and gates) is complete (see §14).
 The Project Manager task workflow (status transitions, owner changes, specialist handoff, event
 history) is merged and production verified end-to-end.
@@ -27,8 +28,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `e7feedaf146622e6d5705de91d68963c8ea0c7ee` (merge of PR #33,
-`claude/phase2-closing-docs`, the Phase 2 closing docs; preceded by PR #32 `2305b605…` (tasks as
+GitHub `master`: `5b79ba8dcd8cd8cbb6f4108884e0b4edddaba520` (merge of PR #34,
+`claude/phase3-technical-live-tabs`, the live Technical SEO tabs; preceded by PR #33 `e7feedaf…`
+(Phase 2 closing docs), PR #32 `2305b605…` (tasks as
 grounding and the task plan review), PR #31
 `0921c1f8…` (task priority change), PR #30 `a48cb35a…` (structural
 crawl-review bound), PR #29
@@ -39,9 +41,9 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_Cz9P33muMAQXAHWABV1Tooia6s7L`, READY, built from `master` at
-`e7feedaf`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_4EZwABN3BVUThvNvfzy8w2oExtNC` at `2305b605`); `master` CI run `36303816364` passed all five
+Production deployment: `dpl_AmhtdzpiZJuzEHEVn78TJJ4NoBZn`, READY, built from `master` at
+`5b79ba8d`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_Cz9P33muMAQXAHWABV1Tooia6s7L` at `e7feedaf`); `master` CI run `36305201262` passed all five
 jobs.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
@@ -207,8 +209,24 @@ Crawlability, Pages (rows link to `/technical/pages/<crawl-page id>`, realified 
 Core Web Vitals, Opportunities, answer-engine access, index coverage and the health score. Every
 section carries the coverage banner ("Crawl 75d1bfbe · Partial — stopped on the page budget · 5 of
 7 discovered pages fetched, 2 not reached · 46 link edges read"), and the findings coverage line
-now leads with the crawl's stop reason. No schema change. On `claude/phase3-technical-live-tabs`;
-not merged.
+now leads with the crawl's stop reason. No schema change. PR #34 merged as `5b79ba8d…`; deployment
+`dpl_AmhtdzpiZ…` READY; `master` CI run `36305201262` green.
+
+**Phase 3 checkpoint 3.3 (page detail + finding history, decisions Q2 and Q4):**
+`/technical/pages/[pageId]` is live and replaced in place (Q2): the id is the `nexra_crawl_pages` uuid,
+checked by shape, then the operator, then the crawl read limit, then the service's page → crawl →
+project chain (the crawl must be confined to the project's own host); fixture `tech-*` ids, unknown
+ids and competitor crawl pages are not found, and nothing is prerendered. It shows the page's
+response (server response labelled crawler-measured), its declared indexing ("declared by the page —
+not whether Google indexed it"), metadata and markup, linking counts, the recorded edges into and out
+of it with anchor text, and the findings naming it with their decisions; a page not fetched shows
+only that. Cross-crawl finding history is derived on read (Q4, no table): the project's own crawls'
+reports at the current rule version compared (consecutive, by finding key), "resolved" only when the
+later crawl fetched every page the finding named ("not re-checked" otherwise), a finding whose pages
+changed shown as changed, reports under earlier rules not compared, crawls without a report "not
+recorded" and never recomputed (`src/lib/crawl/findings/history.ts`, `GET
+/api/crawls/finding-history`, the *Finding history* panel on the Issues tab). No schema change. On
+`claude/phase3-page-detail-history`; not merged.
 
 **Findings recorded for later phases:**
 
@@ -316,7 +334,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 3 checkpoint 3.2 on `claude/phase3-technical-live-tabs` (above). Earlier: the Project Manager task workflow (branch
+**Current work:** Phase 3 checkpoint 3.3 on `claude/phase3-page-detail-history` (above). Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -933,11 +951,11 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (b2) | Task priority change: set-priority function, priority-changed event, Change priority control (checkpoint 2.3b) | Complete: PR #31 (`0921c1f8`), deployed; migration `20261005120000` applied and recorded; browser verified (events seq 15–16) |
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
-| Phase 3 | Technical & Keywords realification (the MVP target) | In progress: design note 3.1 approved; 3.2 (Technical SEO live tabs) on `claude/phase3-technical-live-tabs`, not merged; then 3.3 page detail and finding history, 3.4 Keywords observed surfaces, 3.5 the curated keyword entity (migration) |
+| Phase 3 | Technical & Keywords realification (the MVP target) | In progress: design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) on `claude/phase3-page-detail-history`, not merged; then 3.4 Keywords observed surfaces, 3.5 the curated keyword entity (migration) |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 3 checkpoint 3.2
-on `claude/phase3-technical-live-tabs`.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 3 checkpoint 3.3
+on `claude/phase3-page-detail-history`.
 Phase 1 and Phase 2 are complete. Phase 2, Project Manager loop closure: step (a), the handoff
 outcome read-back; step (b), handoffs for five of the six deferred agents (the Writer stays
 deferred), with the crawl-review bound tightened structurally (cp 2.3d, verified live) and priority
