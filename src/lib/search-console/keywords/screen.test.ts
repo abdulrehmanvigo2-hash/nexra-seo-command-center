@@ -197,13 +197,14 @@ describe("the Groups and Opportunities tabs", () => {
 });
 
 describe("tabs, wording and empty states", () => {
-  test("the five observed tabs only; the hidden tabs are absent and a deep link to one opens Keywords", () => {
-    assert.deepEqual(KEYWORD_TABS.map((t) => t.id), ["keywords", "clusters", "opportunities", "movement", "cannibalization"]);
+  test("the five observed tabs and the curated Lists tab (3.5); the hidden tabs are absent and a deep link to one opens Keywords", () => {
+    assert.deepEqual(KEYWORD_TABS.map((t) => t.id), ["keywords", "clusters", "opportunities", "movement", "cannibalization", "lists"]);
     for (const hidden of HIDDEN_KEYWORD_TABS) {
       assert.equal(KEYWORD_TABS.some((t) => t.id === hidden), false, hidden);
       assert.equal(resolveKeywordTab(hidden), "keywords");
     }
-    assert.deepEqual([...HIDDEN_KEYWORD_TABS], ["gaps", "competitors", "serp", "ai", "lists"]);
+    assert.deepEqual([...HIDDEN_KEYWORD_TABS], ["gaps", "competitors", "serp", "ai"]);
+    assert.equal(resolveKeywordTab("lists"), "lists");
     assert.equal(resolveKeywordTab("movement"), "movement");
     assert.equal(resolveKeywordTab(null), "keywords");
     assert.equal(OBSERVED_FOOTER, "Observed in stored Search Console rows · derived labels");

@@ -33,14 +33,16 @@ export type CuratedKeywordRow = { readonly keyword: CuratedKeyword; readonly obs
 export type ListKeywordsResult = { readonly status: "unavailable" } | { readonly status: "listed"; readonly keywords: readonly CuratedKeywordRow[] };
 
 export type AddKeywordsResult =
-  | { readonly status: "unavailable" | "project-not-found" }
+  | { readonly status: "unavailable" }
+  | { readonly status: "project-not-found" }
   | {
       readonly status: "recorded";
       readonly results: readonly { readonly query: string; readonly outcome: "added" | "exists" | "target-off-host"; readonly keywordId: string | null }[];
     };
 
 export type ReadKeywordResult =
-  | { readonly status: "unavailable" | "not-found" }
+  | { readonly status: "unavailable" }
+  | { readonly status: "not-found" }
   | {
       readonly status: "found";
       readonly keyword: CuratedKeyword;

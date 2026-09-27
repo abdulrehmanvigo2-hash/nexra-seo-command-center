@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { StackedMeter, type MeterTone } from "@/components/ui/meter";
 import { SearchConsoleHistory } from "@/components/search-console/search-console-history";
-import { INTENT_TONE, ObservedQueryTable } from "@/components/search-console/search-console-keywords";
+import { INTENT_TONE, ObservedQueryTable, type Curation } from "@/components/search-console/search-console-keywords";
 import { SearchConsoleQueryPages } from "@/components/search-console/search-console-query-pages";
 import { cn } from "@/lib/cn";
 import {
@@ -142,7 +142,7 @@ export function ObservedGroups({ view }: { view: KeywordInventoryView }) {
 }
 
 /** The four M4 rule labels, each with the rows it names. Candidates for review, never predicted gains. */
-export function ObservedOpportunities({ screen, projectId }: { screen: KeywordScreen; projectId: string }) {
+export function ObservedOpportunities({ screen, projectId, curation }: { screen: KeywordScreen; projectId: string; curation: Curation | null }) {
   return (
     <div className="space-y-4">
       {screen.opportunities.map((group) => (
@@ -152,7 +152,7 @@ export function ObservedOpportunities({ screen, projectId }: { screen: KeywordSc
             {group.rows.length === 0 ? (
               <p className="text-[12.5px] text-fg-subtle">No shown query meets this rule in the stored rows.</p>
             ) : (
-              <ObservedQueryTable rows={group.rows} projectId={projectId} caption={group.title} />
+              <ObservedQueryTable rows={group.rows} projectId={projectId} caption={group.title} curation={curation} />
             )}
           </PanelBody>
         </Panel>

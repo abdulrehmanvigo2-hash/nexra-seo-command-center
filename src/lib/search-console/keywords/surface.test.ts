@@ -89,16 +89,18 @@ describe("the Keyword Intelligence screen (checkpoint 3.4): observed data only",
     assert.doesNotMatch(WORKSPACE, /DiscoverDialog|ImportDialog|BulkActions|Discover keywords/);
   });
 
-  test("shows the five observed tabs only; content gap, competitors, SERP, AI search and lists are absent", () => {
+  test("shows the five observed tabs and the curated Lists tab (3.5); content gap, competitors, SERP and AI search are absent", () => {
     assert.match(WORKSPACE, /const TABS = KEYWORD_TABS/);
     assert.match(WORKSPACE, /resolveKeywordTab\(searchParams\.get\("tab"\)\)/);
-    for (const hidden of ['tab === "gaps"', 'tab === "competitors"', 'tab === "serp"', 'tab === "ai"', 'tab === "lists"']) assert.ok(!WORKSPACE.includes(hidden), hidden);
-    for (const shown of ['tab === "keywords"', 'tab === "clusters"', 'tab === "opportunities"', 'tab === "movement"', 'tab === "cannibalization"']) assert.ok(WORKSPACE.includes(shown), shown);
+    for (const hidden of ['tab === "gaps"', 'tab === "competitors"', 'tab === "serp"', 'tab === "ai"']) assert.ok(!WORKSPACE.includes(hidden), hidden);
+    for (const shown of ['tab === "keywords"', 'tab === "clusters"', 'tab === "opportunities"', 'tab === "movement"', 'tab === "cannibalization"', 'tab === "lists"']) assert.ok(WORKSPACE.includes(shown), shown);
+    assert.match(WORKSPACE, /\{tab === "lists" && <CuratedKeywordsList projectId=\{projectId\} load=\{curated\} onChanged=\{reloadCurated\} \/>\}/);
   });
 
-  test("one read for the inventory, through the project the screen chose, with every state shown", () => {
-    assert.equal((WORKSPACE.match(/fetch\(/g) ?? []).length, 1);
+  test("one read for the inventory and one for the curated list, through the project the screen chose, with every state shown", () => {
+    assert.equal((WORKSPACE.match(/fetch\(/g) ?? []).length, 2);
     assert.match(WORKSPACE, /fetch\(keywordsUrl\(projectId\)/);
+    assert.match(WORKSPACE, /fetch\(keywordsListUrl\(projectId\)/);
     assert.match(WORKSPACE, /useEffect\(\(\) => \{\s+if \(projectId === null\) return;/);
     assert.match(WORKSPACE, /projects\.map\(\(p\) => \(\{ value: p\.id, label: p\.name \}\)\)/, "the stored roster only");
     assert.match(WORKSPACE, /title="No stored project"/);
@@ -123,7 +125,7 @@ describe("the Keyword Intelligence screen (checkpoint 3.4): observed data only",
 
   test("the other tabs: groups inline, the four rule labels, the stored-window comparison and the pair overlap", () => {
     assert.match(WORKSPACE, /\{tab === "clusters" && <ObservedGroups view=\{inventory\} \/>\}/);
-    assert.match(WORKSPACE, /\{tab === "opportunities" && <ObservedOpportunities screen=\{screen\} projectId=\{projectId\} \/>\}/);
+    assert.match(WORKSPACE, /\{tab === "opportunities" && <ObservedOpportunities screen=\{screen\} projectId=\{projectId\} curation=\{curation\} \/>\}/);
     assert.match(WORKSPACE, /\{tab === "movement" && <ObservedMovement projectId=\{projectId\} \/>\}/);
     assert.match(WORKSPACE, /\{tab === "cannibalization" && <ObservedCannibalization projectId=\{projectId\} \/>\}/);
     assert.match(VIEWS, /<SearchConsoleHistory projectId=\{projectId\} view="queries" \/>/);
@@ -135,7 +137,7 @@ describe("the Keyword Intelligence screen (checkpoint 3.4): observed data only",
     assert.doesNotMatch(rendered, /upside|target CTR|search volume|difficulty|cost per click/i, "no predicted or external figure is rendered");
   });
 
-  test("the cluster detail route is gone (Q2); the keyword detail route is left for checkpoint 3.5", () => {
+  test("the cluster detail route is gone (Q2); the keyword detail route exists (replaced in place in 3.5)", () => {
     assert.equal(existsSync(new URL("src/app/(app)/keywords/clusters", root)), false);
     assert.equal(existsSync(new URL("src/app/(app)/keywords/[keywordId]/page.tsx", root)), true);
   });
@@ -145,7 +147,8 @@ describe("the observed query inventory section", () => {
   test("is the screen's table: no read or selector of its own, the rows the screen's filters keep", () => {
     assert.doesNotMatch(SECTION, /fetch\(|useEffect|<Select|keywordsUrl/);
     assert.match(SECTION, /rows: readonly ObservedQueryView\[\];/);
-    assert.match(SECTION, /<ObservedQueryTable rows=\{rows\} projectId=\{projectId\} caption="Observed queries" \/>/);
+    assert.match(SECTION, /<ObservedQueryTable rows=\{rows\} projectId=\{projectId\} caption="Observed queries" curation=\{curation\} \/>/);
+    assert.match(SECTION, /<CurateKeywordControl projectId=\{projectId\} query=\{row\.query\} curatedId=\{curation\.ids\.get\(row\.query\) \?\? null\} onAdded=\{curation\.onAdded\} \/>/, "3.5: the exact stored query is what is curated");
     assert.match(SECTION, /title="No observed query matches these filters"/);
   });
 
