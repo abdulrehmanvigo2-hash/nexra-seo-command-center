@@ -290,11 +290,9 @@ groups of 8 queries and 5 hubs with the true counts, no property or row id,
 and the fixed caveats; the states not kept, no snapshots, snapshots under a
 previous property and no queries are each named, never an empty inventory
 read as no demand. The *Observed query inventory* panel
-(`src/components/search-console/search-console-keywords.tsx`) sits beneath
-the Search Console panel on the Keywords tab for one stored project at a
-time, labelled *Observed · derived labels* and "not the modelled keyword
-universe above"; the modelled Keyword Intelligence views and their "Mock
-data" label are unchanged, and the panel offers no control.
+(`src/components/search-console/search-console-keywords.tsx`) is, since
+checkpoint 3.4, the primary table of the Keyword Intelligence screen (below),
+labelled *Observed · derived labels*, with *Record as task* on each row.
 
 `search-query-review` alone gets a fourth grounding block after the pairs
 (`keywords/grounding.ts`): at most 25 rows, 10 groups, 5 hubs, under 8,000
@@ -2310,6 +2308,24 @@ for a key no longer named, resolved only when the later crawl fetched every
 page it named, otherwise not re-checked. Reports under earlier rules are not
 compared, and a crawl with no report is "not recorded", never recomputed.
 Nothing is stored; no schema change.
+
+**Checkpoint 3.4 (Keywords observed surfaces).** The Keyword Intelligence
+screen (`src/components/keywords/keywords-workspace.tsx`) reads observed data
+only, for one stored project: `GET /api/search-console/keywords` answers the
+Keywords, Groups and Opportunities tabs through the pure presenter
+`src/lib/search-console/keywords/screen.ts` (filters by query text, intent
+hint and opportunity label; position buckets from each query's latest
+average position, labelled "Search Console average position, not rank";
+intent hints labelled "hint"; the four M4 rule labels with the rows each
+names; a line naming the stored windows read). Movement mounts the P4a/P4d
+stored-history section and Cannibalisation the P4c overlap section, each on
+its own existing read. The modelled keyword universe is not shown: no
+volume, difficulty, cost per click, potential, SERP, content gap,
+competitor, AI search or Lists reading, no Discover or Import dialog, no
+session-only bulk action; `/keywords/clusters/[clusterId]` is removed.
+`ObservedQueryView.query` is the exact stored query (the *Record as task*
+source, which the database matches exactly); `queryLabel` is the
+200-character display cut. No schema change.
 
 **Deploy order:** the migration must be applied to production before this
 code is deployed; the read route answers 503 until then only if the store is
