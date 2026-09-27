@@ -299,8 +299,13 @@ before); the probes consumed identity values of the keyword events `seq`, which 
   - cp 3.4 Keywords — 6 tabs (content gap, competitors, SERP and AI search absent), the portfolio
     labelled "average position, not rank" (all 9 queries over 50), the inventory as the primary
     table, no volume or CPC, Groups "ai · 6 queries": **PASS**.
-  - cp 3.5 entity — *Track* recorded "ai lead follow up" as a curated keyword (18 impressions, …);
-    the rest of the operator's report was cut off in the message and is not recorded here.
+  - cp 3.5 entity — *Track* recorded "ai lead follow up" as a curated keyword (18 impressions, 0
+    clicks, average position 85.6); Import of "ai automation lahore" with group `test-group` →
+    "Not observed in stored rows"; re-import → "0 added; 1 already tracked"; Lists shows Tracked
+    (2); the keyword detail page opened: **PASS**. The first attempt failed only because a
+    `/keywords` page opened before the migration was applied held its failed read of the curated
+    list until reloaded (expected; the read is not retried). The two curated rows are
+    verification records and stay.
 - **Fixture removal:** the 36 fixture components no route, layout, API handler or live component
   imports any more were deleted — 21 under `src/components/keywords` (the modelled keyword table,
   toolbar, bulk actions, portfolio, dialogs, gap, SERP, AI, lists, clusters, movement,
@@ -315,13 +320,15 @@ before); the probes consumed identity values of the keyword events `seq`, which 
   AI Visibility) to the removed `/keywords/clusters/<id>` route stay 404 intentionally until those
   screens' own phases; no redirect.
 - No schema change, no behaviour change on a live surface.
+- **Next step:** Phase 4 design checkpoint (4.1), under its own explicit approval.
 
 **Findings recorded for later phases:**
 
-- The single-project Director `priority-review` run `33ac8a25…` (SEO Director, queued by an operator
-  on 26 Sep 08:45) was executed by the scheduled worker on 27 Sep 06:19 UTC and failed
-  `rejected-output`; not retried. `PRIORITY_REVIEW_INSTRUCTIONS` still lack the structural bound
-  the project Director, intake, crawl and plan reviews carry; deferred to Phase 4's Director work.
+- **Carried forward to Phase 4:** the single-project Director `priority-review` run `33ac8a25…`
+  (SEO Director, queued by an operator on 26 Sep 08:45) was executed by the scheduled worker on
+  27 Sep 06:19 UTC and failed `rejected-output`; not retried. `PRIORITY_REVIEW_INSTRUCTIONS` still
+  lack the structural bound the project Director, intake, crawl and plan reviews carry; it is
+  Phase 4's Director work.
 - Task events seq 12–14 do not exist: the identity values were taken by the rolled-back 2.3b
   verification probe (see 2.3b above) and are not reused. History is ordered by `seq`, never
   assumed contiguous.
@@ -1045,6 +1052,19 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
+
+**MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
+
+| MVP criterion | Evidence |
+|---|---|
+| Docs match production, with CI gates | Phase 1: docs reconciliation (PR #23), security and worker tests (PR #24), CI gates on every pull request and push to `master` (PR #25), closing docs (PR #26); every later PR merged on green CI |
+| Project Manager outcome loop | Checkpoint 2.2: a task's handoff outcome is read back from its linked run (PR #27), browser verified |
+| Specialist handoff | Checkpoint 2.3: handoff for 11 of the 12 agents (six from the task workflow, five with an operator-chosen record, PR #28), production verified on run `bcefb1e4…`; the Writer is deferred by decision |
+| Project Manager plan proposal | Checkpoint 2.4: the task-plan review, recorded in production as run `567a3f11…` (435 characters, grounded in the project's tasks) |
+| Technical and Keywords observed-first | Phase 3: the Technical SEO screen, page detail and derived finding history over this product's own crawls (PR #34, #35); the Keyword Intelligence screen over the stored Search Console rows (PR #36); the operator's curated keywords (PR #37, migration `20261006120000` applied); closing and fixture removal (PR #38); each browser verified in production |
+
+Carried forward: the single-project Director `priority-review` has no structural bound (run
+`33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 3 closing, checkpoint 3.6,
