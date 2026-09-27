@@ -99,16 +99,17 @@ export const NAV_ITEMS = [
     icon: "ai-visibility",
     group: "Optimization",
     description:
-      "Presence and answer-readiness across AI answers and generative engines.",
+      "What each page declared, as crawled, in the fields an answer engine could read.",
     phase: 9,
   },
   {
-    label: "Backlinks & Authority",
+    // Decision Q4 (checkpoint 4.5): outbound edges only, never backlinks. The route stays /backlinks.
+    label: "Outbound Links",
     href: "/backlinks",
     icon: "backlinks",
     group: "Optimization",
     description:
-      "Link profile, prospect pipeline, digital PR, and authority signals.",
+      "Links from the project's own pages to outside hosts, as crawled. Not backlinks.",
     phase: 10,
   },
   {

@@ -1,25 +1,27 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { AiVisibility } from "@/components/ai-visibility/ai-visibility";
+import { AiVisibilityScreen } from "@/components/ai-visibility/observed-ai-visibility";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 export const metadata: Metadata = {
   title: "AI Visibility",
   description:
-    "Answer-engine readiness across the published inventory: topics, entities, answer structure, evidence, citation readiness, information gain, and the work they produce.",
+    "What each page of a stored project's site declared to this product's crawler, in the fields an answer engine could read — not whether any AI engine cites it — with the answer-readiness review.",
 };
 
 /**
- * The workspace reads its initial project and topic from the query string, so
- * links from the Command Center, a project, a content page and a keyword land
- * on a filtered view. `useSearchParams` needs a Suspense boundary during static
- * rendering, which is what this shell provides.
+ * The screen reads its initial project from the query string. `useSearchParams`
+ * needs a Suspense boundary during static rendering, which is what this shell
+ * provides. The projects come from the Projects repository.
  */
-export default function AiVisibilityPage() {
+export default async function AiVisibilityPage() {
+  const projects = projectOptionsFrom(await projectRepository.listProjects());
   return (
     <Suspense fallback={<AiVisibilityFallback />}>
-      <AiVisibility />
+      <AiVisibilityScreen projects={projects} />
     </Suspense>
   );
 }
