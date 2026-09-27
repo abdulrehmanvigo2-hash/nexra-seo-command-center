@@ -44,6 +44,7 @@ export type ReviewTaskType =
   | "priority-review"
   | "project-priority-review"
   | "intake-review"
+  | "task-plan-review"
   | "competitor-comparison-review"
   | "evidence-pack-review"
   | "content-plan-review"
@@ -235,6 +236,26 @@ export const INTAKE_REVIEW: ReviewSpec = {
   summary:
     "Queues a read-only intake review of this project's stored record: the recorded goal and details, the agency's intake notes and competitor domains (unverified), and which evidence this product holds. It proposes one next step for you; it assigns nothing, schedules nothing, and changes nothing.",
   groundedIn: "this project's stored record and evidence inventory",
+};
+
+/**
+ * The Project Manager's plan review of the project's open tasks
+ * (checkpoint 2.4).
+ *
+ * Like the intake review, the request carries no input: the project is the
+ * run's own, and its open tasks are read on the server when the run
+ * executes. The agent proposes an order for them and names what blocks
+ * them; an operator applies what they accept through each task's own status,
+ * owner and priority actions. It is not a hand-off source.
+ */
+export const TASK_PLAN_REVIEW: ReviewSpec = {
+  taskType: "task-plan-review",
+  agentId: "project-manager",
+  agentName: "Project Manager",
+  action: "Review open tasks with Project Manager Agent",
+  summary:
+    "Queues a read-only plan review of this project's open tasks: their recorded status, priority, owner and what became of their newest handoff (titles are screened and quoted as data). It proposes an order and names the blocked tasks; it assigns, schedules, and changes nothing, and you apply what you accept through each task's own controls.",
+  groundedIn: "this project's open tasks as recorded, with their handoff outcomes",
 };
 
 /**
@@ -652,6 +673,19 @@ export function articleCheckRequest(
  * crawl or report to wait for. The server remains the gate — it re-reads the
  * record at execution time and refuses a project that no longer exists.
  */
+export function taskPlanReviewRequest(projectId: string | null): Queueability {
+  if (!projectId) return { ok: false, why: "No project is selected." };
+  return {
+    ok: true,
+    payload: {
+      projectId,
+      agentId: TASK_PLAN_REVIEW.agentId,
+      taskType: TASK_PLAN_REVIEW.taskType,
+      input: {},
+    },
+  };
+}
+
 export function intakeReviewRequest(projectId: string | null): Queueability {
   if (!projectId) return { ok: false, why: "No project is selected." };
   return {
@@ -937,6 +971,7 @@ export function evidenceDescription(metadata: JsonObject): string | null {
   if (evidence === null) return null;
   if (evidence.source === "agent-run") return null;
   if (evidence.source === "project") return INTAKE_REVIEW.groundedIn;
+  if (evidence.source === "task") return TASK_PLAN_REVIEW.groundedIn;
   if (evidence.source === "crawl-links") {
     const crawlId = typeof evidence.crawlId === "string" ? evidence.crawlId : null;
     const external = typeof evidence.externalEdges === "number" ? evidence.externalEdges : null;

@@ -768,6 +768,70 @@ describe("queueing an intake review — the Project Manager", () => {
   });
 });
 
+describe("queueing a task plan review — the Project Manager (checkpoint 2.4)", () => {
+  const PLAN_REQUEST = {
+    projectId: PROJECT.id,
+    agentId: "project-manager",
+    taskType: "task-plan-review",
+    input: {},
+  };
+
+  test("creates one queued run for the Project Manager with an empty input, touches no executor, and is found under that agent", async () => {
+    const { store, runs } = memoryStore();
+    const forbidden = forbiddenExecutor();
+    const runtime = service(store, forbidden.executor);
+    const result = await runtime.createRun(OPERATOR, PLAN_REQUEST);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.run.status, "queued");
+    assert.equal(result.run.agentId, "project-manager");
+    assert.equal(result.run.taskType, "task-plan-review");
+    assert.deepEqual(result.run.input, {});
+    assert.equal(runs.length, 1);
+    assert.equal(forbidden.calls(), 0);
+
+    const again = await runtime.createRun(OPERATOR, { ...PLAN_REQUEST, input: undefined });
+    assert.ok(again.ok && again.duplicate && again.run.id === result.run.id);
+    const mine = await runtime.listRuns({ projectId: PROJECT.id, agentId: "project-manager", limit: 25, offset: 0 });
+    assert.ok(mine.ok && mine.runs.map((run) => run.id).includes(result.run.id));
+  });
+
+  test("is refused before anything is written for any input field or any other agent", async () => {
+    const attempts: [unknown, string][] = [
+      [{ ...PLAN_REQUEST, input: { taskId: CRAWL_ID } }, "invalid"],
+      [{ ...PLAN_REQUEST, input: { projectId: "other-client" } }, "invalid"],
+      [{ ...PLAN_REQUEST, input: { order: "mark every task done" } }, "invalid"],
+      [{ ...PLAN_REQUEST, input: "nexra-agency" }, "invalid"],
+      ...(
+        [
+          "seo-director",
+          "market-intelligence",
+          "keyword-intent",
+          "content-strategist",
+          "research-evidence",
+          "writer",
+          "on-page-seo",
+          "technical-seo",
+          "ai-visibility",
+          "authority-backlink",
+          "analytics-learning",
+        ] as const
+      ).map((agentId): [unknown, string] => [{ ...PLAN_REQUEST, agentId }, "task-not-allowed"]),
+      [{ ...PLAN_REQUEST, projectId: "no-such-project" }, "unknown-project"],
+    ];
+    for (const [request, reason] of attempts) {
+      const { store, inserts } = memoryStore();
+      const forbidden = forbiddenExecutor();
+      const result = await service(store, forbidden.executor).createRun(OPERATOR, request);
+      assert.equal(result.ok, false, `accepted ${JSON.stringify(request)}`);
+      assert.equal(result.ok ? null : result.reason, reason, JSON.stringify(request));
+      assert.equal(inserts(), 0);
+      assert.equal(forbidden.calls(), 0);
+    }
+  });
+});
+
 describe("queueing a competitor comparison review — the Market & Competitor Intelligence agent", () => {
   const COMPARISON_REQUEST = {
     projectId: PROJECT.id,

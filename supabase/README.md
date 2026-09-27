@@ -154,13 +154,11 @@ Editor (or run with the Supabase CLI against a linked project):
 25. `20261003120000_create_agent_tasks.sql` — Project Manager task core
 26. `20261004120000_agent_task_workflow.sql` — Project Manager task workflow
 27. `20261005120000_agent_task_priority.sql` — task priority change (Phase 2,
-    checkpoint 2.3b) — **NOT yet applied to production**
+    checkpoint 2.3b)
 
-The first twenty-six are applied to production and recorded in its migration
-history (27 versions: the articles migration is recorded under
-`20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0). The
-twenty-seventh is written and verified on the local harness only; applying it
-to production is its own §6-approved step after the code is merged.
+All twenty-seven are applied to production and recorded in its migration
+history (28 versions: the articles migration is recorded under
+`20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0).
 
 After each, run `NOTIFY pgrst, 'reload schema';` on its own so the API sees the
 new tables and functions.
@@ -623,10 +621,23 @@ and created_at still never change, and there is still no UPDATE grant.
 `service_role` gains EXECUTE on the new function only; the events table stays
 append-only. Harness suite `task-priority` (69 assertions); `task-workflow`
 now runs on the schema before this migration, which is what it pins.
-**Not yet applied to production.** The application reads events with every
-column, so a deployment ahead of the migration still reads task history; only
-Change priority fails (the function is missing) until the migration is
-applied.
+**Applied to production and recorded (27 Sep, after PR #31 merged).** A
+read-only preflight (PostgreSQL 17.6, READ COMMITTED, the version absent from
+history, no priority columns or function, 1 task, 11 events); the file applied
+unmodified as one transaction that also inserted its history row (version
+`20261005120000`, name `agent_task_priority`, the file's text as its one
+statement — SHA-256 `942ecfa4…d92e9`, identical to the repository file; no
+Supabase CLI was available for `migration repair`), then `NOTIFY pgrst, 'reload
+schema';`. Verified read-only: the function is `security definer` with an
+empty `search_path`, owned by `postgres`, executable by `service_role` only;
+`service_role` still holds no UPDATE on the task table; every guard trigger is
+enabled; a direct `UPDATE … set priority` is refused (23514); a
+`priority-changed` event medium → high is accepted by the shape check and one
+with equal priorities, or priorities on another event type, refused (23514) —
+those probes ran in one block that always rolled back, leaving the data as it
+was (the identity values they took, event seq 12–14, are not reused). Browser
+verified by the operator on task `30e79092…`: priority high and back to medium,
+events seq 15 (medium → high) and 16 (high → medium).
 
 ## Crawls
 

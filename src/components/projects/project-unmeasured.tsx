@@ -10,6 +10,7 @@ import { ArticlePanel } from "@/components/content/article-panel";
 import { ContentPlanPanel } from "@/components/projects/content-plan-panel";
 import { EvidencePackPanel } from "@/components/projects/evidence-pack-panel";
 import { IntakeReviewPanel } from "@/components/projects/intake-review-panel";
+import { TaskPlanReviewPanel } from "@/components/projects/task-plan-review-panel";
 import { ProjectDirectorPanel } from "@/components/projects/project-director-panel";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { buttonClasses } from "@/components/ui/button";
@@ -143,6 +144,13 @@ export function ProjectUnmeasured({
         wording, so it does not gain the panel in this milestone.
       */}
       <IntakeReviewPanel projectId={project.id} />
+
+      {/*
+        Beside it, the Project Manager's plan review of the project's open
+        tasks (checkpoint 2.4): the same control, the same queue and Run Now,
+        over the tasks an operator recorded rather than the project record.
+      */}
+      <TaskPlanReviewPanel projectId={project.id} />
 
       {/*
         Thirty days, the window the rest of the product defaults to. This
