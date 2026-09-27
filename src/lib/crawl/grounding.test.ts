@@ -930,6 +930,31 @@ describe("M2 content signals in the evidence", () => {
  * sentence in those instructions. Nothing else moved: the screen, the crawl
  * evidence, the findings and the other two crawl reviews are pinned here.
  */
+/**
+ * Checkpoint 2.3c: the crawl review had no output bound, and over the same
+ * five-page crawl its answers ran 1,596 to 1,946 characters until one was
+ * refused as `rejected-output` at the worker's 2,000-character ceiling. The
+ * fix mirrors the On-Page bound below: one sentence, nothing else moved.
+ */
+describe("the crawl-review instructions bound what the model emits", () => {
+  test("they cap the answer at 4 findings and 1,500 characters, drop the lowest-severity findings first, and keep the coverage statement", () => {
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /OUTPUT BOUND: give at most 4 findings/);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /including the coverage statement and the closing line, under 1,500 characters/);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /keep the most severe findings, recorded findings first/);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /cite the rule id in square brackets and the exact URL wherever the evidence gives them/);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /keep each finding's OBSERVED, INFERENCE and RECOMMENDATION separate and short/);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /drop the lowest-severity findings first, entirely, rather than exceed the bound/);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /Never drop the coverage statement to make room/);
+    // The bound sits before the closing line, so the closing line is inside it.
+    assert.ok(CRAWL_REVIEW_INSTRUCTIONS.indexOf("OUTPUT BOUND") < CRAWL_REVIEW_INSTRUCTIONS.indexOf("End with one line"));
+    // The coverage and anti-fabrication wording the bound must not displace is still there.
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /Say plainly that this covers only the pages listed/);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /were NOT audited/);
+    // The task type still hands the model this exact text.
+    assert.equal(getTaskType("crawl-review")?.instructions, CRAWL_REVIEW_INSTRUCTIONS);
+  });
+});
+
 describe("the on-page instructions bound what the model emits", () => {
   const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
@@ -970,9 +995,13 @@ describe("the on-page instructions bound what the model emits", () => {
     assert.equal(getTaskType("on-page-review")?.evidence, "crawl");
   });
 
-  test("the crawl-review and answer-readiness instructions are byte-for-byte what master 3b74d99 shipped", () => {
-    assert.equal(CRAWL_REVIEW_INSTRUCTIONS.length, 1_738);
-    assert.equal(sha256(CRAWL_REVIEW_INSTRUCTIONS), "73c8fe593c6ab0d1ea8a6efa469d48a7c3231d94dfb9c63b156aaf09a0ac7f63");
+  test("the crawl-review instructions are 3b74d99's plus the cp 2.3c output bound; answer-readiness is byte-for-byte 3b74d99's", () => {
+    // Checkpoint 2.3c added one sentence (the output bound) to the crawl review, and nothing else.
+    const withoutBound = CRAWL_REVIEW_INSTRUCTIONS.replace(/ OUTPUT BOUND: [^"]*?Never drop the coverage statement to make room\./, "");
+    assert.equal(withoutBound.length, 1_738);
+    assert.equal(sha256(withoutBound), "73c8fe593c6ab0d1ea8a6efa469d48a7c3231d94dfb9c63b156aaf09a0ac7f63");
+    assert.equal(CRAWL_REVIEW_INSTRUCTIONS.length, 2_271);
+    assert.equal(sha256(CRAWL_REVIEW_INSTRUCTIONS), "a7a2c93eb8e7138bf85a24bc686d33f3e699998d6a60ec4fcb9c5ed8852af68d");
     assert.equal(ANSWER_READINESS_REVIEW_INSTRUCTIONS.length, 2_297);
     assert.equal(sha256(ANSWER_READINESS_REVIEW_INSTRUCTIONS), "2045b12eecf05806a4830cf0fbbc592e24dd3cdbc31a89d189395477cac25876");
     assert.equal(getTaskType("crawl-review")?.instructions, CRAWL_REVIEW_INSTRUCTIONS);

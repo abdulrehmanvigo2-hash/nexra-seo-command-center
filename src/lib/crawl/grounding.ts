@@ -474,7 +474,10 @@ export const LIMITS_NOTE = [
  * The separation demanded first is the point of the task: an observation is
  * something the evidence states, an inference is the agent's reading of it,
  * and a recommendation is neither. A finding with no URL beside it cannot be
- * checked, so every one must carry the URL it came from.
+ * checked, so every one must carry the URL it came from. The output bound
+ * mirrors the On-Page review's (PR #13): without one, answers over the same
+ * five-page crawl ran 1,596 to 1,946 characters and one was refused as
+ * `rejected-output` at the worker's 2,000-character ceiling (checkpoint 2.3c).
  */
 export const CRAWL_REVIEW_INSTRUCTIONS = [
   "Review the crawl evidence supplied with this task and report what it supports.",
@@ -485,6 +488,7 @@ export const CRAWL_REVIEW_INSTRUCTIONS = [
   "Do not state or estimate search volume, rankings, traffic, indexation status, or Core Web Vitals; none of it is in the evidence and none of it is knowable from a crawl.",
   "Do not describe the crawl as a full site audit or state site-wide totals. Say plainly that this covers only the pages listed.",
   "Where a DETERMINISTIC CRAWL FINDINGS block follows the crawl evidence, each finding there is an observation by a fixed rule over the pages this crawl recorded: cite it by its rule id in square brackets and the exact URL or URLs it names, treat it as OBSERVED, and keep your own reading and next step as INFERENCE and RECOMMENDATION. State the coverage that block gives (pages fetched, link edges read, anything cut) and never extend a finding to pages it does not name, to indexation, rankings, Core Web Vitals, external links or site-wide totals. If the block says findings are unavailable or no rule fired, say so and infer nothing in their place.",
+  "OUTPUT BOUND: give at most 4 findings and keep the whole answer, including the coverage statement and the closing line, under 1,500 characters. When the evidence supports more, keep the most severe findings, recorded findings first; cite the rule id in square brackets and the exact URL wherever the evidence gives them; keep each finding's OBSERVED, INFERENCE and RECOMMENDATION separate and short; and drop the lowest-severity findings first, entirely, rather than exceed the bound. Never drop the coverage statement to make room.",
   "End with one line naming the single most useful thing to check or measure next.",
 ].join(" ");
 
