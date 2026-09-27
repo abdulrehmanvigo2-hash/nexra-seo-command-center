@@ -137,6 +137,16 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
       return data.map(crawlPageRowToPage);
     },
 
+    async getPage(pageId) {
+      const { data, error } = await client
+        .from("nexra_crawl_pages")
+        .select(CRAWL_PAGE_READ_COLUMNS)
+        .eq("id", pageId)
+        .limit(1);
+      if (error) throw new CrawlStoreError("read crawl page", error);
+      return data.length === 0 ? null : crawlPageRowToPage(data[0]);
+    },
+
     async listLinks(crawlId, limit) {
       // External edges first (`is_internal` false sorts before true), then by
       // target and source, so the same crawl always reads back in the same

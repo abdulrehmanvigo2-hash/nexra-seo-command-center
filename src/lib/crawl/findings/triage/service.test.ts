@@ -60,6 +60,7 @@ function findingsStore(options: { latest?: Crawl | null; reports?: readonly Craw
   const store: CrawlFindingsStore = {
     storesFindings: true,
     async record() { throw new Error("not under test"); },
+    async listReportHeaders() { return []; },
     async getReport(projectId, crawlId) {
       reads.push([projectId, crawlId]);
       const c = (options.reports ?? []).find((row) => row.id === crawlId && row.projectId === projectId);

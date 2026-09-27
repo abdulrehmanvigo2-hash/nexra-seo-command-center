@@ -8,7 +8,10 @@ import { runCrawl, type CrawlResult, type EngineOptions } from "@/lib/crawl/engi
 import { computeCrawlFindings } from "@/lib/crawl/findings/compute";
 import { FINDINGS_LINK_LIMIT } from "@/lib/crawl/findings/grounding";
 import { unavailableCrawlFindingsStore, type CrawlFindingsStore, type StoredCrawlFindingsReport } from "@/lib/crawl/findings/store-contract";
-import { OVERVIEW_LINK_LIMIT, OVERVIEW_PAGE_LIMIT, overviewReport, summarizeLinks, type CrawlOverview } from "@/lib/crawl/overview/contract";
+import { OVERVIEW_LINK_LIMIT, OVERVIEW_PAGE_LIMIT, overviewReport, summarizeLinks, type CrawlOverview, type OverviewReport } from "@/lib/crawl/overview/contract";
+import { FINDINGS_RULE_VERSION } from "@/lib/crawl/findings/contract";
+import { deriveFindingHistory, type FindingHistory, type HistoryEntry } from "@/lib/crawl/findings/history";
+import type { StoredCrawlFinding } from "@/lib/crawl/findings/store-contract";
 import type { FindingTriage, FindingTriageStatus, SetFindingTriageOutcome } from "@/lib/crawl/findings/triage/contract";
 import { TRIAGE_READ_LIMIT, unavailableCrawlFindingTriageStore, type CrawlFindingTriageStore } from "@/lib/crawl/findings/triage/store-contract";
 import { hostScopeFromDomain, startUrlForDomain } from "@/lib/crawl/url-policy";
@@ -104,7 +107,49 @@ export type CrawlService = {
    * when the project has no own-site crawl; a competitor crawl is never it.
    */
   getLatestCrawlOverview(projectId: string): Promise<CrawlOverview>;
+  /**
+   * One recorded page of one of a stored project's own crawls, by the page's
+   * own id (checkpoint 3.3): the page, the recorded edges into and out of it,
+   * the findings of its crawl's report that name it, and the decisions
+   * recorded against them. The page → crawl → project chain is checked here:
+   * an unknown page, a page of a competitor crawl or of a crawl whose project
+   * is gone answers `not-found`. Read only.
+   */
+  getCrawlPageDetail(pageId: string): Promise<CrawlPageDetail>;
+  /**
+   * Cross-crawl finding history for the project's own crawls, derived on
+   * read from the recorded reports (checkpoint 3.3, decision Q4). Nothing is
+   * stored and nothing is recomputed.
+   */
+  getFindingHistory(projectId: string): Promise<FindingHistoryRead>;
 };
+
+/** How many of the project's newest own-site crawls finding history looks back over. */
+export const HISTORY_CRAWL_LIMIT = 10;
+
+export type CrawlPageDetail =
+  | { readonly status: "unavailable" }
+  | { readonly status: "not-found" }
+  | {
+      readonly status: "found";
+      readonly crawl: Crawl;
+      readonly page: CrawlPage;
+      /** Recorded edges whose target is this page. */
+      readonly inbound: readonly CrawlLink[];
+      /** Recorded edges found on this page. */
+      readonly outbound: readonly CrawlLink[];
+      /** Whether the crawl's edge read reached its bound, so edges may be missing. */
+      readonly linksCut: boolean;
+      readonly report: OverviewReport;
+      /** Findings of the report at the current rules that name this page's URL. */
+      readonly findings: readonly StoredCrawlFinding[];
+      readonly triage: readonly FindingTriage[];
+    };
+
+export type FindingHistoryRead =
+  | { readonly status: "unavailable" }
+  | { readonly status: "none" }
+  | { readonly status: "derived"; readonly history: FindingHistory };
 
 export type LatestCrawlFindingsRead =
   /** The findings store is not configured on this deployment. */
@@ -438,6 +483,77 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
         links: summarizeLinks(links, OVERVIEW_LINK_LIMIT),
         report: overviewReport(report),
       };
+    },
+
+    async getCrawlPageDetail(pageId) {
+      if (!store.storesCrawls) return { status: "unavailable" };
+      const page = await store.getPage(pageId);
+      if (page === null) return { status: "not-found" };
+      // The chain: the page's crawl, that crawl's project, and the crawl must
+      // be confined to that project's own host — so a competitor crawl's page
+      // and a page whose project is gone are never shown.
+      const crawl = await store.getById(page.crawlId);
+      if (crawl === null) return { status: "not-found" };
+      const project = await projects.getProjectById(crawl.projectId);
+      if (project === null) return { status: "not-found" };
+      const projectHost = hostScopeFromDomain(project.domain);
+      if (projectHost === null || crawl.hostScope !== projectHost) return { status: "not-found" };
+
+      const [links, report, decisions] = await Promise.all([
+        store.listLinks(crawl.id, OVERVIEW_LINK_LIMIT),
+        findings.storesFindings ? findings.getReport(project.id, crawl.id) : Promise.resolve(null),
+        triage.storesTriage ? triage.listForProject(project.id, TRIAGE_READ_LIMIT) : Promise.resolve([] as readonly FindingTriage[]),
+      ]);
+      const presented = overviewReport(report);
+      const naming = presented.status === "recorded" ? presented.report.findings.filter((f) => f.urls.includes(page.url)) : [];
+      const keys = new Set(naming.map((f) => f.id));
+      return {
+        status: "found",
+        crawl,
+        page,
+        inbound: links.filter((link) => link.toUrl === page.url),
+        outbound: links.filter((link) => link.fromUrl === page.url),
+        linksCut: links.length >= OVERVIEW_LINK_LIMIT,
+        report: presented,
+        findings: naming,
+        triage: decisions.filter((d) => keys.has(d.findingKey)),
+      };
+    },
+
+    async getFindingHistory(projectId) {
+      if (!store.storesCrawls || !findings.storesFindings) return { status: "unavailable" };
+      const project = await projects.getProjectById(projectId);
+      if (project === null) return { status: "none" };
+      const projectHost = hostScopeFromDomain(project.domain);
+      if (projectHost === null) return { status: "none" };
+      const crawls = await store.listByProject(projectId, HISTORY_CRAWL_LIMIT, projectHost);
+      if (crawls.length === 0) return { status: "none" };
+      const headers = await findings.listReportHeaders(projectId, HISTORY_CRAWL_LIMIT * 4);
+      const reported = new Set(headers.map((h) => h.crawlId));
+
+      const entries: HistoryEntry[] = [];
+      for (const crawl of crawls) {
+        const ref = { id: crawl.id, startedAt: crawl.startedAt };
+        if (!reported.has(crawl.id)) {
+          entries.push({ kind: "not-recorded", crawl: ref });
+          continue;
+        }
+        const report = await findings.getReport(projectId, crawl.id);
+        if (report === null) {
+          entries.push({ kind: "not-recorded", crawl: ref });
+          continue;
+        }
+        // Pages are read only for reports that will be compared: the resolved rule needs what was fetched.
+        const pages = report.header.ruleVersion === FINDINGS_RULE_VERSION ? await store.listPages(crawl.id, OVERVIEW_PAGE_LIMIT) : [];
+        entries.push({
+          kind: "recorded",
+          crawl: ref,
+          ruleVersion: report.header.ruleVersion,
+          findings: new Map(report.findings.map((f) => [f.id, { rule: f.rule, urls: f.urls, urlCount: f.urlCount }])),
+          fetchedUrls: new Set(pages.filter((p) => p.fetchState === "fetched").map((p) => p.url)),
+        });
+      }
+      return { status: "derived", history: deriveFindingHistory(entries, FINDINGS_RULE_VERSION) };
     },
 
     async getCrawl(id, pageLimit = DEFAULT_PAGE_LIMIT) {

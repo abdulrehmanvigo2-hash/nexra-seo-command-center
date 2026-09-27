@@ -334,6 +334,7 @@ function findings(report: StoredCrawlFindingsReport | null) {
   const f: CrawlFindingsStore = {
     storesFindings: true,
     async record() { throw new Error("not under test"); },
+    async listReportHeaders() { return []; },
     async getReport(projectId, crawlId) {
       reads.push(`${projectId}:${crawlId}`);
       return report;

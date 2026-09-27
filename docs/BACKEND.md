@@ -2288,6 +2288,29 @@ index coverage and the health score are hidden: this product holds nothing
 to back them. The findings coverage line now leads with the crawl's stop
 reason. No schema change.
 
+**Checkpoint 3.3 (page detail and finding history).** `/technical/pages/<id>`
+reads one recorded page by its `nexra_crawl_pages` uuid, rendered on the
+server per request (no prerender, no fixture): the id's shape, then the
+operator, then the crawl read limit, then `getCrawlPageDetail`, which checks
+the page → crawl → project chain and that the crawl is confined to the
+project's own host (`CrawlStore.getPage`). A fixture id, an unknown id or a
+competitor crawl's page is not found. The view (`src/lib/crawl/page-detail.ts`)
+shows the response (server response labelled crawler-measured), declared
+indexing, metadata and markup, linking counts, the recorded edges into and out
+of the page with anchor text (from the crawl's bounded edge read), and the
+findings of its report at the current rules that name the page, with their
+decisions; a page not fetched shows only that it was discovered. Finding
+history (`src/lib/crawl/findings/history.ts`, `GET
+/api/crawls/finding-history?project=`, the *Finding history* panel on the
+Issues tab) is derived on read from the project's own crawls (the newest 10)
+and their reports (`CrawlFindingsStore.listReportHeaders`): consecutive
+reports at the current rule version compared by finding key — persisted,
+appeared, changed (a gone and a new key of the same rule sharing a URL), and
+for a key no longer named, resolved only when the later crawl fetched every
+page it named, otherwise not re-checked. Reports under earlier rules are not
+compared, and a crawl with no report is "not recorded", never recomputed.
+Nothing is stored; no schema change.
+
 **Deploy order:** the migration must be applied to production before this
 code is deployed; the read route answers 503 until then only if the store is
 missing, but the write and the triage read would fail on the missing table.

@@ -134,6 +134,10 @@ function recordingStore(): CrawlStore & {
       calls.push("listPages");
       return [];
     },
+    async getPage() {
+      calls.push("getPage");
+      return null;
+    },
   } satisfies CrawlStore & Record<string, unknown>;
   return state as ReturnType<typeof recordingStore>;
 }
@@ -721,6 +725,9 @@ describe("recording the deterministic findings when a crawl finishes (T3)", () =
       async getReport(projectId, crawlId) {
         reads.push([projectId, crawlId]);
         return options.report ?? null;
+      },
+      async listReportHeaders() {
+        return [];
       },
       async getLatestReportHeader() {
         return options.report?.header ?? null;
