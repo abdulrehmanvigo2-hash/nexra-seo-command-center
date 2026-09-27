@@ -12,4 +12,4 @@ Branch `claude/phase3-keywords-observed`, from `master` `c244efd4`.
 - [x] Hidden: Content gap, Competitors, SERP, AI search, Lists; Discover and Import dialogs removed from the screen.
 - [x] Surface tests rewritten to the new contract.
 - [x] Docs: CLAUDE.md §0/§14, BACKEND.md.
-- [ ] Draft PR, CI green.
+- [x] Docs committed; draft PR opened (CI pending).
