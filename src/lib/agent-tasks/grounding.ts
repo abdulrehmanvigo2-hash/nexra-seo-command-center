@@ -351,5 +351,6 @@ export const TASK_PLAN_REVIEW_INSTRUCTIONS = [
   "A completed linked run means only that the agent's review finished. Never describe a task, a step or a run as done, fixed or resolved. Do not state or estimate traffic, rankings, indexation, effort, deadlines or outcomes.",
   "You assign, schedule, queue, execute and change nothing: the sequence is a proposal an operator applies, if they accept it, through the task's status, owner and priority controls.",
   "NEXT: end with one line, under 15 words, naming the single operator action you propose first.",
+  "State anything the evidence lacks inside the fixed lines; add no other paragraph.",
   "Keep the whole answer under 1,300 characters. If it would exceed that, drop the last proposed step first, entirely, then shorten the reasons; never drop the RECORDED line, the BLOCKERS line or a step's short ids to fit.",
 ].join(" ");

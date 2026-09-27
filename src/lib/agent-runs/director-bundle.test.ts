@@ -123,6 +123,10 @@ const technical = (over: Partial<AgentRun> & { evidence?: JsonObject | null } = 
 const onPage = (over: Partial<AgentRun> & { evidence?: JsonObject | null } = {}) => run({ agentId: "on-page-seo", taskType: "on-page-review", ...over });
 const keyword = (over: Partial<AgentRun> & { evidence?: JsonObject | null } = {}) =>
   run({ agentId: "keyword-intent", taskType: "search-query-review", input: { range: "30d" }, evidence: SEARCH_CONSOLE_EVIDENCE, ...over });
+// Checkpoint 4.6: the two slots that close the loop.
+const performance = (over: Partial<AgentRun> & { evidence?: JsonObject | null } = {}) =>
+  run({ agentId: "analytics-learning", taskType: "performance-review", input: { range: "30d" }, evidence: SEARCH_CONSOLE_EVIDENCE, resultSummary: "WINDOWS: 2026-08-26 to 2026-09-24.\nOBSERVED: 1 click, 144 impressions.", ...over });
+const readiness = (over: Partial<AgentRun> & { evidence?: JsonObject | null } = {}) => run({ agentId: "ai-visibility", taskType: "answer-readiness-review", ...over });
 
 function listingOf(...runs: readonly AgentRun[]) {
   const listed: { projectId: string; agentId: string; limit: number }[] = [];
@@ -154,13 +158,15 @@ function report(findings: readonly StoredCrawlFinding[], crawl: Crawl = CRAWL): 
 const recorded = (crawl: Crawl, findings: readonly StoredCrawlFinding[]): CrawlFindingsRead => ({ status: "recorded", crawl, report: report(findings, crawl) });
 
 describe("the supported sources", () => {
-  test("are a fixed, ordered list of three hand-off task types, each with its one agent", () => {
+  test("are a fixed, ordered list of five hand-off task types, each with its one agent (checkpoint 4.6 adds the last two)", () => {
     assert.deepEqual(
       DIRECTOR_SOURCE_SLOTS.map((slot) => [slot.taskType, slot.agentId]),
       [
         ["crawl-review", "technical-seo"],
         ["on-page-review", "on-page-seo"],
         ["search-query-review", "keyword-intent"],
+        ["performance-review", "analytics-learning"],
+        ["answer-readiness-review", "ai-visibility"],
       ],
     );
     for (const slot of DIRECTOR_SOURCE_SLOTS) assert.ok(UPSTREAM_TASK_TYPES.includes(slot.taskType), slot.taskType);
@@ -174,16 +180,20 @@ describe("source selection", () => {
     const t2 = technical({ createdAt: "2026-09-19T00:00:00.000Z" });
     const o = onPage({ createdAt: "2026-09-19T00:00:00.000Z" });
     const k = keyword({ createdAt: "2026-09-21T00:00:00.000Z" });
-    const sources = selectDirectorSources(PROJECT, perSlot(t1, t2, o, k));
+    const p = performance({ createdAt: "2026-09-27T00:00:00.000Z" });
+    const r = readiness({ createdAt: "2026-09-22T00:00:00.000Z" });
+    const sources = selectDirectorSources(PROJECT, perSlot(t1, t2, o, k, p, r));
     assert.deepEqual(
       sources.map((s) => [s.slot.taskType, s.status, s.status === "selected" ? s.run.id : s.reason, s.scanned]),
       [
         ["crawl-review", "selected", t2.id, 2],
         ["on-page-review", "selected", o.id, 1],
         ["search-query-review", "selected", k.id, 1],
+        ["performance-review", "selected", p.id, 1],
+        ["answer-readiness-review", "selected", r.id, 1],
       ],
     );
-    assert.equal(selectedSources(sources).length, 3);
+    assert.equal(selectedSources(sources).length, 5);
   });
 
   test("another project's run is never selected, whatever the listing delivered, and is not counted as scanned", () => {
@@ -247,9 +257,11 @@ describe("source selection", () => {
         ["crawl-review", "missing", "no-run"],
         ["on-page-review", "missing", "no-run"],
         ["search-query-review", "selected", null],
+        ["performance-review", "missing", "no-run"],
+        ["answer-readiness-review", "missing", "no-run"],
       ],
     );
-    assert.equal(selectDirectorSources(PROJECT, [[], [], []]).every((s) => s.status === "missing"), true);
+    assert.equal(selectDirectorSources(PROJECT, [[], [], [], [], []]).every((s) => s.status === "missing"), true);
   });
 
   test("readDirectorSources lists each slot's agent for the project with the scan limit, and nothing else", async () => {
@@ -259,7 +271,7 @@ describe("source selection", () => {
       listing.listed,
       DIRECTOR_SOURCE_SLOTS.map((slot) => ({ projectId: PROJECT, agentId: slot.agentId, limit: SOURCE_SCAN_LIMIT })),
     );
-    assert.deepEqual(sources.map((s) => s.status), ["selected", "missing", "selected"]);
+    assert.deepEqual(sources.map((s) => s.status), ["selected", "missing", "selected", "missing", "missing"]);
   });
 
   test("the crawls to read findings for are the distinct crawl ids of the selected reviews, in source order", () => {
@@ -282,14 +294,14 @@ describe("what the Director is shown", () => {
 
   test("the header names the rule, the supported reviews, and the counts", () => {
     assert.match(bundle.text, /^PROJECT DIRECTOR BUNDLE \(the latest eligible completed review of each supported specialist task on this project, collected by this product by fixed rules; each review is model-generated advice recorded by this product, not a measurement\)\n/);
-    assert.match(bundle.text, /Supported reviews: 3 — Technical SEO \(technical-seo\), crawl-review; On-Page SEO \(on-page-seo\), on-page-review; Keyword & Search Intent \(keyword-intent\), search-query-review\./);
-    assert.match(bundle.text, /Selected: 2\. Missing: 1\./);
+    assert.match(bundle.text, /Supported reviews: 5 — Technical SEO \(technical-seo\), crawl-review; On-Page SEO \(on-page-seo\), on-page-review; Keyword & Search Intent \(keyword-intent\), search-query-review; Analytics & Learning \(analytics-learning\), performance-review; AI Visibility \(ai-visibility\), answer-readiness-review\./);
+    assert.match(bundle.text, /Selected: 2\. Missing: 3\./);
     assert.match(bundle.text, /Selection rule: for each supported task, the newest run of that task on this project that is completed, executed by a language model and grounded in recorded evidence, among the 25 newest runs of that task's agent\. Nothing older, no other task and no other project was read\./);
   });
 
   test("each selected source is labelled with its position, agent, task and run, and quoted exactly as the single hand-off quotes it", () => {
-    assert.match(bundle.text, /\n\nSOURCE 1 of 3 — Technical SEO \(technical-seo\), crawl-review: SELECTED\nUPSTREAM AGENT REVIEW \(model-generated advice recorded by this product; not a measurement\)\nWritten by: the Technical SEO agent \(technical-seo\)\nTask it answered: crawl-review\nRun id: /);
-    assert.match(bundle.text, /\n\nSOURCE 3 of 3 — Keyword & Search Intent \(keyword-intent\), search-query-review: SELECTED\n/);
+    assert.match(bundle.text, /\n\nSOURCE 1 of 5 — Technical SEO \(technical-seo\), crawl-review: SELECTED\nUPSTREAM AGENT REVIEW \(model-generated advice recorded by this product; not a measurement\)\nWritten by: the Technical SEO agent \(technical-seo\)\nTask it answered: crawl-review\nRun id: /);
+    assert.match(bundle.text, /\n\nSOURCE 3 of 5 — Keyword & Search Intent \(keyword-intent\), search-query-review: SELECTED\n/);
     // The description and the quoting are the T6 formatter's, so the quoted review reads the same in both blocks.
     const single = formatRunGrounding(t).text;
     const quoted = single.slice(0, single.indexOf("\n\nLIMITS OF THIS EVIDENCE"));
@@ -300,7 +312,7 @@ describe("what the Director is shown", () => {
   });
 
   test("a missing source is written as missing evidence, with why and how many runs were scanned, never as a clean result", () => {
-    assert.match(bundle.text, /\n\nSOURCE 2 of 3 — On-Page SEO \(on-page-seo\), on-page-review: MISSING — no on-page-review run by the On-Page SEO agent exists on this project among the 25 newest of that agent's runs \(0 scanned\)\. This is missing evidence, not an absence of issues: nothing in this bundle covers what that review would have covered, and the plan must say so\./);
+    assert.match(bundle.text, /\n\nSOURCE 2 of 5 — On-Page SEO \(on-page-seo\), on-page-review: MISSING — no on-page-review run by the On-Page SEO agent exists on this project among the 25 newest of that agent's runs \(0 scanned\)\. This is missing evidence, not an absence of issues: nothing in this bundle covers what that review would have covered, and the plan must say so\./);
     const ineligible = formatDirectorBundle(selectDirectorSources(PROJECT, perSlot(onPage({ status: "failed", resultSummary: null, resultMetadata: null }), onPage({ executor: "mock", resultMetadata: { simulated: true } }))), []);
     assert.match(ineligible.text, /on-page-review: MISSING — 2 on-page-review run\(s\) by the On-Page SEO agent were scanned and none is completed, model-executed and grounded\./);
   });
@@ -367,7 +379,9 @@ describe("the stored summary", () => {
     const newer = technical({ status: "failed", resultSummary: null, resultMetadata: null, createdAt: "2026-09-19T00:00:00.000Z" });
     const o = onPage({ evidence: crawlEvidence(OLDER_CRAWL.id) });
     const k = keyword();
-    const sources = selectDirectorSources(PROJECT, perSlot(t, newer, o, k));
+    const p = performance();
+    const r = readiness({ evidence: crawlEvidence(CRAWL.id) });
+    const sources = selectDirectorSources(PROJECT, perSlot(t, newer, o, k, p, r));
     const findings = [
       { crawlId: CRAWL.id, read: recorded(CRAWL, Array.from({ length: 40 }, (_, i) => finding(i, i % 2 ? "h1-missing" : "http-client-error"))) },
       { crawlId: OLDER_CRAWL.id, read: recorded(OLDER_CRAWL, [finding(0)]) },
@@ -375,14 +389,16 @@ describe("the stored summary", () => {
     const bundle = formatDirectorBundle(sources, findings);
 
     assert.equal(bundle.summary.source, "agent-runs");
-    assert.equal(bundle.summary.slots, 3);
-    assert.equal(bundle.summary.selected, 3);
+    assert.equal(bundle.summary.slots, 5);
+    assert.equal(bundle.summary.selected, 5);
     assert.equal(bundle.summary.missing, 0);
     assert.equal(bundle.summary.scanLimit, SOURCE_SCAN_LIMIT);
     assert.equal(bundle.summary.bytes, bytes(bundle.text));
     const stored = bundle.summary.sources as readonly JsonObject[];
     assert.deepEqual(stored[0], { taskType: "crawl-review", agentId: "technical-seo", status: "selected", reason: null, scanned: 2, runId: t.id, completedAt: t.finishedAt, truncated: false, bytes: (stored[0] as { bytes: number }).bytes, newerIneligible: 1, crawlId: CRAWL.id, property: null, endDate: null });
     assert.deepEqual(stored[2], { taskType: "search-query-review", agentId: "keyword-intent", status: "selected", reason: null, scanned: 1, runId: k.id, completedAt: k.finishedAt, truncated: false, bytes: (stored[2] as { bytes: number }).bytes, newerIneligible: 0, crawlId: null, property: "sc-domain:nexraagency.com", endDate: "2026-09-22" });
+    assert.deepEqual(stored[3], { taskType: "performance-review", agentId: "analytics-learning", status: "selected", reason: null, scanned: 1, runId: p.id, completedAt: p.finishedAt, truncated: false, bytes: (stored[3] as { bytes: number }).bytes, newerIneligible: 0, crawlId: null, property: "sc-domain:nexraagency.com", endDate: "2026-09-22" });
+    assert.deepEqual(stored[4], { taskType: "answer-readiness-review", agentId: "ai-visibility", status: "selected", reason: null, scanned: 1, runId: r.id, completedAt: r.finishedAt, truncated: false, bytes: (stored[4] as { bytes: number }).bytes, newerIneligible: 0, crawlId: CRAWL.id, property: null, endDate: null });
     const recordedSummaries = bundle.summary.recordedFindings as readonly JsonObject[];
     assert.equal(recordedSummaries.length, 2);
     assert.deepEqual(Object.keys(recordedSummaries[0]), ["crawlId", "status", "reportId", "ruleVersion", "recordedAt", "findings", "described", "rules", "rulesCut", "cutByBytes", "readCut", "bytes"]);
@@ -404,7 +420,7 @@ describe("the stored summary", () => {
     const bundle = formatDirectorBundle(selectDirectorSources(PROJECT, perSlot(keyword())), []);
     const stored = bundle.summary.sources as readonly JsonObject[];
     assert.deepEqual(stored[0], { taskType: "crawl-review", agentId: "technical-seo", status: "missing", reason: "no-run", scanned: 0, runId: null, completedAt: null, truncated: false, bytes: 0, newerIneligible: 0, crawlId: null, property: null, endDate: null });
-    assert.equal(bundle.summary.missing, 2);
+    assert.equal(bundle.summary.missing, 4);
     assert.deepEqual(bundle.summary.recordedFindings, []);
     assert.equal(bundle.summary.findingsCrawlsNotRead, 0);
     assert.equal(checkStorableJson({ evidence: bundle.summary }).ok, true);
@@ -418,6 +434,8 @@ describe("the stored summary", () => {
         ["technical-seo", "crawl-review", "selected", true],
         ["on-page-seo", "on-page-review", "missing", false],
         ["keyword-intent", "search-query-review", "selected", true],
+        ["analytics-learning", "performance-review", "missing", false],
+        ["ai-visibility", "answer-readiness-review", "missing", false],
       ],
     );
     assert.deepEqual(summarisedSources(null), []);
@@ -447,16 +465,18 @@ describe("bounded serialisation", () => {
   });
 
   test("the whole bundle stays under MAX_BUNDLE_BYTES with every source and every findings block at its worst", () => {
-    assert.equal(MAX_BUNDLE_BYTES, 3 * MAX_SOURCE_REVIEW_BYTES + MAX_FINDINGS_CRAWLS * MAX_FINDINGS_EVIDENCE_BYTES + 4_000);
+    // Checkpoint 4.6: five slots, so the ceiling grew by two sources' worth (12,000 bytes).
+    assert.equal(MAX_BUNDLE_BYTES, 5 * MAX_SOURCE_REVIEW_BYTES + MAX_FINDINGS_CRAWLS * MAX_FINDINGS_EVIDENCE_BYTES + 4_000);
+    assert.equal(MAX_BUNDLE_BYTES - (3 * MAX_SOURCE_REVIEW_BYTES + MAX_FINDINGS_CRAWLS * MAX_FINDINGS_EVIDENCE_BYTES + 4_000), 12_000);
     const worst = (over: Partial<AgentRun> & { evidence?: JsonObject | null }) => ({ ...over, resultSummary: "\u{1F600}".repeat(3_000), createdAt: "2026-09-18T00:00:00.000Z" });
     const ineligible = Array.from({ length: 24 }, (_, i) => technical({ status: "failed", resultSummary: null, resultMetadata: null, createdAt: `2026-09-19T00:00:${String(i).padStart(2, "0")}.000Z` }));
-    const sources = selectDirectorSources(PROJECT, perSlot(technical(worst({})), ...ineligible, onPage(worst({ evidence: crawlEvidence(OLDER_CRAWL.id) })), keyword(worst({}))));
+    const sources = selectDirectorSources(PROJECT, perSlot(technical(worst({})), ...ineligible, onPage(worst({ evidence: crawlEvidence(OLDER_CRAWL.id) })), keyword(worst({})), performance(worst({})), readiness(worst({}))));
     const many = (crawl: Crawl) => recorded(crawl, Array.from({ length: 400 }, (_, i) => ({ ...finding(i, i % 3 === 0 ? "h1-missing" : i % 3 === 1 ? "http-client-error" : "title-missing"), urls: Array.from({ length: 5 }, (_, u) => `https://nexraagency.com/${"very-long-path-segment-".repeat(8)}${i}-${u}`), urlCount: 5, observed: { h1Count: 0, note: "z".repeat(200) } })));
     const bundle = formatDirectorBundle(sources, [
       { crawlId: CRAWL.id, read: many(CRAWL) },
       { crawlId: OLDER_CRAWL.id, read: many(OLDER_CRAWL) },
     ], 5);
-    assert.equal(bundle.summary.selected, 3);
+    assert.equal(bundle.summary.selected, 5);
     assert.equal(bundle.summary.truncated, true);
     assert.ok(bundle.summary.bytes <= MAX_BUNDLE_BYTES, `${bundle.summary.bytes} > ${MAX_BUNDLE_BYTES}`);
     assert.equal(checkStorableJson({ simulated: false, grounded: true, evidence: bundle.summary }).ok, true);
@@ -476,7 +496,8 @@ describe("the Director's instructions", () => {
     assert.doesNotMatch(i, /at most four items|under 50 words|under 1,500 characters/);
     for (const field of ["PRIORITY", "BASIS", "ACTION", "SOURCES", "WHY THIS RANK", "VERIFY", "BLOCKERS"]) assert.ok(i.includes(field), field);
     assert.match(i, /OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on a review's inference/);
-    assert.match(i, /items resting on a recorded finding before items resting on inference alone; among recorded findings, higher severity first; among inferences, those more sources agree on first, then the more confident\. Give no numeric score\./);
+    // Checkpoint 4.6, decision Q7: recorded finding > measurement > inference.
+    assert.match(i, /items resting on a recorded finding first; then items resting on a measurement, which here means only a performance review's figures, described as that agent's reading of Google's report; then items resting on inference alone; among recorded findings, higher severity first; among inferences, those more sources agree on first, then the more confident\. Give no numeric score\./);
     assert.match(i, /make one item that cites both and say they agree; never make two items for one problem/);
     assert.match(i, /the recorded finding is the observation and the review is the inference/);
     assert.match(i, /naming each supported review the bundle marks MISSING and each reading a review marks 'not established' that the plan depends on/);

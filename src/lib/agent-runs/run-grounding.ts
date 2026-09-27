@@ -407,5 +407,6 @@ export const PRIORITY_REVIEW_INSTRUCTIONS = [
   "The review is advice from another model. Do not restate its inferences as facts, and do not describe its evidence as something you have seen. Where the review marks a reading 'not established', the only action you may rank on it is establishing it.",
   "You change nothing and assign nothing: the queue is a proposal for an operator to review, and you must not describe any item as scheduled, assigned, or done.",
   "NEXT: end with one line, under 25 words, naming the single first action and why it comes before the rest, and saying the queue reflects one review of one kind of evidence and is not a strategy for the project.",
+  "State anything the evidence lacks inside the fixed lines; add no other paragraph.",
   "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest-ranked item first, entirely, then shorten WHY THIS RANK; never drop or shorten a SOURCE or the NEXT line to fit.",
 ].join(" ");

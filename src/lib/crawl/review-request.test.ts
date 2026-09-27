@@ -2293,9 +2293,9 @@ describe("the SEO Director's project review request (M5)", () => {
     assert.equal(provenance?.tone, "neutral");
     assert.equal(
       provenance?.text,
-      "Model output by the SEO Director over 2 of 3 supported specialist reviews: Technical SEO (run 11111111-0000-4000-8000-000000000001), Keyword & Search Intent (run 11111111-0000-4000-8000-000000000003). Missing: On-Page SEO. Each review was itself model-generated over evidence the Director did not see; recorded crawl findings were read for 1 crawl(s). Two layers of advice, not measurement.",
+      "Model output by the SEO Director over 2 of 5 supported specialist reviews: Technical SEO (run 11111111-0000-4000-8000-000000000001), Keyword & Search Intent (run 11111111-0000-4000-8000-000000000003). Missing: On-Page SEO. Each review was itself model-generated over evidence the Director did not see; recorded crawl findings were read for 1 crawl(s). Two layers of advice, not measurement.",
     );
     // A stored summary of another shape falls through to the ordinary grounded wording, never to the bundle's.
-    assert.match(outputProvenance({ ...completed, resultMetadata: { simulated: false, grounded: true, evidence: { source: "agent-runs" } } })?.text ?? "", /over 0 of 3 supported specialist reviews\./);
+    assert.match(outputProvenance({ ...completed, resultMetadata: { simulated: false, grounded: true, evidence: { source: "agent-runs" } } })?.text ?? "", /over 0 of 5 supported specialist reviews\./);
   });
 });
