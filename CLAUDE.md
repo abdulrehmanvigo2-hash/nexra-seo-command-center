@@ -3,13 +3,13 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Phase 2, Project Manager loop closure — step (a), the handoff outcome read-back
-(checkpoint 2.2), and step (b), handoffs for five more agents (checkpoint 2.3), are merged, deployed
-and production verified; the crawl-review bound, tightened structurally (checkpoint 2.3d), is merged
-and verified live; task priority change (checkpoint 2.3b, the one Phase 2 migration) is merged,
-its migration applied and recorded, and browser verified; tasks as grounding and the Project
-Manager task plan review (checkpoint 2.4, step (c)) are on their branch; Phase 1 (baseline truth
-and gates) is complete (see §14).
+**Current stage: Phase 2, Project Manager loop closure, is complete — step (a), the handoff outcome
+read-back (checkpoint 2.2); step (b), handoffs for five more agents (checkpoint 2.3), with the
+crawl-review bound (2.3c, then structurally 2.3d) and task priority change (2.3b, the one Phase 2
+migration, applied and recorded); and step (c), tasks as grounding and the Project Manager task
+plan review (checkpoint 2.4) — each merged, deployed and production verified (PR #27–#32). Next:
+Phase 3, Technical & Keywords realification (the MVP target), starting with its design checkpoint.
+Phase 1 (baseline truth and gates) is complete (see §14).
 The Project Manager task workflow (status transitions, owner changes, specialist handoff, event
 history) is merged and production verified end-to-end.
 C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3, M4 and M5 are complete, merged and
@@ -26,8 +26,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `0921c1f80de5b6b9e5d53bc6e08da3410664fd91` (merge of PR #31,
-`claude/phase2-task-priority`, task priority change; preceded by PR #30 `a48cb35a…` (structural
+GitHub `master`: `2305b6059ec0e43f99590d1da7b9d89d80b7b12a` (merge of PR #32,
+`claude/phase2-task-plan-review`, tasks as grounding and the task plan review; preceded by PR #31
+`0921c1f8…` (task priority change), PR #30 `a48cb35a…` (structural
 crawl-review bound), PR #29
 `bad5469b…` (crawl-review character bound), PR #28 `8dcff921…`
 (five agent handoffs), PR #27 `0143a0cf…` (handoff outcome read-back), PR #26 `e01bf12f…`
@@ -36,9 +37,9 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_L1Vyf5SUAkkvrayrwQBctJQV46cR`, READY, built from `master` at
-`0921c1f8`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_g8nT5phXm5rWw5TxDMP7VPGffXdN` at `a48cb35a`); `master` CI run `36294914125` passed all five
+Production deployment: `dpl_4EZwABN3BVUThvNvfzy8w2oExtNC`, READY, built from `master` at
+`2305b605`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_L1Vyf5SUAkkvrayrwQBctJQV46cR` at `0921c1f8`); `master` CI run `36302739300` passed all five
 jobs.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
@@ -171,7 +172,28 @@ run's state by the cp 2.2 rules; one line for what was left out; an unreadable t
 structural-bound instructions (RECORDED, at most five PROPOSED steps, BLOCKERS, NEXT, the whole
 under 1,300 characters), queued from the *Task plan review* panel beside the intake review. No
 schema change, no worker or executor behaviour change (the mock executor gains its simulated
-case). On `claude/phase2-task-plan-review`; not merged.
+case). PR #32 merged as `2305b605…` (the PR's diff scan admitted the test's synthetic `sk-`
+title fixture in `.github/secret-scan-allowlist`); deployment `dpl_4EZwABN3…` READY; `master` CI
+run `36302739300` green. **Phase 2 finale (production, 27 Sep):** the first `task-plan-review`,
+run `567a3f11…`, queued and run once by the operator from the *Task plan review* panel: completed,
+1 attempt, `claude-opus-5`, **435 characters**; RECORDED (1 open task read, 1 shown, 0 left out),
+one PROPOSED step, BLOCKERS (none recorded) and NEXT held, in that order; it cited `30e79092` only,
+every recorded field matching (ready, medium, `technical-seo`, `director-run`, linked run
+completed); grounded, evidence kind `task` (1,406 bytes, 1 task read, 0 titles withheld); the
+instruction-shaped title was reported as data, not followed, quoted only as a shortened fragment.
+One cosmetic finding, not fixed: an extra "Observation:" line outside the fixed order. Totals
+after: 47 runs, 48 attempts (the extra attempt is `33ac8a25…`, below).
+
+**Findings recorded for later phases:**
+
+- The single-project Director `priority-review` run `33ac8a25…` (SEO Director, queued by an operator
+  on 26 Sep 08:45) was executed by the scheduled worker on 27 Sep 06:19 UTC and failed
+  `rejected-output`; not retried. `PRIORITY_REVIEW_INSTRUCTIONS` still lack the structural bound
+  the project Director, intake, crawl and plan reviews carry; deferred to Phase 4's Director work.
+- Task events seq 12–14 do not exist: the identity values were taken by the rolled-back 2.3b
+  verification probe (see 2.3b above) and are not reused. History is ordered by `seq`, never
+  assumed contiguous.
+- The task plan review's cosmetic "Observation:" line (above).
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 
@@ -268,7 +290,8 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** checkpoint 2.4 on `claude/phase2-task-plan-review` (above). Earlier: the Project Manager task workflow (branch
+**Current work:** Phase 2 is complete (checkpoint 2.5 records it); next, Phase 3's design
+checkpoint, under its own approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -883,19 +906,21 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (a) | Handoff outcome read-back: the task read answers what became of its newest handoff, computed from the linked run; shown in the task history | Complete: PR #27 (`0143a0cf`), deployed, browser verified (27 Sep); no migration |
 | Phase 2 (b) | Handoffs for five more agents with an operator-chosen record (own-site crawl or recorded competitor domain); Writer deferred | Complete: PR #28 (`8dcff921`), deployed, production verified (run `bcefb1e4…`); no migration. Crawl-review bound: 2.3c PR #29 (`bad5469b`), then the structural 2.3d PR #30 (`a48cb35a`), verified live (run `941cc617…`, 1,138 characters) |
 | Phase 2 (b2) | Task priority change: set-priority function, priority-changed event, Change priority control (checkpoint 2.3b) | Complete: PR #31 (`0921c1f8`), deployed; migration `20261005120000` applied and recorded; browser verified (events seq 15–16) |
-| Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | On `claude/phase2-task-plan-review`; no migration; not merged |
+| Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
+| Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
+| Phase 3 | Technical & Keywords realification (the MVP target) | Next; starts with its design checkpoint; not started |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: branch
-`claude/phase2-task-plan-review` (checkpoint 2.4).
-Phase 1 is complete. Current: Phase 2, Project Manager loop closure — step (a), the handoff outcome
-read-back, and step (b), handoffs for five of the six deferred agents (the Writer stays deferred),
-are complete, with the crawl-review bound tightened structurally (cp 2.3d, verified live); priority
-change (cp 2.3b, the one Phase 2 migration) is complete and its migration applied; step (c), tasks as
-grounding and a Project Manager task-plan review (cp 2.4), is on its branch — each step under its
-own explicit approval. Work beyond that (cross-crawl
-finding history, a curated keyword entity, further Director sources) is planned in the roadmap but
-not started.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 2 closed
+(checkpoint 2.5); Phase 3 not started.
+Phase 1 and Phase 2 are complete. Phase 2, Project Manager loop closure: step (a), the handoff
+outcome read-back; step (b), handoffs for five of the six deferred agents (the Writer stays
+deferred), with the crawl-review bound tightened structurally (cp 2.3d, verified live) and priority
+change (cp 2.3b, the one Phase 2 migration, applied); step (c), tasks as grounding and the Project
+Manager task-plan review (cp 2.4, verified in production). Next: Phase 3, Technical & Keywords
+realification (the MVP target), starting with its design checkpoint — each step under its own
+explicit approval. Later (cross-crawl finding history, a curated keyword entity, further Director
+sources, the single-project Director bound) is planned in the roadmap but not started.
 
 ## 15. Definition of Done
 
