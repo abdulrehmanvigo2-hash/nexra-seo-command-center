@@ -90,6 +90,8 @@ export function taskActionFailure(httpStatus: number, body: unknown): string {
       return "The task is already in that status. Nothing changed.";
     case "same-owner":
       return "That agent already owns the task. Nothing changed.";
+    case "same-priority":
+      return "The task already has that priority. Nothing changed.";
     case "terminal":
       return "A completed or cancelled task does not change. Nothing changed.";
     case "transition-not-allowed":

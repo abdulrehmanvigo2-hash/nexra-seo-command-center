@@ -5,6 +5,8 @@ import {
   type AgentTaskEvent,
   type ChangeTaskOwnerInput,
   type ChangeTaskOwnerOutcome,
+  type ChangeTaskPriorityInput,
+  type ChangeTaskPriorityOutcome,
   type ChangeTaskStatusInput,
   type ChangeTaskStatusOutcome,
   type CreateAgentTaskInput,
@@ -41,6 +43,7 @@ export type ReadAgentTaskResult =
 
 export type ChangeTaskStatusResult = ChangeTaskStatusOutcome | { readonly status: "unavailable" };
 export type ChangeTaskOwnerResult = ChangeTaskOwnerOutcome | { readonly status: "unavailable" };
+export type ChangeTaskPriorityResult = ChangeTaskPriorityOutcome | { readonly status: "unavailable" };
 
 export type HandoffTaskResult =
   /** One run was created and linked. `duplicate` says the run path found an identical active run instead of inserting. */
@@ -120,6 +123,8 @@ export type AgentTaskService = {
   changeStatus(input: ChangeTaskStatusInput): Promise<ChangeTaskStatusResult>;
   /** One owner change to a registry agent. Queues nothing. */
   changeOwner(input: ChangeTaskOwnerInput): Promise<ChangeTaskOwnerResult>;
+  /** One priority change to one of the four priorities. Queues nothing and tells no agent anything. */
+  changePriority(input: ChangeTaskPriorityInput): Promise<ChangeTaskPriorityResult>;
   /**
    * Records the request, creates at most one queued run for the owning agent, links it. Executes nothing.
    * A record-reading owner's record is checked against the project first; a refusal writes nothing.
@@ -212,6 +217,18 @@ export function createAgentTaskService(
         projectId: input.projectId,
         runId: input.taskId,
         agentId: input.owningAgent,
+        outcome: outcome.status,
+      });
+      return outcome;
+    },
+
+    async changePriority(input) {
+      if (!store.storesTasks) return { status: "unavailable" };
+      const outcome = await store.setPriority(input);
+      logEvent(outcome.status === "priority-changed" ? "info" : "warn", "agent_tasks.priority", {
+        projectId: input.projectId,
+        runId: input.taskId,
+        reason: input.priority,
         outcome: outcome.status,
       });
       return outcome;

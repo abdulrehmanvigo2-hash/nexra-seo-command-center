@@ -7,12 +7,15 @@ import { Select } from "@/components/ui/field";
 import {
   TASK_EVENT_META,
   TASK_OWNING_AGENTS,
+  TASK_PRIORITIES,
+  TASK_PRIORITY_META,
   TASK_STATUS_META,
   TASK_TRANSITIONS,
   agentTaskUrl,
   isTerminalTaskStatus,
   type AgentTask,
   type AgentTaskEvent,
+  type AgentTaskPriority,
   type AgentTaskStatus,
   type TaskOwningAgent,
 } from "@/lib/agent-tasks/contract";
@@ -25,8 +28,9 @@ import type { AgentRun } from "@/types/agent-run";
 
 /**
  * The operator controls of one live task (Project Manager task workflow):
- * change its status along the fixed map, change its owning agent, hand it
- * off to that agent, and view its history.
+ * change its status along the fixed map, change its owning agent, change
+ * its priority (checkpoint 2.3b), hand it off to that agent, and view its
+ * history.
  *
  * Every write is one confirmed POST to the task endpoint, and every answer
  * is shown as what was recorded, never as work done. A status or owner
@@ -44,7 +48,7 @@ import type { AgentRun } from "@/types/agent-run";
  * and the task's status is never changed by it.
  */
 
-type Mode = "idle" | "status" | "owner" | "handoff" | "history";
+type Mode = "idle" | "status" | "owner" | "priority" | "handoff" | "history";
 
 type Outcome =
   | { readonly kind: "none" }
@@ -65,7 +69,7 @@ type History =
   | { readonly status: "loaded"; readonly events: readonly AgentTaskEvent[]; readonly outcome: TaskRunOutcome | null };
 
 export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChanged: (task: AgentTask) => void }) {
-  const ids = { status: useId(), owner: useId() };
+  const ids = { status: useId(), owner: useId(), priority: useId() };
   const [mode, setMode] = useState<Mode>("idle");
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none" });
   const [history, setHistory] = useState<History | null>(null);
@@ -75,6 +79,7 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
   const allowed = TASK_TRANSITIONS[task.status];
   const [nextStatus, setNextStatus] = useState<AgentTaskStatus | "">(allowed[0] ?? "");
   const [nextOwner, setNextOwner] = useState<TaskOwningAgent>(task.owningAgent);
+  const [nextPriority, setNextPriority] = useState<AgentTaskPriority>(task.priority);
   /** A ref refuses the second click of a pair before React has re-rendered. */
   const sending = useRef(false);
   const terminal = isTerminalTaskStatus(task.status);
@@ -86,6 +91,7 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
     // Each form starts from the task as it is now, never from an earlier pick.
     if (next === "status") setNextStatus(allowed[0] ?? "");
     if (next === "owner") setNextOwner(task.owningAgent);
+    if (next === "priority") setNextPriority(task.priority);
     setMode((current) => (current === next ? "idle" : next));
     if (next === "history") void loadHistory();
     if (next === "handoff") {
@@ -161,6 +167,9 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
         <Button variant="secondary" size="sm" onClick={() => open("owner")} disabled={terminal || busy} aria-expanded={mode === "owner"}>
           Change owner
         </Button>
+        <Button variant="secondary" size="sm" onClick={() => open("priority")} disabled={terminal || busy} aria-expanded={mode === "priority"}>
+          Change priority
+        </Button>
         <Button variant="secondary" size="sm" onClick={() => open("handoff")} disabled={terminal || busy || mapping === null} aria-expanded={mode === "handoff"}>
           Hand off
         </Button>
@@ -232,6 +241,39 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
           <div className="flex flex-wrap items-center gap-2">
             <Button type="submit" variant="primary" size="sm" disabled={busy || nextOwner === task.owningAgent}>
               {busy ? "Recording…" : "Apply owner"}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setMode("idle")} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {mode === "priority" && (
+        <form
+          className="space-y-2 rounded-md border border-border bg-surface-raised p-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void post({ action: "priority", priority: nextPriority }, (body) => ({
+              task: body.task as AgentTask,
+              message: `Priority recorded as ${TASK_PRIORITY_META[nextPriority].label.toLowerCase()}. No agent was told anything and no run was queued.`,
+            }));
+          }}
+          aria-busy={busy}
+        >
+          <label className="flex flex-col gap-1 text-[11.5px] text-fg-subtle" htmlFor={ids.priority}>
+            Priority (one of the four; nothing is inferred)
+            <Select
+              id={ids.priority}
+              size="sm"
+              value={nextPriority}
+              onChange={(event) => setNextPriority(event.target.value as AgentTaskPriority)}
+              options={TASK_PRIORITIES.map((priority) => ({ value: priority, label: TASK_PRIORITY_META[priority].label }))}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" variant="primary" size="sm" disabled={busy || nextPriority === task.priority}>
+              {busy ? "Recording…" : "Apply priority"}
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={() => setMode("idle")} disabled={busy}>
               Cancel
@@ -442,6 +484,8 @@ function describeEvent(event: AgentTaskEvent): string {
       return `${event.fromAgent ? AGENT_NAMES[event.fromAgent] : "?"} → ${event.toAgent ? AGENT_NAMES[event.toAgent] : "?"}`;
     case "handoff-requested":
       return `to ${event.toAgent ? AGENT_NAMES[event.toAgent] : "?"}`;
+    case "priority-changed":
+      return `${event.fromPriority ? TASK_PRIORITY_META[event.fromPriority].label : "?"} → ${event.toPriority ? TASK_PRIORITY_META[event.toPriority].label : "?"}`;
     case "handoff-run-linked":
       return `run ${event.runId ? `${event.runId.slice(0, 8)}…` : "?"} queued for ${event.toAgent ? AGENT_NAMES[event.toAgent] : "?"}; not executed by this record`;
   }

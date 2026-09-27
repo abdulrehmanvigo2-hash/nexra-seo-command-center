@@ -153,6 +153,8 @@ describe("the stored row and the function's answer", () => {
 
 import { readFile } from "node:fs/promises";
 import {
+  TASK_ACTIONS,
+  TASK_EVENT_META,
   TASK_EVENT_TYPES,
   TASK_TERMINAL_STATUSES,
   TASK_TRANSITIONS,
@@ -162,7 +164,7 @@ import {
   isTerminalTaskStatus,
   parseTaskActionRequest,
 } from "./contract.ts";
-import { eventRowToEvent, handoffLinkResultToOutcome, handoffRequestResultToOutcome, ownerResultToOutcome, statusResultToOutcome } from "./supabase/schema.ts";
+import { eventRowToEvent, handoffLinkResultToOutcome, handoffRequestResultToOutcome, ownerResultToOutcome, priorityResultToOutcome, statusResultToOutcome } from "./supabase/schema.ts";
 
 describe("the transition map", () => {
   test("is the one the user fixed, fifteen moves, terminal states allow nothing", () => {
@@ -251,15 +253,50 @@ describe("the event rows and the function answers", () => {
   const taskRow = { id: "30e79092-6258-4fff-8d1f-c1e2921764b8", project_id: "nexra-agency", title: "T", source_kind: "director-run", source_ref: RUN_ID, owning_agent: "project-manager", status: "ready", priority: "medium", created_by: "00000000-0000-4000-8000-0000000000aa", created_at: "2026-09-26T03:00:00+00:00", updated_at: "2026-09-26T04:00:00+00:00" };
   const eventRow = { id: "e0000000-0000-4000-8000-000000000001", seq: 2, task_id: taskRow.id, project_id: "nexra-agency", event_type: "status-changed", from_status: "backlog", to_status: "ready", from_agent: null, to_agent: null, run_id: null, actor: taskRow.created_by, created_at: "2026-09-26T04:00:00+00:00" };
 
-  test("the five event types; a row is translated field by field and a row that names the unknown is refused", () => {
-    assert.deepEqual([...TASK_EVENT_TYPES], ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked"]);
+  test("the six event types; a row is translated field by field and a row that names the unknown is refused", () => {
+    assert.deepEqual([...TASK_EVENT_TYPES], ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked", "priority-changed"]);
     const event = eventRowToEvent(eventRow);
-    assert.deepEqual(event, { id: eventRow.id, seq: 2, taskId: taskRow.id, projectId: "nexra-agency", type: "status-changed", fromStatus: "backlog", toStatus: "ready", fromAgent: null, toAgent: null, runId: null, actor: taskRow.created_by, createdAt: eventRow.created_at });
+    assert.deepEqual(event, { id: eventRow.id, seq: 2, taskId: taskRow.id, projectId: "nexra-agency", type: "status-changed", fromStatus: "backlog", toStatus: "ready", fromAgent: null, toAgent: null, runId: null, fromPriority: null, toPriority: null, actor: taskRow.created_by, createdAt: eventRow.created_at });
     assert.equal(eventRowToEvent({ ...eventRow, seq: "17" }).seq, 17, "a bigint that arrives as text");
     assert.throws(() => eventRowToEvent({ ...eventRow, event_type: "deleted" }), /event_type "deleted"/);
     assert.throws(() => eventRowToEvent({ ...eventRow, to_status: "done" }), /to_status "done"/);
     assert.throws(() => eventRowToEvent({ ...eventRow, to_agent: "ghost" }), /to_agent "ghost"/);
     assert.throws(() => eventRowToEvent({ ...eventRow, seq: "x" }), /seq/);
+  });
+
+  test("a priority-changed row carries its two priorities; a row read before migration 20261005120000 has none (cp 2.3b)", () => {
+    const priority = eventRowToEvent({ ...eventRow, event_type: "priority-changed", from_status: null, to_status: null, from_priority: "medium", to_priority: "high" });
+    assert.equal(priority.type, "priority-changed");
+    assert.equal(priority.fromPriority, "medium");
+    assert.equal(priority.toPriority, "high");
+    // The columns are absent on a database the migration has not reached: the read still works.
+    const before: Record<string, unknown> = { ...eventRow };
+    delete before.from_priority;
+    delete before.to_priority;
+    const old = eventRowToEvent(before);
+    assert.equal(old.fromPriority, null);
+    assert.equal(old.toPriority, null);
+    assert.throws(() => eventRowToEvent({ ...eventRow, to_priority: "urgent" }), /to_priority "urgent"/);
+    assert.equal(TASK_EVENT_META["priority-changed"], "Priority changed");
+  });
+
+  test("the priority function's answers are checked (cp 2.3b)", () => {
+    assert.equal(priorityResultToOutcome({ outcome: "priority-changed", task: taskRow, event: { ...eventRow, event_type: "priority-changed", from_status: null, to_status: null, from_priority: "medium", to_priority: "high" } }).status, "priority-changed");
+    assert.deepEqual(priorityResultToOutcome({ outcome: "task-not-found" }), { status: "task-not-found" });
+    for (const outcome of ["same-priority", "terminal"]) assert.equal(priorityResultToOutcome({ outcome, task: taskRow }).status, outcome);
+    assert.throws(() => priorityResultToOutcome({ outcome: "transitioned" }), /"transitioned"/);
+  });
+
+  test("a priority action names one of the four priorities and nothing else (cp 2.3b)", () => {
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "priority", priority: "critical" }), { ok: true, projectId: "nexra-agency", action: "priority", priority: "critical" });
+    for (const body of [
+      { project: "nexra-agency", action: "priority" },
+      { project: "nexra-agency", action: "priority", priority: "urgent" },
+      { project: "nexra-agency", action: "priority", priority: "High" },
+      { project: "nexra-agency", action: "priority", priority: "high", status: "ready" },
+      { project: "Nexra", action: "priority", priority: "high" },
+    ]) assert.deepEqual(parseTaskActionRequest(body), { ok: false, error: "invalid" }, JSON.stringify(body));
+    assert.deepEqual([...TASK_ACTIONS], ["status", "owner", "priority", "handoff"]);
   });
 
   test("each function answer is checked, and an answer the function never promised is an error", () => {

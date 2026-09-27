@@ -38,6 +38,8 @@ const event = (seq: number, over: Partial<AgentTaskEvent> = {}): AgentTaskEvent 
   fromAgent: null,
   toAgent: "project-manager",
   runId: RUN_1,
+  fromPriority: null,
+  toPriority: null,
   actor: "00000000-0000-4000-8000-0000000000aa",
   createdAt: "2026-09-26T04:00:00.000Z",
   ...over,
