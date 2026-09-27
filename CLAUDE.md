@@ -5,9 +5,10 @@ project. Read it before writing any code.
 
 **Current stage: Phase 2, Project Manager loop closure — step (a), the handoff outcome read-back
 (checkpoint 2.2), and step (b), handoffs for five more agents (checkpoint 2.3), are merged, deployed
-and production verified; the crawl-review output bound (checkpoint 2.3c) is merged but its character
-cap did not hold live, and its structural tightening (checkpoint 2.3d) is on its branch; Phase 1
-(baseline truth and gates) is complete (see §14).
+and production verified; the crawl-review bound, tightened structurally (checkpoint 2.3d), is merged
+and verified live; task priority change (checkpoint 2.3b, the one Phase 2 migration) is on its
+branch, its migration not yet applied to production; Phase 1 (baseline truth and gates) is complete
+(see §14).
 The Project Manager task workflow (status transitions, owner changes, specialist handoff, event
 history) is merged and production verified end-to-end.
 C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3, M4 and M5 are complete, merged and
@@ -24,17 +25,18 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `bad5469b1b2d43238175694d4ff675a303f5de21` (merge of PR #29,
-`claude/phase2-crawl-review-bound`, the crawl-review output bound; preceded by PR #28 `8dcff921…`
+GitHub `master`: `a48cb35afd6811ff84600f2513324c4d32fba66f` (merge of PR #30,
+`claude/phase2-crawl-review-structural`, the structural crawl-review bound; preceded by PR #29
+`bad5469b…` (crawl-review character bound), PR #28 `8dcff921…`
 (five agent handoffs), PR #27 `0143a0cf…` (handoff outcome read-back), PR #26 `e01bf12f…`
 (Phase 1 closing docs), PR #25 `6363db53…` (CI gates),
 PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_5uYk2Ron4A4hYaX8vejXbbnSx5KU`, READY, built from `master` at
-`bad5469b`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_7wpPFSHENoXbdT5kH9HKZVus9t8S` at `8dcff921`); `master` CI run `36292658725` passed all five
+Production deployment: `dpl_g8nT5phXm5rWw5TxDMP7VPGffXdN`, READY, built from `master` at
+`a48cb35a`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_5uYk2Ron4A4hYaX8vejXbbnSx5KU` at `bad5469b`); `master` CI run `36293812661` passed all five
 jobs.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
@@ -126,7 +128,22 @@ dropped), at most three findings, each three lines (OBSERVED under 20 words, INF
 RECOMMENDATION under 15), one NEXT line (under 15 words) — and, as the last rule, the whole answer
 under 1,200 characters, dropping the lowest-severity finding first and never the COVERAGE line or a
 cited URL. The 2.3c sentence is replaced; the evidence, safety and findings-block sentences are
-3b74d99's, verbatim. No schema, worker or screen change.
+3b74d99's, verbatim. No schema, worker or screen change. PR #30 merged as `a48cb35a…`; deployment
+`dpl_g8nT5phX…` READY. **Live verification (27 Sep):** run `941cc617…` (unlinked panel run over crawl
+`3398ff1a…`, on the bounded build) completed, 1 attempt, `claude-opus-5`, **1,138 characters**, 3
+findings, the COVERAGE line first and the NEXT line last. Totals after: 46 runs, 46 attempts.
+
+**Phase 2 checkpoint 2.3b (task priority change, the one Phase 2 migration):** migration
+`20261005120000_agent_task_priority.sql` adds `nexra_agent_task_set_priority` (`security definer`,
+empty `search_path`, shaped like `set_owner`: `priority-changed`, `task-not-found`, `same-priority`,
+`terminal`; 22023 outside the four priorities) and a `priority-changed` event (`from_priority` /
+`to_priority`, type list and shape check replaced; the append-only guards untouched); the update
+guard lets priority change only under the task functions' flag; `service_role` gains EXECUTE on the
+one function. `POST /api/agent-tasks/[taskId] { action: "priority" }` under the existing action
+limit, and *Change priority* in *Live tasks*; the history renders the event. Harness suite
+`task-priority` (69 assertions); `task-workflow` pinned to the pre-priority schema. **The migration
+is NOT applied to production** — that is its own §6-approved step after merge; the event read
+selects every column, so the history keeps working until then, and only *Change priority* fails.
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 
@@ -223,7 +240,8 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** checkpoint 2.3d on `claude/phase2-crawl-review-structural` (above). Earlier: the Project Manager task workflow (branch
+**Current work:** checkpoint 2.3b on `claude/phase2-task-priority` (above); its migration is not
+applied to production. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -836,15 +854,16 @@ foundation, Search Console) are complete. Current work follows the content workf
 | PM task workflow | Status transitions along a fixed map, owner changes, specialist handoff (one queued run, never executed here), append-only event history, task route, Live tasks controls | Complete, merged (`47fae75d`), migration `20261004120000` applied and recorded, deployed; restore fix (`073bf85e`) and intake bound (`2e8116ce`) merged; production verified end-to-end on run `be1b692e…` |
 | Phase 1 | Baseline truth and gates: docs reconciliation, security and worker tests, CI gates, browser verifications (M3, M4, M5), C4 new-parser live check | Complete: PR #23 (`97aa0018`), PR #24 (`3a316124`), PR #25 (`6363db53`); checkpoints 1.5 and 1.6 verified in production |
 | Phase 2 (a) | Handoff outcome read-back: the task read answers what became of its newest handoff, computed from the linked run; shown in the task history | Complete: PR #27 (`0143a0cf`), deployed, browser verified (27 Sep); no migration |
-| Phase 2 (b) | Handoffs for five more agents with an operator-chosen record (own-site crawl or recorded competitor domain); Writer deferred | Complete: PR #28 (`8dcff921`), deployed, production verified (run `bcefb1e4…`); no migration. Crawl-review character bound and handoff wording (2.3c): PR #29 (`bad5469b`), deployed; the character cap did not hold live. Structural bound (2.3d) on `claude/phase2-crawl-review-structural`, not merged |
+| Phase 2 (b) | Handoffs for five more agents with an operator-chosen record (own-site crawl or recorded competitor domain); Writer deferred | Complete: PR #28 (`8dcff921`), deployed, production verified (run `bcefb1e4…`); no migration. Crawl-review bound: 2.3c PR #29 (`bad5469b`), then the structural 2.3d PR #30 (`a48cb35a`), verified live (run `941cc617…`, 1,138 characters) |
+| Phase 2 (b2) | Task priority change: set-priority function, priority-changed event, Change priority control (checkpoint 2.3b) | On `claude/phase2-task-priority`; migration `20261005120000` written and harness-verified, NOT applied to production; not merged |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: branch
-`claude/phase2-crawl-review-structural` (checkpoint 2.3d).
+`claude/phase2-task-priority` (checkpoint 2.3b).
 Phase 1 is complete. Current: Phase 2, Project Manager loop closure — step (a), the handoff outcome
 read-back, and step (b), handoffs for five of the six deferred agents (the Writer stays deferred),
-are complete; the crawl-review bound (cp 2.3c, merged; its character cap did not hold) is being
-tightened structurally (cp 2.3d, on its branch); then priority change (cp 2.3b, a separate migration), then
+are complete, with the crawl-review bound tightened structurally (cp 2.3d, verified live); priority
+change (cp 2.3b, the one Phase 2 migration) is on its branch; then
 tasks as grounding and a Project Manager task-plan review — each step under its own explicit approval. Work beyond that (cross-crawl
 finding history, a curated keyword entity, further Director sources) is planned in the roadmap but
 not started.

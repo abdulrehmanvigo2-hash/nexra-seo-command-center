@@ -13,6 +13,7 @@ import { getOperator } from "@/lib/auth/session";
  *                                                      → { task, kind, crawls? | domains? }
  *   POST /api/agent-tasks/<id>  { project, action: "status", status }
  *                               { project, action: "owner", owningAgent }
+ *                               { project, action: "priority", priority }
  *                               { project, action: "handoff", crawlId? | competitorDomain? }
  *
  * Operators only, confirmed with the Auth server; writes from this site's
@@ -126,6 +127,21 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
           case "terminal":
             return json({ error: result.status, task: result.task }, 409);
           case "owner-changed":
+            return json({ status: result.status, task: result.task, event: result.event });
+        }
+        break;
+      }
+      case "priority": {
+        const result = await service.changePriority({ ...base, priority: parsed.priority });
+        switch (result.status) {
+          case "unavailable":
+            return errorResponse("unavailable", 503);
+          case "task-not-found":
+            return errorResponse(result.status, 404);
+          case "same-priority":
+          case "terminal":
+            return json({ error: result.status, task: result.task }, 409);
+          case "priority-changed":
             return json({ status: result.status, task: result.task, event: result.event });
         }
         break;

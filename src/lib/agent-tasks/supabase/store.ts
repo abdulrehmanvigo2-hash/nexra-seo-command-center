@@ -9,6 +9,7 @@ import {
   handoffLinkResultToOutcome,
   handoffRequestResultToOutcome,
   ownerResultToOutcome,
+  priorityResultToOutcome,
   statusResultToOutcome,
   TASK_EVENT_READ_COLUMNS,
   TASK_READ_COLUMNS,
@@ -105,6 +106,17 @@ export function createSupabaseAgentTaskStore(client: SupabaseClient<AgentTasksDa
       });
       if (error) throw new AgentTaskStoreError("set task owner", error);
       return ownerResultToOutcome(data);
+    },
+
+    async setPriority(input) {
+      const { data, error } = await client.rpc("nexra_agent_task_set_priority", {
+        p_project_id: input.projectId,
+        p_task_id: input.taskId,
+        p_priority: input.priority,
+        p_operator: input.operatorId,
+      });
+      if (error) throw new AgentTaskStoreError("set task priority", error);
+      return priorityResultToOutcome(data);
     },
 
     async handoffRequest(input) {

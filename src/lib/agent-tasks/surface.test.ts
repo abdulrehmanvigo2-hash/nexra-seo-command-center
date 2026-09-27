@@ -107,11 +107,11 @@ describe("the route", () => {
     assert.doesNotMatch(route, /CRON_SECRET|SERVICE_ROLE|Bearer/);
   });
 
-  test("the store writes through the five functions only and reads one project, bounded and newest first", async () => {
+  test("the store writes through the six functions only and reads one project, bounded and newest first", async () => {
     const store = await read("./supabase/store.ts");
     assert.match(store, /client\.rpc\("nexra_agent_task_create"/);
-    for (const fn of ["nexra_agent_task_set_status", "nexra_agent_task_set_owner", "nexra_agent_task_handoff_request", "nexra_agent_task_handoff_link"]) assert.match(store, new RegExp(`client\\.rpc\\("${fn}"`));
-    assert.equal((store.match(/\.rpc\(/g) ?? []).length, 5);
+    for (const fn of ["nexra_agent_task_set_status", "nexra_agent_task_set_owner", "nexra_agent_task_set_priority", "nexra_agent_task_handoff_request", "nexra_agent_task_handoff_link"]) assert.match(store, new RegExp(`client\\.rpc\\("${fn}"`));
+    assert.equal((store.match(/\.rpc\(/g) ?? []).length, 6, "create, the four workflow functions and set_priority (cp 2.3b)");
     assert.match(store, /\.eq\("project_id", projectId\)\.eq\("id", taskId\)\.maybeSingle\(\)/);
     assert.match(store, /\.eq\("project_id", projectId\)\s*\.eq\("task_id", taskId\)\s*\.order\("seq", \{ ascending: true \}\)\s*\.limit\(TASK_EVENT_READ_LIMIT\)/);
     assert.doesNotMatch(store, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
@@ -203,6 +203,36 @@ describe("the live tasks panel", () => {
     assert.match(wiring, /detail\.crawl\.projectId === projectId/);
     assert.match(wiring, /resolveCompetitorTarget\(/);
     assert.doesNotMatch(wiring, /startCrawl\(|listCompetitorCrawls\(/, "the handoff reads records; it never crawls");
+  });
+
+  test("Change priority: one of the four, a confirmed POST with recorded feedback, and the history shows the event (cp 2.3b)", async () => {
+    const controls = await read("../../components/agent-tasks/task-row-controls.tsx");
+    assert.match(controls, /Change priority/);
+    assert.match(controls, /void post\(\{ action: "priority", priority: nextPriority \}/);
+    assert.match(controls, /options=\{TASK_PRIORITIES\.map/);
+    assert.match(controls, /disabled=\{busy \|\| nextPriority === task\.priority\}/);
+    assert.match(controls, /Priority recorded as \$\{TASK_PRIORITY_META\[nextPriority\]\.label\.toLowerCase\(\)\}\. No agent was told anything and no run was queued\./);
+    assert.match(controls, /case "priority-changed":\s*return `\$\{event\.fromPriority/);
+    const route = await read("../../app/api/agent-tasks/[taskId]/route.ts");
+    assert.match(route, /service\.changePriority\(\{ \.\.\.base, priority: parsed\.priority \}\)/);
+    assert.match(route, /agentTaskLimiter\("action"\)/, "the existing action limit covers it");
+    const schema = await read("./supabase/schema.ts");
+    assert.match(schema, /export const TASK_EVENT_READ_COLUMNS = "\*";/, "the history read works before and after the migration");
+  });
+
+  test("the priority migration: one security definer function, one grant, the event and guard changes, nothing else (cp 2.3b)", async () => {
+    const sql = await read("../../../supabase/migrations/20261005120000_agent_task_priority.sql");
+    assert.equal((sql.match(/^security definer$/gm) ?? []).length, 1);
+    assert.match(sql, /create function public\.nexra_agent_task_set_priority\([\s\S]*?security definer\s+set search_path = ''/);
+    assert.match(sql, /grant execute on function public\.nexra_agent_task_set_priority\(text, uuid, text, uuid\) to service_role;/);
+    assert.equal((sql.match(/^\s*grant /gm) ?? []).length, 1, "one grant");
+    assert.doesNotMatch(sql, /grant (insert|update|delete)|create policy|drop table|drop function/i);
+    assert.match(sql, /'priority-changed'/);
+    assert.match(sql, /create or replace function public\.nexra_agent_tasks_guard_update\(\)/);
+    assert.doesNotMatch(sql.slice(sql.indexOf("create or replace function public.nexra_agent_tasks_guard_update")), /new\.priority is distinct from old\.priority/, "priority is no longer immutable");
+    assert.match(sql, /for update;/);
+    assert.match(sql, /set_config\('nexra\.agent_task_write', v_task\.id::text, true\)/);
+    assert.doesNotMatch(sql, /insert into public\.agent_runs|update public\.agent_runs|pg_notify/i, "a priority change queues nothing");
   });
 
   test("the history view shows the handoff outcome the read returned, with no control of its own (cp 2.2)", async () => {

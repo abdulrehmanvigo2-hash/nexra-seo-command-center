@@ -7,6 +7,7 @@ import {
   type AgentTask,
   type AgentTaskEvent,
   type ChangeTaskOwnerOutcome,
+  type ChangeTaskPriorityOutcome,
   type ChangeTaskStatusOutcome,
   type CreateAgentTaskOutcome,
   type HandoffLinkOutcome,
@@ -53,6 +54,9 @@ export type AgentTaskEventRow = {
   from_agent: string | null;
   to_agent: string | null;
   run_id: string | null;
+  /** Present once migration 20261005120000 is applied; absent before it. */
+  from_priority?: string | null;
+  to_priority?: string | null;
   actor: string;
   created_at: string;
 };
@@ -87,6 +91,10 @@ export type AgentTasksDatabase = {
         Args: { p_project_id: string; p_task_id: string; p_owning_agent: string; p_operator: string };
         Returns: unknown;
       };
+      nexra_agent_task_set_priority: {
+        Args: { p_project_id: string; p_task_id: string; p_priority: string; p_operator: string };
+        Returns: unknown;
+      };
       nexra_agent_task_handoff_request: {
         Args: { p_project_id: string; p_task_id: string; p_operator: string };
         Returns: unknown;
@@ -100,7 +108,13 @@ export type AgentTasksDatabase = {
 };
 
 export const TASK_READ_COLUMNS = "id, project_id, title, source_kind, source_ref, owning_agent, status, priority, created_by, created_at, updated_at";
-export const TASK_EVENT_READ_COLUMNS = "id, seq, task_id, project_id, event_type, from_status, to_status, from_agent, to_agent, run_id, actor, created_at";
+/**
+ * Every column of the event row. `*` rather than a list so the same read works
+ * before and after migration 20261005120000 adds `from_priority` and
+ * `to_priority`: a deployment that runs ahead of the migration still reads the
+ * history (with no priority fields), instead of failing on a missing column.
+ */
+export const TASK_EVENT_READ_COLUMNS = "*";
 
 function record(value: unknown, what: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new AgentTaskRowError(`${what} is not an object.`);
@@ -153,6 +167,10 @@ export function eventRowToEvent(row: unknown): AgentTaskEvent {
   if (toStatus !== null && !isTaskStatus(toStatus)) throw new AgentTaskRowError(`to_status "${toStatus}" is not one this product knows.`);
   if (fromAgent !== null && !isTaskOwningAgent(fromAgent)) throw new AgentTaskRowError(`from_agent "${fromAgent}" is not a registry agent.`);
   if (toAgent !== null && !isTaskOwningAgent(toAgent)) throw new AgentTaskRowError(`to_agent "${toAgent}" is not a registry agent.`);
+  const fromPriority = nullableText(r.from_priority, "from_priority");
+  const toPriority = nullableText(r.to_priority, "to_priority");
+  if (fromPriority !== null && !isTaskPriority(fromPriority)) throw new AgentTaskRowError(`from_priority "${fromPriority}" is not one this product knows.`);
+  if (toPriority !== null && !isTaskPriority(toPriority)) throw new AgentTaskRowError(`to_priority "${toPriority}" is not one this product knows.`);
   const seq = typeof r.seq === "number" ? r.seq : typeof r.seq === "string" && /^\d+$/.test(r.seq) ? Number(r.seq) : NaN;
   if (!Number.isSafeInteger(seq)) throw new AgentTaskRowError("seq is not a whole number.");
   return {
@@ -166,6 +184,8 @@ export function eventRowToEvent(row: unknown): AgentTaskEvent {
     fromAgent,
     toAgent,
     runId: nullableText(r.run_id, "run_id"),
+    fromPriority,
+    toPriority,
     actor: text(r.actor, "actor"),
     createdAt: text(r.created_at, "created_at"),
   };
@@ -199,6 +219,21 @@ export function ownerResultToOutcome(data: unknown): ChangeTaskOwnerOutcome {
     case "task-not-found":
       return { status: "task-not-found" };
     case "same-owner":
+    case "terminal":
+      return { status: result.outcome, task: taskRowToTask(result.task) };
+    default:
+      return unexpected(result);
+  }
+}
+
+export function priorityResultToOutcome(data: unknown): ChangeTaskPriorityOutcome {
+  const result = record(data, "the function's answer");
+  switch (result.outcome) {
+    case "priority-changed":
+      return { status: "priority-changed", task: taskRowToTask(result.task), event: eventRowToEvent(result.event) };
+    case "task-not-found":
+      return { status: "task-not-found" };
+    case "same-priority":
     case "terminal":
       return { status: result.outcome, task: taskRowToTask(result.task) };
     default:

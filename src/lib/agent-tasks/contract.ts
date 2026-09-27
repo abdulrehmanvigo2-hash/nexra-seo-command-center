@@ -251,7 +251,7 @@ export function canTransitionTask(from: AgentTaskStatus, to: AgentTaskStatus): b
   return TASK_TRANSITIONS[from].includes(to);
 }
 
-export const TASK_EVENT_TYPES = ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked"] as const;
+export const TASK_EVENT_TYPES = ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked", "priority-changed"] as const;
 export type AgentTaskEventType = (typeof TASK_EVENT_TYPES)[number];
 
 export function isTaskEventType(value: unknown): value is AgentTaskEventType {
@@ -272,6 +272,9 @@ export type AgentTaskEvent = {
   readonly toAgent: TaskOwningAgent | null;
   /** The run a handoff produced, on `handoff-run-linked` only. */
   readonly runId: string | null;
+  /** The priorities before and after, on `priority-changed` only (20261005120000). */
+  readonly fromPriority: AgentTaskPriority | null;
+  readonly toPriority: AgentTaskPriority | null;
   readonly actor: string;
   readonly createdAt: string;
 };
@@ -282,6 +285,7 @@ export const TASK_EVENT_META: Readonly<Record<AgentTaskEventType, string>> = {
   "owner-changed": "Owner changed",
   "handoff-requested": "Handoff requested",
   "handoff-run-linked": "Handoff run queued",
+  "priority-changed": "Priority changed",
 };
 
 /** The most events one read returns; a task sees far fewer. */
@@ -303,6 +307,14 @@ export type ChangeTaskOwnerOutcome =
   | { readonly status: "same-owner"; readonly task: AgentTask }
   | { readonly status: "terminal"; readonly task: AgentTask };
 
+export type ChangeTaskPriorityInput = { readonly projectId: string; readonly taskId: string; readonly priority: AgentTaskPriority; readonly operatorId: string };
+export type ChangeTaskPriorityOutcome =
+  | { readonly status: "priority-changed"; readonly task: AgentTask; readonly event: AgentTaskEvent }
+  /** No such task, or another project's. Never says which. */
+  | { readonly status: "task-not-found" }
+  | { readonly status: "same-priority"; readonly task: AgentTask }
+  | { readonly status: "terminal"; readonly task: AgentTask };
+
 export type HandoffRequestInput = { readonly projectId: string; readonly taskId: string; readonly operatorId: string };
 export type HandoffRequestOutcome =
   | { readonly status: "requested"; readonly task: AgentTask; readonly event: AgentTaskEvent }
@@ -319,12 +331,13 @@ export type HandoffLinkOutcome =
   | { readonly status: "run-not-found" }
   | { readonly status: "already-linked"; readonly task: AgentTask; readonly runId: string };
 
-export const TASK_ACTIONS = ["status", "owner", "handoff"] as const;
+export const TASK_ACTIONS = ["status", "owner", "priority", "handoff"] as const;
 export type TaskActionName = (typeof TASK_ACTIONS)[number];
 
 export type TaskActionRequest =
   | { readonly ok: true; readonly projectId: string; readonly action: "status"; readonly status: AgentTaskStatus }
   | { readonly ok: true; readonly projectId: string; readonly action: "owner"; readonly owningAgent: TaskOwningAgent }
+  | { readonly ok: true; readonly projectId: string; readonly action: "priority"; readonly priority: AgentTaskPriority }
   | {
       readonly ok: true;
       readonly projectId: string;
@@ -339,7 +352,8 @@ export const HANDOFF_DOMAIN_MAX_LENGTH = 253;
 
 /**
  * An action request as the task route receives it: `{ project, action,
- * status? | owningAgent? | crawlId? | competitorDomain? }` and nothing else.
+ * status? | owningAgent? | priority? | crawlId? | competitorDomain? }` and
+ * nothing else.
  * A handoff names no agent, no task type and no input — the server maps the
  * task's owning agent to the one executable task type it supports, or
  * refuses — and at most one record the operator chose: a crawl id or a
@@ -360,6 +374,10 @@ export function parseTaskActionRequest(body: unknown): TaskActionRequest {
     case "owner": {
       if (keys.length !== 3 || !keys.includes("owningAgent") || !isTaskOwningAgent(fields.owningAgent)) return { ok: false, error: "invalid" };
       return { ok: true, projectId: project, action, owningAgent: fields.owningAgent };
+    }
+    case "priority": {
+      if (keys.length !== 3 || !keys.includes("priority") || !isTaskPriority(fields.priority)) return { ok: false, error: "invalid" };
+      return { ok: true, projectId: project, action, priority: fields.priority };
     }
     case "handoff": {
       if (keys.length === 2) return { ok: true, projectId: project, action, record: null };

@@ -28,11 +28,12 @@ const task = (over: Partial<AgentTask> = {}): AgentTask => ({
 });
 
 /** The workflow methods, refusing everything: the read and create tests never reach them. */
-const noWorkflow: Pick<AgentTaskStore, "getForProject" | "listEvents" | "setStatus" | "setOwner" | "handoffRequest" | "handoffLink"> = {
+const noWorkflow: Pick<AgentTaskStore, "getForProject" | "listEvents" | "setStatus" | "setOwner" | "setPriority" | "handoffRequest" | "handoffLink"> = {
   async getForProject() { return null; },
   async listEvents() { return []; },
   async setStatus() { return { status: "task-not-found" }; },
   async setOwner() { return { status: "task-not-found" }; },
+  async setPriority() { return { status: "task-not-found" }; },
   async handoffRequest() { return { status: "task-not-found" }; },
   async handoffLink() { return { status: "task-not-found" }; },
 };
@@ -117,7 +118,7 @@ function workflowStore(initial: AgentTask) {
   let seq = 0;
   const event = (over: Partial<AgentTaskEvent>): AgentTaskEvent => {
     seq += 1;
-    const row: AgentTaskEvent = { id: `e0000000-0000-4000-8000-${String(seq).padStart(12, "0")}`, seq, taskId: current.id, projectId: current.projectId, type: "created", fromStatus: null, toStatus: null, fromAgent: null, toAgent: null, runId: null, actor: OPERATOR, createdAt: "2026-09-26T04:00:00.000Z", ...over };
+    const row: AgentTaskEvent = { id: `e0000000-0000-4000-8000-${String(seq).padStart(12, "0")}`, seq, taskId: current.id, projectId: current.projectId, type: "created", fromStatus: null, toStatus: null, fromAgent: null, toAgent: null, runId: null, fromPriority: null, toPriority: null, actor: OPERATOR, createdAt: "2026-09-26T04:00:00.000Z", ...over };
     events.push(row);
     return row;
   };
@@ -143,6 +144,14 @@ function workflowStore(initial: AgentTask) {
       const from = current.owningAgent;
       current = { ...current, owningAgent: input.owningAgent };
       return { status: "owner-changed", task: current, event: event({ type: "owner-changed", fromAgent: from, toAgent: input.owningAgent }) };
+    },
+    async setPriority(input) {
+      if (!own(input.projectId, input.taskId)) return { status: "task-not-found" };
+      if (current.priority === input.priority) return { status: "same-priority", task: current };
+      if (current.status === "completed" || current.status === "cancelled") return { status: "terminal", task: current };
+      const from = current.priority;
+      current = { ...current, priority: input.priority };
+      return { status: "priority-changed", task: current, event: event({ type: "priority-changed", fromPriority: from, toPriority: input.priority }) };
     },
     async handoffRequest(input) {
       if (!own(input.projectId, input.taskId)) return { status: "task-not-found" };
@@ -327,6 +336,8 @@ describe("readOutcome (checkpoint 2.2): computed from the linked run, never writ
     fromAgent: null,
     toAgent: "project-manager",
     runId,
+    fromPriority: null,
+    toPriority: null,
     actor: "00000000-0000-4000-8000-0000000000aa",
     createdAt: "2026-09-26T04:00:00.000Z",
     ...over,
@@ -366,6 +377,7 @@ describe("readOutcome (checkpoint 2.2): computed from the linked run, never writ
     async create() { throw new Error("no write"); },
     async setStatus() { throw new Error("no write"); },
     async setOwner() { throw new Error("no write"); },
+    async setPriority() { throw new Error("no write"); },
     async handoffRequest() { throw new Error("no write"); },
     async handoffLink() { throw new Error("no write"); },
   };
@@ -563,5 +575,38 @@ describe("handoff with an operator-chosen record (checkpoint 2.3)", () => {
     const outcome = await service.readOutcome(task({ owningAgent: "technical-seo" }), events);
     assert.equal(outcome.status, "queued");
     if (outcome.status === "queued") assert.equal(outcome.taskType, "crawl-review");
+  });
+});
+
+describe("changePriority (checkpoint 2.3b)", () => {
+  test("records one priority change and its event; queues nothing", async () => {
+    const { store, events, current } = workflowStore(task({ owningAgent: "project-manager" }));
+    const { creator, requests } = countingRuns();
+    const result = await createAgentTaskService(store, creator).changePriority({ ...base, priority: "critical" });
+    assert.equal(result.status, "priority-changed");
+    assert.equal(current().priority, "critical");
+    assert.deepEqual(events.map((event) => [event.type, event.fromPriority, event.toPriority]), [["created", null, null], ["priority-changed", "medium", "critical"]]);
+    assert.equal(requests.length, 0);
+  });
+
+  test("the same priority, a terminal task and another project's task are refused without a write", async () => {
+    const same = workflowStore(task());
+    assert.equal((await createAgentTaskService(same.store).changePriority({ ...base, priority: "medium" })).status, "same-priority");
+    assert.equal(same.events.length, 1);
+    const done = workflowStore(task({ status: "completed" }));
+    assert.equal((await createAgentTaskService(done.store).changePriority({ ...base, priority: "high" })).status, "terminal");
+    assert.equal(done.events.length, 1);
+    const other = workflowStore(task());
+    assert.equal((await createAgentTaskService(other.store).changePriority({ ...base, projectId: "other-client", priority: "high" })).status, "task-not-found");
+    assert.equal(other.events.length, 1);
+  });
+
+  test("a priority outside the four never reaches the service: the request parser refuses it", async () => {
+    const { parseTaskActionRequest } = await import("./contract.ts");
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "priority", priority: "urgent" }), { ok: false, error: "invalid" });
+  });
+
+  test("without a store the action is unavailable", async () => {
+    assert.deepEqual(await createAgentTaskService(unavailableAgentTaskStore).changePriority({ ...base, priority: "high" }), { status: "unavailable" });
   });
 });

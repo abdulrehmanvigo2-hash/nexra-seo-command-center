@@ -3,6 +3,8 @@ import type {
   AgentTaskEvent,
   ChangeTaskOwnerInput,
   ChangeTaskOwnerOutcome,
+  ChangeTaskPriorityInput,
+  ChangeTaskPriorityOutcome,
   ChangeTaskStatusInput,
   ChangeTaskStatusOutcome,
   CreateAgentTaskInput,
@@ -36,6 +38,8 @@ export type AgentTaskStore = {
   setStatus(input: ChangeTaskStatusInput): Promise<ChangeTaskStatusOutcome>;
   /** One owner change, through `nexra_agent_task_set_owner`. */
   setOwner(input: ChangeTaskOwnerInput): Promise<ChangeTaskOwnerOutcome>;
+  /** One priority change, through `nexra_agent_task_set_priority` (20261005120000). */
+  setPriority(input: ChangeTaskPriorityInput): Promise<ChangeTaskPriorityOutcome>;
   /** Records the operator's handoff request, through `nexra_agent_task_handoff_request`. Creates no run. */
   handoffRequest(input: HandoffRequestInput): Promise<HandoffRequestOutcome>;
   /** Links the run the run path created, through `nexra_agent_task_handoff_link`. */
@@ -61,6 +65,9 @@ export const unavailableAgentTaskStore: AgentTaskStore = {
     return { status: "task-not-found" };
   },
   async setOwner() {
+    return { status: "task-not-found" };
+  },
+  async setPriority() {
     return { status: "task-not-found" };
   },
   async handoffRequest() {

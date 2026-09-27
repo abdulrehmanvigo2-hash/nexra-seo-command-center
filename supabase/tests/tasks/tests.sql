@@ -51,7 +51,7 @@ begin
     perform t.ok((select proconfig = array['search_path=""'] from pg_proc where proname = f), 'B empty search_path: ' || f);
     perform t.ok((select pg_get_userbyid(proowner) from pg_proc where proname = f) = 'postgres', 'B owned by postgres: ' || f);
   end loop;
-  perform t.ok((select array_agg(proname order by proname) from pg_proc where proname like 'nexra_agent_task%' and prosecdef) = array['nexra_agent_task_create','nexra_agent_task_handoff_link','nexra_agent_task_handoff_request','nexra_agent_task_set_owner','nexra_agent_task_set_status']::name[], 'B the create function and the four workflow functions (20261004120000) are security definer, nothing else');
+  perform t.ok((select array_agg(proname order by proname) from pg_proc where proname like 'nexra_agent_task%' and prosecdef) = array['nexra_agent_task_create','nexra_agent_task_handoff_link','nexra_agent_task_handoff_request','nexra_agent_task_set_owner','nexra_agent_task_set_priority','nexra_agent_task_set_status']::name[], 'B the create function, the four workflow functions (20261004120000) and set_priority (20261005120000) are security definer, nothing else');
 end $$;
 
 -- B, as service_role: no direct write; the function is the way in.
