@@ -9,14 +9,15 @@ import { projectOptionsFrom } from "@/lib/projects/selection";
 export const metadata: Metadata = {
   title: "Analytics",
   description:
-    "Performance, trends and attribution: what moved over the window, which segments hold the unclaimed room, what work sat beside the movement, and what the evidence supports doing next.",
+    "Observed Search Console performance from stored snapshots: the latest window, the stored-history comparison, pages and query × page pairs, and the Analytics & Learning agent's completed reviews.",
 };
 
 /**
- * The workspace reads its initial project, window and tab from the query
- * string, so links from the Command Center and from a project land on the
- * right view. `useSearchParams` needs a Suspense boundary during static
- * rendering, which is what this shell provides.
+ * The workspace reads its initial project and tab from the query string,
+ * so links from the Command Center and from a project land on the right
+ * view; a hidden tab opens the Overview. `useSearchParams` needs a
+ * Suspense boundary during static rendering, which is what this shell
+ * provides.
  *
  * The projects it can be scoped to come from the Projects repository, so a
  * project created on the Projects screen is selectable here too.

@@ -5,7 +5,8 @@ project. Read it before writing any code.
 
 **Current stage: Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
 data; the Director's learnings loop) has started: its design note (checkpoint 4.1) is approved, and
-the Director and performance-review output bounds (checkpoint 4.2) are on their branch. Phase 3,
+the Director and performance-review output bounds (checkpoint 4.2) are merged, deployed and verified
+live; the Analytics screen over stored data (checkpoint 4.3) is on its branch. Phase 3,
 Technical & Keywords realification — the MVP target — is complete
 (checkpoints 3.1–3.6, PR #34–#38): the Technical SEO and Keyword Intelligence screens read observed
 data only, with live page detail, derived finding history and the operator's curated keywords
@@ -32,8 +33,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `ce1fb3127fba4555a3f4f41a707314ec9c1804af` (merge of PR #38,
-`claude/phase3-closing`, Phase 3 closing and MVP complete; preceded by PR #37 `98b0fbd9…` (the
+GitHub `master`: `0c64d77d0171d24cda24dd371c33ff2f182673f2` (merge of PR #39,
+`claude/phase4-director-bounds`, the Director and performance-review bounds; preceded by PR #38
+`ce1fb312…` (Phase 3 closing and MVP complete), PR #37 `98b0fbd9…` (the
 curated keyword entity), PR #36 `201d47a2…` (the observed Keywords surfaces), PR #35 `c244efd4…`
 (live Technical page detail and derived finding history), PR #34 `5b79ba8d…` (live Technical SEO
 tabs), PR #33 `e7feedaf…`
@@ -48,10 +50,10 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_HH217S1vrjgJi8ihFg1W8o9UZd6H`, READY, built from `master` at
-`ce1fb312`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_3uX3tKdEBiq671mANbg78HtHaoiv` at `98b0fbd9`); `master` CI run `36313957551` passed. PR #38
-(Phase 3 closing) merged as `ce1fb312…`.
+Production deployment: `dpl_DQ88j5hzQA2tjH64EkEEJESxuCjf`, READY, built from `master` at
+`0c64d77d`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_HH217S1vrjgJi8ihFg1W8o9UZd6H` at `ce1fb312`); `master` CI run `36315046313` passed. PR #39
+(checkpoint 4.2) merged as `0c64d77d…`.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
 source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
@@ -358,11 +360,43 @@ RECOMMENDATION under 15), its two closing lines kept (each under 20 words), and 
 1,200 characters as the last rule. Every sentence not about length is kept word for word; both texts
 are hash-pinned. The `link-grounding.ts` header now says anchor text is recorded (since
 `20260929120000`) and that the reader does not read it. No schema, worker, screen or bundle change.
-On `claude/phase4-director-bounds`; not merged.
+PR #39 merged as `0c64d77d…`; deployment `dpl_DQ88j5hz…` READY; `master` CI run `36315046313`
+green. **Live verification (27 Sep, each run approved separately, run once, no retry):**
+
+- Director `priority-review` `aecfca87…` over search-query-review `73f38c16…` (the source of the
+  earlier refused `559fdffa…` and `33ac8a25…`): completed, 1 attempt, `claude-opus-5`, **1,217
+  characters** — 3 items, each with its six lines in order (all BASIS PROPOSED, no findings were
+  supplied), short-form SOURCE lines, the NEXT line last.
+- `performance-review` `17623686…` (Nexra Agency, 30d): completed, 1 attempt, `claude-opus-5`,
+  **1,311 characters** — the WINDOWS line first (insufficient stored history, 3 snapshots), 3
+  findings (OBSERVED / INFERENCE / RECOMMENDATION) and the two closing lines last.
+- Both under the worker's 2,000-character ceiling on the first attempt; both slightly over their
+  own 1,200 rule, each by one paragraph outside the fixed order (below). Totals after: 49 runs,
+  50 attempts.
+
+**Phase 4 checkpoint 4.3 (Analytics over stored data, Part B, decisions Q2 and Q6):** the Analytics
+screen reads stored data only, for one stored project chosen on the screen. Tiles: the latest stored
+Search Console window (Q6: that window only, no delta) — clicks, impressions, click-through rate and
+average position ("Search Console average position, not rank"), with a window line (dates, capture
+date, stored window count) — read by `GET /api/search-console/latest-window?project=` (operator,
+project checked, one bounded snapshot read, the property from the server's own mapping, never
+returned; `src/lib/search-console/latest/`). Overview: the Search Console panel with its stored-history
+comparison (P4a/P4d) and a readiness line — "insufficient" until two stored windows are 7 days apart,
+naming the first qualifying window end (oldest stored end + 7 days; 28 Sep for the windows stored
+now). Pages: the Search Console pages view and the stored query × page pairs (P4c). Learnings (Q2):
+the project's completed, model-executed Analytics & Learning `performance-review` runs, newest first,
+each with its summary, the window its evidence recorded and the run date, labelled "A model's reading
+of Google's report, not a measurement"; an empty state when none (`src/lib/analytics/learnings.ts`,
+read through the existing run list). Hidden, not labelled: Trends, Segments, Attribution and
+Movements (with the modelled anomaly links); a deep link to one opens the Overview. The screen imports
+no fixture and carries the Observed badge; the sidebar note names Analytics as observed. The seven
+modelled analytics components the screen no longer imports stay in the tree, unimported, for the
+closing checkpoint. No schema, instruction, worker or other screen change. On
+`claude/phase4-analytics`; not merged.
 
 **Findings recorded for later phases:**
 
-- **Carried forward to Phase 4 (addressed by checkpoint 4.2, awaiting a live run):** the single-project Director `priority-review` run `33ac8a25…`
+- **Carried forward to Phase 4 (resolved by checkpoint 4.2, verified live on run `aecfca87…`):** the single-project Director `priority-review` run `33ac8a25…`
   (SEO Director, queued by an operator on 26 Sep 08:45) was executed by the scheduled worker on
   27 Sep 06:19 UTC and failed `rejected-output`; not retried. `PRIORITY_REVIEW_INSTRUCTIONS` still
   lack the structural bound the project Director, intake, crawl and plan reviews carry; it is
@@ -370,7 +404,13 @@ On `claude/phase4-director-bounds`; not merged.
 - Task events seq 12–14 do not exist: the identity values were taken by the rolled-back 2.3b
   verification probe (see 2.3b above) and are not reused. History is ordered by `seq`, never
   assumed contiguous.
-- The task plan review's cosmetic "Observation:" line (above).
+- **The extra-paragraph pattern (3 instances; fix planned in checkpoint 4.6):** a structurally bound
+  answer adds one paragraph of prose outside its fixed order, usually explaining missing evidence —
+  the task plan review's "Observation:" line (run `567a3f11…`), the Director's opening "No recorded
+  crawl findings…" line (`aecfca87…`, which is what puts it 17 characters over 1,200) and the
+  performance review's unlabelled "Previous-window … unknown, not zero" paragraph between its
+  findings and its closing lines (`17623686…`, 111 over). None reached the 2,000 ceiling. No
+  instruction is changed before 4.6.
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 
@@ -467,7 +507,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 4 checkpoint 4.2 on `claude/phase4-director-bounds` (above); each further
+**Current work:** Phase 4 checkpoint 4.3 on `claude/phase4-analytics` (above); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -841,6 +881,8 @@ lists the migrations in order.
 
 The Technical SEO and Keyword Intelligence screens read observed data only (Phase 3): this
 product's own crawl records, the stored Search Console rows and the operator's curated keywords.
+The Analytics screen reads stored Search Console snapshots and the Analytics & Learning agent's
+completed runs only (Phase 4, checkpoint 4.3).
 Everything else on screen (rankings, competitor, backlink, AI-visibility and reporting figures)
 is still modelled fixture data from `src/lib/mock`. It must stay labelled as
 such (`src/config/build-status.ts`). Never present fixture data as live, or live data as a
@@ -1089,7 +1131,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (b2) | Task priority change: set-priority function, priority-changed event, Change priority control (checkpoint 2.3b) | Complete: PR #31 (`0921c1f8`), deployed; migration `20261005120000` applied and recorded; browser verified (events seq 15–16) |
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
-| Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Started:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) on `claude/phase4-director-bounds`, not merged; then 4.3 Analytics, 4.4 Competitors, 4.5 AI Visibility and Outbound Links, 4.6 the Director bundle, 4.8 closing |
+| Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Started:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) on `claude/phase4-analytics`, not merged; then 4.4 Competitors, 4.5 AI Visibility and Outbound Links, 4.6 the Director bundle (and the extra-paragraph fix), 4.8 closing |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1106,8 +1148,8 @@ Carried forward: the single-project Director `priority-review` has no structural
 `33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 4 checkpoint 4.2 on
-`claude/phase4-director-bounds`. Phase 3 — the MVP target — is complete.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 4 checkpoint 4.3 on
+`claude/phase4-analytics`. Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2 and Phase 3 are complete. Phase 2, Project Manager loop closure: the handoff
 outcome read-back, handoffs for five of the six deferred agents (the Writer stays deferred) with the
 structural crawl-review bound, priority change, and tasks as grounding with the Project Manager
