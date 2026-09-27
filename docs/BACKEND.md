@@ -317,8 +317,9 @@ project. Seventeen task types exist, sixteen read-only and one `draft`: `project
 `performance-review` (Analytics & Learning, from Search Console),
 `priority-review` (SEO Director, from one other agent's completed review),
 `project-priority-review` (SEO Director, from the latest completed Technical
-SEO, On-Page SEO and Keyword & Search Intent reviews of the project, selected
-on the server; see *The Director's project bundle (M5)* below),
+SEO, On-Page SEO, Keyword & Search Intent, Analytics & Learning performance and
+AI Visibility answer-readiness reviews of the project, selected on the server;
+see *The Director's project bundle (M5)* below),
 `intake-review` (Project Manager, from the project's own stored record),
 `task-plan-review` (Project Manager, from the project's open tasks; see
 *Tasks as grounding* below) and
@@ -2024,9 +2025,14 @@ effect. The specialist reviews' prompts are unchanged.
 hand-off with more than one source. It takes no input at all: the project is
 the run's own, and which runs are read is decided on the server at execution
 time by the fixed rules in `src/lib/agent-runs/director-bundle.ts`. The
-supported sources are a fixed, ordered list of three (`DIRECTOR_SOURCE_SLOTS`):
-the Technical SEO `crawl-review`, the On-Page SEO `on-page-review` and the
-Keyword & Search Intent `search-query-review`. For each, the dispatch
+supported sources are a fixed, ordered list of five (`DIRECTOR_SOURCE_SLOTS`):
+the Technical SEO `crawl-review`, the On-Page SEO `on-page-review`, the
+Keyword & Search Intent `search-query-review` and, since checkpoint 4.6, the
+Analytics & Learning `performance-review` and the AI Visibility
+`answer-readiness-review` — each carried as a review, never as figures the
+Director saw; the Director ranks recorded finding > measurement (a performance
+review's figures, as that agent's reading of Google's report) > inference. For
+each, the dispatch
 (`task-grounding.ts`, `agent-runs` case) lists that agent's newest
 `SOURCE_SCAN_LIMIT` (25) runs on the run's own project through the run store
 (`listRuns`, newest first), keeps only runs of that project, task and agent,

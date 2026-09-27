@@ -420,7 +420,8 @@ describe("the performance-review instructions bound what the model emits (checkp
   });
 
   test("the text is pinned, and the search-query review is untouched", () => {
-    assert.equal(sha256(PERFORMANCE_REVIEW_INSTRUCTIONS), "783380a1073fb91428dab408f4ad1b85c8591ebad8a2f728c79db39bfb1f62a1");
+    // Re-pinned at checkpoint 4.6: one sentence added before the last rule (the extra-paragraph fix).
+    assert.equal(sha256(PERFORMANCE_REVIEW_INSTRUCTIONS), "9524ebe29c8b596014a69f10867d668787fc212b73ce9d52ede47f7f7a1eec16");
     assert.doesNotMatch(SEARCH_QUERY_REVIEW_INSTRUCTIONS, /WINDOWS: one line|under 1,200 characters/);
   });
 });

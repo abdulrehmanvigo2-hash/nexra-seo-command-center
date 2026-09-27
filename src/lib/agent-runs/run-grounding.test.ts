@@ -605,6 +605,7 @@ describe("the Director's single-run instructions bound what the model emits (che
   });
 
   test("the text is pinned", () => {
-    assert.equal(sha256(PRIORITY_REVIEW_INSTRUCTIONS), "9e771cc5e458c98ee35b75a8f4f9b3057de02036f7169c8a68d0c0ff6c935d2e");
+    // Re-pinned at checkpoint 4.6: one sentence added before the last rule (the extra-paragraph fix).
+    assert.equal(sha256(PRIORITY_REVIEW_INSTRUCTIONS), "b0ef607c7099282782fafb332950196392e92e11d9366f7df9a117b3b3b6c276");
   });
 });

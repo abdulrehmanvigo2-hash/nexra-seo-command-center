@@ -816,7 +816,9 @@ describe("the answer-readiness instructions bound what the model emits", () => {
   test("limits findings, pages, words per finding, and total characters, and fixes the disclaimer to one closing line", () => {
     for (const phrase of [
       "Give at most three findings, each about one page, and cover no more than three pages",
-      "Keep each finding under 50 words and the whole answer under 1,500 characters",
+      "Keep each finding under 50 words.",
+      // Checkpoint 4.6: the inline 1,500 clause became one 2.3d-style last rule (a live run reached 1,699).
+      "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest-priority finding first, entirely, then shorten INFERENCE; never drop a cited URL or the two closing lines to fit.",
       "Do not explain these inside findings; the closing line covers them",
       "End with two short lines",
       "then exactly this sentence: Not established by this crawl: AI crawler access, citations, mention share, answer-engine visibility, body text, entity coverage.",
@@ -831,10 +833,12 @@ describe("the answer-readiness instructions bound what the model emits", () => {
     // The refused run was prompted with 2,544 characters of instructions. A
     // prompt that models verbosity invites it; this ceiling stops the text
     // growing back past that point without a deliberate decision.
+    // Raised from 2,400 to 2,500 at checkpoint 4.6, deliberately, for the last rule; still under 2,544.
     assert.ok(
-      ANSWER_READINESS_REVIEW_INSTRUCTIONS.length < 2_400,
+      ANSWER_READINESS_REVIEW_INSTRUCTIONS.length < 2_500,
       `${ANSWER_READINESS_REVIEW_INSTRUCTIONS.length} characters of instructions`,
     );
+    assert.ok(ANSWER_READINESS_REVIEW_INSTRUCTIONS.endsWith("never drop a cited URL or the two closing lines to fit."), "the character rule is the last rule");
   });
 
   test("an answer written to the instructions' bounds fits its own 1,500-character budget, the worker's ceiling, and no credential pattern", () => {
@@ -914,7 +918,7 @@ describe("M2 content signals in the evidence", () => {
     assert.match(LIMITS_NOTE, /A visible word count is over the HTML as served: it does not describe a rendered page, its quality, or its content depth/);
     assert.match(LIMITS_NOTE, /A response time above is this server's one fetch of the final hop/);
     assert.match(ON_PAGE_REVIEW_INSTRUCTIONS, /the visible word count of the HTML as served \(a count, not a judgement of quality or depth\)/);
-    assert.ok(ANSWER_READINESS_REVIEW_INSTRUCTIONS.length < 2_400, "the answer-readiness instructions were left at their pinned length");
+    assert.ok(ANSWER_READINESS_REVIEW_INSTRUCTIONS.length < 2_500, "the answer-readiness instructions were left at their pinned length");
   });
 });
 
@@ -1015,7 +1019,7 @@ describe("the on-page instructions bound what the model emits", () => {
     assert.equal(getTaskType("on-page-review")?.evidence, "crawl");
   });
 
-  test("the crawl-review instructions keep 3b74d99's evidence and safety sentences verbatim around the cp 2.3d structure; answer-readiness is byte-for-byte 3b74d99's", () => {
+  test("the crawl-review instructions keep 3b74d99's evidence and safety sentences verbatim around the cp 2.3d structure; answer-readiness is 3b74d99's plus the cp 4.6 last rule", () => {
     // Checkpoint 2.3d replaced the structure, the 2.3c bound and the closing line; every other sentence is 3b74d99's.
     for (const sentence of [
       "Review the crawl evidence supplied with this task and report what it supports.",
@@ -1030,8 +1034,9 @@ describe("the on-page instructions bound what the model emits", () => {
     }
     assert.equal(CRAWL_REVIEW_INSTRUCTIONS.length, 2_428);
     assert.equal(sha256(CRAWL_REVIEW_INSTRUCTIONS), "1e016da3e60d1cbaf1c5788db01dd725dcf7b344ef44b78b9c5e3e764a512f57");
-    assert.equal(ANSWER_READINESS_REVIEW_INSTRUCTIONS.length, 2_297);
-    assert.equal(sha256(ANSWER_READINESS_REVIEW_INSTRUCTIONS), "2045b12eecf05806a4830cf0fbbc592e24dd3cdbc31a89d189395477cac25876");
+    // Checkpoint 4.6: the inline "and the whole answer under 1,500 characters" clause was replaced by a last rule; every other sentence is 3b74d99's.
+    assert.equal(ANSWER_READINESS_REVIEW_INSTRUCTIONS.length, 2_454);
+    assert.equal(sha256(ANSWER_READINESS_REVIEW_INSTRUCTIONS), "c0dc82232afbae5967da37c720aa39848856d5d90a79340cf5fa0628fc0be562");
     assert.equal(getTaskType("crawl-review")?.instructions, CRAWL_REVIEW_INSTRUCTIONS);
     assert.equal(getTaskType("answer-readiness-review")?.instructions, ANSWER_READINESS_REVIEW_INSTRUCTIONS);
   });

@@ -291,6 +291,7 @@ export const PERFORMANCE_REVIEW_INSTRUCTIONS = [
   "Where a STORED HISTORY block follows the report, it compares the totals and the top pages of two stored windows of the same property by fixed arithmetic, with a confidence and coverage statement. Use it as two more windows to measure between, citing both dates; state its confidence and any partial or no-data side; never read it as a long-term trend, a ranking cause, a SERP feature, a cannibalisation finding or a query mapped to a page. If it says history is unavailable or insufficient, say so and infer nothing in its place.",
   "You cannot change anything: every recommendation is a proposed next step for an operator to review, and you must not describe it as done.",
   "End with two lines, each under 20 words: the single figure that most deserves attention next cycle, and why; and the single measurement a person should take before the next cycle that this evidence cannot supply.",
+  "State anything the evidence lacks inside the fixed lines; add no other paragraph.",
   "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest finding first, entirely, then shorten INFERENCE; never drop the WINDOWS line or the two closing lines to fit.",
 ].join(" ");
 

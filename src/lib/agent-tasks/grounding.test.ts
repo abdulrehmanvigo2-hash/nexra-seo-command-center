@@ -432,6 +432,7 @@ describe("the plan-review instructions bound what the model emits", () => {
   });
 
   test("hash-pinned: a change to the wording is a deliberate one", () => {
-    assert.equal(sha256(TASK_PLAN_REVIEW_INSTRUCTIONS), "f0fcd2a5bf42eb1bf013daeed1122af5db8275a03617c8f149d81851f9bace63");
+    // Re-pinned at checkpoint 4.6: one sentence added before the last rule (the extra-paragraph fix).
+    assert.equal(sha256(TASK_PLAN_REVIEW_INSTRUCTIONS), "fd84a38aae62d7ac02af74af56a84638ad06fd604a2136e93b0d09f940969764");
   });
 });
