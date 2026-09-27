@@ -74,7 +74,7 @@ describe("the task route", () => {
     assert.match(route, /agentTaskLimiter\("action"\)/);
     assert.match(route, /service\.changeStatus\(/);
     assert.match(route, /service\.changeOwner\(/);
-    assert.match(route, /service\.handoff\(base\)/);
+    assert.match(route, /service\.handoff\(\{ \.\.\.base, record: parsed\.record \}\)/);
     assert.match(route, /operatorId: operator\.id/);
     assert.doesNotMatch(route, /executeRun|agentRunService|action: "execute"|\.from\(|\.rpc\(/);
     assert.doesNotMatch(route, /CRON_SECRET|SERVICE_ROLE|Bearer/);

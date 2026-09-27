@@ -9,24 +9,47 @@ import type { AgentTaskType, JsonObject } from "@/types/agent-run";
  * A handoff creates one queued run for the owning agent through the run
  * path, and nothing else — no execution, no "Run now". A run needs a task
  * type the agent may run and an input its definition accepts, and neither
- * is guessed: an agent is mapped only when it has one project-level review
- * whose input the server fills without choosing a record on the operator's
- * behalf — no input at all, or the product's own reporting window
+ * is guessed: the server never chooses a record on the operator's behalf.
+ * An agent is mapped in one of two shapes. Either its review needs no
+ * record — no input at all, or the product's own reporting window
  * (`INVENTORY_RANGE_ID`, the window the run inventory and the Director
- * bundle already use). An agent whose only tasks need a chosen record (a
- * crawl, a competitor domain, a plan run and section, a draft or article
- * version) is not mapped: its handoff shows "not supported yet" and creates
- * nothing. A drift test checks each mapping against the task-type
- * definitions: the agent may run it, its policy is read-only, and the
- * input parses.
+ * bundle already use) — or its review reads one record the OPERATOR
+ * supplies in the handoff request (checkpoint 2.3): one of the project's
+ * own-site crawls (`record: "crawl"`) or one competitor domain the project
+ * recorded at intake (`record: "competitor"`). The server validates that
+ * record against the project before anything is written, and the run's
+ * existing grounding re-checks it at execution. An agent whose task drafts
+ * rather than reviews stays deferred: its handoff shows "not supported yet"
+ * and creates nothing. A drift test checks each mapping against the
+ * task-type definitions: the agent may run it, its policy is read-only, and
+ * the input parses.
  */
+
+/** The one record an operator supplies for an agent whose review reads it. */
+export type HandoffRecordKind = "crawl" | "competitor";
 
 export type HandoffMapping = {
   readonly taskType: AgentTaskType;
+  /** The fixed input; for a record-reading review, empty until the operator's record is added. */
   readonly input: JsonObject;
   /** How the handed-off task reads to the operator before they confirm. */
   readonly label: string;
+  /** Set when the operator must supply one record; absent when the review needs none. */
+  readonly record?: HandoffRecordKind;
 };
+
+/** The record as the handoff request carries it: exactly one field, of the mapping's kind. */
+export type HandoffRecord = { readonly crawlId: string } | { readonly competitorDomain: string };
+
+export function handoffRecordKind(record: HandoffRecord): HandoffRecordKind {
+  return "crawlId" in record ? "crawl" : "competitor";
+}
+
+/** The run input for a mapping and the operator's validated record. */
+export function handoffInput(mapping: HandoffMapping, record: HandoffRecord | null): JsonObject {
+  if (mapping.record === undefined || record === null) return mapping.input;
+  return "crawlId" in record ? { ...mapping.input, crawlId: record.crawlId } : { ...mapping.input, competitorDomain: record.competitorDomain };
+}
 
 export const HANDOFF_MAP: Readonly<Partial<Record<TaskOwningAgent, HandoffMapping>>> = {
   "seo-director": { taskType: "project-priority-review", input: {}, label: "Project Director review over the project's newest specialist reviews" },
@@ -35,16 +58,16 @@ export const HANDOFF_MAP: Readonly<Partial<Record<TaskOwningAgent, HandoffMappin
   "analytics-learning": { taskType: "performance-review", input: { range: INVENTORY_RANGE_ID }, label: `Performance review over the ${INVENTORY_RANGE_ID} Search Console window` },
   "research-evidence": { taskType: "evidence-pack-review", input: {}, label: "Evidence pack review of the project's stored records" },
   "content-strategist": { taskType: "content-plan-review", input: {}, label: "Content plan review of the project's stored records" },
+  "technical-seo": { taskType: "crawl-review", input: {}, record: "crawl", label: "Crawl review of one of the project's own-site crawls, chosen by the operator" },
+  "on-page-seo": { taskType: "on-page-review", input: {}, record: "crawl", label: "On-page review of one of the project's own-site crawls, chosen by the operator" },
+  "ai-visibility": { taskType: "answer-readiness-review", input: {}, record: "crawl", label: "Answer-readiness review of one of the project's own-site crawls, chosen by the operator" },
+  "authority-backlink": { taskType: "outbound-link-review", input: {}, record: "crawl", label: "Outbound link review of one of the project's own-site crawls, chosen by the operator" },
+  "market-intelligence": { taskType: "competitor-comparison-review", input: {}, record: "competitor", label: "Competitor comparison with one competitor domain recorded at intake, chosen by the operator" },
 };
 
-/** Why an agent is not mapped: which record its tasks need that a task cannot name. */
-export const HANDOFF_DEFERRED: Readonly<Record<Exclude<TaskOwningAgent, keyof typeof HANDOFF_MAP>, string>> = {
-  "technical-seo": "its crawl review needs a chosen crawl",
-  "on-page-seo": "its on-page review needs a chosen crawl",
-  "ai-visibility": "its answer-readiness review needs a chosen crawl",
-  "authority-backlink": "its outbound link review needs a chosen crawl",
-  "market-intelligence": "its competitor comparison needs a chosen competitor domain",
-  writer: "its section draft needs a chosen content plan run and section, and drafts rather than reviews",
+/** Why an agent is not mapped. */
+export const HANDOFF_DEFERRED: Readonly<Partial<Record<TaskOwningAgent, string>>> = {
+  writer: "its only task, the section draft, has the draft policy, not read-only, so it fails the handoff's read-only drift test; it also needs a chosen content plan run and section",
 };
 
 export function handoffFor(agent: TaskOwningAgent): HandoffMapping | null {
@@ -52,7 +75,7 @@ export function handoffFor(agent: TaskOwningAgent): HandoffMapping | null {
 }
 
 export function handoffUnsupportedReason(agent: TaskOwningAgent): string | null {
-  return agent in HANDOFF_DEFERRED ? HANDOFF_DEFERRED[agent as keyof typeof HANDOFF_DEFERRED] : null;
+  return HANDOFF_DEFERRED[agent] ?? null;
 }
 
 /** The refusal or failure of a task action, in the operator's terms. Never the server's text. */
@@ -75,6 +98,12 @@ export function taskActionFailure(httpStatus: number, body: unknown): string {
       return "A run this task was already handed off to is still queued or running. No second run was created.";
     case "handoff-unsupported":
       return "Handoff is not supported yet for this owning agent. No run was created.";
+    case "record-required":
+      return "This agent's review reads one record: choose it before confirming. Nothing was recorded.";
+    case "record-not-accepted":
+      return "This agent's review takes no chosen record, or a different kind. Nothing was recorded.";
+    case "record-invalid":
+      return "The chosen record is not one of this project's own-site crawls or recorded competitor domains. Nothing was recorded.";
     case "run-refused":
       return "The run path refused to queue the specialist's task, so no run was created. The request is in the task's history.";
     case "invalid":

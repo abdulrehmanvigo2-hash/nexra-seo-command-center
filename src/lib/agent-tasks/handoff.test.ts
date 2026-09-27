@@ -5,7 +5,17 @@ import { TASK_TYPES, agentMayRun, getTaskType } from "../agent-runs/task-types.t
 import { mayRunAutomatically } from "../agent-runs/action-policy.ts";
 import { INVENTORY_RANGE_ID } from "../projects/grounding.ts";
 import { TASK_OWNING_AGENTS } from "./contract.ts";
-import { HANDOFF_DEFERRED, HANDOFF_MAP, handoffFor, handoffUnsupportedReason, taskActionFailure } from "./handoff.ts";
+import {
+  HANDOFF_DEFERRED,
+  HANDOFF_MAP,
+  handoffFor,
+  handoffInput,
+  handoffRecordKind,
+  handoffUnsupportedReason,
+  taskActionFailure,
+  type HandoffRecord,
+  type HandoffRecordKind,
+} from "./handoff.ts";
 
 /**
  * The failure this file exists to prevent is a handoff that guesses: an
@@ -14,7 +24,12 @@ import { HANDOFF_DEFERRED, HANDOFF_MAP, handoffFor, handoffUnsupportedReason, ta
  */
 
 describe("the handoff map", () => {
-  test("every mapped task exists, is the agent's to run, is read-only, and accepts the mapped input without a chosen record", () => {
+  const SAMPLE_RECORD: Record<HandoffRecordKind, HandoffRecord> = {
+    crawl: { crawlId: "c0000000-0000-4000-8000-000000000001" },
+    competitor: { competitorDomain: "rival.example" },
+  };
+
+  test("every mapped task exists, is the agent's to run, is read-only, and accepts the mapped input with the operator's record where it reads one", () => {
     for (const [agent, mapping] of Object.entries(HANDOFF_MAP)) {
       const definition = getTaskType(mapping.taskType);
       assert.ok(definition, `${agent}: ${mapping.taskType} exists`);
@@ -22,29 +37,46 @@ describe("the handoff map", () => {
       assert.notEqual(definition.agents, "any", `${agent}: ${mapping.taskType} is that agent's own task, not the generic review`);
       assert.equal(definition.policy, "read-only", `${agent}: ${mapping.taskType} is read-only`);
       assert.ok(mayRunAutomatically(definition.policy));
-      const parsed = definition.parseInput(mapping.input);
+      const input = handoffInput(mapping, mapping.record === undefined ? null : SAMPLE_RECORD[mapping.record]);
+      const parsed = definition.parseInput(input);
       assert.ok(parsed.ok, `${agent}: the input parses (${parsed.ok ? "" : parsed.error})`);
-      if (parsed.ok) assert.deepEqual(parsed.value, mapping.input);
+      if (parsed.ok) assert.deepEqual(parsed.value, input);
       const keys = Object.keys(mapping.input);
-      assert.ok(keys.length === 0 || (keys.length === 1 && mapping.input.range === INVENTORY_RANGE_ID), `${agent}: no input, or the product's own window`);
+      assert.ok(keys.length === 0 || (keys.length === 1 && mapping.input.range === INVENTORY_RANGE_ID), `${agent}: no fixed input, or the product's own window`);
+      if (mapping.record !== undefined) {
+        // The fixed input alone never parses: the operator's record is required, never filled in.
+        assert.equal(definition.parseInput(mapping.input).ok, false, `${agent}: needs the operator's record`);
+        assert.match(mapping.label, /chosen by the operator/);
+      }
       assert.doesNotMatch(mapping.label, /will (rank|improve|index)|traffic|guarantee/i);
     }
   });
 
-  test("the mapped and the deferred agents together are exactly the twelve, and no deferred agent has an own read-only task that needs no chosen record", () => {
+  test("the five record-reading agents (cp 2.3): four read an own-site crawl, one a recorded competitor domain", () => {
+    const withRecord = Object.entries(HANDOFF_MAP).filter(([, mapping]) => mapping.record !== undefined).map(([agent, mapping]) => [agent, mapping.taskType, mapping.record]);
+    assert.deepEqual(withRecord.sort(), [
+      ["ai-visibility", "answer-readiness-review", "crawl"],
+      ["authority-backlink", "outbound-link-review", "crawl"],
+      ["market-intelligence", "competitor-comparison-review", "competitor"],
+      ["on-page-seo", "on-page-review", "crawl"],
+      ["technical-seo", "crawl-review", "crawl"],
+    ]);
+    assert.equal(handoffRecordKind({ crawlId: "x" }), "crawl");
+    assert.equal(handoffRecordKind({ competitorDomain: "x" }), "competitor");
+    assert.deepEqual(handoffInput(HANDOFF_MAP["seo-director"]!, SAMPLE_RECORD.crawl), {}, "a record never reaches a mapping that reads none");
+  });
+
+  test("the mapped and the deferred agents together are exactly the twelve; only the Writer is deferred, for its draft policy", () => {
     const mapped = Object.keys(HANDOFF_MAP).sort();
     const deferred = Object.keys(HANDOFF_DEFERRED).sort();
     assert.deepEqual([...mapped, ...deferred].sort(), [...TASK_OWNING_AGENTS].sort());
     assert.equal(new Set([...mapped, ...deferred]).size, 12);
-    assert.deepEqual(mapped, ["analytics-learning", "content-strategist", "keyword-intent", "project-manager", "research-evidence", "seo-director"]);
-    for (const agent of deferred) {
-      const own = TASK_TYPES.filter((definition) => definition.agents !== "any" && definition.agents.includes(agent as never) && definition.policy === "read-only");
-      for (const definition of own) {
-        assert.equal(definition.parseInput({}).ok, false, `${agent}: ${definition.id} needs a record no task names`);
-        assert.equal(definition.parseInput({ range: INVENTORY_RANGE_ID }).ok, false, `${agent}: ${definition.id} is not a window review`);
-      }
-      assert.match(HANDOFF_DEFERRED[agent as keyof typeof HANDOFF_DEFERRED], /needs a chosen/);
-    }
+    assert.equal(mapped.length, 11);
+    assert.deepEqual(deferred, ["writer"]);
+    const own = TASK_TYPES.filter((definition) => definition.agents !== "any" && definition.agents.includes("writer" as never));
+    assert.ok(own.length > 0 && own.every((definition) => definition.policy !== "read-only"), "the Writer has no read-only task to hand off");
+    assert.match(HANDOFF_DEFERRED.writer ?? "", /draft policy, not read-only/);
+    assert.match(HANDOFF_DEFERRED.writer ?? "", /read-only drift test/);
   });
 
   test("handoffFor and handoffUnsupportedReason are the two sides of one decision", () => {
@@ -56,7 +88,9 @@ describe("the handoff map", () => {
     assert.equal(handoffFor("seo-director")?.taskType, "project-priority-review");
     assert.equal(handoffFor("project-manager")?.taskType, "intake-review");
     assert.equal(handoffFor("keyword-intent")?.taskType, "search-query-review");
-    assert.equal(handoffFor("technical-seo"), null);
+    assert.equal(handoffFor("technical-seo")?.taskType, "crawl-review");
+    assert.equal(handoffFor("market-intelligence")?.record, "competitor");
+    assert.equal(handoffFor("writer"), null);
   });
 
   test("the SQL link check and the run path agree on the provenance field", async () => {
@@ -69,7 +103,7 @@ describe("the handoff map", () => {
 
 describe("the failure wording", () => {
   test("names each refusal in the operator's terms and never claims a run happened", () => {
-    for (const error of ["unavailable", "task-not-found", "same-status", "same-owner", "terminal", "transition-not-allowed", "handoff-active", "handoff-unsupported", "run-refused", "invalid", "rate-limited", "unauthorized"]) {
+    for (const error of ["unavailable", "task-not-found", "same-status", "same-owner", "terminal", "transition-not-allowed", "handoff-active", "handoff-unsupported", "run-refused", "record-required", "record-not-accepted", "record-invalid", "invalid", "rate-limited", "unauthorized"]) {
       const text = taskActionFailure(409, { error });
       assert.ok(text.length > 20, error);
       assert.doesNotMatch(text, /was run|executed|ran the/i, error);

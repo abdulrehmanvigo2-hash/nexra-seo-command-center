@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { AgentRun } from "../../types/agent-run.ts";
-import type { AgentTask, AgentTaskEvent, CreateAgentTaskInput, ListAgentTasksFilter } from "./contract.ts";
-import { createAgentTaskService, type HandoffRunCreator } from "./service.ts";
+import type { AgentTask, AgentTaskEvent, CreateAgentTaskInput, ListAgentTasksFilter, TaskOwningAgent } from "./contract.ts";
+import type { HandoffRecord } from "./handoff.ts";
+import { createAgentTaskService, type HandoffRecordReader, type HandoffRunCreator } from "./service.ts";
 import { unavailableAgentTaskStore, type AgentTaskStore } from "./store-contract.ts";
 
 /**
@@ -286,7 +287,7 @@ describe("the handoff", () => {
   });
 
   test("an unsupported owner records nothing and asks the run path for nothing", async () => {
-    const { store, events } = workflowStore(task({ owningAgent: "technical-seo" }));
+    const { store, events } = workflowStore(task({ owningAgent: "writer" }));
     const { creator, requests } = countingRuns();
     const result = await createAgentTaskService(store, creator).handoff(base);
     assert.equal(result.status, "handoff-unsupported");
@@ -421,5 +422,146 @@ describe("readOutcome (checkpoint 2.2): computed from the linked run, never writ
       assert.equal(outcome.resultSummary, null);
       assert.equal(outcome.error?.code, "rejected-output");
     }
+  });
+});
+
+describe("handoff with an operator-chosen record (checkpoint 2.3)", () => {
+  const OWN_CRAWL = "c0000000-0000-4000-8000-000000000001";
+  const COMPETITOR_CRAWL = "c0000000-0000-4000-8000-000000000002";
+  const OTHER_PROJECT_CRAWL = "c0000000-0000-4000-8000-000000000003";
+  const UNKNOWN_CRAWL = "c0000000-0000-4000-8000-000000000099";
+
+  /** The project's records: one own-site crawl; a competitor crawl and another project's crawl, both of which the check refuses. */
+  function recordReader() {
+    const asked: string[] = [];
+    const reader: HandoffRecordReader = {
+      async listOwnCrawls(projectId) {
+        asked.push(`list:${projectId}`);
+        return projectId === "nexra-agency" ? [{ id: OWN_CRAWL, status: "completed", startedAt: "2026-09-25T10:00:00.000Z", finishedAt: "2026-09-25T10:01:00.000Z", pagesFetched: 5 }] : [];
+      },
+      async isOwnCrawl(projectId, crawlId) {
+        asked.push(`crawl:${crawlId}`);
+        return projectId === "nexra-agency" && crawlId === OWN_CRAWL;
+      },
+      async recordedCompetitors(projectId) {
+        asked.push(`competitors:${projectId}`);
+        return projectId === "nexra-agency" ? ["rival.example"] : [];
+      },
+    };
+    return { reader, asked };
+  }
+
+  for (const [agent, taskType] of [["technical-seo", "crawl-review"], ["on-page-seo", "on-page-review"], ["ai-visibility", "answer-readiness-review"], ["authority-backlink", "outbound-link-review"]] as const) {
+    test(`${agent}: an own-site crawl is handed off as ${taskType} with that crawl id; nothing is chosen for the operator`, async () => {
+      const { store, events } = workflowStore(task({ owningAgent: agent }));
+      const { creator, requests } = countingRuns();
+      const result = await createAgentTaskService(store, creator, null, recordReader().reader).handoff({ ...base, record: { crawlId: OWN_CRAWL } });
+      assert.equal(result.status, "handed-off");
+      assert.equal(requests.length, 1);
+      assert.deepEqual(requests[0]?.request, { projectId: "nexra-agency", agentId: agent, taskType, input: { crawlId: OWN_CRAWL } });
+      assert.deepEqual(events.map((event) => event.type), ["created", "handoff-requested", "handoff-run-linked"]);
+    });
+  }
+
+  test("market-intelligence: a recorded competitor domain is handed off, canonicalised", async () => {
+    const { store } = workflowStore(task({ owningAgent: "market-intelligence" }));
+    const { creator, requests } = countingRuns();
+    const result = await createAgentTaskService(store, creator, null, recordReader().reader).handoff({ ...base, record: { competitorDomain: "Rival.Example" } });
+    assert.equal(result.status, "handed-off");
+    assert.deepEqual(requests[0]?.request.input, { competitorDomain: "rival.example" });
+  });
+
+  test("a missing record for a record-reading owner is refused before any write", async () => {
+    for (const agent of ["technical-seo", "market-intelligence"] as const) {
+      const { store, events } = workflowStore(task({ owningAgent: agent }));
+      const { creator, requests } = countingRuns();
+      const result = await createAgentTaskService(store, creator, null, recordReader().reader).handoff(base);
+      assert.equal(result.status, "record-required", agent);
+      if (result.status === "record-required") assert.equal(result.kind, agent === "technical-seo" ? "crawl" : "competitor");
+      assert.equal(requests.length, 0);
+      assert.equal(events.length, 1, "only the created event: nothing was recorded");
+    }
+  });
+
+  test("a record for an owner whose review takes none, or of the other kind, is refused; the Writer stays unsupported", async () => {
+    const cases: [TaskOwningAgent, HandoffRecord, string][] = [
+      ["project-manager", { crawlId: OWN_CRAWL }, "record-not-accepted"],
+      ["seo-director", { competitorDomain: "rival.example" }, "record-not-accepted"],
+      ["keyword-intent", { crawlId: OWN_CRAWL }, "record-not-accepted"],
+      ["technical-seo", { competitorDomain: "rival.example" }, "record-not-accepted"],
+      ["market-intelligence", { crawlId: OWN_CRAWL }, "record-not-accepted"],
+      ["writer", { crawlId: OWN_CRAWL }, "handoff-unsupported"],
+    ];
+    for (const [agent, record, expected] of cases) {
+      const { store, events } = workflowStore(task({ owningAgent: agent }));
+      const { creator, requests } = countingRuns();
+      const result = await createAgentTaskService(store, creator, null, recordReader().reader).handoff({ ...base, record });
+      assert.equal(result.status, expected, agent);
+      assert.equal(requests.length, 0, agent);
+      assert.equal(events.length, 1, agent);
+    }
+  });
+
+  test("a competitor's crawl, another project's crawl, an unknown crawl, an unrecorded or empty domain: record-invalid, before any write", async () => {
+    const cases: [TaskOwningAgent, HandoffRecord][] = [
+      ["technical-seo", { crawlId: COMPETITOR_CRAWL }],
+      ["on-page-seo", { crawlId: OTHER_PROJECT_CRAWL }],
+      ["authority-backlink", { crawlId: UNKNOWN_CRAWL }],
+      ["market-intelligence", { competitorDomain: "unrecorded.example" }],
+      ["market-intelligence", { competitorDomain: "" }],
+      ["market-intelligence", { competitorDomain: "https://rival.example/path" }],
+    ];
+    for (const [agent, record] of cases) {
+      const { store, events } = workflowStore(task({ owningAgent: agent }));
+      const { creator, requests } = countingRuns();
+      const result = await createAgentTaskService(store, creator, null, recordReader().reader).handoff({ ...base, record });
+      assert.equal(result.status, "record-invalid", JSON.stringify(record));
+      assert.equal(requests.length, 0);
+      assert.equal(events.length, 1);
+    }
+  });
+
+  test("without a record reader the record-reading handoff is unavailable, and writes nothing", async () => {
+    const { store, events } = workflowStore(task({ owningAgent: "technical-seo" }));
+    const { creator, requests } = countingRuns();
+    assert.equal((await createAgentTaskService(store, creator).handoff({ ...base, record: { crawlId: OWN_CRAWL } })).status, "unavailable");
+    assert.equal(requests.length, 0);
+    assert.equal(events.length, 1);
+  });
+
+  test("the six record-free agents hand off exactly as before", async () => {
+    const { store } = workflowStore(task({ owningAgent: "keyword-intent" }));
+    const { creator, requests } = countingRuns();
+    const result = await createAgentTaskService(store, creator, null, recordReader().reader).handoff(base);
+    assert.equal(result.status, "handed-off");
+    assert.deepEqual(requests[0]?.request.input, { range: "30d" });
+  });
+
+  test("handoffChoices lists the own-site crawls or the recorded domains, and nothing for a record-free or unsupported owner", async () => {
+    const choices = async (agent: TaskOwningAgent) => {
+      const { store } = workflowStore(task({ owningAgent: agent }));
+      return createAgentTaskService(store, null, null, recordReader().reader).handoffChoices("nexra-agency", base.taskId);
+    };
+    const crawl = await choices("ai-visibility");
+    assert.equal(crawl.status, "crawl");
+    if (crawl.status === "crawl") assert.deepEqual(crawl.crawls.map((c) => c.id), [OWN_CRAWL]);
+    const competitor = await choices("market-intelligence");
+    assert.equal(competitor.status, "competitor");
+    if (competitor.status === "competitor") assert.deepEqual(competitor.domains, ["rival.example"]);
+    assert.equal((await choices("project-manager")).status, "none");
+    assert.equal((await choices("writer")).status, "none");
+    const { store } = workflowStore(task({ owningAgent: "technical-seo" }));
+    assert.equal((await createAgentTaskService(store, null, null, recordReader().reader).handoffChoices("other-client", base.taskId)).status, "task-not-found");
+  });
+
+  test("the cp 2.2 outcome read-back works unchanged for a crawl-agent handoff", async () => {
+    const { store, events } = workflowStore(task({ owningAgent: "technical-seo" }));
+    const { creator, runs } = countingRuns();
+    const service = createAgentTaskService(store, creator, { getRun: async (id) => { const run = [...runs.values()].find((r) => r.id === id); return run ? { ok: true, run } : { ok: false, reason: "not-found" }; } }, recordReader().reader);
+    const handed = await service.handoff({ ...base, record: { crawlId: OWN_CRAWL } });
+    assert.equal(handed.status, "handed-off");
+    const outcome = await service.readOutcome(task({ owningAgent: "technical-seo" }), events);
+    assert.equal(outcome.status, "queued");
+    if (outcome.status === "queued") assert.equal(outcome.taskType, "crawl-review");
   });
 });

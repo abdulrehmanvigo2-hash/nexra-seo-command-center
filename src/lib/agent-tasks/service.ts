@@ -12,9 +12,10 @@ import {
   type HandoffRequestInput,
   type ListAgentTasksFilter,
 } from "@/lib/agent-tasks/contract";
-import { handoffFor } from "@/lib/agent-tasks/handoff";
+import { handoffFor, handoffInput, handoffRecordKind, type HandoffRecord, type HandoffRecordKind } from "@/lib/agent-tasks/handoff";
 import { latestLinkedRunId, outcomeMismatch, presentTaskRunOutcome, type TaskRunOutcome } from "@/lib/agent-tasks/outcome";
 import type { AgentTaskStore } from "@/lib/agent-tasks/store-contract";
+import { canonicalCompetitorHost } from "@/lib/crawl/competitor-target";
 import { logEvent } from "@/lib/observability/log";
 import type { AgentRun } from "@/types/agent-run";
 
@@ -51,7 +52,45 @@ export type HandoffTaskResult =
   | { readonly status: "handoff-unsupported"; readonly task: AgentTask }
   /** The run path refused; the request is in the history, no run exists. */
   | { readonly status: "run-refused"; readonly task: AgentTask; readonly reason: string }
+  /** The owner's review reads one record and none was chosen; nothing was recorded. */
+  | { readonly status: "record-required"; readonly task: AgentTask; readonly kind: HandoffRecordKind }
+  /** A record was sent for an owner whose review takes none, or of the other kind; nothing was recorded. */
+  | { readonly status: "record-not-accepted"; readonly task: AgentTask }
+  /** The record is not one of the project's own-site crawls or recorded competitor domains; nothing was recorded. */
+  | { readonly status: "record-invalid"; readonly task: AgentTask }
   | { readonly status: "unavailable" };
+
+/** One of the project's own-site crawls, as the handoff confirmation lists it. */
+export type HandoffCrawlChoice = {
+  readonly id: string;
+  readonly status: string;
+  readonly startedAt: string;
+  readonly finishedAt: string | null;
+  readonly pagesFetched: number;
+};
+
+/** What the operator may choose for a task's handoff, read from the same records the check uses. */
+export type HandoffChoicesResult =
+  | { readonly status: "none"; readonly task: AgentTask }
+  | { readonly status: "crawl"; readonly task: AgentTask; readonly crawls: readonly HandoffCrawlChoice[] }
+  | { readonly status: "competitor"; readonly task: AgentTask; readonly domains: readonly string[] }
+  | { readonly status: "task-not-found" }
+  | { readonly status: "unavailable" };
+
+/**
+ * The records a handoff may name, read by project id (checkpoint 2.3). The
+ * operator chooses; this only lists and checks. A crawl is choosable when it
+ * is the project's and of the project's own site (never a competitor's); a
+ * competitor domain when the project recorded it at intake.
+ */
+export type HandoffRecordReader = {
+  listOwnCrawls(projectId: string): Promise<readonly HandoffCrawlChoice[]>;
+  isOwnCrawl(projectId: string, crawlId: string): Promise<boolean>;
+  /** The recorded competitor hosts, canonical, never the project's own site. */
+  recordedCompetitors(projectId: string): Promise<readonly string[]>;
+};
+
+export type HandoffTaskInput = HandoffRequestInput & { readonly record?: HandoffRecord | null };
 
 /**
  * What the outcome read needs from the run path: the existing read of one
@@ -81,8 +120,13 @@ export type AgentTaskService = {
   changeStatus(input: ChangeTaskStatusInput): Promise<ChangeTaskStatusResult>;
   /** One owner change to a registry agent. Queues nothing. */
   changeOwner(input: ChangeTaskOwnerInput): Promise<ChangeTaskOwnerResult>;
-  /** Records the request, creates at most one queued run for the owning agent, links it. Executes nothing. */
-  handoff(input: HandoffRequestInput): Promise<HandoffTaskResult>;
+  /**
+   * Records the request, creates at most one queued run for the owning agent, links it. Executes nothing.
+   * A record-reading owner's record is checked against the project first; a refusal writes nothing.
+   */
+  handoff(input: HandoffTaskInput): Promise<HandoffTaskResult>;
+  /** What the operator may choose for this task's handoff. Reads only. */
+  handoffChoices(projectId: string, taskId: string): Promise<HandoffChoicesResult>;
   /**
    * What became of the task's newest handoff, computed now from the linked
    * run (checkpoint 2.2). Writes nothing and never throws: a run that cannot
@@ -91,11 +135,27 @@ export type AgentTaskService = {
   readOutcome(task: AgentTask, events: readonly AgentTaskEvent[]): Promise<TaskRunOutcome>;
 };
 
+function refuseRecord(status: "record-not-accepted" | "record-invalid", task: AgentTask): HandoffTaskResult {
+  // Ids and the refusal name only: never the crawl id or domain the operator sent.
+  logEvent("warn", "agent_tasks.handoff", { projectId: task.projectId, runId: task.id, agentId: task.owningAgent, outcome: status });
+  return { status, task };
+}
+
 export function createAgentTaskService(
   store: AgentTaskStore,
   runs: HandoffRunCreator | null = null,
   runReader: TaskRunReader | null = null,
+  records: HandoffRecordReader | null = null,
 ): AgentTaskService {
+  /** The operator's record, canonical, when it is one the project holds of the kind the mapping reads; otherwise null. */
+  async function projectRecord(projectId: string, kind: HandoffRecordKind, record: HandoffRecord): Promise<HandoffRecord | null> {
+    if (records === null) return null;
+    if (kind === "crawl") return "crawlId" in record && (await records.isOwnCrawl(projectId, record.crawlId)) ? record : null;
+    if (!("competitorDomain" in record)) return null;
+    const host = canonicalCompetitorHost(record.competitorDomain);
+    return host !== null && (await records.recordedCompetitors(projectId)).includes(host) ? { competitorDomain: host } : null;
+  }
+
   return {
     async listTasks(filter) {
       if (!store.storesTasks) return { status: "unavailable" };
@@ -170,6 +230,21 @@ export function createAgentTaskService(
         return { status: "handoff-unsupported", task: current };
       }
 
+      // The operator's record, checked before anything is written: the owner's
+      // review must read one of that kind, and it must be the project's.
+      let record = input.record ?? null;
+      if (mapping.record === undefined && record !== null) return refuseRecord("record-not-accepted", current);
+      if (mapping.record !== undefined) {
+        if (record === null) {
+          logEvent("warn", "agent_tasks.handoff", { projectId: input.projectId, runId: input.taskId, agentId: current.owningAgent, outcome: "record-required" });
+          return { status: "record-required", task: current, kind: mapping.record };
+        }
+        if (handoffRecordKind(record) !== mapping.record) return refuseRecord("record-not-accepted", current);
+        if (records === null) return { status: "unavailable" };
+        record = await projectRecord(current.projectId, mapping.record, record);
+        if (record === null) return refuseRecord("record-invalid", current);
+      }
+
       // Step 1: the request, under the task's lock; refused while a linked run is active.
       const requested = await store.handoffRequest(input);
       if (requested.status !== "requested") {
@@ -184,7 +259,7 @@ export function createAgentTaskService(
       // rather than inserting a second.
       const created = await runs.createRun(
         input.operatorId,
-        { projectId: task.projectId, agentId: task.owningAgent, taskType: mapping.taskType, input: mapping.input },
+        { projectId: task.projectId, agentId: task.owningAgent, taskType: mapping.taskType, input: handoffInput(mapping, record) },
         { sourceTaskId: task.id },
       );
       if (!created.ok) {
@@ -207,6 +282,17 @@ export function createAgentTaskService(
         throw new Error(`Task handoff: the run ${created.run.id} was created but could not be linked (${linked.status}).`);
       }
       return { status: "handed-off", task: linked.task, run: created.run, duplicate: created.duplicate };
+    },
+
+    async handoffChoices(projectId, taskId) {
+      if (!store.storesTasks) return { status: "unavailable" };
+      const task = await store.getForProject(projectId, taskId);
+      if (task === null || task.projectId !== projectId) return { status: "task-not-found" };
+      const kind = handoffFor(task.owningAgent)?.record;
+      if (kind === undefined) return { status: "none", task };
+      if (records === null) return { status: "unavailable" };
+      if (kind === "crawl") return { status: "crawl", task, crawls: await records.listOwnCrawls(task.projectId) };
+      return { status: "competitor", task, domains: await records.recordedCompetitors(task.projectId) };
     },
 
     async readOutcome(task, events) {

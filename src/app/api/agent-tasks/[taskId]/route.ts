@@ -9,9 +9,11 @@ import { getOperator } from "@/lib/auth/session";
  * task workflow).
  *
  *   GET  /api/agent-tasks/<id>?project=<id>            → { task, events, outcome }
+ *   GET  /api/agent-tasks/<id>?project=<id>&view=handoff-choices
+ *                                                      → { task, kind, crawls? | domains? }
  *   POST /api/agent-tasks/<id>  { project, action: "status", status }
  *                               { project, action: "owner", owningAgent }
- *                               { project, action: "handoff" }
+ *                               { project, action: "handoff", crawlId? | competitorDomain? }
  *
  * Operators only, confirmed with the Auth server; writes from this site's
  * own pages only; sixty actions per operator per ten minutes. Every call
@@ -36,11 +38,30 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/agen
   const project = request.nextUrl.searchParams.get("project");
   if (!isTaskId(taskId) || project === null || project.length > 64 || !PROJECT_ID.test(project)) return errorResponse("invalid", 400);
 
+  const view = request.nextUrl.searchParams.get("view");
+  if (view !== null && view !== "handoff-choices") return errorResponse("invalid", 400);
+
   const limited = await limitResponse(agentTaskLimiter("read"), operator.id);
   if (limited) return limited;
 
   try {
     const service = agentTaskService();
+    if (view === "handoff-choices") {
+      // What the operator may choose for this task's handoff; the server lists, the operator picks.
+      const choices = await service.handoffChoices(project, taskId.toLowerCase());
+      switch (choices.status) {
+        case "unavailable":
+          return errorResponse("unavailable", 503);
+        case "task-not-found":
+          return errorResponse("task-not-found", 404);
+        case "none":
+          return json({ task: choices.task, kind: "none" });
+        case "crawl":
+          return json({ task: choices.task, kind: "crawl", crawls: choices.crawls });
+        case "competitor":
+          return json({ task: choices.task, kind: "competitor", domains: choices.domains });
+      }
+    }
     const result = await service.readTask(project, taskId.toLowerCase());
     switch (result.status) {
       case "unavailable":
@@ -110,7 +131,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
         break;
       }
       case "handoff": {
-        const result = await service.handoff(base);
+        const result = await service.handoff({ ...base, record: parsed.record });
         switch (result.status) {
           case "unavailable":
             return errorResponse("unavailable", 503);
@@ -118,6 +139,9 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
             return errorResponse(result.status, 404);
           case "terminal":
           case "handoff-unsupported":
+          case "record-required":
+          case "record-not-accepted":
+          case "record-invalid":
             return json({ error: result.status, task: result.task }, 409);
           case "handoff-active":
             return json({ error: result.status, task: result.task, runId: result.runId }, 409);

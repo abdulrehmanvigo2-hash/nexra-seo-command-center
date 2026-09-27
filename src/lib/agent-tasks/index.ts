@@ -1,7 +1,16 @@
 import "server-only";
 
 import { agentRunService } from "@/lib/agent-runs";
-import { createAgentTaskService, type AgentTaskService, type HandoffRunCreator, type TaskRunReader } from "@/lib/agent-tasks/service";
+import {
+  createAgentTaskService,
+  type AgentTaskService,
+  type HandoffRecordReader,
+  type HandoffRunCreator,
+  type TaskRunReader,
+} from "@/lib/agent-tasks/service";
+import { crawlService } from "@/lib/crawl";
+import { isProjectSiteCrawl, recordedCompetitorHost, resolveCompetitorTarget } from "@/lib/crawl/competitor-target";
+import { projectRepository } from "@/lib/projects/repository";
 import { unavailableAgentTaskStore } from "@/lib/agent-tasks/store-contract";
 import type { AgentTasksDatabase } from "@/lib/agent-tasks/supabase/schema";
 import { createSupabaseAgentTaskStore } from "@/lib/agent-tasks/supabase/store";
@@ -45,6 +54,44 @@ const outcomeRuns: TaskRunReader = {
   },
 };
 
+/** How many of the project's newest own-site crawls a handoff confirmation lists. */
+const HANDOFF_CRAWL_CHOICES = 10;
+
+/**
+ * The records a handoff may name (checkpoint 2.3), read through the crawl
+ * service and the project repository by the project id the route already
+ * authorised. The same own-site rule the crawl reviews use: a crawl is the
+ * project's own when its host scope is the project's site; a competitor
+ * domain counts only when the project recorded it at intake and it is not
+ * the project's own site. Read only.
+ */
+const handoffRecords: HandoffRecordReader = {
+  async listOwnCrawls(projectId) {
+    const crawls = await crawlService().listCrawls(projectId, HANDOFF_CRAWL_CHOICES);
+    return crawls
+      .filter((crawl) => crawl.projectId === projectId)
+      .map((crawl) => ({ id: crawl.id, status: crawl.status, startedAt: crawl.startedAt, finishedAt: crawl.finishedAt, pagesFetched: crawl.pagesFetched }));
+  },
+  async isOwnCrawl(projectId, crawlId) {
+    const [project, detail] = await Promise.all([projectRepository.getProjectById(projectId), crawlService().getCrawl(crawlId, 1)]);
+    if (project === null || detail === null) return false;
+    return detail.crawl.projectId === projectId && isProjectSiteCrawl(detail.crawl, project.domain);
+  },
+  async recordedCompetitors(projectId) {
+    const [project, intake] = await Promise.all([projectRepository.getProjectById(projectId), projectRepository.getProjectIntake(projectId)]);
+    if (project === null) return [];
+    const recorded = intake?.competitorDomains ?? [];
+    const hosts = new Set<string>();
+    for (const entry of recorded) {
+      const host = recordedCompetitorHost(entry);
+      if (host === null) continue;
+      const target = resolveCompetitorTarget({ competitorDomain: host, projectDomain: project.domain, recordedCompetitorDomains: recorded });
+      if (target.ok) hosts.add(target.host);
+    }
+    return [...hosts];
+  },
+};
+
 export function agentTaskService(): AgentTaskService {
   service ??= createAgentTaskService(
     storesInSupabase()
@@ -52,6 +99,7 @@ export function agentTaskService(): AgentTaskService {
       : unavailableAgentTaskStore,
     storesInSupabase() ? handoffRuns : null,
     storesInSupabase() ? outcomeRuns : null,
+    storesInSupabase() ? handoffRecords : null,
   );
   return service;
 }
