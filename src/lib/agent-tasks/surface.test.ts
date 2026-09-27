@@ -79,6 +79,17 @@ describe("the task route", () => {
     assert.doesNotMatch(route, /executeRun|agentRunService|action: "execute"|\.from\(|\.rpc\(/);
     assert.doesNotMatch(route, /CRON_SECRET|SERVICE_ROLE|Bearer/);
   });
+
+  test("the read adds the handoff outcome through the service, computed from the linked run and never written (cp 2.2)", async () => {
+    const route = await read("../../app/api/agent-tasks/[taskId]/route.ts");
+    assert.match(route, /outcome: await service\.readOutcome\(result\.task, result\.events\)/);
+    const wiring = await read("./index.ts");
+    assert.match(wiring, /const outcomeRuns: TaskRunReader = \{\s*getRun\(runId\) \{\s*return agentRunService\(\)\.getRun\(runId\);/);
+    assert.doesNotMatch(wiring, /executeRun|executeNext|cancelRun|retryRun/, "the task wiring reads runs and creates handoff runs only");
+    const service = await read("./service.ts");
+    const readOutcome = service.slice(service.indexOf("async readOutcome("));
+    assert.doesNotMatch(readOutcome, /store\.(create|setStatus|setOwner|handoffRequest|handoffLink)\(|runs\.createRun\(/, "the outcome read writes nothing");
+  });
 });
 
 describe("the route", () => {
@@ -169,6 +180,17 @@ describe("the live tasks panel", () => {
     assert.doesNotMatch(controls, /action: "execute"|agent-runs\/|executeRun|taskType:|agentId:/, "the browser names no agent, task type, input or execution");
     assert.doesNotMatch(controls, /useEffect/, "nothing fires on mount");
     assert.doesNotMatch(controls, /@\/lib\/mock\/(?!agents\/registry)/);
+  });
+
+  test("the history view shows the handoff outcome the read returned, with no control of its own (cp 2.2)", async () => {
+    const controls = await read("../../components/agent-tasks/task-row-controls.tsx");
+    assert.match(controls, /<HandoffOutcome outcome=\{history\.outcome\} \/>/);
+    assert.match(controls, /describeTaskRunOutcome\(outcome\)/);
+    assert.match(controls, /The task&apos;s status is not changed by its run\./);
+    assert.match(controls, /The handoff outcome could not be read\. Nothing here is estimated\./);
+    const block = controls.slice(controls.indexOf("function HandoffOutcome("), controls.indexOf("function describeEvent("));
+    assert.ok(block.length > 0);
+    assert.doesNotMatch(block, /<Button|onClick|fetch\(|useEffect|useState/, "the outcome is shown, never acted on");
   });
 
   test("is mounted once, on the Project Manager's Tasks tab only, above the board that stays labelled modelled", async () => {

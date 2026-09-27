@@ -2386,6 +2386,23 @@ the 1,300-character intake bound above. Verified in production on task
 events, one completed attempt (`claude-opus-5`, 1,552-character screened
 summary), no duplicate run, no provenance leak, task unchanged.
 
+**Handoff outcome read-back (Phase 2, checkpoint 2.2).** `GET
+/api/agent-tasks/[taskId]` now also answers `outcome`: what became of the
+task's newest handoff, computed at read time and never stored. The service's
+`readOutcome` (`src/lib/agent-tasks/outcome.ts`, `service.ts`) takes the
+newest `handoff-run-linked` event by `seq`, reads that run through the run
+service's `getRun`, and shows it only when the run exists, is the task's
+project's and names the task as `sourceTaskId`; otherwise it answers
+`unavailable` with the run id and infers nothing (`none` when no run is
+linked). States: `queued`, `running`, `retrying` (a failed run queued again,
+with its fixed failure and next attempt time), `completed` (the screened
+summary, the model and the attempt count), `failed` (the fixed code and
+message; `rejected-output` says no answer was stored) and `cancelled`. The
+projection carries no run input, creator or metadata beyond the model. The
+task's history view renders it above the events, with no control. No event,
+no migration, no task or run write: the run row stays the one record of how
+the run ended, and the task's status never changes because its run finished.
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`

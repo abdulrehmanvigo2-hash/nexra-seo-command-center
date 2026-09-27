@@ -3,9 +3,8 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Phase 1 (baseline truth and gates) complete — docs reconciliation, security and
-worker tests, CI gates, browser verifications and the C4 new-parser live check; next: Phase 2,
-Project Manager loop closure (see §14).
+**Current stage: Phase 2, Project Manager loop closure — step (a), the handoff outcome read-back
+(checkpoint 2.2), is on its branch; Phase 1 (baseline truth and gates) is complete (see §14).
 The Project Manager task workflow (status transitions, owner changes, specialist handoff, event
 history) is merged and production verified end-to-end.
 C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3, M4 and M5 are complete, merged and
@@ -22,15 +21,16 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `6363db538e3a7f3e4e39766c22adc0bb870ca308` (merge of PR #25,
-`claude/phase1-ci`, the Phase 1 CI gates; preceded by PR #24 `3a316124…` (security and worker
-tests), PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
+GitHub `master`: `e01bf12f26bd861adbfeec5ad8f040343827b7c9` (merge of PR #26,
+`claude/phase1-closing-docs`, the Phase 1 closing docs; preceded by PR #25 `6363db53…` (CI gates),
+PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_81HyhhSYcdzMWc3CJjkE3ttpKPZj`, READY, built from `master` at
-`6363db53`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_3asSXd6pRgXWGeCmjqwBnKUW4CAv` at `3a316124`).
+Production deployment: `dpl_EWD3RTL6SxybjHtM3Hew1zUCFCLz`, READY, built from `master` at
+`e01bf12f`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_81HyhhSYcdzMWc3CJjkE3ttpKPZj` at `6363db53`); `master` CI run `36266142662` passed all five
+jobs.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
 source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
@@ -67,7 +67,21 @@ automated tests only. After it: 41 runs, 41 attempts; units 0 and 1 recorded (bo
 units 2 and 3 unchecked.
 
 **Phase 1 complete:** PR #23 (docs reconciliation), PR #24 (security and worker tests), PR #25
-(CI gates), the browser verifications (1.5) and the C4 live check (1.6).
+(CI gates), the browser verifications (1.5) and the C4 live check (1.6); PR #26 (`e01bf12f…`)
+recorded them.
+
+**Phase 2 checkpoint 2.1 (design, 26 Sep):** an audit-only design note for the three Phase 2 steps,
+approved with decision Q1: a handoff's outcome is computed at read time from the linked run — no
+outcome event, no migration. Priority change and recording a Project Manager plan are OPEN
+(each would need a migration) and not part of 2.2.
+
+**Phase 2 checkpoint 2.2 (handoff outcome read-back):** `GET /api/agent-tasks/[taskId]` also
+answers `outcome`, computed now from the run named by the newest `handoff-run-linked` event and
+shown only when that run exists, is the same project's and names the task as `sourceTaskId`
+(otherwise `unavailable`, never guessed); states queued, running, retrying, completed (screened
+summary, model, attempts), failed (fixed code and message; `rejected-output` stores no answer),
+cancelled. The *Live tasks* history view shows it, with no control. Read only: no event, no
+migration, no task or run write, and the task's status never changes because its run finished.
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 
@@ -164,7 +178,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** none open. The Project Manager task workflow (branch
+**Current work:** checkpoint 2.2 on `claude/phase2-outcome-readback` (above). Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -775,11 +789,13 @@ foundation, Search Console) are complete. Current work follows the content workf
 | PM task core | Persisted agent tasks: `nexra_agent_tasks`, create function, project-scoped API, Record as task from Director results and observed queries, Live tasks section | Complete, merged (`6e345c5`), migration `20261003120000` applied, deployed, production verified (one real backlog task) |
 | PM task workflow | Status transitions along a fixed map, owner changes, specialist handoff (one queued run, never executed here), append-only event history, task route, Live tasks controls | Complete, merged (`47fae75d`), migration `20261004120000` applied and recorded, deployed; restore fix (`073bf85e`) and intake bound (`2e8116ce`) merged; production verified end-to-end on run `be1b692e…` |
 | Phase 1 | Baseline truth and gates: docs reconciliation, security and worker tests, CI gates, browser verifications (M3, M4, M5), C4 new-parser live check | Complete: PR #23 (`97aa0018`), PR #24 (`3a316124`), PR #25 (`6363db53`); checkpoints 1.5 and 1.6 verified in production |
+| Phase 2 (a) | Handoff outcome read-back: the task read answers what became of its newest handoff, computed from the linked run; shown in the task history | Implemented on `claude/phase2-outcome-readback` (checkpoint 2.2); no migration; not merged |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: no feature branch open.
-Phase 1 is complete. Next: Phase 2, Project Manager loop closure — handoff outcome read-back, then
-handoffs for the six deferred agents, then tasks as grounding and a Project Manager task-plan
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: branch
+`claude/phase2-outcome-readback` (checkpoint 2.2).
+Phase 1 is complete. Current: Phase 2, Project Manager loop closure — step (a), the handoff outcome
+read-back, is implemented on its branch; then handoffs for the six deferred agents, then tasks as grounding and a Project Manager task-plan
 review — each step under its own explicit approval. Work beyond that (cross-crawl
 finding history, a curated keyword entity, further Director sources) is planned in the roadmap but
 not started.
