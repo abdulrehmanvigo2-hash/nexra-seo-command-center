@@ -4,7 +4,8 @@ Professional, agency-grade AI SEO platform. This file defines the operating rule
 project. Read it before writing any code.
 
 **Current stage: Phase 2, Project Manager loop closure — step (a), the handoff outcome read-back
-(checkpoint 2.2), is on its branch; Phase 1 (baseline truth and gates) is complete (see §14).
+(checkpoint 2.2), is merged, deployed and browser verified; step (b), handoffs for five more
+agents (checkpoint 2.3), is on its branch; Phase 1 (baseline truth and gates) is complete (see §14).
 The Project Manager task workflow (status transitions, owner changes, specialist handoff, event
 history) is merged and production verified end-to-end.
 C1–C6 (with D3), T3–T6, all of M1 (CP1a–CP1c, P4a–P4d), M2, M3, M4 and M5 are complete, merged and
@@ -21,15 +22,16 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `e01bf12f26bd861adbfeec5ad8f040343827b7c9` (merge of PR #26,
-`claude/phase1-closing-docs`, the Phase 1 closing docs; preceded by PR #25 `6363db53…` (CI gates),
+GitHub `master`: `0143a0cfda71dd252611276f14cdefac2f50d69f` (merge of PR #27,
+`claude/phase2-outcome-readback`, the handoff outcome read-back; preceded by PR #26 `e01bf12f…`
+(Phase 1 closing docs), PR #25 `6363db53…` (CI gates),
 PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_EWD3RTL6SxybjHtM3Hew1zUCFCLz`, READY, built from `master` at
-`e01bf12f`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_81HyhhSYcdzMWc3CJjkE3ttpKPZj` at `6363db53`); `master` CI run `36266142662` passed all five
+Production deployment: `dpl_3DnEtpn3y4MWQcGgZQr7kZr4Zsqp`, READY, built from `master` at
+`0143a0cf`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_EWD3RTL6SxybjHtM3Hew1zUCFCLz` at `e01bf12f`); `master` CI run `36287780891` passed all five
 jobs.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
@@ -82,6 +84,20 @@ shown only when that run exists, is the same project's and names the task as `so
 summary, model, attempts), failed (fixed code and message; `rejected-output` stores no answer),
 cancelled. The *Live tasks* history view shows it, with no control. Read only: no event, no
 migration, no task or run write, and the task's status never changes because its run finished.
+PR #27 merged as `0143a0cf…`; deployment `dpl_3DnEtpn3…` READY. **Browser verification PASS
+(operator, 27 Sep):** the *Handoff outcome* section shows on task `30e79092…`.
+
+**Phase 2 checkpoint 2.3 (five agent handoffs):** decisions Q2–Q4 — the operator chooses the
+record, the server validates it and never picks one; Market Intelligence takes a competitor
+domain the project recorded; the Writer stays deferred (draft policy, fails the read-only drift
+test). Technical SEO (`crawl-review`), On-Page SEO (`on-page-review`), AI Visibility
+(`answer-readiness-review`) and Authority & Backlink (`outbound-link-review`) take one of the
+project's own-site crawls; Market Intelligence (`competitor-comparison-review`) one recorded
+competitor domain. The handoff request carries at most one record, checked before any write
+(`record-required`, `record-not-accepted`, `record-invalid`: another project's, a competitor's
+or an unknown crawl, an unrecorded domain); the confirmation lists the choosable records
+(`?view=handoff-choices`) and cannot confirm without one. Execution-time grounding unchanged. No
+schema change; priority change stays OPEN (cp 2.3b).
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 
@@ -178,7 +194,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** checkpoint 2.2 on `claude/phase2-outcome-readback` (above). Earlier: the Project Manager task workflow (branch
+**Current work:** checkpoint 2.3 on `claude/phase2-agent-handoffs` (above). Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -209,8 +225,9 @@ view history). A handoff creates at most one queued run for the owning agent thr
 run path with the task id as provenance and executes nothing; supported owners are SEO Director
 (`project-priority-review`), Project Manager (`intake-review`), Research & Evidence
 (`evidence-pack-review`), Content Strategist (`content-plan-review`), Keyword & Search Intent
-(`search-query-review`, `30d`) and Analytics & Learning (`performance-review`, `30d`); the other
-six are deferred and show *Handoff not supported yet*. Harness suite `task-workflow` (150).
+(`search-query-review`, `30d`) and Analytics & Learning (`performance-review`, `30d`); since
+checkpoint 2.3 also the five record-reading agents with an operator-chosen record (see 2.3); the
+Writer alone is deferred and shows *Handoff not supported yet*. Harness suite `task-workflow` (150).
 
 **Task core (merged, deployed, production verified):** an audit found every Project Manager tab modelled and no task table.
 Migration `20261003120000` adds `nexra_agent_tasks`: one row per operator-approved task — project,
@@ -789,14 +806,16 @@ foundation, Search Console) are complete. Current work follows the content workf
 | PM task core | Persisted agent tasks: `nexra_agent_tasks`, create function, project-scoped API, Record as task from Director results and observed queries, Live tasks section | Complete, merged (`6e345c5`), migration `20261003120000` applied, deployed, production verified (one real backlog task) |
 | PM task workflow | Status transitions along a fixed map, owner changes, specialist handoff (one queued run, never executed here), append-only event history, task route, Live tasks controls | Complete, merged (`47fae75d`), migration `20261004120000` applied and recorded, deployed; restore fix (`073bf85e`) and intake bound (`2e8116ce`) merged; production verified end-to-end on run `be1b692e…` |
 | Phase 1 | Baseline truth and gates: docs reconciliation, security and worker tests, CI gates, browser verifications (M3, M4, M5), C4 new-parser live check | Complete: PR #23 (`97aa0018`), PR #24 (`3a316124`), PR #25 (`6363db53`); checkpoints 1.5 and 1.6 verified in production |
-| Phase 2 (a) | Handoff outcome read-back: the task read answers what became of its newest handoff, computed from the linked run; shown in the task history | Implemented on `claude/phase2-outcome-readback` (checkpoint 2.2); no migration; not merged |
+| Phase 2 (a) | Handoff outcome read-back: the task read answers what became of its newest handoff, computed from the linked run; shown in the task history | Complete: PR #27 (`0143a0cf`), deployed, browser verified (27 Sep); no migration |
+| Phase 2 (b) | Handoffs for five more agents with an operator-chosen record (own-site crawl or recorded competitor domain); Writer deferred | Implemented on `claude/phase2-agent-handoffs` (checkpoint 2.3); no migration; not merged |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: branch
-`claude/phase2-outcome-readback` (checkpoint 2.2).
+`claude/phase2-agent-handoffs` (checkpoint 2.3).
 Phase 1 is complete. Current: Phase 2, Project Manager loop closure — step (a), the handoff outcome
-read-back, is implemented on its branch; then handoffs for the six deferred agents, then tasks as grounding and a Project Manager task-plan
-review — each step under its own explicit approval. Work beyond that (cross-crawl
+read-back, is complete; step (b), handoffs for five of the six deferred agents (the Writer stays
+deferred), is implemented on its branch; then priority change (cp 2.3b, a separate migration), then
+tasks as grounding and a Project Manager task-plan review — each step under its own explicit approval. Work beyond that (cross-crawl
 finding history, a curated keyword entity, further Director sources) is planned in the roadmap but
 not started.
 

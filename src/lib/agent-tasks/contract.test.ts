@@ -201,7 +201,7 @@ describe("the action request", () => {
   test("accepts exactly one of the three shapes and nothing more", () => {
     assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "status", status: "ready" }), { ok: true, projectId: "nexra-agency", action: "status", status: "ready" });
     assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "owner", owningAgent: "writer" }), { ok: true, projectId: "nexra-agency", action: "owner", owningAgent: "writer" });
-    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "handoff" }), { ok: true, projectId: "nexra-agency", action: "handoff" });
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "handoff" }), { ok: true, projectId: "nexra-agency", action: "handoff", record: null });
     const invalid: unknown[] = [
       null,
       [],
@@ -218,6 +218,24 @@ describe("the action request", () => {
       { project: "nexra-agency", action: "handoff", input: {} },
       { project: "nexra-agency", action: "execute" },
       { project: "nexra-agency", action: "delete" },
+    ];
+    for (const body of invalid) assert.deepEqual(parseTaskActionRequest(body), { ok: false, error: "invalid" }, JSON.stringify(body));
+  });
+
+  test("a handoff carries at most one operator-chosen record: a crawl id or a non-empty competitor domain (cp 2.3)", () => {
+    const CRAWL = "c0000000-0000-4000-8000-00000000000A";
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "handoff", crawlId: CRAWL }), { ok: true, projectId: "nexra-agency", action: "handoff", record: { crawlId: CRAWL.toLowerCase() } });
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "handoff", competitorDomain: " rival.example " }), { ok: true, projectId: "nexra-agency", action: "handoff", record: { competitorDomain: "rival.example" } });
+    const invalid: unknown[] = [
+      { project: "nexra-agency", action: "handoff", crawlId: "not-a-uuid" },
+      { project: "nexra-agency", action: "handoff", crawlId: 7 },
+      { project: "nexra-agency", action: "handoff", competitorDomain: "" },
+      { project: "nexra-agency", action: "handoff", competitorDomain: "   " },
+      { project: "nexra-agency", action: "handoff", competitorDomain: 3 },
+      { project: "nexra-agency", action: "handoff", competitorDomain: `${"a".repeat(250)}.example` },
+      { project: "nexra-agency", action: "handoff", crawlId: CRAWL, competitorDomain: "rival.example" },
+      { project: "nexra-agency", action: "status", status: "ready", crawlId: CRAWL },
+      { project: "nexra-agency", action: "owner", owningAgent: "writer", competitorDomain: "rival.example" },
     ];
     for (const body of invalid) assert.deepEqual(parseTaskActionRequest(body), { ok: false, error: "invalid" }, JSON.stringify(body));
   });

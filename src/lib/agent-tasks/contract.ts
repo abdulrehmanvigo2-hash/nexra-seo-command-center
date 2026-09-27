@@ -325,14 +325,26 @@ export type TaskActionName = (typeof TASK_ACTIONS)[number];
 export type TaskActionRequest =
   | { readonly ok: true; readonly projectId: string; readonly action: "status"; readonly status: AgentTaskStatus }
   | { readonly ok: true; readonly projectId: string; readonly action: "owner"; readonly owningAgent: TaskOwningAgent }
-  | { readonly ok: true; readonly projectId: string; readonly action: "handoff" }
+  | {
+      readonly ok: true;
+      readonly projectId: string;
+      readonly action: "handoff";
+      /** The one record an operator chose, for an agent whose review reads one; the service checks it against the owner and the project. */
+      readonly record: { readonly crawlId: string } | { readonly competitorDomain: string } | null;
+    }
   | { readonly ok: false; readonly error: "invalid" };
+
+/** The longest competitor domain a handoff request may name (a hostname's limit). */
+export const HANDOFF_DOMAIN_MAX_LENGTH = 253;
 
 /**
  * An action request as the task route receives it: `{ project, action,
- * status? | owningAgent? }` and nothing else. A handoff names no agent, no
- * task type and no input — the server maps the task's owning agent to the
- * one executable task type it supports, or refuses.
+ * status? | owningAgent? | crawlId? | competitorDomain? }` and nothing else.
+ * A handoff names no agent, no task type and no input — the server maps the
+ * task's owning agent to the one executable task type it supports, or
+ * refuses — and at most one record the operator chose: a crawl id or a
+ * competitor domain (checkpoint 2.3). Whether the owner's review takes that
+ * record, and whether it is the project's, is the service's check.
  */
 export function parseTaskActionRequest(body: unknown): TaskActionRequest {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return { ok: false, error: "invalid" };
@@ -350,8 +362,17 @@ export function parseTaskActionRequest(body: unknown): TaskActionRequest {
       return { ok: true, projectId: project, action, owningAgent: fields.owningAgent };
     }
     case "handoff": {
-      if (keys.length !== 2) return { ok: false, error: "invalid" };
-      return { ok: true, projectId: project, action };
+      if (keys.length === 2) return { ok: true, projectId: project, action, record: null };
+      if (keys.length !== 3) return { ok: false, error: "invalid" };
+      if (keys.includes("crawlId")) {
+        return isTaskId(fields.crawlId) ? { ok: true, projectId: project, action, record: { crawlId: fields.crawlId.toLowerCase() } } : { ok: false, error: "invalid" };
+      }
+      if (keys.includes("competitorDomain")) {
+        const domain = typeof fields.competitorDomain === "string" ? fields.competitorDomain.trim() : "";
+        if (domain.length === 0 || domain.length > HANDOFF_DOMAIN_MAX_LENGTH) return { ok: false, error: "invalid" };
+        return { ok: true, projectId: project, action, record: { competitorDomain: domain } };
+      }
+      return { ok: false, error: "invalid" };
     }
     default:
       return { ok: false, error: "invalid" };

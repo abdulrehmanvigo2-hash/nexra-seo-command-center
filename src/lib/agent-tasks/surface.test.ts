@@ -74,7 +74,7 @@ describe("the task route", () => {
     assert.match(route, /agentTaskLimiter\("action"\)/);
     assert.match(route, /service\.changeStatus\(/);
     assert.match(route, /service\.changeOwner\(/);
-    assert.match(route, /service\.handoff\(base\)/);
+    assert.match(route, /service\.handoff\(\{ \.\.\.base, record: parsed\.record \}\)/);
     assert.match(route, /operatorId: operator\.id/);
     assert.doesNotMatch(route, /executeRun|agentRunService|action: "execute"|\.from\(|\.rpc\(/);
     assert.doesNotMatch(route, /CRON_SECRET|SERVICE_ROLE|Bearer/);
@@ -167,7 +167,7 @@ describe("the live tasks panel", () => {
     assert.match(controls, /^"use client";/);
     assert.match(controls, /fetch\(`\/api\/agent-tasks\/\$\{encodeURIComponent\(task\.id\)\}`, \{\s*method: "POST"/);
     assert.match(controls, /fetch\(agentTaskUrl\(task\.id, task\.projectId\), \{ cache: "no-store" \}\)/);
-    assert.equal((controls.match(/fetch\(/g) ?? []).length, 2, "one write path, one history read");
+    assert.equal((controls.match(/fetch\(/g) ?? []).length, 3, "one write path, one history read, one handoff-choices read");
     assert.match(controls, /if \(sending\.current\) return;/);
     assert.match(controls, /const allowed = TASK_TRANSITIONS\[task\.status\];/);
     assert.match(controls, /options=\{allowed\.map/);
@@ -176,10 +176,30 @@ describe("the live tasks panel", () => {
     assert.match(controls, /Nothing runs when you confirm\./);
     assert.match(controls, /Handoff not supported yet for/);
     assert.match(controls, /disabled=\{terminal \|\| busy \|\| mapping === null\}/);
-    assert.match(controls, /void post\(\{ action: "handoff" \}/);
+    assert.match(controls, /void post\(\{ action: "handoff", \.\.\.handoffRecordField\(mapping\.record, chosen\) \}/);
     assert.doesNotMatch(controls, /action: "execute"|agent-runs\/|executeRun|taskType:|agentId:/, "the browser names no agent, task type, input or execution");
     assert.doesNotMatch(controls, /useEffect/, "nothing fires on mount");
     assert.doesNotMatch(controls, /@\/lib\/mock\/(?!agents\/registry)/);
+  });
+
+  test("a record-reading handoff lists the server's choosable records, starts with none chosen, and cannot confirm without one (cp 2.3)", async () => {
+    const controls = await read("../../components/agent-tasks/task-row-controls.tsx");
+    assert.match(controls, /fetch\(`\$\{agentTaskUrl\(task\.id, task\.projectId\)\}&view=handoff-choices`, \{ cache: "no-store" \}\)/);
+    assert.match(controls, /if \(mapping\?\.record\) void loadChoices\(\);/);
+    assert.match(controls, /setChosen\(""\);/, "every confirmation starts with nothing chosen");
+    assert.match(controls, /disabled=\{busy \|\| \(mapping\.record !== undefined && chosen === ""\)\}/);
+    assert.match(controls, /options=\{\[\{ value: "", label: `Choose a \$\{noun\}…` \}, \.\.\.options\]\}/);
+    assert.match(controls, /a competitor crawl cannot be handed off here/);
+    const field = controls.slice(controls.indexOf("function handoffRecordField("), controls.indexOf("function RecordChoice("));
+    assert.match(field, /if \(kind === undefined \|\| chosen === ""\) return \{\};/, "no record is sent unless the operator chose one");
+    const route = await read("../../app/api/agent-tasks/[taskId]/route.ts");
+    assert.match(route, /if \(view !== null && view !== "handoff-choices"\) return errorResponse\("invalid", 400\);/);
+    assert.match(route, /service\.handoffChoices\(project, taskId\.toLowerCase\(\)\)/);
+    const wiring = await read("./index.ts");
+    assert.match(wiring, /isProjectSiteCrawl\(detail\.crawl, project\.domain\)/, "the own-site rule the crawl reviews use");
+    assert.match(wiring, /detail\.crawl\.projectId === projectId/);
+    assert.match(wiring, /resolveCompetitorTarget\(/);
+    assert.doesNotMatch(wiring, /startCrawl\(|listCompetitorCrawls\(/, "the handoff reads records; it never crawls");
   });
 
   test("the history view shows the handoff outcome the read returned, with no control of its own (cp 2.2)", async () => {

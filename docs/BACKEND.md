@@ -2345,14 +2345,13 @@ record — SEO Director → `project-priority-review`, Project Manager →
 `intake-review`, Research & Evidence → `evidence-pack-review`, Content
 Strategist → `content-plan-review` (no input), Keyword & Search Intent →
 `search-query-review` and Analytics & Learning → `performance-review` (the
-product's own `INVENTORY_RANGE_ID` window). Technical SEO, On-Page SEO, AI
-Visibility and Authority & Backlink (a chosen crawl), Market & Competitor
-Intelligence (a chosen competitor domain) and the Writer (a chosen plan run
-and section; a draft, not a review) are deferred: the panel says *Handoff not
-supported yet* and nothing is recorded. A drift test checks every mapping
-against the task-type definitions (the agent may run it, policy read-only,
-the input parses) and that no deferred agent has an own read-only task that
-would have parsed without a record. The flow is: the service reads the task
+product's own `INVENTORY_RANGE_ID` window). Since checkpoint 2.3 five more
+agents are mapped with a record the operator chooses (below). The Writer (a
+`draft`-policy task, which fails the read-only drift test) stays deferred:
+the panel says *Handoff not supported yet* and nothing is recorded. A drift
+test checks every mapping against the task-type definitions (the agent may
+run it, policy read-only, the input parses with the operator's record where
+it reads one, and never without it). The flow is: the service reads the task
 and refuses an unsupported owner before writing; `handoffRequest` records the
 intention under the row lock (refused `handoff-active` while a linked run is
 queued or running); the existing `createRun` of the run service is called
@@ -2402,6 +2401,25 @@ projection carries no run input, creator or metadata beyond the model. The
 task's history view renders it above the events, with no control. No event,
 no migration, no task or run write: the run row stays the one record of how
 the run ended, and the task's status never changes because its run finished.
+
+**Handoffs with an operator-chosen record (Phase 2, checkpoint 2.3).**
+Technical SEO → `crawl-review`, On-Page SEO → `on-page-review`, AI Visibility
+→ `answer-readiness-review` and Authority & Backlink →
+`outbound-link-review` each read one of the project's own-site crawls; Market
+& Competitor Intelligence → `competitor-comparison-review` reads one
+competitor domain the project recorded at intake. The server never chooses:
+the handoff request carries at most one record (`crawlId` or
+`competitorDomain`, parsed in `contract.ts`), and the service checks it before
+anything is written — `record-required` when a record-reading owner gets
+none, `record-not-accepted` when a record reaches an owner whose review takes
+none or of the other kind, `record-invalid` when the crawl is not the
+project's own-site crawl (another project's, a competitor's, unknown) or the
+domain is not one the project recorded (canonicalised with the crawl
+service's rule; the run input carries the canonical host). The confirmation
+lists the choosable records through `GET /api/agent-tasks/[taskId]?view=
+handoff-choices` (the ten newest own-site crawls, or the recorded competitor
+hosts), starts with none chosen and cannot confirm without one. Execution-time
+grounding is unchanged and re-checks the record. No schema change.
 
 ### Safety boundaries
 
