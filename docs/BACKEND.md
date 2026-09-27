@@ -2337,8 +2337,9 @@ task for `same-status`, `terminal`, `transition-not-allowed`, `same-owner`,
 `handoff-active`, `handoff-unsupported`, `run-refused`).
 
 **Handoff.** A handoff creates at most one queued run for the task's owning
-agent and executes nothing; the scheduled worker or a separate *Run now* on
-the agent's run history does. Which task the agent is handed is the server's
+agent and executes nothing; the scheduled worker or a separate *Run Now* on
+the project's review panel for that review does (the Agents screen's run
+history has no Run Now). Which task the agent is handed is the server's
 knowledge, never the browser's: `handoff.ts` maps an agent only when it has
 one own read-only review whose input the server fills without choosing a
 record — SEO Director → `project-priority-review`, Project Manager →
@@ -2419,7 +2420,18 @@ service's rule; the run input carries the canonical host). The confirmation
 lists the choosable records through `GET /api/agent-tasks/[taskId]?view=
 handoff-choices` (the ten newest own-site crawls, or the recorded competitor
 hosts), starts with none chosen and cannot confirm without one. Execution-time
-grounding is unchanged and re-checks the record. No schema change.
+grounding is unchanged and re-checks the record. No schema change. Verified in
+production: handoff run `bcefb1e4…` (Technical SEO `crawl-review` over crawl
+`3398ff1a…`, task `30e79092…` event 11) completed with a 1,946-character
+summary.
+
+**Crawl-review output bound (checkpoint 2.3c).** Over the same five-page crawl
+the Technical SEO review's unbounded answers ran 1,596 to 1,946 characters, and
+an unlinked panel run, `f7b68573…`, was refused as `rejected-output` at the
+worker's 2,000-character ceiling. `CRAWL_REVIEW_INSTRUCTIONS` now carry the
+On-Page review's bound (PR #13): at most 4 findings and the whole answer under
+1,500 characters, the lowest-severity findings dropped first and the coverage
+statement never dropped. The worker's screen is unchanged.
 
 ### Safety boundaries
 
