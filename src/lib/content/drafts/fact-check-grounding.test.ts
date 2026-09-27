@@ -401,7 +401,7 @@ describe("the task type — draft-fact-check", () => {
     const others: AgentId[] = ["seo-director", "project-manager", "market-intelligence", "keyword-intent", "content-strategist", "writer", "on-page-seo", "technical-seo", "ai-visibility", "authority-backlink", "analytics-learning"];
     for (const agent of others) assert.equal(agentMayRun(definition!, agent), false, agent);
     assert.equal(agentMayRun(definition!, "research-evidence"), true);
-    assert.equal(TASK_TYPES.length, 17);
+    assert.equal(TASK_TYPES.length, 18);
     assert.equal(TASK_TYPES.filter((task) => task.evidence === "draft-version").length, 1);
     assert.equal(isUpstreamTaskType("draft-fact-check"), false);
     // Still the only non-read-only task is the Writer's draft.

@@ -444,6 +444,7 @@ describe("the competitor comparison review through the worker's output screen", 
       searchConsole: notHere("Search Console"),
       searchConsoleHistory: notHere("stored Search Console history"),
       runs: { getById: notHere("a run") },
+      tasks: { listTasks: notHere("tasks"), listEvents: notHere("task history"), getRun: notHere("a linked run") },
       sourceRuns: { listRuns: notHere("the Director's source runs") },
       crawlFindings: notHere("recorded findings"),
       projects: {
@@ -702,6 +703,7 @@ describe("the Research & Evidence pack through the worker's output screen", () =
       searchConsole: notHere("Search Console"),
       searchConsoleHistory: notHere("stored Search Console history"),
       runs: { getById: notHere("a run") },
+      tasks: { listTasks: notHere("tasks"), listEvents: notHere("task history"), getRun: notHere("a linked run") },
       sourceRuns: { listRuns: notHere("the Director's source runs") },
       crawlFindings: notHere("recorded findings"),
       projects: {

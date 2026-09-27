@@ -321,7 +321,9 @@ project. Seventeen task types exist, sixteen read-only and one `draft`: `project
 `project-priority-review` (SEO Director, from the latest completed Technical
 SEO, On-Page SEO and Keyword & Search Intent reviews of the project, selected
 on the server; see *The Director's project bundle (M5)* below),
-`intake-review` (Project Manager, from the project's own stored record) and
+`intake-review` (Project Manager, from the project's own stored record),
+`task-plan-review` (Project Manager, from the project's open tasks; see
+*Tasks as grounding* below) and
 `competitor-comparison-review` (Market & Competitor Intelligence, from the
 project's own recorded crawl and one recorded competitor's crawl) and
 `evidence-pack-review` (Research & Evidence, from the records this product
@@ -2434,10 +2436,44 @@ answers `priority-changed`, or `same-priority` / `terminal` (409) and
 `task-not-found` (404). *Live tasks* offers *Change priority* beside *Change
 status* and *Change owner* (choose one of the four, Apply, recorded
 feedback), and the history renders the event. A priority change queues
-nothing and tells no agent anything. The event read selects every column, so
-it works before and after the migration. **Deploy order:** the code is safe
-to deploy first (the history keeps reading), but *Change priority* fails
-until the migration is applied to production, which is its own approved step.
+nothing and tells no agent anything. The event read selects every column.
+Merged as PR #31 (`0921c1f8…`); the migration is applied to production and
+recorded, and the round trip high → medium on task `30e79092…` is browser
+verified (events seq 15 and 16).
+
+**Tasks as grounding and the task plan review (Phase 2, checkpoint 2.4).** A
+thirteenth evidence kind, `task`, and one read-only task type,
+`task-plan-review` (Project Manager only, no input, parsed like
+`intake-review`). The reader (`src/lib/agent-tasks/grounding.ts`) reads the
+run's own project's tasks through the task store's one bounded read (the
+newest 100; a read at the bound says older tasks were not seen), keeps the
+open ones (every status but `completed` and `cancelled`), orders them by
+priority (critical first), then creation time (oldest first), then id, and
+supplies at most 25, each as one line: a short id (8 characters, longer only
+where two shown ids share a prefix), the title quoted as one JSON string,
+status, priority, owning agent, source kind (never the source text), age in
+days, and the linked run's state computed by the checkpoint 2.2 rules (none,
+unavailable, not established, queued, running, failed with its code and
+queued again, completed, failed with its code, cancelled). No run's summary,
+input or error message is supplied. Every title passes the run table's
+credential detector first; a match is withheld with a fixed disclosure and
+nothing of it leaves the reader. The task block is bounded to 6,000 UTF-8
+bytes inside the 12,000-byte evidence ceiling; when tasks are cut to fit, one
+line says how many were left out, and a title is never cut mid-way. No open
+tasks is grounded evidence that says so; a task store that cannot be read
+refuses the attempt (`tasks-not-readable`) before any provider is reached.
+The instructions follow the structural bound checkpoint 2.3d proved: one
+RECORDED line (under 25 words, never dropped), at most five PROPOSED steps
+(each under 25 words, citing tasks by short id), one BLOCKERS line (tasks
+whose linked run failed or was refused, with the code), one NEXT line (under
+15 words), and, last, the whole answer under 1,300 characters. It assigns,
+schedules, queues, executes and changes nothing, never describes anything as
+done, and makes no traffic or ranking claim. Nothing is recorded from it
+(decision Q6): an operator applies what they accept through each task's own
+status, owner and priority actions. It is queued from the *Task plan review*
+panel beside the intake review on the project screen, and executed there by
+Run Now or by the scheduled worker. No schema change: the run table checks
+only that a task type is well formed.
 
 **Crawl-review output bound (checkpoint 2.3c).** Over the same five-page crawl
 the Technical SEO review's unbounded answers ran 1,596 to 1,946 characters, and

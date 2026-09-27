@@ -14,6 +14,7 @@ import { ARTICLE_CHECK_UNIT_INSTRUCTIONS } from "@/lib/content/article-check-pro
 import { MAX_SECTION_INDEX, SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
 import { FACT_CHECK_INSTRUCTIONS } from "@/lib/content/drafts/fact-check-grounding";
 import { CONTENT_PLAN_INSTRUCTIONS } from "@/lib/content/plan-instructions";
+import { TASK_PLAN_REVIEW_INSTRUCTIONS } from "@/lib/agent-tasks/grounding";
 import { INTAKE_REVIEW_INSTRUCTIONS } from "@/lib/projects/grounding";
 import { EVIDENCE_PACK_INSTRUCTIONS } from "@/lib/research/evidence-pack";
 import { isRangeId } from "@/lib/search-console/date-windows";
@@ -97,6 +98,10 @@ export type TaskTypeDefinition = {
    * article is not this project's or is archived, the version number and
    * row id disagree, the unit index is missing or out of range, the unit is
    * over its size bounds, or the unit already carries a final result.
+   * `task` tasks are given the open tasks an operator recorded for the run's
+   * own project — intentions to act, each with its status, priority, owner
+   * and what became of its newest handoff, titles screened and quoted as
+   * data — and never a source reference or a measurement.
    */
   readonly evidence:
     | "none"
@@ -110,7 +115,8 @@ export type TaskTypeDefinition = {
     | "content-draft"
     | "crawl-links"
     | "draft-version"
-    | "article-unit";
+    | "article-unit"
+    | "task";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -430,6 +436,35 @@ const intakeReview: TaskTypeDefinition = {
 };
 
 /**
+ * The Project Manager's plan review of the run's own project's open tasks
+ * (Phase 2, checkpoint 2.4).
+ *
+ * Like the intake review it takes no input: the project is the run's, read
+ * on the server from the persisted run. The reader in
+ * `@/lib/agent-tasks/grounding` supplies the open tasks — at most 25, ordered
+ * by priority, age and id, titles screened for credentials and quoted as
+ * data, each with what became of its newest handoff. Read-only: it proposes
+ * an order for an operator, who applies what they accept through the task's
+ * own status, owner and priority actions; nothing is recorded from it, and
+ * nothing queues it automatically.
+ */
+const taskPlanReview: TaskTypeDefinition = {
+  id: "task-plan-review",
+  label: "Task plan review",
+  description:
+    "Propose an order for this project's open tasks, from their recorded status, priority, owner and handoff outcome, and name what blocks them.",
+  agents: ["project-manager"],
+  policy: "read-only",
+  evidence: "task",
+  instructions: TASK_PLAN_REVIEW_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const object = objectWithOnly(input, []);
+    if (!object.ok) return object;
+    return { ok: true, value: {} };
+  },
+};
+
+/**
  * The Market & Competitor Intelligence agent's comparison of the project's
  * site with one recorded competitor's site.
  *
@@ -718,6 +753,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   priorityReview,
   projectPriorityReview,
   intakeReview,
+  taskPlanReview,
   competitorComparisonReview,
   evidencePackReview,
   contentPlanReview,

@@ -11,6 +11,10 @@ import { createAgentRunService, type AgentRunService } from "@/lib/agent-runs/se
 import type { AgentRunsDatabase } from "@/lib/agent-runs/supabase/schema";
 import { createSupabaseAgentRunStore } from "@/lib/agent-runs/supabase/store";
 import { createTaskGrounding } from "@/lib/agent-runs/task-grounding";
+import { TASK_READ_LIMIT } from "@/lib/agent-tasks/contract";
+import { unavailableAgentTaskStore, type AgentTaskStore } from "@/lib/agent-tasks/store-contract";
+import type { AgentTasksDatabase } from "@/lib/agent-tasks/supabase/schema";
+import { createSupabaseAgentTaskStore } from "@/lib/agent-tasks/supabase/store";
 import { unavailableArticleCheckStore, type ArticleCheckStore } from "@/lib/content/articles/checks/contract";
 import type { ArticleChecksDatabase } from "@/lib/content/articles/checks/supabase/schema";
 import { createSupabaseArticleCheckStore } from "@/lib/content/articles/checks/supabase/store";
@@ -75,6 +79,18 @@ function articleCheckStoreForRuntime(): ArticleCheckStore {
   return storesInSupabase()
     ? createSupabaseArticleCheckStore(createSupabaseServerClient<ArticleChecksDatabase>(readSupabaseServerConfig(process.env)))
     : unavailableArticleCheckStore;
+}
+
+/**
+ * The task store the Project Manager's plan review reads open tasks and
+ * their histories from: `nexra_agent_tasks` and `nexra_agent_task_events`,
+ * read only, through a client of its own — built here rather than taken
+ * from the task service, which depends on this module for its handoffs.
+ */
+function agentTaskStoreForRuntime(): AgentTaskStore {
+  return storesInSupabase()
+    ? createSupabaseAgentTaskStore(createSupabaseServerClient<AgentTasksDatabase>(readSupabaseServerConfig(process.env)))
+    : unavailableAgentTaskStore;
 }
 
 function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; timeoutMs: number } {
@@ -194,6 +210,18 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // project, id and number, regenerates its check units from the stored
         // text, and re-reads the pack through the same readers. Reads only.
         articleCheck: { checks: articleCheckStoreForRuntime(), evidencePack: evidencePackReaders },
+        // The Project Manager's plan review reads the run's own project's
+        // tasks (the one bounded read), each open task's history, and the
+        // run its newest handoff linked, from the same store the runtime
+        // keeps its runs in. Reads only; nothing is written.
+        tasks: (() => {
+          const tasks = agentTaskStoreForRuntime();
+          return {
+            listTasks: (projectId: string) => tasks.listForProject({ projectId, limit: TASK_READ_LIMIT }),
+            listEvents: (projectId: string, taskId: string) => tasks.listEvents(projectId, taskId),
+            getRun: (runId: string) => store.getById(runId),
+          };
+        })(),
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

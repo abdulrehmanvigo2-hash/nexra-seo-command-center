@@ -119,6 +119,20 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "task-plan-review": {
+        const metadata: JsonObject = {
+          simulated: true,
+          // The mock executor reads no task. `grounded: false`, as for every
+          // simulated result: it looked at nothing and ordered nothing.
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+        };
+        return {
+          summary: `Simulated task plan review by ${subject}. The mock executor read no task and ordered nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "competitor-comparison-review": {
         const competitorDomain = typeof task.input.competitorDomain === "string" ? task.input.competitorDomain : null;
         const metadata: JsonObject = {
