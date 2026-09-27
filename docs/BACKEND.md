@@ -2433,6 +2433,16 @@ On-Page review's bound (PR #13): at most 4 findings and the whole answer under
 1,500 characters, the lowest-severity findings dropped first and the coverage
 statement never dropped. The worker's screen is unchanged.
 
+Live result (27 Sep): the findings cap held (3 findings) but the character cap
+did not — bounded run `2e8b7ab3…` completed at 1,926 characters and bounded run
+`98e56366…` was refused as `rejected-output`. **Checkpoint 2.3d** makes the
+bound structural, copying the Director and intake fixes: one COVERAGE line
+(under 25 words, never dropped), at most three findings of three capped lines
+(OBSERVED under 20 words, INFERENCE under 12, RECOMMENDATION under 15), one NEXT
+line (under 15 words), and, as the last rule, the whole answer under 1,200
+characters, dropping the lowest-severity finding first. The evidence, safety and
+findings-block sentences are unchanged.
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`

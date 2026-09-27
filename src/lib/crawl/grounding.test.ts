@@ -931,27 +931,47 @@ describe("M2 content signals in the evidence", () => {
  * evidence, the findings and the other two crawl reviews are pinned here.
  */
 /**
- * Checkpoint 2.3c: the crawl review had no output bound, and over the same
- * five-page crawl its answers ran 1,596 to 1,946 characters until one was
- * refused as `rejected-output` at the worker's 2,000-character ceiling. The
- * fix mirrors the On-Page bound below: one sentence, nothing else moved.
+ * Checkpoint 2.3d: PR #29's character cap (2.3c) held the findings count but
+ * not the length — bounded answers ran to 1,926 characters and one,
+ * `98e56366…`, was refused as `rejected-output` at the worker's 2,000 ceiling.
+ * The bound is now structural, copying the Director and intake fixes: a fixed
+ * order, at most three findings with a word cap on each line, the whole under
+ * 1,200 characters as the last rule, and what to drop first.
  */
 describe("the crawl-review instructions bound what the model emits", () => {
-  test("they cap the answer at 4 findings and 1,500 characters, drop the lowest-severity findings first, and keep the coverage statement", () => {
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /OUTPUT BOUND: give at most 4 findings/);
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /including the coverage statement and the closing line, under 1,500 characters/);
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /keep the most severe findings, recorded findings first/);
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /cite the rule id in square brackets and the exact URL wherever the evidence gives them/);
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /keep each finding's OBSERVED, INFERENCE and RECOMMENDATION separate and short/);
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /drop the lowest-severity findings first, entirely, rather than exceed the bound/);
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /Never drop the coverage statement to make room/);
-    // The bound sits before the closing line, so the closing line is inside it.
-    assert.ok(CRAWL_REVIEW_INSTRUCTIONS.indexOf("OUTPUT BOUND") < CRAWL_REVIEW_INSTRUCTIONS.indexOf("End with one line"));
-    // The coverage and anti-fabrication wording the bound must not displace is still there.
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /Say plainly that this covers only the pages listed/);
-    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /were NOT audited/);
-    // The task type still hands the model this exact text.
+  test("a fixed order: one COVERAGE line first, then at most three findings, then one NEXT line", () => {
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /Answer in this fixed order and no other: one COVERAGE line, then the findings, then one NEXT line\./);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /COVERAGE: one line, under 25 words, .*Never drop it\./);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /give at most three findings, fewer where the evidence supports fewer, most severe first and recorded findings before your own observations/);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /NEXT: end with one line, under 15 words/);
+    const order = ["Answer in this fixed order", "COVERAGE: one line", "at most three findings", "NEXT: end with one line", "Keep the whole answer under 1,200 characters"];
+    const at = order.map((phrase) => CRAWL_REVIEW_INSTRUCTIONS.indexOf(phrase));
+    assert.ok(at.every((index) => index >= 0), JSON.stringify(at));
+    assert.deepEqual([...at].sort((a, b) => a - b), at, "stated in this order");
+  });
+
+  test("each finding line carries its own word cap", () => {
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /OBSERVED \(under 20 words: /);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /INFERENCE \(under 12 words: /);
+    assert.match(CRAWL_REVIEW_INSTRUCTIONS, /RECOMMENDATION \(under 15 words: /);
+  });
+
+  test("the whole-answer cap is the last rule, with the drop order and what is never dropped", () => {
+    const last = "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest-severity finding first, entirely, then shorten INFERENCE; never drop the COVERAGE line or a finding's cited URL to fit.";
+    assert.ok(CRAWL_REVIEW_INSTRUCTIONS.endsWith(last));
+    // The 2.3c wording is gone: one cap, not two.
+    assert.doesNotMatch(CRAWL_REVIEW_INSTRUCTIONS, /OUTPUT BOUND|1,500 characters|at most 4 findings/);
     assert.equal(getTaskType("crawl-review")?.instructions, CRAWL_REVIEW_INSTRUCTIONS);
+  });
+
+  test("at every cap an answer stays under the worker's 2,000-character ceiling", () => {
+    // Words at their caps: COVERAGE 25, three findings of 20 + 12 + 15, NEXT 15. At an ordinary 6.5
+    // characters per word plus labels, and with a 60-character URL per finding, the total stays well
+    // under the ceiling; the 1,200 rule asks for less still.
+    const words = 25 + 3 * (20 + 12 + 15) + 15;
+    const labels = "COVERAGE: NEXT: ".length + 3 * "OBSERVED: INFERENCE: RECOMMENDATION: ".length;
+    const urls = 3 * 60;
+    assert.ok(words * 6.5 + labels + urls < 2_000, String(words * 6.5 + labels + urls));
   });
 });
 
@@ -995,13 +1015,21 @@ describe("the on-page instructions bound what the model emits", () => {
     assert.equal(getTaskType("on-page-review")?.evidence, "crawl");
   });
 
-  test("the crawl-review instructions are 3b74d99's plus the cp 2.3c output bound; answer-readiness is byte-for-byte 3b74d99's", () => {
-    // Checkpoint 2.3c added one sentence (the output bound) to the crawl review, and nothing else.
-    const withoutBound = CRAWL_REVIEW_INSTRUCTIONS.replace(/ OUTPUT BOUND: [^"]*?Never drop the coverage statement to make room\./, "");
-    assert.equal(withoutBound.length, 1_738);
-    assert.equal(sha256(withoutBound), "73c8fe593c6ab0d1ea8a6efa469d48a7c3231d94dfb9c63b156aaf09a0ac7f63");
-    assert.equal(CRAWL_REVIEW_INSTRUCTIONS.length, 2_271);
-    assert.equal(sha256(CRAWL_REVIEW_INSTRUCTIONS), "a7a2c93eb8e7138bf85a24bc686d33f3e699998d6a60ec4fcb9c5ed8852af68d");
+  test("the crawl-review instructions keep 3b74d99's evidence and safety sentences verbatim around the cp 2.3d structure; answer-readiness is byte-for-byte 3b74d99's", () => {
+    // Checkpoint 2.3d replaced the structure, the 2.3c bound and the closing line; every other sentence is 3b74d99's.
+    for (const sentence of [
+      "Review the crawl evidence supplied with this task and report what it supports.",
+      "Use only the supplied evidence. Every finding must cite at least one crawled URL.",
+      "Where a reading is marked 'not established', say it is unknown and say what would establish it. Never treat it as a pass, a failure, a zero, or a no.",
+      "URLs listed as discovered but not reached were NOT audited. You may say they exist and were not examined. Do not describe their contents, their health, or their issues.",
+      "Do not state or estimate search volume, rankings, traffic, indexation status, or Core Web Vitals; none of it is in the evidence and none of it is knowable from a crawl.",
+      "Do not describe the crawl as a full site audit or state site-wide totals. Say plainly that this covers only the pages listed.",
+      "Where a DETERMINISTIC CRAWL FINDINGS block follows the crawl evidence, each finding there is an observation by a fixed rule over the pages this crawl recorded: cite it by its rule id in square brackets and the exact URL or URLs it names, treat it as OBSERVED, and keep your own reading and next step as INFERENCE and RECOMMENDATION. State the coverage that block gives (pages fetched, link edges read, anything cut) and never extend a finding to pages it does not name, to indexation, rankings, Core Web Vitals, external links or site-wide totals. If the block says findings are unavailable or no rule fired, say so and infer nothing in their place.",
+    ]) {
+      assert.ok(CRAWL_REVIEW_INSTRUCTIONS.includes(sentence), `missing: ${sentence.slice(0, 60)}`);
+    }
+    assert.equal(CRAWL_REVIEW_INSTRUCTIONS.length, 2_428);
+    assert.equal(sha256(CRAWL_REVIEW_INSTRUCTIONS), "1e016da3e60d1cbaf1c5788db01dd725dcf7b344ef44b78b9c5e3e764a512f57");
     assert.equal(ANSWER_READINESS_REVIEW_INSTRUCTIONS.length, 2_297);
     assert.equal(sha256(ANSWER_READINESS_REVIEW_INSTRUCTIONS), "2045b12eecf05806a4830cf0fbbc592e24dd3cdbc31a89d189395477cac25876");
     assert.equal(getTaskType("crawl-review")?.instructions, CRAWL_REVIEW_INSTRUCTIONS);
