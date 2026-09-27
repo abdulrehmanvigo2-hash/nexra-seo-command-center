@@ -79,6 +79,17 @@ describe("the task route", () => {
     assert.doesNotMatch(route, /executeRun|agentRunService|action: "execute"|\.from\(|\.rpc\(/);
     assert.doesNotMatch(route, /CRON_SECRET|SERVICE_ROLE|Bearer/);
   });
+
+  test("the read adds the handoff outcome through the service, computed from the linked run and never written (cp 2.2)", async () => {
+    const route = await read("../../app/api/agent-tasks/[taskId]/route.ts");
+    assert.match(route, /outcome: await service\.readOutcome\(result\.task, result\.events\)/);
+    const wiring = await read("./index.ts");
+    assert.match(wiring, /const outcomeRuns: TaskRunReader = \{\s*getRun\(runId\) \{\s*return agentRunService\(\)\.getRun\(runId\);/);
+    assert.doesNotMatch(wiring, /executeRun|executeNext|cancelRun|retryRun/, "the task wiring reads runs and creates handoff runs only");
+    const service = await read("./service.ts");
+    const readOutcome = service.slice(service.indexOf("async readOutcome("));
+    assert.doesNotMatch(readOutcome, /store\.(create|setStatus|setOwner|handoffRequest|handoffLink)\(|runs\.createRun\(/, "the outcome read writes nothing");
+  });
 });
 
 describe("the route", () => {

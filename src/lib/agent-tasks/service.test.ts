@@ -311,3 +311,115 @@ describe("the handoff", () => {
     assert.deepEqual(await createAgentTaskService(refused.store, null).handoff(base), { status: "unavailable" });
   });
 });
+
+describe("readOutcome (checkpoint 2.2): computed from the linked run, never written", () => {
+  const TASK = task({ id: "a0000000-0000-4000-8000-000000000001" });
+  const RUN_ID = "b0000000-0000-4000-8000-000000000001";
+  const linked = (seq: number, runId: string, over: Partial<AgentTaskEvent> = {}): AgentTaskEvent => ({
+    id: `e0000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
+    seq,
+    taskId: TASK.id,
+    projectId: TASK.projectId,
+    type: "handoff-run-linked",
+    fromStatus: null,
+    toStatus: null,
+    fromAgent: null,
+    toAgent: "project-manager",
+    runId,
+    actor: "00000000-0000-4000-8000-0000000000aa",
+    createdAt: "2026-09-26T04:00:00.000Z",
+    ...over,
+  });
+  const run = (over: Partial<AgentRun> = {}): AgentRun =>
+    ({
+      id: RUN_ID,
+      projectId: TASK.projectId,
+      agentId: "project-manager",
+      taskType: "intake-review",
+      input: { sourceTaskId: TASK.id },
+      status: "completed",
+      source: "operator",
+      executor: "ai",
+      attemptCount: 1,
+      maxAttempts: 3,
+      resultSummary: "Summary.",
+      resultMetadata: { model: "claude-opus-5" },
+      error: null,
+      createdBy: "00000000-0000-4000-8000-0000000000aa",
+      cancelledBy: null,
+      createdAt: "2026-09-26T04:00:00.000Z",
+      updatedAt: "2026-09-26T04:05:00.000Z",
+      startedAt: "2026-09-26T04:04:00.000Z",
+      finishedAt: "2026-09-26T04:05:00.000Z",
+      nextAttemptAt: null,
+      autoRetryCount: 0,
+      ...over,
+    }) as AgentRun;
+
+  /** A store whose every write throws: the outcome read must never reach one. */
+  const readOnlyStore: AgentTaskStore = {
+    storesTasks: true,
+    async listForProject() { return []; },
+    async getForProject() { return TASK; },
+    async listEvents() { return []; },
+    async create() { throw new Error("no write"); },
+    async setStatus() { throw new Error("no write"); },
+    async setOwner() { throw new Error("no write"); },
+    async handoffRequest() { throw new Error("no write"); },
+    async handoffLink() { throw new Error("no write"); },
+  };
+  const reader = (answer: (runId: string) => Promise<{ ok: true; run: AgentRun } | { ok: false; reason: string }>) => {
+    const asked: string[] = [];
+    return { asked, getRun: async (runId: string) => { asked.push(runId); return answer(runId); } };
+  };
+
+  test("no handoff: none, and the run path is never asked", async () => {
+    const runs = reader(async () => { throw new Error("not asked"); });
+    const service = createAgentTaskService(readOnlyStore, null, runs);
+    assert.deepEqual(await service.readOutcome(TASK, []), { status: "none" });
+    assert.deepEqual(runs.asked, []);
+  });
+
+  test("reads only the newest linked run, and shows it when it is provably the task's", async () => {
+    const runs = reader(async () => ({ ok: true, run: run() }));
+    const service = createAgentTaskService(readOnlyStore, null, runs);
+    const outcome = await service.readOutcome(TASK, [linked(8, RUN_ID), linked(3, "b0000000-0000-4000-8000-000000000009")]);
+    assert.deepEqual(runs.asked, [RUN_ID]);
+    assert.equal(outcome.status, "completed");
+    if (outcome.status === "completed") assert.equal(outcome.resultSummary, "Summary.");
+  });
+
+  test("a link event of another task or project is ignored", async () => {
+    const runs = reader(async () => ({ ok: true, run: run() }));
+    const service = createAgentTaskService(readOnlyStore, null, runs);
+    assert.deepEqual(await service.readOutcome(TASK, [linked(8, RUN_ID, { taskId: "a0000000-0000-4000-8000-000000000002" }), linked(9, RUN_ID, { projectId: "other-client" })]), { status: "none" });
+    assert.deepEqual(runs.asked, []);
+  });
+
+  test("unavailable, never guessed: no reader, not found, a failed read, a throw, another project or another task", async () => {
+    const cases: [string, ReturnType<typeof reader> | null][] = [
+      ["no reader", null],
+      ["not found", reader(async () => ({ ok: false, reason: "not-found" }))],
+      ["store unavailable", reader(async () => ({ ok: false, reason: "unavailable" }))],
+      ["throws", reader(async () => { throw new Error("boom"); })],
+      ["other project", reader(async () => ({ ok: true, run: run({ projectId: "other-client" }) }))],
+      ["other task", reader(async () => ({ ok: true, run: run({ input: { sourceTaskId: "a0000000-0000-4000-8000-000000000002" } }) }))],
+      ["no provenance", reader(async () => ({ ok: true, run: run({ input: {} }) }))],
+    ];
+    for (const [label, runs] of cases) {
+      const service = createAgentTaskService(readOnlyStore, null, runs);
+      assert.deepEqual(await service.readOutcome(TASK, [linked(8, RUN_ID)]), { status: "unavailable", runId: RUN_ID }, label);
+    }
+  });
+
+  test("a failed rejected-output run shows its fixed code and no summary; the task is not touched", async () => {
+    const runs = reader(async () => ({ ok: true, run: run({ status: "failed", resultSummary: null, error: { code: "rejected-output", message: "Refused." } }) }));
+    const service = createAgentTaskService(readOnlyStore, null, runs);
+    const outcome = await service.readOutcome(TASK, [linked(8, RUN_ID)]);
+    assert.equal(outcome.status, "failed");
+    if (outcome.status === "failed") {
+      assert.equal(outcome.resultSummary, null);
+      assert.equal(outcome.error?.code, "rejected-output");
+    }
+  });
+});

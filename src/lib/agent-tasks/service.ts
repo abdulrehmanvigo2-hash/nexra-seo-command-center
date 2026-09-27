@@ -13,6 +13,7 @@ import {
   type ListAgentTasksFilter,
 } from "@/lib/agent-tasks/contract";
 import { handoffFor } from "@/lib/agent-tasks/handoff";
+import { latestLinkedRunId, outcomeMismatch, presentTaskRunOutcome, type TaskRunOutcome } from "@/lib/agent-tasks/outcome";
 import type { AgentTaskStore } from "@/lib/agent-tasks/store-contract";
 import { logEvent } from "@/lib/observability/log";
 import type { AgentRun } from "@/types/agent-run";
@@ -52,6 +53,14 @@ export type HandoffTaskResult =
   | { readonly status: "run-refused"; readonly task: AgentTask; readonly reason: string }
   | { readonly status: "unavailable" };
 
+/**
+ * What the outcome read needs from the run path: the existing read of one
+ * run by id. Read-only: nothing here queues, retries or executes a run.
+ */
+export type TaskRunReader = {
+  getRun(runId: string): Promise<{ readonly ok: true; readonly run: AgentRun } | { readonly ok: false; readonly reason: string }>;
+};
+
 /** What the handoff needs from the run path: the existing create, with provenance. */
 export type HandoffRunCreator = {
   createRun(
@@ -74,9 +83,19 @@ export type AgentTaskService = {
   changeOwner(input: ChangeTaskOwnerInput): Promise<ChangeTaskOwnerResult>;
   /** Records the request, creates at most one queued run for the owning agent, links it. Executes nothing. */
   handoff(input: HandoffRequestInput): Promise<HandoffTaskResult>;
+  /**
+   * What became of the task's newest handoff, computed now from the linked
+   * run (checkpoint 2.2). Writes nothing and never throws: a run that cannot
+   * be read, or is not provably this task's, answers `unavailable`.
+   */
+  readOutcome(task: AgentTask, events: readonly AgentTaskEvent[]): Promise<TaskRunOutcome>;
 };
 
-export function createAgentTaskService(store: AgentTaskStore, runs: HandoffRunCreator | null = null): AgentTaskService {
+export function createAgentTaskService(
+  store: AgentTaskStore,
+  runs: HandoffRunCreator | null = null,
+  runReader: TaskRunReader | null = null,
+): AgentTaskService {
   return {
     async listTasks(filter) {
       if (!store.storesTasks) return { status: "unavailable" };
@@ -188,6 +207,27 @@ export function createAgentTaskService(store: AgentTaskStore, runs: HandoffRunCr
         throw new Error(`Task handoff: the run ${created.run.id} was created but could not be linked (${linked.status}).`);
       }
       return { status: "handed-off", task: linked.task, run: created.run, duplicate: created.duplicate };
+    },
+
+    async readOutcome(task, events) {
+      const runId = latestLinkedRunId(events.filter((event) => event.taskId === task.id && event.projectId === task.projectId));
+      if (runId === null) return { status: "none" };
+      const unavailable = (reason: string): TaskRunOutcome => {
+        // Ids and a reason name only: never the run's summary or input.
+        logEvent("warn", "agent_tasks.outcome", { projectId: task.projectId, runId, reason, outcome: "unavailable" });
+        return { status: "unavailable", runId };
+      };
+      if (runReader === null) return unavailable("read-failed");
+      let read: Awaited<ReturnType<TaskRunReader["getRun"]>>;
+      try {
+        read = await runReader.getRun(runId);
+      } catch {
+        return unavailable("read-failed");
+      }
+      if (!read.ok) return unavailable(read.reason === "not-found" ? "run-not-found" : "read-failed");
+      const mismatch = outcomeMismatch(task, runId, read.run);
+      if (mismatch !== null) return unavailable(mismatch);
+      return presentTaskRunOutcome(read.run);
     },
   };
 }

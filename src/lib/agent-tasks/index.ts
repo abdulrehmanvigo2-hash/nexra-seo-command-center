@@ -1,7 +1,7 @@
 import "server-only";
 
 import { agentRunService } from "@/lib/agent-runs";
-import { createAgentTaskService, type AgentTaskService, type HandoffRunCreator } from "@/lib/agent-tasks/service";
+import { createAgentTaskService, type AgentTaskService, type HandoffRunCreator, type TaskRunReader } from "@/lib/agent-tasks/service";
 import { unavailableAgentTaskStore } from "@/lib/agent-tasks/store-contract";
 import type { AgentTasksDatabase } from "@/lib/agent-tasks/supabase/schema";
 import { createSupabaseAgentTaskStore } from "@/lib/agent-tasks/supabase/store";
@@ -35,12 +35,23 @@ const handoffRuns: HandoffRunCreator = {
   },
 };
 
+/**
+ * The outcome of a handed-off task is read from the same run service, by the
+ * run id the task's history recorded (checkpoint 2.2). Read only.
+ */
+const outcomeRuns: TaskRunReader = {
+  getRun(runId) {
+    return agentRunService().getRun(runId);
+  },
+};
+
 export function agentTaskService(): AgentTaskService {
   service ??= createAgentTaskService(
     storesInSupabase()
       ? createSupabaseAgentTaskStore(createSupabaseServerClient<AgentTasksDatabase>(readSupabaseServerConfig(process.env)))
       : unavailableAgentTaskStore,
     storesInSupabase() ? handoffRuns : null,
+    storesInSupabase() ? outcomeRuns : null,
   );
   return service;
 }

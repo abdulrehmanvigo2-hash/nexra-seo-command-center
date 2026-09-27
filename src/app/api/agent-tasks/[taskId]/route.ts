@@ -8,7 +8,7 @@ import { getOperator } from "@/lib/auth/session";
  * One agent task: read it with its history, or change it (Project Manager
  * task workflow).
  *
- *   GET  /api/agent-tasks/<id>?project=<id>            → { task, events }
+ *   GET  /api/agent-tasks/<id>?project=<id>            → { task, events, outcome }
  *   POST /api/agent-tasks/<id>  { project, action: "status", status }
  *                               { project, action: "owner", owningAgent }
  *                               { project, action: "handoff" }
@@ -20,7 +20,10 @@ import { getOperator } from "@/lib/auth/session";
  * moves only along the fixed transition map; an owner is one of the twelve
  * registry agents; a handoff names no agent, task type or input — the server
  * maps the owning agent to its one supported task or refuses — and creates
- * at most one queued run, which nothing here executes.
+ * at most one queued run, which nothing here executes. The read's `outcome`
+ * is what became of the newest handoff, computed now from the linked run and
+ * shown only when that run is provably this task's; it writes nothing and
+ * never changes the task's status.
  */
 
 const PROJECT_ID = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
@@ -37,14 +40,15 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/agen
   if (limited) return limited;
 
   try {
-    const result = await agentTaskService().readTask(project, taskId.toLowerCase());
+    const service = agentTaskService();
+    const result = await service.readTask(project, taskId.toLowerCase());
     switch (result.status) {
       case "unavailable":
         return errorResponse("unavailable", 503);
       case "task-not-found":
         return errorResponse("task-not-found", 404);
       case "found":
-        return json({ task: result.task, events: result.events });
+        return json({ task: result.task, events: result.events, outcome: await service.readOutcome(result.task, result.events) });
     }
   } catch (error) {
     logFailure("agent-tasks read", error);
