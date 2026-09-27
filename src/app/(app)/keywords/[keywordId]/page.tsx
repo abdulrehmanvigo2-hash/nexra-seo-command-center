@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { KeywordDetailNotice, LiveKeywordDetail } from "@/components/keywords/live-keyword-detail";
+import { logFailure } from "@/lib/agent-runs/http";
 import { getOperator } from "@/lib/auth/session";
 import { keywordLimiter, keywordService } from "@/lib/keywords";
 import { isKeywordId } from "@/lib/keywords/contract";
@@ -33,7 +34,14 @@ export default async function KeywordPage({ params }: PageParams) {
     return <KeywordDetailNotice title="Too many reads in a short time" description="Wait a moment and reload. Nothing is shown in place of the keyword's records." />;
   }
 
-  const detail = await keywordService().readKeyword(id.toLowerCase());
+  let detail: Awaited<ReturnType<ReturnType<typeof keywordService>["readKeyword"]>>;
+  try {
+    detail = await keywordService().readKeyword(id.toLowerCase());
+  } catch (error) {
+    // The error's name only; the notice names no cause.
+    logFailure("keyword detail", error);
+    return <KeywordDetailNotice title="Curated keywords could not be read" description="The keyword's records could not be read just now. Reload in a moment. Nothing is shown in their place." />;
+  }
   if (detail.status === "unavailable") {
     return <KeywordDetailNotice title="Curated keywords are not kept on this deployment" description="There is no curated keyword to show. Nothing is shown in its place." />;
   }

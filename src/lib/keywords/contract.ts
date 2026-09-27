@@ -268,6 +268,13 @@ export const STATUS_LABEL: Readonly<Record<CuratedKeywordStatus, { readonly labe
   archived: { label: "Archived", tone: "neutral" },
 };
 
+/** What a failed read of the curated list means. Never says the project has no curated keywords. */
+export function curatedReadFailure(httpStatus: number): string {
+  if (httpStatus === 401) return "Your session has ended. Reload the page to sign in again.";
+  if (httpStatus === 429) return "Too many requests. Wait a moment and refresh.";
+  return "Curated keywords could not be read. The observed tabs are unaffected.";
+}
+
 /** What a refused or failed request means, in the operator's terms. Never the server's text. */
 export function keywordRequestFailure(httpStatus: number, error?: unknown): string {
   switch (error) {

@@ -14,7 +14,7 @@ import { Panel, PanelBody, PanelFooter } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
-import { keywordRequestFailure, keywordsListUrl } from "@/lib/keywords/contract";
+import { curatedReadFailure, keywordsListUrl } from "@/lib/keywords/contract";
 import type { CuratedKeywordRow } from "@/lib/keywords/service";
 import type { ProjectOption } from "@/lib/projects/selection";
 import type { IntentHint } from "@/lib/search-console/keywords/intent";
@@ -115,25 +115,23 @@ export function KeywordsWorkspace({
     fetch(keywordsListUrl(projectId), { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (response.status === 503) return setCurated({ status: "unavailable" });
-        if (!response.ok) return setCurated({ status: "failed", message: keywordRequestFailure(response.status) });
+        if (!response.ok) return setCurated({ status: "failed", message: curatedReadFailure(response.status) });
         const body = (await response.json()) as { keywords?: CuratedKeywordRow[] };
         setCurated({ status: "loaded", keywords: body.keywords ?? [] });
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === "AbortError") return;
-        setCurated({ status: "failed", message: keywordRequestFailure(0) });
+        setCurated({ status: "failed", message: curatedReadFailure(0) });
       });
     return () => controller.abort();
   }, [projectId, curatedVersion]);
 
+  // Track is offered only once the list has been read: without it, an already curated query could not be told apart.
   const curation = useMemo<Curation | null>(
     () =>
-      curated.status === "unavailable"
+      curated.status !== "loaded"
         ? null
-        : {
-            ids: new Map(curated.status === "loaded" ? curated.keywords.map((row) => [row.keyword.query, row.keyword.id] as const) : []),
-            onAdded: () => reloadCurated(),
-          },
+        : { ids: new Map(curated.keywords.map((row) => [row.keyword.query, row.keyword.id] as const)), onAdded: () => reloadCurated() },
     [curated, reloadCurated],
   );
 

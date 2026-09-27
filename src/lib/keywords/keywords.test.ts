@@ -8,6 +8,7 @@ import {
   KEYWORD_IMPORT_LIMIT,
   isOnProjectHost,
   keywordDetailHref,
+  curatedReadFailure,
   keywordRequestFailure,
   keywordsListUrl,
   parseAddKeywordsRequest,
@@ -145,6 +146,8 @@ describe("request shapes", () => {
     assert.match(keywordRequestFailure(409, "target-off-host"), /not on this project's site/);
     assert.match(keywordRequestFailure(429), /Too many/);
     assert.doesNotMatch(keywordRequestFailure(500), /error|exception/i);
+    assert.match(curatedReadFailure(500), /could not be read/, "a failed read, e.g. before the migration is applied, is never read as an empty list");
+    assert.doesNotMatch(curatedReadFailure(500), /no curated keyword|recorded/i);
   });
 });
 

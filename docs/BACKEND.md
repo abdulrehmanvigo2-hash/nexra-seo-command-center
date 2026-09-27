@@ -2327,6 +2327,30 @@ session-only bulk action; `/keywords/clusters/[clusterId]` is removed.
 source, which the database matches exactly); `queryLabel` is the
 200-character display cut. No schema change.
 
+**Checkpoint 3.5 (curated keywords).** Migration
+`20261006120000_curated_keywords.sql` (see `supabase/README.md`) adds the
+operator's keyword list: `nexra_keywords`, one row per project and exact
+query text with a status (`tracked`, `paused`, `archived`), an optional group
+label, target page on the project's host and note, and no figure of any kind;
+and the append-only `nexra_keyword_events`. Five `security definer` functions
+are the only writes. `src/lib/keywords`: the contract (request shapes: 1–100
+exact queries per add, kept as sent; one field or status per action; the host
+rule), the Supabase store over the five functions, the observed join
+(`observed.ts`: a keyword's link to the stored Search Console rows by exact
+query text — Google's figures when observed, "not observed in stored rows"
+otherwise, never zero — and its per-window figures and pages from the latest
+pair window), and the service (list with the link, add, detail with events
+and the tasks whose keyword source is the exact query, actions).
+`GET /api/keywords?project=`, `POST /api/keywords` and
+`POST /api/keywords/<id>`: operator, same origin for writes, 120 reads and 60
+writes per ten minutes. `/keywords/<id>` is rendered on the server per
+request from the keyword's uuid (the id's shape, the operator, the read
+limit, then the service, which requires the keyword's project to be stored);
+fixture ids are not found. The Keyword Intelligence screen's Lists tab shows
+the list and an import form, and each observed row offers *Track*. Curated
+keywords are not agent grounding. The migration is not yet applied to
+production.
+
 **Deploy order:** the migration must be applied to production before this
 code is deployed; the read route answers 503 until then only if the store is
 missing, but the write and the triage read would fail on the missing table.
