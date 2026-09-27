@@ -10,6 +10,7 @@ import { formatFullDate } from "@/lib/format";
 import { LEARNING_LABEL, LEARNINGS_READ_LIMIT, learningsReadFailure, learningsUrl, presentLearnings, type Learning } from "@/lib/analytics/learnings";
 import {
   LATEST_WINDOW_FOOTER,
+  STORED_VS_LIVE_NOTE,
   comparisonReadiness,
   describeLatestWindow,
   latestWindowLine,
@@ -96,6 +97,9 @@ export function LatestWindowTiles({ projectId, readiness }: { projectId: string;
           <span>{latestWindowLine(view)}</span>
           <span>{LATEST_WINDOW_FOOTER}</span>
         </PanelFooter>
+        <p className="border-t border-border px-4 py-2.5 text-xs text-fg-subtle sm:px-5" role="note">
+          {STORED_VS_LIVE_NOTE}
+        </p>
         {readiness && (
           <p className="border-t border-border px-4 py-2.5 text-xs text-fg-subtle sm:px-5" role="note">
             {comparisonReadiness(view)}

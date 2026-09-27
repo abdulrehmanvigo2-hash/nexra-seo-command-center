@@ -37,6 +37,7 @@ describe("the project Director panel", () => {
     assert.match(panel, /The project&apos;s run history could not be read/);
     assert.match(panel, /it does not see the crawls or reports themselves, and it ranks nothing on general SEO knowledge/);
     assert.match(panel, /assigns nothing, schedules nothing, and changes nothing/);
+    assert.match(panel, /Technical SEO, On-Page SEO, Keyword & Search Intent, Analytics & Learning \(performance\) and AI Visibility \(answer-readiness\) reviews/, "names the five slots (checkpoint 4.8)");
   });
 
   test("is mounted exactly once, on the project screen, beneath the specialist controls", async () => {

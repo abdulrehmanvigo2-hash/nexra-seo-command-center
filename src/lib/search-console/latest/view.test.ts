@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import type { SearchConsoleSnapshot } from "../snapshots/contract.ts";
 import {
   LATEST_WINDOW_FOOTER,
+  STORED_VS_LIVE_NOTE,
   POSITION_NOT_RANK,
   comparisonReadiness,
   describeLatestWindow,
@@ -91,6 +92,11 @@ describe("presentLatestWindow", () => {
     const line = latestWindowLine(windowOf(presentLatestWindow(PRODUCTION, PROPERTY)));
     assert.equal(line, "Latest stored window 26 Aug 2026 – 24 Sep 2026 · captured 27 Sep 2026 · 3 stored windows");
     assert.match(LATEST_WINDOW_FOOTER, /latest window only/);
+  });
+
+  test("the stored-versus-live clarifier names both windows (checkpoint 4.8)", () => {
+    assert.match(STORED_VS_LIVE_NOTE, /latest stored window/);
+    assert.match(STORED_VS_LIVE_NOTE, /live report/);
   });
 
   test("history is insufficient until two windows are 7 days apart, and it says when the first could be", () => {

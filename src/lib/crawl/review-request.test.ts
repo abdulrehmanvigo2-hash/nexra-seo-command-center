@@ -2246,6 +2246,7 @@ describe("the SEO Director's project review request (M5)", () => {
     assert.match(PROJECT_PRIORITY_REVIEW.summary, /chosen by fixed rules on the server/);
     assert.match(PROJECT_PRIORITY_REVIEW.summary, /not the crawls or reports themselves/);
     assert.match(PROJECT_PRIORITY_REVIEW.summary, /It assigns nothing and changes nothing\./);
+    assert.match(PROJECT_PRIORITY_REVIEW.summary, /Technical SEO, On-Page SEO, Keyword & Search Intent, Analytics & Learning \(performance\) and AI Visibility \(answer-readiness\) reviews/);
   });
 
   test("is not offered without a project, before the listing loads, or when no supported review is eligible", () => {
@@ -2254,7 +2255,7 @@ describe("the SEO Director's project review request (M5)", () => {
     const none = projectDirectorRequest("nexra-agency", [missing, { ...missing, slot: { taskType: "search-query-review", agentId: "keyword-intent" }, reason: "no-eligible-run", scanned: 3 }]);
     assert.equal(none.ok, false);
     if (none.ok) return;
-    assert.match(none.why, /No completed, grounded specialist review exists for this project yet\. Run a Technical SEO, On-Page SEO or Keyword & Search Intent review first/);
+    assert.match(none.why, /No completed, grounded specialist review exists for this project yet\. Run a Technical SEO, On-Page SEO, Keyword & Search Intent, Analytics & Learning or AI Visibility review first/);
   });
 
   test("its completed result is never a hand-off source and offers no further Director control", () => {
