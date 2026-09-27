@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow and their priority).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow and their priority, and curated keywords).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority keywords keywords-races
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -32,7 +32,7 @@ M2_MIGRATION="$MIGRATIONS/20261001120000_extend_crawl_page_content_signals.sql"
 PRIORITY_MIGRATION="$MIGRATIONS/20261005120000_agent_task_priority.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [keywords]=126)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -468,7 +468,36 @@ suite_task_priority() {
   run_sql_suite task-priority "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/task-priority/tests.sql"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority)
+# Curated keywords (checkpoint 3.5): the add function, the four setters, their events, the guards.
+suite_keywords() {
+  fresh_db
+  run_sql_suite keywords "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/keywords/setup.sql" "$HERE/keywords/tests.sql"
+}
+
+# Curated keywords under concurrency: two adds of one exact query, and two setters on one row.
+suite_keywords_races() {
+  fresh_db
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/gsc/setup.sql" -f "$HERE/keywords/setup.sql" >/dev/null
+  local rows
+  race "select t.kadd('race query')->>'outcome'" "select t.kadd('race query')->>'outcome'"
+  rows="$(q "select count(*) from public.nexra_keywords where query = 'race query'")"
+  check "keywords race K1 same query: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, rows $rows" \
+    "$([ "$R1" = added ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = 1 ]; echo $?)"
+  race "select t.kadd('rolled back')->>'outcome'" "select t.kadd('rolled back')->>'outcome'" rollback
+  rows="$(q "select count(*) from public.nexra_keywords where query = 'rolled back'")"
+  check "keywords race K2 first rolls back: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, rows $rows" \
+    "$([ "$R1" = added ] && [ "$R2" = added ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = 1 ]; echo $?)"
+  race "select public.nexra_keyword_set_status('halcyon-fintech', t.kid('race query'), 'paused', t.kop())->>'outcome'" \
+       "select public.nexra_keyword_set_status('halcyon-fintech', t.kid('race query'), 'paused', t.kop())->>'outcome'"
+  rows="$(q "select count(*) from public.nexra_keyword_events where keyword_id = t.kid('race query') and event_type = 'status-changed'")"
+  check "keywords race K3 same setter: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, status events $rows" \
+    "$([ "$R1" = status-changed ] && [ "$R2" = same-status ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = 1 ]; echo $?)"
+  race "select t.kadd('other one')->>'outcome'" "select t.kadd('other two')->>'outcome'"
+  check "keywords race K4 different queries do not wait: s1=$R1 s2=$R2, waited ${WAIT_MS} ms" \
+    "$([ "$R1" = added ] && [ "$R2" = added ] && [ "$WAIT_MS" -lt 1000 ]; echo $?)"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority keywords keywords-races)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -483,6 +512,7 @@ for s in "${SUITES[@]}"; do
     content) suite_content ;; content-upgrade) suite_content_upgrade ;;
     triage) suite_triage ;; triage-races) suite_triage_races ;;
     tasks) suite_tasks ;; task-workflow) suite_task_workflow ;; task-priority) suite_task_priority ;;
+    keywords) suite_keywords ;; keywords-races) suite_keywords_races ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

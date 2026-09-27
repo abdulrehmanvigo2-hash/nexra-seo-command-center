@@ -1,6 +1,7 @@
 "use client";
 
 import { RecordTaskControl } from "@/components/agent-tasks/record-task-control";
+import { CurateKeywordControl } from "@/components/keywords/curated-keywords";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
@@ -42,11 +43,15 @@ export const INTENT_TONE: Readonly<Record<IntentHint, "neutral" | "accent" | "po
   unclassified: "neutral",
 };
 
+/** The curated keywords of the project, by exact query, and how to record a new one (checkpoint 3.5). */
+export type Curation = { readonly ids: ReadonlyMap<string, string>; readonly onAdded: (query: string, keywordId: string) => void };
+
 export function SearchConsoleKeywords({
   projectId,
   view,
   rows,
   filtered,
+  curation,
 }: {
   /** The stored project the screen chose. */
   projectId: string;
@@ -55,6 +60,8 @@ export function SearchConsoleKeywords({
   rows: readonly ObservedQueryView[];
   /** Whether the screen's filters narrow the rows. */
   filtered: boolean;
+  /** Null when curated keywords are not kept on this deployment. */
+  curation: Curation | null;
 }) {
   return (
     <Panel>
@@ -69,7 +76,7 @@ export function SearchConsoleKeywords({
         }
       />
       <PanelBody>
-        <InventoryBody view={view} rows={rows} filtered={filtered} projectId={projectId} />
+        <InventoryBody view={view} rows={rows} filtered={filtered} projectId={projectId} curation={curation} />
       </PanelBody>
       <PanelFooter>
         <span>{view.caveats[0]}</span>
@@ -78,7 +85,7 @@ export function SearchConsoleKeywords({
   );
 }
 
-function InventoryBody({ view, rows, filtered, projectId }: { view: KeywordInventoryView; rows: readonly ObservedQueryView[]; filtered: boolean; projectId: string }) {
+function InventoryBody({ view, rows, filtered, projectId, curation }: { view: KeywordInventoryView; rows: readonly ObservedQueryView[]; filtered: boolean; projectId: string; curation: Curation | null }) {
   const opportunityTotal = OPPORTUNITY_LABELS.reduce((sum, label) => sum + view.counts.byOpportunity[label], 0);
   return (
     <div className="space-y-4">
@@ -133,7 +140,7 @@ function InventoryBody({ view, rows, filtered, projectId }: { view: KeywordInven
         {rows.length === 0 ? (
           <EmptyState size="sm" icon="search" title="No observed query matches these filters" description="The filters narrow the stored rows shown here; clearing them shows every observed query again." />
         ) : (
-          <ObservedQueryTable rows={rows} projectId={projectId} caption="Observed queries" />
+          <ObservedQueryTable rows={rows} projectId={projectId} caption="Observed queries" curation={curation} />
         )}
       </section>
 
@@ -176,7 +183,7 @@ function InventoryBody({ view, rows, filtered, projectId }: { view: KeywordInven
 }
 
 /** The observed-query table with a *Record as task* control per row; shared with the Opportunities tab. */
-export function ObservedQueryTable({ rows, projectId, caption }: { rows: readonly ObservedQueryView[]; projectId: string; caption: string }) {
+export function ObservedQueryTable({ rows, projectId, caption, curation }: { rows: readonly ObservedQueryView[]; projectId: string; caption: string; curation: Curation | null }) {
   return (
     <Table caption={caption}>
       <TableHead>
@@ -192,18 +199,19 @@ export function ObservedQueryTable({ rows, projectId, caption }: { rows: readonl
           <TableHeaderCell>Pages in stored pairs</TableHeaderCell>
           <TableHeaderCell>Candidates</TableHeaderCell>
           <TableHeaderCell>Task</TableHeaderCell>
+          {curation !== null && <TableHeaderCell>Curated</TableHeaderCell>}
         </TableRow>
       </TableHead>
       <TableBody>
         {rows.map((row) => (
-          <QueryRow key={row.query} row={row} projectId={projectId} />
+          <QueryRow key={row.query} row={row} projectId={projectId} curation={curation} />
         ))}
       </TableBody>
     </Table>
   );
 }
 
-function QueryRow({ row, projectId }: { row: ObservedQueryView; projectId: string }) {
+function QueryRow({ row, projectId, curation }: { row: ObservedQueryView; projectId: string; curation: Curation | null }) {
   const latest = row.latest;
   return (
     <TableRow>
@@ -254,6 +262,12 @@ function QueryRow({ row, projectId }: { row: ObservedQueryView; projectId: strin
         {/* An operator may record this observed query as one persisted task. The exact, uncut stored query text is the source (Q7); recording runs nothing. */}
         <RecordTaskControl projectId={projectId} proposal={keywordTaskProposal(row.query)} compact />
       </TableCell>
+      {curation !== null && (
+        <TableCell className="min-w-[7rem]">
+          {/* Checkpoint 3.5: add the exact stored query to the operator's curated list, or open it once curated. */}
+          <CurateKeywordControl projectId={projectId} query={row.query} curatedId={curation.ids.get(row.query) ?? null} onAdded={curation.onAdded} />
+        </TableCell>
+      )}
     </TableRow>
   );
 }

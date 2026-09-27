@@ -24,6 +24,8 @@ export const KEYWORD_TABS = [
   { id: "opportunities", label: "Opportunities", icon: "target" },
   { id: "movement", label: "Movement", icon: "activity" },
   { id: "cannibalization", label: "Cannibalisation", icon: "split" },
+  // Checkpoint 3.5: the operator's curated keywords, back with a persisted entity.
+  { id: "lists", label: "Lists", icon: "list" },
 ] as const;
 
 export type KeywordTabId = (typeof KEYWORD_TABS)[number]["id"];
@@ -31,9 +33,9 @@ export type KeywordTabId = (typeof KEYWORD_TABS)[number]["id"];
 /**
  * Tabs the modelled screen had and this one does not show (decision Q1):
  * content gap, competitors, SERP and AI search need data this product does
- * not hold; lists wait for the curated keyword entity (checkpoint 3.5).
+ * not hold. Lists returned with the curated keyword entity (checkpoint 3.5).
  */
-export const HIDDEN_KEYWORD_TABS: readonly string[] = ["gaps", "competitors", "serp", "ai", "lists"];
+export const HIDDEN_KEYWORD_TABS: readonly string[] = ["gaps", "competitors", "serp", "ai"];
 
 /** A deep link's `?tab=`; an unknown or hidden tab opens the Keywords tab. */
 export function resolveKeywordTab(param: string | null): KeywordTabId {

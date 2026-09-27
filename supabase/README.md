@@ -155,8 +155,10 @@ Editor (or run with the Supabase CLI against a linked project):
 26. `20261004120000_agent_task_workflow.sql` — Project Manager task workflow
 27. `20261005120000_agent_task_priority.sql` — task priority change (Phase 2,
     checkpoint 2.3b)
+28. `20261006120000_curated_keywords.sql` — curated keywords (Phase 3,
+    checkpoint 3.5); **not yet applied to production** (a separate approval)
 
-All twenty-seven are applied to production and recorded in its migration
+The first twenty-seven are applied to production and recorded in its migration
 history (28 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0).
 
@@ -682,3 +684,32 @@ Crawling is off unless the server sets `CRAWL_ENABLED` and names the project's
 host in `CRAWL_ALLOWED_HOSTS`. See `.env.example`, and the crawl section of
 [`docs/BACKEND.md`](../docs/BACKEND.md) for how connections are pinned to an
 approved address and what has still not been exercised against a live site.
+
+## Curated keywords (the operator's keyword list)
+
+`20261006120000_curated_keywords.sql` (Phase 3, checkpoint 3.5) adds
+`nexra_keywords`: one row per project and exact query text (unique on
+`(project_id, query)`, never trimmed or case-folded; 1–2048 characters, no
+control characters, not blank), with a status (`tracked`, `paused`,
+`archived`; new rows `tracked`), an optional group label (1–80), note (1–500)
+and target page (an absolute http(s) URL on the project's host: the host of
+`projects.domain`, with or without `www.`), the creator and timestamps. It
+holds no figure of any kind: observed figures are joined on read from the
+stored Search Console rows by exact query text, and a query need not have been
+observed to be curated. `nexra_keyword_events` is append-only, ordered by an
+identity `seq`: `created` (AFTER INSERT trigger), `status-changed`,
+`group-changed`, `target-changed`, `note-changed`, each carrying only its own
+before and after values (shape check). Five `security definer` functions,
+empty `search_path`, each taking the project beside the keyword:
+`nexra_keyword_add` (`added`, `exists` with the row unchanged,
+`project-not-found`, `target-off-host`) and `nexra_keyword_set_status`,
+`_set_group`, `_set_target`, `_set_note` (the change, `keyword-not-found`,
+`same-*`, and `target-off-host` for a target). Shape errors raise
+invalid_parameter_value. The update guard lets only group label, note, target
+page, status and updated_at change, only under the setters' transaction-local
+flag; there is no delete path (archive instead). RLS on, no policies;
+`service_role` holds SELECT on both tables and EXECUTE on the five functions
+only. Harness suites `keywords` (126 assertions) and `keywords-races` (K1–K4:
+two adds of one query, a rolled-back add, two identical setters, unrelated
+adds not waiting). **Not yet applied to production**: applying it is a
+separate §6 approval after the code is merged.
