@@ -153,10 +153,14 @@ Editor (or run with the Supabase CLI against a linked project):
 24. `20261002120000_create_crawl_finding_triage.sql` — M3 triage
 25. `20261003120000_create_agent_tasks.sql` — Project Manager task core
 26. `20261004120000_agent_task_workflow.sql` — Project Manager task workflow
+27. `20261005120000_agent_task_priority.sql` — task priority change (Phase 2,
+    checkpoint 2.3b) — **NOT yet applied to production**
 
-All twenty-six are applied to production and recorded in its migration
+The first twenty-six are applied to production and recorded in its migration
 history (27 versions: the articles migration is recorded under
-`20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0).
+`20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0). The
+twenty-seventh is written and verified on the local harness only; applying it
+to production is its own §6-approved step after the code is merged.
 
 After each, run `NOTIFY pgrst, 'reload schema';` on its own so the API sees the
 new tables and functions.
@@ -598,6 +602,31 @@ the four functions. None of this creates or executes a run: a handoff's one
 run is created by the application through the existing run path. Harness
 suite `task-workflow` (150 assertions). Applied to production and recorded;
 production verified on task `30e79092…` (eight events).
+
+## Agent task priority (change priority, priority-changed event)
+
+`20261005120000_agent_task_priority.sql` (Phase 2, checkpoint 2.3b) lets an
+operator change a task's priority. `nexra_agent_task_events` gains two
+nullable columns, `from_priority` and `to_priority` (each one of low, medium,
+high, critical), and a sixth event type, `priority-changed`, which carries
+exactly those two, different values; the type list and the shape check are
+replaced so every earlier type also requires both to be null (no existing row
+changes meaning). One `security definer` function, empty `search_path`,
+shaped like `nexra_agent_task_set_owner`: `nexra_agent_task_set_priority`
+takes the project beside the task, locks the row, answers `task-not-found`,
+`same-priority` or `terminal` without writing, and otherwise updates only
+`priority` and `updated_at` under the transaction-local flag and appends one
+event; a priority outside the four raises invalid_parameter_value. The update
+guard is replaced so that priority is no longer immutable — it changes only
+under the task functions' flag — while id, project, title, source, creator
+and created_at still never change, and there is still no UPDATE grant.
+`service_role` gains EXECUTE on the new function only; the events table stays
+append-only. Harness suite `task-priority` (69 assertions); `task-workflow`
+now runs on the schema before this migration, which is what it pins.
+**Not yet applied to production.** The application reads events with every
+column, so a deployment ahead of the migration still reads task history; only
+Change priority fails (the function is missing) until the migration is
+applied.
 
 ## Crawls
 

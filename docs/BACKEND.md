@@ -2425,6 +2425,20 @@ production: handoff run `bcefb1e4…` (Technical SEO `crawl-review` over crawl
 `3398ff1a…`, task `30e79092…` event 11) completed with a 1,946-character
 summary.
 
+**Task priority change (Phase 2, checkpoint 2.3b).** Migration
+`20261005120000` (see `supabase/README.md`) adds
+`nexra_agent_task_set_priority` and a `priority-changed` event. `POST
+/api/agent-tasks/[taskId] { project, action: "priority", priority }` calls it
+through the service under the same 60-per-ten-minutes action limit; it
+answers `priority-changed`, or `same-priority` / `terminal` (409) and
+`task-not-found` (404). *Live tasks* offers *Change priority* beside *Change
+status* and *Change owner* (choose one of the four, Apply, recorded
+feedback), and the history renders the event. A priority change queues
+nothing and tells no agent anything. The event read selects every column, so
+it works before and after the migration. **Deploy order:** the code is safe
+to deploy first (the history keeps reading), but *Change priority* fails
+until the migration is applied to production, which is its own approved step.
+
 **Crawl-review output bound (checkpoint 2.3c).** Over the same five-page crawl
 the Technical SEO review's unbounded answers ran 1,596 to 1,946 characters, and
 an unlinked panel run, `f7b68573…`, was refused as `rejected-output` at the
@@ -2442,6 +2456,8 @@ bound structural, copying the Director and intake fixes: one COVERAGE line
 line (under 15 words), and, as the last rule, the whole answer under 1,200
 characters, dropping the lowest-severity finding first. The evidence, safety and
 findings-block sentences are unchanged.
+Verified live: run `941cc617…` on the bounded build (PR #30) completed at 1,138
+characters with 3 findings and both the COVERAGE and NEXT lines.
 
 ### Safety boundaries
 
