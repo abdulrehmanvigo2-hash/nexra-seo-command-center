@@ -2473,7 +2473,11 @@ done, and makes no traffic or ranking claim. Nothing is recorded from it
 status, owner and priority actions. It is queued from the *Task plan review*
 panel beside the intake review on the project screen, and executed there by
 Run Now or by the scheduled worker. No schema change: the run table checks
-only that a task type is well formed.
+only that a task type is well formed. Merged as PR #32 (`2305b605…`). Verified
+in production: run `567a3f11…` completed at 435 characters with RECORDED, one
+PROPOSED step, BLOCKERS and NEXT, citing the one open task by short id, grounded
+in evidence kind `task` (1,406 bytes, no title withheld); it added one extra
+"Observation:" line outside the fixed order, a cosmetic finding left as is.
 
 **Crawl-review output bound (checkpoint 2.3c).** Over the same five-page crawl
 the Technical SEO review's unbounded answers ran 1,596 to 1,946 characters, and
