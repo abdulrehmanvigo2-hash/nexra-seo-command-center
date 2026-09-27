@@ -9,16 +9,16 @@ import { projectOptionsFrom } from "@/lib/projects/selection";
 export const metadata: Metadata = {
   title: "Keyword Intelligence",
   description:
-    "The keyword universe: opportunity scoring, clusters, movement, cannibalisation, content gaps, SERP features, and answer-engine readiness.",
+    "Observed queries from the project's stored Search Console rows: fixed-rule opportunity labels, lexical groups, movement between stored windows and query-to-page overlap.",
 };
 
 /**
- * The workspace reads its initial project and cluster from the query string,
+ * The workspace reads its initial project and tab from the query string,
  * so links from the dashboard and from a project workspace land on a filtered
  * view. `useSearchParams` needs a Suspense boundary during static rendering,
  * which is what this shell provides.
  *
- * The projects it can be filtered to come from the Projects repository, so a
+ * The projects it can be read for come from the Projects repository, so a
  * project created on the Projects screen is selectable here too.
  */
 export default async function KeywordsPage() {

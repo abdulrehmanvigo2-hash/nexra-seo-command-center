@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 
 /**
@@ -18,6 +18,8 @@ const PAIRS_ROUTE = read("src/app/api/search-console/query-pages/route.ts");
 const READER = read("src/lib/search-console/keywords/index.ts");
 const SECTION = read("src/components/search-console/search-console-keywords.tsx");
 const WORKSPACE = read("src/components/keywords/keywords-workspace.tsx");
+const VIEWS = read("src/components/keywords/observed-views.tsx");
+const SCREEN = read("src/lib/search-console/keywords/screen.ts");
 const RUNTIME = read("src/lib/agent-runs/index.ts");
 const GROUNDING = read("src/lib/agent-runs/task-grounding.ts");
 const INSTRUCTIONS = read("src/lib/search-console/grounding.ts");
@@ -57,49 +59,103 @@ describe("the keywords read route", () => {
   });
 });
 
-describe("the observed query inventory section", () => {
-  test("is mounted exactly once whenever the Keywords tab is active, whatever the project filter says, beneath the Search Console panel", () => {
-    assert.match(WORKSPACE, /import \{ SearchConsoleKeywords \} from "@\/components\/search-console\/search-console-keywords"/);
+describe("the Keyword Intelligence screen (checkpoint 3.4): observed data only", () => {
+  const FIXTURE_COMPONENTS = [
+    "keywords-table",
+    "keywords-toolbar",
+    "bulk-actions",
+    "keyword-portfolio",
+    "discover-dialog",
+    "import-dialog",
+    "gap-views",
+    "serp-view",
+    "ai-view",
+    "ai-readiness-note",
+    "lists-view",
+    "clusters-view",
+    "movement-view",
+    "opportunities-view",
+    "cannibalization-view",
+    "pagination",
+  ];
+
+  test("imports no fixture, no modelled keyword record and no modelled component, and carries no modelled label", () => {
+    for (const file of [WORKSPACE, VIEWS, SECTION, SCREEN]) {
+      assert.doesNotMatch(file, /@\/lib\/mock|@\/types\/keyword|KeywordRecord/);
+      assert.doesNotMatch(file, /Mock data|Modelled|modelled data/);
+    }
+    for (const name of FIXTURE_COMPONENTS) assert.ok(!WORKSPACE.includes(`@/components/keywords/${name}"`), name);
+    assert.doesNotMatch(WORKSPACE, /DiscoverDialog|ImportDialog|BulkActions|Discover keywords/);
+  });
+
+  test("shows the five observed tabs only; content gap, competitors, SERP, AI search and lists are absent", () => {
+    assert.match(WORKSPACE, /const TABS = KEYWORD_TABS/);
+    assert.match(WORKSPACE, /resolveKeywordTab\(searchParams\.get\("tab"\)\)/);
+    for (const hidden of ['tab === "gaps"', 'tab === "competitors"', 'tab === "serp"', 'tab === "ai"', 'tab === "lists"']) assert.ok(!WORKSPACE.includes(hidden), hidden);
+    for (const shown of ['tab === "keywords"', 'tab === "clusters"', 'tab === "opportunities"', 'tab === "movement"', 'tab === "cannibalization"']) assert.ok(WORKSPACE.includes(shown), shown);
+  });
+
+  test("one read for the inventory, through the project the screen chose, with every state shown", () => {
+    assert.equal((WORKSPACE.match(/fetch\(/g) ?? []).length, 1);
+    assert.match(WORKSPACE, /fetch\(keywordsUrl\(projectId\)/);
+    assert.match(WORKSPACE, /useEffect\(\(\) => \{\s+if \(projectId === null\) return;/);
+    assert.match(WORKSPACE, /projects\.map\(\(p\) => \(\{ value: p\.id, label: p\.name \}\)\)/, "the stored roster only");
+    assert.match(WORKSPACE, /title="No stored project"/);
+    for (const state of ['"loading"', '"failed"']) assert.match(WORKSPACE, new RegExp(`load\\.status === ${state}`));
+    assert.match(WORKSPACE, /load\.view\.status !== "inventory"/);
+    assert.match(WORKSPACE, /describeKeywordStatus\(load\.view\)/);
+    assert.match(WORKSPACE, /keywordsReadFailure\(/);
+    assert.match(WORKSPACE, /\{OBSERVED_FOOTER\}/);
+    assert.match(WORKSPACE, /\{screen\.windows\}/, "the footer states the stored windows read");
+  });
+
+  test("the Keywords tab: observed portfolio, then the inventory table, then the Search Console summary", () => {
+    const keywordsTab = WORKSPACE.slice(WORKSPACE.indexOf('{tab === "keywords" && ('));
+    const portfolio = keywordsTab.indexOf("<ObservedPortfolio");
+    const table = keywordsTab.indexOf("<SearchConsoleKeywords");
+    const summary = keywordsTab.indexOf('<SearchConsolePanel projectId={projectId} rangeId="30d" view="summary" />');
+    assert.ok(portfolio > 0 && portfolio < table && table < summary);
     assert.equal((WORKSPACE.match(/<SearchConsoleKeywords/g) ?? []).length, 1);
-    assert.match(WORKSPACE, /\{tab === "keywords" && \(\s+<SearchConsoleKeywords\s+projects=\{projects\}\s+initialProjectId=\{filters\.project === "all" \? null : filters\.project\}\s+\/>/);
-    assert.doesNotMatch(WORKSPACE, /filters\.project !== "all" && \(\s+<SearchConsoleKeywords/, "the mount no longer depends on the filter");
-    assert.ok(WORKSPACE.indexOf("<SearchConsolePanel") < WORKSPACE.indexOf("<SearchConsoleKeywords"), "beneath the panel");
-    assert.match(WORKSPACE, /Mock data over the/, "the modelled universe keeps its label");
-    assert.match(WORKSPACE, /projects: readonly ProjectOption\[\];/, "the roster it hands down is the stored roster");
+    assert.match(VIEWS, /POSITION_NOTE/);
+    assert.match(VIEWS, /hint · \{count\}/);
   });
 
-  test("carries its own stored-project selector, seeded from the filter when that names a stored project", () => {
-    assert.match(SECTION, /projects: readonly ProjectOption\[\];/);
-    assert.match(SECTION, /initialProjectId: string \| null;/);
-    assert.match(SECTION, /useState<string \| null>\(\(\) =>\s+initialProjectId !== null && projects\.some\(\(project\) => project\.id === initialProjectId\) \? initialProjectId : null,/);
-    assert.match(SECTION, /<Select\s+id=\{selectId\}/);
-    assert.match(SECTION, /Stored project/);
-    assert.match(SECTION, /\.\.\.projects\.map\(\(project\) => \(\{ value: project\.id, label: project\.name \}\)\)/, "the roster only");
-    assert.match(SECTION, /label: "Choose a project"/);
-    assert.match(SECTION, /title="Choose a single project"/);
-    assert.match(SECTION, /title="No stored project"/);
+  test("the other tabs: groups inline, the four rule labels, the stored-window comparison and the pair overlap", () => {
+    assert.match(WORKSPACE, /\{tab === "clusters" && <ObservedGroups view=\{inventory\} \/>\}/);
+    assert.match(WORKSPACE, /\{tab === "opportunities" && <ObservedOpportunities screen=\{screen\} projectId=\{projectId\} \/>\}/);
+    assert.match(WORKSPACE, /\{tab === "movement" && <ObservedMovement projectId=\{projectId\} \/>\}/);
+    assert.match(WORKSPACE, /\{tab === "cannibalization" && <ObservedCannibalization projectId=\{projectId\} \/>\}/);
+    assert.match(VIEWS, /<SearchConsoleHistory projectId=\{projectId\} view="queries" \/>/);
+    assert.match(VIEWS, /<SearchConsoleQueryPages projectId=\{projectId\} \/>/);
+    assert.match(VIEWS, /GROUP_NOTE/);
+    assert.match(VIEWS, /MOVEMENT_NOTE/);
+    assert.match(VIEWS, /CANNIBALIZATION_NOTE/);
+    const rendered = VIEWS.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/No upside, target CTR or forecast is computed/, "");
+    assert.doesNotMatch(rendered, /upside|target CTR|search volume|difficulty|cost per click/i, "no predicted or external figure is rendered");
   });
 
-  test("reads nothing until a project is chosen, then the keywords endpoint only", () => {
-    assert.match(SECTION, /useState<Load>\(\{ status: "idle" \}\)/);
-    assert.match(SECTION, /useEffect\(\(\) => \{\s+if \(projectId === null\) return;/);
-    assert.match(SECTION, /keywordsUrl\(projectId\)/);
-    assert.equal((SECTION.match(/fetch\(/g) ?? []).length, 1);
-    assert.match(SECTION, /setLoad\(\{ status: "idle" \}\)/, "clearing the selection clears the read");
+  test("the cluster detail route is gone (Q2); the keyword detail route is left for checkpoint 3.5", () => {
+    assert.equal(existsSync(new URL("src/app/(app)/keywords/clusters", root)), false);
+    assert.equal(existsSync(new URL("src/app/(app)/keywords/[keywordId]/page.tsx", root)), true);
+  });
+});
+
+describe("the observed query inventory section", () => {
+  test("is the screen's table: no read or selector of its own, the rows the screen's filters keep", () => {
+    assert.doesNotMatch(SECTION, /fetch\(|useEffect|<Select|keywordsUrl/);
+    assert.match(SECTION, /rows: readonly ObservedQueryView\[\];/);
+    assert.match(SECTION, /<ObservedQueryTable rows=\{rows\} projectId=\{projectId\} caption="Observed queries" \/>/);
+    assert.match(SECTION, /title="No observed query matches these filters"/);
   });
 
-  test("offers no control beyond the selector, imports no fixture, and labels its provenance", () => {
+  test("offers only Record as task, over the full stored query, displays the cut label, and labels its provenance", () => {
     assert.doesNotMatch(SECTION, /method: "POST"|<Button|<form|onClick|useQueuedReview|@\/lib\/mock/);
+    assert.match(SECTION, /<RecordTaskControl projectId=\{projectId\} proposal=\{keywordTaskProposal\(row\.query\)\} compact \/>/);
+    assert.match(SECTION, /<span title=\{row\.queryLabel\}>\{row\.queryLabel\}<\/span>/);
     assert.match(SECTION, /Observed · derived labels/);
-    assert.match(SECTION, /Not the modelled keyword universe above/);
     assert.match(SECTION, /Not fixture data/);
     assert.match(SECTION, /Intent hints \(lexical, derived\)/);
-    assert.match(SECTION, /a shared word, not a topic/);
     assert.match(SECTION, /never predicted wins/);
-    for (const state of ['"loading"', '"failed"']) assert.match(SECTION, new RegExp(`load\\.status === ${state}`));
-    assert.match(SECTION, /load\.view\.status !== "inventory"/);
-    assert.match(SECTION, /describeKeywordStatus\(/);
-    assert.match(SECTION, /keywordsReadFailure\(/);
     assert.match(SECTION, /view\.caveats/);
     assert.doesNotMatch(SECTION, /search volume|difficulty score|rank tracker\b(?! reading| 's)/i);
   });
