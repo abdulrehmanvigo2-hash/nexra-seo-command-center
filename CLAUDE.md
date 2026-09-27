@@ -5,7 +5,8 @@ project. Read it before writing any code.
 
 **Current stage: Phase 2, Project Manager loop closure — step (a), the handoff outcome read-back
 (checkpoint 2.2), and step (b), handoffs for five more agents (checkpoint 2.3), are merged, deployed
-and production verified; the crawl-review output bound (checkpoint 2.3c) is on its branch; Phase 1
+and production verified; the crawl-review output bound (checkpoint 2.3c) is merged but its character
+cap did not hold live, and its structural tightening (checkpoint 2.3d) is on its branch; Phase 1
 (baseline truth and gates) is complete (see §14).
 The Project Manager task workflow (status transitions, owner changes, specialist handoff, event
 history) is merged and production verified end-to-end.
@@ -23,17 +24,17 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `8dcff92107e5098b6c4c5940e5fe9901bfa4e3d4` (merge of PR #28,
-`claude/phase2-agent-handoffs`, the five agent handoffs; preceded by PR #27 `0143a0cf…` (handoff
-outcome read-back), PR #26 `e01bf12f…`
+GitHub `master`: `bad5469b1b2d43238175694d4ff675a303f5de21` (merge of PR #29,
+`claude/phase2-crawl-review-bound`, the crawl-review output bound; preceded by PR #28 `8dcff921…`
+(five agent handoffs), PR #27 `0143a0cf…` (handoff outcome read-back), PR #26 `e01bf12f…`
 (Phase 1 closing docs), PR #25 `6363db53…` (CI gates),
 PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_7wpPFSHENoXbdT5kH9HKZVus9t8S`, READY, built from `master` at
-`8dcff921`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_3DnEtpn3y4MWQcGgZQr7kZr4Zsqp` at `0143a0cf`); `master` CI run `36290456953` passed all five
+Production deployment: `dpl_5uYk2Ron4A4hYaX8vejXbbnSx5KU`, READY, built from `master` at
+`bad5469b`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_7wpPFSHENoXbdT5kH9HKZVus9t8S` at `8dcff921`); `master` CI run `36292658725` passed all five
 jobs.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
@@ -113,6 +114,19 @@ lowest-severity findings dropped first, the coverage statement never dropped; th
 over crawl `3398ff1a…` ran 1,596–1,946 characters against the worker's unchanged 2,000 ceiling. The
 handoff confirmation now says a queued run is executed by the scheduled worker or by Run Now on the
 project's review panel (the Agents run history has none). No schema, worker or screen change.
+PR #29 merged as `bad5469b…`; deployment `dpl_5uYk2Ron…` READY. **Live result (27 Sep): the
+findings cap held, the character cap did not.** Two unlinked panel runs over crawl `3398ff1a…`
+executed on the bounded build: `2e8b7ab3…` completed with 3 findings but 1,926 characters, and
+`98e56366…` failed `rejected-output`. Neither was retried. Totals after: 45 runs, 45 attempts.
+
+**Phase 2 checkpoint 2.3d (structural crawl-review bound):** `CRAWL_REVIEW_INSTRUCTIONS` rewritten
+in the shape that held for the Project Director (`PROJECT_PRIORITY_REVIEW_INSTRUCTIONS`) and intake
+(`INTAKE_REVIEW_INSTRUCTIONS`) reviews: a fixed order — one COVERAGE line (under 25 words, never
+dropped), at most three findings, each three lines (OBSERVED under 20 words, INFERENCE under 12,
+RECOMMENDATION under 15), one NEXT line (under 15 words) — and, as the last rule, the whole answer
+under 1,200 characters, dropping the lowest-severity finding first and never the COVERAGE line or a
+cited URL. The 2.3c sentence is replaced; the evidence, safety and findings-block sentences are
+3b74d99's, verbatim. No schema, worker or screen change.
 
 **Phase 1 verification facts (26 Sep, read-only production reads):**
 
@@ -209,7 +223,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** checkpoint 2.3c on `claude/phase2-crawl-review-bound` (above). Earlier: the Project Manager task workflow (branch
+**Current work:** checkpoint 2.3d on `claude/phase2-crawl-review-structural` (above). Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -822,14 +836,15 @@ foundation, Search Console) are complete. Current work follows the content workf
 | PM task workflow | Status transitions along a fixed map, owner changes, specialist handoff (one queued run, never executed here), append-only event history, task route, Live tasks controls | Complete, merged (`47fae75d`), migration `20261004120000` applied and recorded, deployed; restore fix (`073bf85e`) and intake bound (`2e8116ce`) merged; production verified end-to-end on run `be1b692e…` |
 | Phase 1 | Baseline truth and gates: docs reconciliation, security and worker tests, CI gates, browser verifications (M3, M4, M5), C4 new-parser live check | Complete: PR #23 (`97aa0018`), PR #24 (`3a316124`), PR #25 (`6363db53`); checkpoints 1.5 and 1.6 verified in production |
 | Phase 2 (a) | Handoff outcome read-back: the task read answers what became of its newest handoff, computed from the linked run; shown in the task history | Complete: PR #27 (`0143a0cf`), deployed, browser verified (27 Sep); no migration |
-| Phase 2 (b) | Handoffs for five more agents with an operator-chosen record (own-site crawl or recorded competitor domain); Writer deferred | Complete: PR #28 (`8dcff921`), deployed, production verified (run `bcefb1e4…`); no migration. Crawl-review output bound and handoff wording (checkpoint 2.3c) on `claude/phase2-crawl-review-bound`, not merged |
+| Phase 2 (b) | Handoffs for five more agents with an operator-chosen record (own-site crawl or recorded competitor domain); Writer deferred | Complete: PR #28 (`8dcff921`), deployed, production verified (run `bcefb1e4…`); no migration. Crawl-review character bound and handoff wording (2.3c): PR #29 (`bad5469b`), deployed; the character cap did not hold live. Structural bound (2.3d) on `claude/phase2-crawl-review-structural`, not merged |
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
 feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: branch
-`claude/phase2-crawl-review-bound` (checkpoint 2.3c).
+`claude/phase2-crawl-review-structural` (checkpoint 2.3d).
 Phase 1 is complete. Current: Phase 2, Project Manager loop closure — step (a), the handoff outcome
 read-back, and step (b), handoffs for five of the six deferred agents (the Writer stays deferred),
-are complete; the crawl-review output bound (cp 2.3c) is on its branch; then priority change (cp 2.3b, a separate migration), then
+are complete; the crawl-review bound (cp 2.3c, merged; its character cap did not hold) is being
+tightened structurally (cp 2.3d, on its branch); then priority change (cp 2.3b, a separate migration), then
 tasks as grounding and a Project Manager task-plan review — each step under its own explicit approval. Work beyond that (cross-crawl
 finding history, a curated keyword entity, further Director sources) is planned in the roadmap but
 not started.
