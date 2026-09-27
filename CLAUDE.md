@@ -3,13 +3,14 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
+**Current stage: Phase 5 (Content Studio, the article positive path and hardening → production
+ready) has started: its design note (checkpoint 5.1) is approved (Q1–Q12), and the observed Content
+Studio (5.2) is on its branch. Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
 data; the Director's learnings loop) is complete (checkpoints 4.1–4.8, PR #39–#43 and the closing
 checkpoint 4.8): the Director and performance-review output bounds (4.2) are verified live; the
 Analytics (4.3), Competitors (4.4), AI Visibility and Outbound Links (4.5) screens over stored data
 are merged, deployed and browser verified; the Director's five-slot bundle and the bounded-answer fix
-(4.6) are deployed and verified live (run `288639f4…`). Next: the Phase 5 design checkpoint (5.1),
-under its own explicit approval. Phase 3,
+(4.6) are deployed and verified live (run `288639f4…`). Phase 3,
 Technical & Keywords realification — the MVP target — is complete
 (checkpoints 3.1–3.6, PR #34–#38): the Technical SEO and Keyword Intelligence screens read observed
 data only, with live page detail, derived finding history and the operator's curated keywords
@@ -36,9 +37,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `ddc6cbb4b508e1ee36d7403efdf19f88b916a65c` (merge of PR #43,
-`claude/phase4-director-bundle`, the Director's five-slot bundle and the bounded-answer fix; preceded by
-PR #42 `41519ffd…` (the AI Visibility and Outbound Links screens), PR #41
+GitHub `master`: `aef494196eb834ce3bfc2b69ab475d1765975d2c` (merge of PR #44,
+`claude/phase4-closing`, Phase 4 closing; preceded by PR #43 `ddc6cbb4…` (the Director's five-slot
+bundle and the bounded-answer fix), PR #42 `41519ffd…` (the AI Visibility and Outbound Links screens), PR #41
 `69379e3d…` (the Competitors screen over stored crawls), PR #40
 `a73cfd21…` (the Analytics screen over stored data), PR #39 `0c64d77d…`
 (the Director and performance-review bounds), PR #38
@@ -57,10 +58,11 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_2bUN9N9RcjgrNpG1zXcFEeS81VeH`, READY (27 Sep 15:50 UTC), built from
-`master` at `ddc6cbb4` by an operator-approved manual production redeploy, serving
-`nexra-seo-command-center.vercel.app` (previous: `dpl_CjXD2ik8QMhf96qhMqFLRKd9S6YD` at `41519ffd`);
-`master` CI run `36330205806` passed. PR #43 (checkpoint 4.6) merged as `ddc6cbb4…`.
+Production deployment: `dpl_5dsiW7wcfnTztmSUM8UiCLBofcXh`, READY (27 Sep 16:10 UTC), built
+automatically from `master` at `aef49419` (the auto-deploy worked; no redeploy), serving
+`nexra-seo-command-center.vercel.app` (previous: `dpl_2bUN9N9RcjgrNpG1zXcFEeS81VeH` at `ddc6cbb4`,
+an operator-approved manual redeploy); `master` CI run `36332161488` passed. PR #44 (checkpoint 4.8)
+merged as `aef49419…`; PR #43 (checkpoint 4.6) as `ddc6cbb4…` (`master` CI `36330205806`).
 
 **Auto-deploy skip (27 Sep):** the push of `ddc6cbb4` to `master` left no Vercel deployment record
 at all — not even the CANCELED record an ignored build leaves (as every branch preview shows) — so
@@ -542,6 +544,61 @@ cited, as the Q7 rule ranks recorded findings first and three filled the plan. *
 - No schema, instruction, worker or migration change.
 - **Next step:** the Phase 5 design checkpoint (5.1), under its own explicit approval.
 
+**Phase 5 checkpoint 5.1 (design, 27 Sep):** an audit-only design note for Phase 5 (roadmap
+checkpoints 12–13 and hardening → production ready): the Content Studio over stored content, the
+article positive path, the Writer handoff and six hardening items. Approved with decisions:
+
+- **Q1** Content Studio tabs Articles, Drafts and Pipeline, observed; the modelled tabs hidden.
+- **Q2** `/content/[contentId]` replaced in place, keyed by article id; the old fixture ids are not
+  found.
+- **Q3** the positive path is a Version 3 of article `c89182f9…`, its text drafted read-only by
+  Claude and approved by the operator before any write.
+- **Q4** the standing constraint "never approve, propose or publish articles" is lifted for **one
+  version only** (that Version 3), each step separately approved; publishing stays out of scope.
+- **Q5** articles only; the older draft path (Stage 4/5A) is not exercised.
+- **Q6** the Writer handoff stays deferred.
+- **Q7** delete and truncate guards on `projects`, `agent_runs` and `agent_run_attempts`; crawls
+  refuse TRUNCATE only (DELETE stays for housekeeping); drafts unchanged (the store's compensating
+  delete needs it).
+- **Q8** a public health endpoint that returns no data.
+- **Q9** spend caps: 40 runs per project per day and 100 in all, refused (never crashed).
+- **Q10** the C2 migration-history mismatch is documented, not repaired.
+- **Q11** the provider's abort classification is fixed (`APIUserAbortError` → transient).
+- **Q12** production ready = D1–D6 plus 5.2 and 5.3 verified.
+
+Planned split: 5.2 observed Content Studio; 5.3 the article positive path (operator writes only);
+5.4 the guards migration; 5.5 health, caps and the abort fix; 5.6 runbook and the C2 note; 5.7
+closing.
+
+**Phase 5 checkpoint 5.2 (observed Content Studio, Part A, decisions Q1 and Q2):** the Content
+Studio reads this product's stored content only, for one stored project chosen on the screen, through
+the content workflow's existing GET routes — no new route, no schema (`src/lib/content/studio.ts`,
+`src/components/content/observed-content.tsx`). **Articles:** each stored article's title and slug,
+status, current version of all versions, the current version's check-unit progress ("0 passed · 2
+need review · 2 unchecked of 4"), approval ("Not approved", "Version N approved", or an older
+version's approval named as not the current one) and proposal state (a proposal is "not published").
+**Drafts:** each stored draft (at most 20 read), its current version of all versions, the current
+version's recorded fact-check, placeholders, approval and proposal state. **Pipeline:** the same
+records grouped by status, every stage shown, empty ones included. A read that failed says so, never
+zero or none; honest empty states ("No article recorded", "No draft recorded"). **`/content/[articleId]`**
+replaced in place (Q2; the route folder is renamed from `[contentId]`): the id must be a uuid, then
+the operator, then a stored project holding the article (the `?project=` one first) through the
+article service's own project-scoped read; the fixture ids and unknown ids are not found; nothing is
+prerendered. It shows the header (slug, current version, plan run, dates), the current version's
+check units with their verdicts, counts and runs, the approval and proposal state with every blocking
+reason, and every version newest first with its hash, topic decision and source draft versions. No
+write control anywhere on the screen or the page: each links to the project screen, where the live
+controls are. **Hidden, not labelled:** the ten modelled tabs (overview, inventory, briefs, keyword
+mapping, coverage, intent, on-page, AI readiness, internal links, gaps; a deep link to one opens
+Articles) and the modelled detail workspace — so the 8 links to the removed `/keywords/clusters/<id>`
+route are gone from the product. The screen imports no fixture and carries the Observed badge; the
+sidebar note names Content. The 26 modelled files no route imports any more (24 under
+`src/components/content`, `ai-visibility/ai-chrome` and `keywords/keyword-chrome`) stay in the
+tree, unimported, for 5.7. **New 404s:** the Command Center's content snapshot (a fixture panel)
+links each fixture page to `/content/<fixture id>`, now not found — like the 2 competitor fixture
+links, left for the dashboard's own phase. No schema, instruction, worker or write-path change. On
+`claude/phase5-content-studio`; not merged.
+
 **Findings recorded for later phases:**
 
 - **Carried forward to Phase 4 (resolved by checkpoint 4.2, verified live on run `aecfca87…`):** the single-project Director `priority-review` run `33ac8a25…`
@@ -655,7 +712,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 4 is complete (closing checkpoint 4.8 on `claude/phase4-closing`); each further
+**Current work:** Phase 5 checkpoint 5.2 on `claude/phase5-content-studio` (above); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1032,8 +1089,9 @@ product's own crawl records, the stored Search Console rows and the operator's c
 The Analytics screen reads stored Search Console snapshots and the Analytics & Learning agent's
 completed runs only (Phase 4, checkpoint 4.3), and the Competitor Intelligence screen this product's
 own crawls of the project's site and its recorded competitors (checkpoint 4.4); the AI Visibility and
-Outbound Links screens the project's latest own-site crawl (checkpoint 4.5).
-Everything else on screen (rankings, content, reporting and dashboard figures)
+Outbound Links screens the project's latest own-site crawl (checkpoint 4.5); the Content Studio the
+project's stored articles and drafts (Phase 5, checkpoint 5.2).
+Everything else on screen (rankings, reporting and dashboard figures)
 is still modelled fixture data from `src/lib/mock`. It must stay labelled as
 such (`src/config/build-status.ts`). Never present fixture data as live, or live data as a
 fixture.
@@ -1282,6 +1340,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
+| Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) on `claude/phase5-content-studio`, not merged; then 5.3 positive path, 5.4 guards migration, 5.5 health and caps, 5.6 runbook, 5.7 closing |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1298,9 +1357,9 @@ Carried forward: the single-project Director `priority-review` has no structural
 `33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Phase 4 is complete (PR #39–#43
-and the closing checkpoint 4.8). Next: the Phase 5 design checkpoint (5.1), under its own explicit
-approval. Phase 3 — the MVP target — is complete.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 5 checkpoint 5.2
+on `claude/phase5-content-studio` (design note 5.1 approved). Phase 4 is complete (PR #39–#44).
+Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3 and Phase 4 are complete. Phase 2, Project Manager loop closure: the handoff
 outcome read-back, handoffs for five of the six deferred agents (the Writer stays deferred) with the
 structural crawl-review bound, priority change, and tasks as grounding with the Project Manager
@@ -1309,10 +1368,10 @@ screen, page detail and derived finding history over this product's own crawls; 
 Intelligence screen over the stored Search Console rows; and the operator's curated keywords
 (the one Phase 3 migration, applied). Phase 4: the Analytics, Competitors, AI Visibility and
 Outbound Links screens over stored data, the Director and performance-review bounds, and the
-Director's five-slot bundle. Not started, each under its own explicit approval: the remaining
-fixture screens (Content, whose 8 links to the removed keyword cluster route stay 404 until then,
-and the 2 fixture links to `/competitors/<fixture id>`), and curated keywords as agent grounding
-(deferred by Q6).
+Director's five-slot bundle. Not started, each under its own explicit approval: Phase 5 checkpoints
+5.3–5.7, the remaining fixture screens (Command Center, Reports; the 2 fixture links to
+`/competitors/<fixture id>` and the content snapshot's `/content/<fixture id>` links stay 404 until
+then), and curated keywords as agent grounding (deferred by Q6).
 
 ## 15. Definition of Done
 

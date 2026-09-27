@@ -1,25 +1,31 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { ContentStudio } from "@/components/content/content-studio";
+import { ContentStudio } from "@/components/content/observed-content";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 export const metadata: Metadata = {
   title: "Content Studio",
-  description:
-    "The content inventory: production pipeline, briefs, keyword mapping, topic coverage, on-page findings, internal links, and answer-engine readiness.",
+  description: "The stored articles and drafts of a project, with their check units, fact-checks, approvals and publication proposals. Observed data only.",
 };
 
 /**
- * The workspace reads its initial project and cluster from the query string,
- * so links from the dashboard and from a project workspace land on a filtered
- * view. `useSearchParams` needs a Suspense boundary during static rendering,
- * which is what this shell provides.
+ * The Content Studio over stored content only (Phase 5, checkpoint 5.2).
+ *
+ * The screen reads its initial project and tab from the query string, so a
+ * link from the dashboard or a project lands on that project; a hidden tab
+ * opens Articles. `useSearchParams` needs a Suspense boundary during static
+ * rendering, which is what this shell provides. The projects it can be
+ * scoped to come from the Projects repository.
  */
-export default function ContentStudioPage() {
+export default async function ContentStudioPage() {
+  const projects = projectOptionsFrom(await projectRepository.listProjects());
+
   return (
     <Suspense fallback={<ContentFallback />}>
-      <ContentStudio />
+      <ContentStudio projects={projects} />
     </Suspense>
   );
 }
