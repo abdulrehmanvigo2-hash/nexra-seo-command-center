@@ -42,7 +42,13 @@ export type MappingView =
   | { readonly state: "overlap"; readonly leadingPage: string; readonly leadingShare: number; readonly pageCount: number; readonly candidate: boolean };
 
 export type ObservedQueryView = {
+  /**
+   * The exact stored query text, uncut: the task source a *Record as task*
+   * proposal names, which the database matches exactly (checkpoint 3.4, Q7).
+   */
   readonly query: string;
+  /** The query for display, cut to HISTORY_KEY_MAX characters. The cut is display-only. */
+  readonly queryLabel: string;
   readonly windows: number;
   readonly inLatestTop: boolean;
   readonly latest: SearchPerformance | null;
@@ -108,7 +114,8 @@ function mappingView(mapping: PageMapping): MappingView {
 
 function rowView(row: ObservedQuery): ObservedQueryView {
   return {
-    query: cutKey(row.query),
+    query: row.query,
+    queryLabel: cutKey(row.query),
     windows: row.windows,
     inLatestTop: row.inLatestTop,
     latest: row.latest,
