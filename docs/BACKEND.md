@@ -2348,8 +2348,15 @@ request from the keyword's uuid (the id's shape, the operator, the read
 limit, then the service, which requires the keyword's project to be stored);
 fixture ids are not found. The Keyword Intelligence screen's Lists tab shows
 the list and an import form, and each observed row offers *Track*. Curated
-keywords are not agent grounding. The migration is not yet applied to
-production.
+keywords are not agent grounding. The migration is applied to production and
+recorded (see `supabase/README.md`).
+
+**Checkpoint 3.6 (Phase 3 closing).** The modelled keyword and technical
+components that no route referenced any more were removed (36 files, found by
+an import-graph scan from the `src/app` entries); the sidebar's build-status
+note says Technical SEO and Keyword Intelligence are observed data. The fixture
+screens' 18 links to the removed `/keywords/clusters/<id>` route stay 404 until
+those screens' own phases (operator decision). No schema or behaviour change.
 
 **Deploy order:** the migration must be applied to production before this
 code is deployed; the read route answers 503 until then only if the store is

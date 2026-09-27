@@ -156,10 +156,10 @@ Editor (or run with the Supabase CLI against a linked project):
 27. `20261005120000_agent_task_priority.sql` — task priority change (Phase 2,
     checkpoint 2.3b)
 28. `20261006120000_curated_keywords.sql` — curated keywords (Phase 3,
-    checkpoint 3.5); **not yet applied to production** (a separate approval)
+    checkpoint 3.5)
 
-The first twenty-seven are applied to production and recorded in its migration
-history (28 versions: the articles migration is recorded under
+All twenty-eight are applied to production and recorded in its migration
+history (29 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0).
 
 After each, run `NOTIFY pgrst, 'reload schema';` on its own so the API sees the
@@ -711,5 +711,23 @@ flag; there is no delete path (archive instead). RLS on, no policies;
 `service_role` holds SELECT on both tables and EXECUTE on the five functions
 only. Harness suites `keywords` (126 assertions) and `keywords-races` (K1–K4:
 two adds of one query, a rolled-back add, two identical setters, unrelated
-adds not waiting). **Not yet applied to production**: applying it is a
-separate §6 approval after the code is merged.
+adds not waiting). **Applied to production and recorded (27 Sep, after PR #37
+merged, separately approved).** A read-only preflight (PostgreSQL 17.6, READ
+COMMITTED, the version absent, no keyword tables or functions, 10 projects);
+then one transaction that inserted the history row (version `20261006120000`,
+name `curated_keywords`, the file's text as its one statement) and executed
+that recorded text only after checking its SHA-256 equals the repository
+file's (`072578a5…a949fe`; a mismatch raises and writes nothing — the method
+was tested first on a disposable local cluster), then `NOTIFY pgrst, 'reload
+schema';`. Verified read-only: RLS on, no policies; exactly the five write
+functions `security definer`; every keyword function with an empty
+`search_path`, owned by `postgres`; `service_role` SELECT on both tables and
+EXECUTE on the five only; all seven triggers enabled. Probes in one block that
+always rolled back: `added`, `exists`, a case variant as its own keyword,
+`target-off-host`, a `www.` target accepted, a direct duplicate refused
+(23505), a setter through another project `keyword-not-found`, direct update,
+identity change, delete and event update/delete refused (23514), each event
+type accepted by the shape check and cross-type or no-change events refused
+(23514), `service_role` direct writes refused (42501). Production row counts
+unchanged; the probes consumed identity values of the events `seq`, which are
+not reused.

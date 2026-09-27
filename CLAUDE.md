@@ -3,16 +3,15 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Phase 2, Project Manager loop closure, is complete — step (a), the handoff outcome
+**Current stage: Phase 3, Technical & Keywords realification — the MVP target — is complete
+(checkpoints 3.1–3.6, PR #34–#38): the Technical SEO and Keyword Intelligence screens read observed
+data only, with live page detail, derived finding history and the operator's curated keywords
+(migration `20261006120000`, applied and recorded); each browser verified in production. Phase 2,
+Project Manager loop closure, is complete — step (a), the handoff outcome
 read-back (checkpoint 2.2); step (b), handoffs for five more agents (checkpoint 2.3), with the
 crawl-review bound (2.3c, then structurally 2.3d) and task priority change (2.3b, the one Phase 2
 migration, applied and recorded); and step (c), tasks as grounding and the Project Manager task
-plan review (checkpoint 2.4) — each merged, deployed and production verified (PR #27–#32). Phase 3,
-Technical & Keywords realification (the MVP target), is under way: its design note (checkpoint 3.1)
-is approved, the live Technical SEO tabs (checkpoint 3.2), the live page detail with derived
-finding history (checkpoint 3.3) and the observed Keywords surfaces (checkpoint 3.4) are merged and
-deployed, and the curated keyword entity (checkpoint 3.5, its migration not yet applied) is on its
-branch.
+plan review (checkpoint 2.4) — each merged, deployed and production verified (PR #27–#32).
 Phase 1 (baseline truth and gates) is complete (see §14).
 The Project Manager task workflow (status transitions, owner changes, specialist handoff, event
 history) is merged and production verified end-to-end.
@@ -30,8 +29,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `201d47a2f57378a484ad647551ec5064d84f3552` (merge of PR #36,
-`claude/phase3-keywords-observed`, the observed Keywords surfaces; preceded by PR #35 `c244efd4…`
+GitHub `master`: `98b0fbd989c758a711a667f22c6d6de09d2b3805` (merge of PR #37,
+`claude/phase3-curated-keywords`, the curated keyword entity; preceded by PR #36 `201d47a2…` (the
+observed Keywords surfaces), PR #35 `c244efd4…`
 (live Technical page detail and derived finding history), PR #34 `5b79ba8d…` (live Technical SEO
 tabs), PR #33 `e7feedaf…`
 (Phase 2 closing docs), PR #32 `2305b605…` (tasks as
@@ -45,9 +45,9 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_JBsp1YeBpqSSGVW6SN7kKjD1wiLM`, READY, built from `master` at
-`201d47a2`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_38hYkQX8nRoUVYta4VBZBGhgVUyJ` at `c244efd4`); `master` CI run `36309293871` passed.
+Production deployment: `dpl_3uX3tKdEBiq671mANbg78HtHaoiv`, READY, built from `master` at
+`98b0fbd9`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_JBsp1YeBpqSSGVW6SN7kKjD1wiLM` at `201d47a2`); `master` CI run `36310916032` passed.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
 source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
@@ -270,17 +270,65 @@ each keyword's stored-row figures; Import, one query per line); *Track* on each 
 exact query after a confirmation; `/keywords/[keywordId]` replaced in place (Q2) — a curated
 keyword's curation controls, per-window figures and pages from the stored rows, tasks recorded from
 the exact query and its history; fixture ids are not found; nothing prerendered. No grounding change
-(Q6). **The migration is not applied to production**: applying it is a separate §6 approval after
-the merge; until then the Lists tab says curated keywords could not be read, *Track* is not offered
-and a keyword page says its records could not be read — the observed tabs are unaffected. On
-`claude/phase3-curated-keywords`; not merged.
+(Q6). PR #37 merged as `98b0fbd9…`; deployment `dpl_3uX3tKdE…` READY; `master` CI run
+`36310916032` green. **Migration applied to production and recorded (27 Sep, separately
+approved):** read-only preflight (PostgreSQL 17.6, READ COMMITTED, the version absent, no keyword
+tables or functions, 10 projects); one transaction that inserted the history row (`20261006120000
+curated_keywords`, the file's text as its one statement) and executed that recorded text only after
+checking its SHA-256 equals the repository file's (`072578a5…a949fe`; a mismatch raises and writes
+nothing — the method tested first on a disposable local cluster), then `NOTIFY pgrst`. Verified
+read-only: RLS on, no policies; exactly the five write functions `security definer`, every keyword
+function with an empty `search_path` and owned by `postgres`; `service_role` SELECT on both tables
+and EXECUTE on the five only, nothing for `anon` or `authenticated`; all seven triggers enabled.
+Probes in one always-rolled-back block: add `added` with its created event, the same text `exists`,
+another case a separate keyword, an off-host target `target-off-host`, a `www.` target accepted, a
+direct duplicate 23505, a setter through another project `keyword-not-found`, direct update,
+identity change, delete and event update/delete refused (23514), each event type accepted by the
+shape check and cross-type or no-change events refused (23514), `service_role` direct writes refused
+(42501). Production row counts unchanged (0 keywords, 0 keyword events; every other table as
+before); the probes consumed identity values of the keyword events `seq`, which are not reused.
+
+**Phase 3 checkpoint 3.6 (Phase 3 closing, 27 Sep):**
+
+- **Browser verifications (operator, 27 Sep):**
+  - cp 3.2/3.3 Technical — the coverage banner, tiles 5 of 7 with no health score, tabs Overview,
+    Issues, Crawlability, Pages, Schema, Internal links (Vitals and Opportunities absent), Issues
+    triage Open 4 / Acknowledged 1, the Crawlability depth, Pages 7 rows (two "/" rows are the apex
+    and `www.` host variants — the title-duplicate finding), Schema ProfessionalService 5 / FAQPage
+    2, Internal links 31 internal / 15 external: **PASS**.
+  - cp 3.4 Keywords — 6 tabs (content gap, competitors, SERP and AI search absent), the portfolio
+    labelled "average position, not rank" (all 9 queries over 50), the inventory as the primary
+    table, no volume or CPC, Groups "ai · 6 queries": **PASS**.
+  - cp 3.5 entity — *Track* recorded "ai lead follow up" as a curated keyword (18 impressions, 0
+    clicks, average position 85.6); Import of "ai automation lahore" with group `test-group` →
+    "Not observed in stored rows"; re-import → "0 added; 1 already tracked"; Lists shows Tracked
+    (2); the keyword detail page opened: **PASS**. The first attempt failed only because a
+    `/keywords` page opened before the migration was applied held its failed read of the curated
+    list until reloaded (expected; the read is not retried). The two curated rows are
+    verification records and stay.
+- **Fixture removal:** the 36 fixture components no route, layout, API handler or live component
+  imports any more were deleted — 21 under `src/components/keywords` (the modelled keyword table,
+  toolbar, bulk actions, portfolio, dialogs, gap, SERP, AI, lists, clusters, movement,
+  opportunities and cannibalisation views, the cluster and keyword workspaces, rank chart and their
+  helpers) and 15 under `src/components/technical` (the modelled views, page workspace, pages
+  table, toolbar, chrome and helpers). Found by an import-graph scan from every `src/app` entry and
+  the proxy, to a fixed point; no test imported them. The `src/lib/mock` modules stay: other
+  fixture screens use them.
+- **Sidebar build-status note** (`src/config/build-status.ts`): "Partly modelled" — Technical SEO
+  and Keywords are observed data; other live panels are labelled.
+- **Decision recorded (operator, 27 Sep):** the 18 links in 15 fixture files (Competitors, Content,
+  AI Visibility) to the removed `/keywords/clusters/<id>` route stay 404 intentionally until those
+  screens' own phases; no redirect.
+- No schema change, no behaviour change on a live surface.
+- **Next step:** Phase 4 design checkpoint (4.1), under its own explicit approval.
 
 **Findings recorded for later phases:**
 
-- The single-project Director `priority-review` run `33ac8a25…` (SEO Director, queued by an operator
-  on 26 Sep 08:45) was executed by the scheduled worker on 27 Sep 06:19 UTC and failed
-  `rejected-output`; not retried. `PRIORITY_REVIEW_INSTRUCTIONS` still lack the structural bound
-  the project Director, intake, crawl and plan reviews carry; deferred to Phase 4's Director work.
+- **Carried forward to Phase 4:** the single-project Director `priority-review` run `33ac8a25…`
+  (SEO Director, queued by an operator on 26 Sep 08:45) was executed by the scheduled worker on
+  27 Sep 06:19 UTC and failed `rejected-output`; not retried. `PRIORITY_REVIEW_INSTRUCTIONS` still
+  lack the structural bound the project Director, intake, crawl and plan reviews carry; it is
+  Phase 4's Director work.
 - Task events seq 12–14 do not exist: the identity values were taken by the rolled-back 2.3b
   verification probe (see 2.3b above) and are not reused. History is ordered by `seq`, never
   assumed contiguous.
@@ -381,7 +429,8 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 3 checkpoint 3.5 on `claude/phase3-curated-keywords` (above). Earlier: the Project Manager task workflow (branch
+**Current work:** Phase 3 closing, checkpoint 3.6, on `claude/phase3-closing` (above). Phase 3 — the
+MVP target — is complete with it; the next phase starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -698,8 +747,8 @@ overwrite live content.
   be approved (a needs-review result is final for its version), so it cannot receive a C6 proposal.
 - Vercel deploys every push to `master` to production automatically.
 - Any external write requires explicit user approval (§6).
-- Migration `20261006120000_curated_keywords.sql` (checkpoint 3.5) is not applied to production;
-  applying it is a separate §6 approval.
+- Migration `20261006120000_curated_keywords.sql` (checkpoint 3.5) is applied to production and
+  recorded; curated keywords are operator records only and are not agent grounding (Q6).
 
 Update this section at every Git checkpoint that changes the stage, the next planned
 milestone, or a safety boundary.
@@ -752,8 +801,10 @@ lists the migrations in order.
     (`src/app/(app)/projects/article-proposal-actions.ts`, explicit confirmation required).
     A proposal publishes nothing and writes nowhere outside the database.
 
-Everything else on screen (rankings, technical, competitor, backlink, AI-visibility and
-reporting figures) is still modelled fixture data from `src/lib/mock`. It must stay labelled as
+The Technical SEO and Keyword Intelligence screens read observed data only (Phase 3): this
+product's own crawl records, the stored Search Console rows and the operator's curated keywords.
+Everything else on screen (rankings, competitor, backlink, AI-visibility and reporting figures)
+is still modelled fixture data from `src/lib/mock`. It must stay labelled as
 such (`src/config/build-status.ts`). Never present fixture data as live, or live data as a
 fixture.
 
@@ -1000,19 +1051,35 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (b2) | Task priority change: set-priority function, priority-changed event, Change priority control (checkpoint 2.3b) | Complete: PR #31 (`0921c1f8`), deployed; migration `20261005120000` applied and recorded; browser verified (events seq 15–16) |
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
-| Phase 3 | Technical & Keywords realification (the MVP target) | In progress: design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity, migration `20261006120000` written and harness-tested, not applied) on `claude/phase3-curated-keywords`, not merged; then 3.6 closing docs |
+| Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
+
+**MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
+
+| MVP criterion | Evidence |
+|---|---|
+| Docs match production, with CI gates | Phase 1: docs reconciliation (PR #23), security and worker tests (PR #24), CI gates on every pull request and push to `master` (PR #25), closing docs (PR #26); every later PR merged on green CI |
+| Project Manager outcome loop | Checkpoint 2.2: a task's handoff outcome is read back from its linked run (PR #27), browser verified |
+| Specialist handoff | Checkpoint 2.3: handoff for 11 of the 12 agents (six from the task workflow, five with an operator-chosen record, PR #28), production verified on run `bcefb1e4…`; the Writer is deferred by decision |
+| Project Manager plan proposal | Checkpoint 2.4: the task-plan review, recorded in production as run `567a3f11…` (435 characters, grounded in the project's tasks) |
+| Technical and Keywords observed-first | Phase 3: the Technical SEO screen, page detail and derived finding history over this product's own crawls (PR #34, #35); the Keyword Intelligence screen over the stored Search Console rows (PR #36); the operator's curated keywords (PR #37, migration `20261006120000` applied); closing and fixture removal (PR #38); each browser verified in production |
+
+Carried forward: the single-project Director `priority-review` has no structural bound (run
+`33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 3 checkpoint 3.5
-on `claude/phase3-curated-keywords`.
-Phase 1 and Phase 2 are complete. Phase 2, Project Manager loop closure: step (a), the handoff
-outcome read-back; step (b), handoffs for five of the six deferred agents (the Writer stays
-deferred), with the crawl-review bound tightened structurally (cp 2.3d, verified live) and priority
-change (cp 2.3b, the one Phase 2 migration, applied); step (c), tasks as grounding and the Project
-Manager task-plan review (cp 2.4, verified in production). Next: Phase 3, Technical & Keywords
-realification (the MVP target), starting with its design checkpoint — each step under its own
-explicit approval. Later (cross-crawl finding history, a curated keyword entity, further Director
-sources, the single-project Director bound) is planned in the roadmap but not started.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 3 closing, checkpoint 3.6,
+on `claude/phase3-closing`. Phase 3 — the MVP target — is complete; the next phase starts only with
+explicit approval.
+Phase 1, Phase 2 and Phase 3 are complete. Phase 2, Project Manager loop closure: the handoff
+outcome read-back, handoffs for five of the six deferred agents (the Writer stays deferred) with the
+structural crawl-review bound, priority change, and tasks as grounding with the Project Manager
+task-plan review. Phase 3, Technical & Keywords realification — the MVP target: the Technical SEO
+screen, page detail and derived finding history over this product's own crawls; the Keyword
+Intelligence screen over the stored Search Console rows; and the operator's curated keywords
+(the one Phase 3 migration, applied). Not started, each under its own explicit approval: further
+Director sources and the single-project Director bound (Phase 4), the remaining fixture screens
+(Competitors, Content, AI Visibility — whose links to the removed keyword cluster route stay 404
+until then), and curated keywords as agent grounding (deferred by Q6).
 
 ## 15. Definition of Done
 
