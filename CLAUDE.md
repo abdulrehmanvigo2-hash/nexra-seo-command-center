@@ -6,7 +6,8 @@ project. Read it before writing any code.
 **Current stage: Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
 data; the Director's learnings loop) has started: its design note (checkpoint 4.1) is approved, and
 the Director and performance-review output bounds (checkpoint 4.2) are merged, deployed and verified
-live; the Analytics screen over stored data (checkpoint 4.3) is on its branch. Phase 3,
+live; the Analytics screen over stored data (checkpoint 4.3) is merged and deployed; the
+Competitors screen over stored crawls (checkpoint 4.4) is on its branch. Phase 3,
 Technical & Keywords realification — the MVP target — is complete
 (checkpoints 3.1–3.6, PR #34–#38): the Technical SEO and Keyword Intelligence screens read observed
 data only, with live page detail, derived finding history and the operator's curated keywords
@@ -33,8 +34,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `0c64d77d0171d24cda24dd371c33ff2f182673f2` (merge of PR #39,
-`claude/phase4-director-bounds`, the Director and performance-review bounds; preceded by PR #38
+GitHub `master`: `a73cfd2150a5866b898a509317d97421a7320595` (merge of PR #40,
+`claude/phase4-analytics`, the Analytics screen over stored data; preceded by PR #39 `0c64d77d…`
+(the Director and performance-review bounds), PR #38
 `ce1fb312…` (Phase 3 closing and MVP complete), PR #37 `98b0fbd9…` (the
 curated keyword entity), PR #36 `201d47a2…` (the observed Keywords surfaces), PR #35 `c244efd4…`
 (live Technical page detail and derived finding history), PR #34 `5b79ba8d…` (live Technical SEO
@@ -50,10 +52,10 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_DQ88j5hzQA2tjH64EkEEJESxuCjf`, READY, built from `master` at
-`0c64d77d`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_HH217S1vrjgJi8ihFg1W8o9UZd6H` at `ce1fb312`); `master` CI run `36315046313` passed. PR #39
-(checkpoint 4.2) merged as `0c64d77d…`.
+Production deployment: `dpl_8wchF2C9NQdz6RpKCVivZbeioZLx`, READY, built from `master` at
+`a73cfd21`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_DQ88j5hzQA2tjH64EkEEJESxuCjf` at `0c64d77d`); `master` CI run `36321725374` passed (confirmed
+green, 27 Sep 13:16 UTC). PR #40 (checkpoint 4.3) merged as `a73cfd21…`.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
 source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
@@ -391,8 +393,41 @@ read through the existing run list). Hidden, not labelled: Trends, Segments, Att
 Movements (with the modelled anomaly links); a deep link to one opens the Overview. The screen imports
 no fixture and carries the Observed badge; the sidebar note names Analytics as observed. The seven
 modelled analytics components the screen no longer imports stay in the tree, unimported, for the
-closing checkpoint. No schema, instruction, worker or other screen change. On
-`claude/phase4-analytics`; not merged.
+closing checkpoint. No schema, instruction, worker or other screen change. PR #40 merged as
+`a73cfd21…`; deployment `dpl_8wchF2C9…` READY; `master` CI run `36321725374` green. **Tile figures
+note:** the tiles show the newest *stored* snapshot — for Nexra Agency the window ending 23 Sep
+(140 impressions, 1 click, 0.71%, average position 30.2) — while the 4.2 performance review
+`17623686…` read the *live* report's window ending 24 Sep (144, 1, 0.69%, 30.5); the two differ by
+one day of data and are both correct for their windows. **Browser verification:** the operator's
+4.3 report was not included in the 4.4 instructions; it is recorded as open until given.
+
+**Phase 4 checkpoint 4.4 (Competitors over stored crawls, Part C, decision Q3):** the Competitor
+Intelligence screen reads this product's own crawls only, for one stored project chosen on the
+screen. One read, `GET /api/crawls/competitor-overview?project=[&competitor=]` (operator, request
+shape, crawl read limit, project checked; a competitor must be one of the domains the project's
+stored record lists, resolved by the comparison reader's rule — `competitor-not-recorded`,
+`competitor-is-project-site`, `competitor-invalid` refused 422 before any crawl is read;
+`src/lib/crawl/competitor-overview.ts`, over the comparison reader's readers): without a competitor,
+the recorded competitors, each with its newest crawl and coverage banner ("Crawl f4f5fda7 · Partial —
+stopped on the page budget · 5 of 50 discovered pages fetched, 45 not reached") or "Not crawled yet";
+with one, the project's newest own-site crawl beside that competitor's newest crawl, each reduced to
+its fetched pages' declarations (title, first h1, meta description, canonical, schema types), labelled
+"What each site's pages declared, as crawled", or `not-crawled`; a row read back under another project
+or host shows no pages; a failed or running newest crawl shows its state and no declarations, never an
+older crawl. The comparison review (`competitor-comparison-review`) runs through the existing
+review control beneath the declarations. `/competitors/[host]` is replaced in place (Q3): keyed by the
+competitor's host (the route folder is renamed from `[competitorId]`), the host's shape checked, then
+the operator, then a stored project that recorded it (the `?project=` one first); unknown hosts and
+the fixture ids (`<project>--<rival>`, not hostnames) are not found; nothing is prerendered. It shows
+that competitor's declarations beside the project's and its comparison reviews, newest first. Hidden,
+not labelled (no SERP data): every tile, visibility share, keyword overlap, rankings, content gaps, top
+pages, clusters, intent, SERP threats, opportunities and compare; the detail's position bands,
+authority, momentum and "costing us"; the 9 stale cluster links go with those views. The screen
+imports no fixture and carries the Observed badge; the sidebar note names Competitors. The 18
+modelled competitor components stay in the tree, unimported, for 4.8; the two fixture-screen links to
+`/competitors/<fixture id>` (Projects' competitor table, the Command Center snapshot) now 404, as
+the cluster links did in 3.6. No schema, instruction, worker or other screen change. On
+`claude/phase4-competitors`; not merged.
 
 **Findings recorded for later phases:**
 
@@ -507,7 +542,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 4 checkpoint 4.3 on `claude/phase4-analytics` (above); each further
+**Current work:** Phase 4 checkpoint 4.4 on `claude/phase4-competitors` (above); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -882,7 +917,8 @@ lists the migrations in order.
 The Technical SEO and Keyword Intelligence screens read observed data only (Phase 3): this
 product's own crawl records, the stored Search Console rows and the operator's curated keywords.
 The Analytics screen reads stored Search Console snapshots and the Analytics & Learning agent's
-completed runs only (Phase 4, checkpoint 4.3).
+completed runs only (Phase 4, checkpoint 4.3), and the Competitor Intelligence screen this product's
+own crawls of the project's site and its recorded competitors (checkpoint 4.4).
 Everything else on screen (rankings, competitor, backlink, AI-visibility and reporting figures)
 is still modelled fixture data from `src/lib/mock`. It must stay labelled as
 such (`src/config/build-status.ts`). Never present fixture data as live, or live data as a
@@ -1131,7 +1167,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (b2) | Task priority change: set-priority function, priority-changed event, Change priority control (checkpoint 2.3b) | Complete: PR #31 (`0921c1f8`), deployed; migration `20261005120000` applied and recorded; browser verified (events seq 15–16) |
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
-| Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Started:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) on `claude/phase4-analytics`, not merged; then 4.4 Competitors, 4.5 AI Visibility and Outbound Links, 4.6 the Director bundle (and the extra-paragraph fix), 4.8 closing |
+| Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Started:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) on `claude/phase4-competitors`, not merged; then 4.5 AI Visibility and Outbound Links, 4.6 the Director bundle (and the extra-paragraph fix), 4.8 closing |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1148,8 +1184,8 @@ Carried forward: the single-project Director `priority-review` has no structural
 `33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 4 checkpoint 4.3 on
-`claude/phase4-analytics`. Phase 3 — the MVP target — is complete.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 4 checkpoint 4.4 on
+`claude/phase4-competitors`. Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2 and Phase 3 are complete. Phase 2, Project Manager loop closure: the handoff
 outcome read-back, handoffs for five of the six deferred agents (the Writer stays deferred) with the
 structural crawl-review bound, priority change, and tasks as grounding with the Project Manager
