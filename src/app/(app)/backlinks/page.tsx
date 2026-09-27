@@ -1,25 +1,27 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { BacklinksWorkspace } from "@/components/backlinks/backlinks-workspace";
+import { OutboundLinksScreen } from "@/components/backlinks/observed-outbound";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 export const metadata: Metadata = {
-  title: "Backlinks & Authority",
+  title: "Outbound Links",
   description:
-    "The link profile: referring domains, backlinks, anchor distribution, the pages earning links, competitor link gaps, profile risk, and the outreach they produce.",
+    "Outbound only — the links a stored project's own pages carry to outside hosts, as this product's crawler recorded them, with the outbound-link review. Not backlinks.",
 };
 
 /**
- * The workspace reads its initial project from the query string, so links from
- * the Command Center and from a project land on a filtered view.
- * `useSearchParams` needs a Suspense boundary during static rendering, which is
- * what this shell provides.
+ * The screen reads its initial project from the query string. `useSearchParams`
+ * needs a Suspense boundary during static rendering, which is what this shell
+ * provides. The projects come from the Projects repository.
  */
-export default function BacklinksPage() {
+export default async function BacklinksPage() {
+  const projects = projectOptionsFrom(await projectRepository.listProjects());
   return (
     <Suspense fallback={<BacklinksFallback />}>
-      <BacklinksWorkspace />
+      <OutboundLinksScreen projects={projects} />
     </Suspense>
   );
 }
