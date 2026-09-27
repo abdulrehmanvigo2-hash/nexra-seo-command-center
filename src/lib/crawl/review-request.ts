@@ -213,7 +213,7 @@ export const PROJECT_PRIORITY_REVIEW: ReviewSpec = {
   agentName: "SEO Director",
   action: "Run project Director review",
   summary:
-    "Queues a read-only project-level review by the SEO Director over the latest completed Technical SEO, On-Page SEO and Keyword & Search Intent reviews of this project, chosen by fixed rules on the server. The Director reads those agents' written reviews and the crawl findings recorded for the crawls they reviewed — not the crawls or reports themselves — and ranks the actions they support into one bounded plan. It assigns nothing and changes nothing.",
+    "Queues a read-only project-level review by the SEO Director over the latest completed Technical SEO, On-Page SEO, Keyword & Search Intent, Analytics & Learning (performance) and AI Visibility (answer-readiness) reviews of this project, chosen by fixed rules on the server. The Director reads those agents' written reviews and the crawl findings recorded for the crawls they reviewed — not the crawls or reports themselves — and ranks the actions they support into one bounded plan. It assigns nothing and changes nothing.",
   groundedIn: "the latest completed specialist reviews of this project and the crawl findings recorded for their crawls",
 };
 
@@ -717,7 +717,7 @@ export function projectDirectorRequest(projectId: string | null, sources: readon
   if (!sources.some((source) => source.status === "selected")) {
     return {
       ok: false,
-      why: "No completed, grounded specialist review exists for this project yet. Run a Technical SEO, On-Page SEO or Keyword & Search Intent review first; the Director has nothing to plan from until one completes.",
+      why: "No completed, grounded specialist review exists for this project yet. Run a Technical SEO, On-Page SEO, Keyword & Search Intent, Analytics & Learning or AI Visibility review first; the Director has nothing to plan from until one completes.",
     };
   }
   return {

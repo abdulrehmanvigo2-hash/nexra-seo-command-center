@@ -89,6 +89,9 @@ export function presentLatestWindow(snapshots: readonly SearchConsoleSnapshot[],
 
 export const POSITION_NOT_RANK = "Search Console average position, not rank";
 export const LATEST_WINDOW_FOOTER = "Observed in stored Search Console snapshots · latest window only";
+/** Checkpoint 4.8: the tiles and the Search Console panel beneath them can show different windows. */
+export const STORED_VS_LIVE_NOTE =
+  "These tiles show the latest stored window; the Search Console panel below reads Google's live report, so its window can end later and its figures differ.";
 
 export type LatestWindowTile = {
   readonly id: "clicks" | "impressions" | "ctr" | "position";

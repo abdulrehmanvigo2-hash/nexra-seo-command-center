@@ -200,8 +200,9 @@ export function ProjectUnmeasured({
       {/*
         The SEO Director's project-level review (M5), beneath every specialist
         control it draws on. Its sources are the newest completed, grounded
-        Technical SEO, On-Page SEO and Keyword & Search Intent reviews of this
-        project, chosen on the server by a fixed rule; the panel previews that
+        Technical SEO, On-Page SEO, Keyword & Search Intent, Analytics &
+        Learning and AI Visibility reviews of this project (five slots since
+        checkpoint 4.6), chosen on the server by a fixed rule; the panel previews that
         rule over the same run listing and needs only the project id here.
       */}
       <ProjectDirectorPanel projectId={project.id} />

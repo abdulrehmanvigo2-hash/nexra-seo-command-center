@@ -72,7 +72,7 @@ export function ProjectDirectorPanel({ projectId }: { projectId: string }) {
       <PanelHeader
         eyebrow="SEO Director"
         title="Project Director review"
-        description="One bounded plan over the latest completed Technical SEO, On-Page SEO and Keyword & Search Intent reviews of this project, each chosen by a fixed rule on the server. The Director reads those agents' written reviews and the crawl findings recorded for their crawls; it does not see the crawls or reports themselves, and it ranks nothing on general SEO knowledge."
+        description="One bounded plan over the latest completed Technical SEO, On-Page SEO, Keyword & Search Intent, Analytics & Learning (performance) and AI Visibility (answer-readiness) reviews of this project, each chosen by a fixed rule on the server. The Director reads those agents' written reviews and the crawl findings recorded for their crawls; it does not see the crawls or reports themselves, and it ranks nothing on general SEO knowledge."
       />
       <div className="space-y-3 px-4 pb-4 sm:px-5">
         <section aria-label="Sources the Director would read now" className="space-y-1.5">

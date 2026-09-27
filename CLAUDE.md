@@ -4,11 +4,12 @@ Professional, agency-grade AI SEO platform. This file defines the operating rule
 project. Read it before writing any code.
 
 **Current stage: Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
-data; the Director's learnings loop) has started: its design note (checkpoint 4.1) is approved, and
-the Director and performance-review output bounds (checkpoint 4.2) are merged, deployed and verified
-live; the Analytics (checkpoint 4.3) and Competitors (4.4) screens over stored data are merged,
-deployed and browser verified; AI Visibility and Outbound Links (4.5) are merged and deployed; the
-Director's five-slot bundle and the bounded-answer fix (4.6) are on their branch. Phase 3,
+data; the Director's learnings loop) is complete (checkpoints 4.1–4.8, PR #39–#43 and the closing
+checkpoint 4.8): the Director and performance-review output bounds (4.2) are verified live; the
+Analytics (4.3), Competitors (4.4), AI Visibility and Outbound Links (4.5) screens over stored data
+are merged, deployed and browser verified; the Director's five-slot bundle and the bounded-answer fix
+(4.6) are deployed and verified live (run `288639f4…`). Next: the Phase 5 design checkpoint (5.1),
+under its own explicit approval. Phase 3,
 Technical & Keywords realification — the MVP target — is complete
 (checkpoints 3.1–3.6, PR #34–#38): the Technical SEO and Keyword Intelligence screens read observed
 data only, with live page detail, derived finding history and the operator's curated keywords
@@ -35,8 +36,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `41519ffdfcafe866d1520614b7b926427c917a89` (merge of PR #42,
-`claude/phase4-ai-visibility-outbound`, the AI Visibility and Outbound Links screens; preceded by PR #41
+GitHub `master`: `ddc6cbb4b508e1ee36d7403efdf19f88b916a65c` (merge of PR #43,
+`claude/phase4-director-bundle`, the Director's five-slot bundle and the bounded-answer fix; preceded by
+PR #42 `41519ffd…` (the AI Visibility and Outbound Links screens), PR #41
 `69379e3d…` (the Competitors screen over stored crawls), PR #40
 `a73cfd21…` (the Analytics screen over stored data), PR #39 `0c64d77d…`
 (the Director and performance-review bounds), PR #38
@@ -55,10 +57,18 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_CjXD2ik8QMhf96qhMqFLRKd9S6YD`, READY, built from `master` at
-`41519ffd`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_ANfmhgGsZc4LgDTn9JhhtQDWPGwW` at `69379e3d`); `master` CI run `36329038130` passed (confirmed
-green at the 15:22 UTC check, 27 Sep). PR #42 (checkpoint 4.5) merged as `41519ffd…`.
+Production deployment: `dpl_2bUN9N9RcjgrNpG1zXcFEeS81VeH`, READY (27 Sep 15:50 UTC), built from
+`master` at `ddc6cbb4` by an operator-approved manual production redeploy, serving
+`nexra-seo-command-center.vercel.app` (previous: `dpl_CjXD2ik8QMhf96qhMqFLRKd9S6YD` at `41519ffd`);
+`master` CI run `36330205806` passed. PR #43 (checkpoint 4.6) merged as `ddc6cbb4…`.
+
+**Auto-deploy skip (27 Sep):** the push of `ddc6cbb4` to `master` left no Vercel deployment record
+at all — not even the CANCELED record an ignored build leaves (as every branch preview shows) — so
+production stayed on `41519ffd` and served the three-slot Director panel; the likeliest cause is a
+GitHub push event Vercel never received or processed (no project setting explains it; unconfirmed).
+One manual redeploy of the same commit (`dpl_2bUN9N9R…`) fixed it. **Practice from now on:** after
+every merge, confirm the production deployment id, its commit and the production alias before any
+live run.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
 source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
@@ -461,8 +471,10 @@ outreach. Both screens import no fixture and carry the Observed badge; the sideb
 The modelled components stay in the tree, unimported, for 4.8 (10 under `ai-visibility` —
 `ai-chrome` is still used by a Content fixture panel — and 10 under `backlinks`). No schema,
 instruction, crawler or other screen change. PR #42 merged as `41519ffd…`; deployment `dpl_CjXD2ik8…`
-READY; `master` CI run `36329038130` green. **Browser verification:** the operator's 4.5 report was
-not included in the 4.6 instructions; it is recorded as open until given.
+READY; `master` CI run `36329038130` green. **Browser verification PASS (operator, 27 Sep):** AI
+Visibility 5 rows, /contact 0 h1, "not whether any AI engine cites it", words as served, the agent
+control present, the hidden views absent; the sidebar lists AI Visibility and Outbound Links as
+observed.
 
 **Phase 4 checkpoint 4.6 (the Director bundle with five slots, and the bounded-answer fix, Part E and
 Q7):** instructions, bundle and tests only. **Bundle** (`src/lib/agent-runs/director-bundle.ts`):
@@ -487,8 +499,48 @@ instruction-length guard moves from 2,400 to 2,500 deliberately (2,454). New has
 `b0ef607c…`, project priority `3bed3937…`, performance `9524ebe2…`, task plan `fd84a38a…`,
 answer-readiness `c0dc8223…`. **Not changed (screens):** the *Project Director review* panel's
 description still names the three M5 reviews, though its source list follows the five slots —
-for 4.8. No schema, worker or screen change; no live run. On `claude/phase4-director-bundle`; not
-merged.
+for 4.8. No schema, worker or screen change. PR #43 merged as `ddc6cbb4…`; deployment
+`dpl_2bUN9N9R…` READY (a manual redeploy, see *Auto-deploy skip* above); `master` CI run
+`36330205806` green. **Live verification (27 Sep, operator-run once, no retry):** project
+`project-priority-review` run `288639f4…` completed, 1 attempt, `claude-opus-5`, grounded — **5 of
+5 sources selected**, 0 missing, 24,818 bytes (crawl-review `941cc617…`, on-page-review
+`66df0fb1…`, search-query-review `73f38c16…`, performance-review `17623686…`,
+answer-readiness-review `5b6cef01…`) plus the recorded findings of crawls `75d1bfbe…` and
+`3398ff1a…`. Answer in the fixed order: 3 items, all BASIS OBSERVED (the /contact h1, the apex →
+www host variant, the long homepage description), the BLOCKERS line, then the closing "First:" line;
+**no stray paragraph — the extra-paragraph fix held**. It cited Technical SEO, On-Page SEO and AI
+Visibility beside the recorded findings; the performance and search-query reviews were read but not
+cited, as the Q7 rule ranks recorded findings first and three filled the plan. **1,417 characters**
+(see the length note below). Totals after: 50 runs, 51 attempts.
+
+**Phase 4 checkpoint 4.8 (Phase 4 closing, 27 Sep):**
+
+- **Orphan cleanup:** the 45 modelled components no route, layout, API handler, proxy or live
+  component imports any more were deleted — found by the 3.6 method (an import-graph scan from every
+  `src/app` entry and the proxy, to a fixed point; no test imported them): 7 under
+  `src/components/analytics` (`analytics-chrome`, `analytics-toolbar`, `filters`, `insight-views`,
+  `overview-view`, `sorting`, `tables`); 18 under `src/components/competitors` (`battles-view`,
+  `clusters-view`, `compare-view`, `competitor-chrome`, `competitor-intelligence`,
+  `competitor-summary`, `competitor-toolbar`, `competitor-workspace`, `competitors-table`, `filters`,
+  `gaps-view`, `intent-view`, `opportunities-view`, `overlap-table`, `overview-view`, `pages-view`,
+  `sorting`, `threats-view`); 10 under `src/components/ai-visibility` (`ai-toolbar`, `ai-visibility`,
+  `fan-out-view`, `filters`, `gaps-view`, `opportunities-view`, `overview-view`,
+  `relationships-panel`, `sorting`, `tables`); 10 under `src/components/backlinks`
+  (`anchors-view`, `backlinks-workspace`, `filters`, `link-chrome`, `link-toolbar`, `outreach-view`,
+  `overview-view`, `risk-view`, `sorting`, `tables`). Kept: `ai-visibility/ai-chrome` (a Content
+  fixture panel imports it). The `src/lib/mock` modules stay.
+- **Wording (screen text only):** the Analytics tiles carry one line saying they show the latest
+  stored window while the Search Console panel below reads Google's live report
+  (`STORED_VS_LIVE_NOTE`); the *Project Director review* panel's description, the review's
+  control summary and its "nothing to plan from" line name the five reviews.
+- **Length note:** 1,200 characters is a soft target the model often overshoots (`aecfca87…` 1,217,
+  `17623686…` 1,311, `288639f4…` 1,417); the worker's 2,000-character ceiling holds on every bounded
+  review. Not pursued further.
+- **Remaining 404s, left intentionally until Phase 5:** 8 links in 6 Content fixture files to the
+  removed `/keywords/clusters/<id>` route, and 2 fixture links to `/competitors/<fixture id>`
+  (Projects' competitor table, the Command Center snapshot).
+- No schema, instruction, worker or migration change.
+- **Next step:** the Phase 5 design checkpoint (5.1), under its own explicit approval.
 
 **Findings recorded for later phases:**
 
@@ -500,7 +552,7 @@ merged.
 - Task events seq 12–14 do not exist: the identity values were taken by the rolled-back 2.3b
   verification probe (see 2.3b above) and are not reused. History is ordered by `seq`, never
   assumed contiguous.
-- **The extra-paragraph pattern (3 instances; addressed by checkpoint 4.6, awaiting a live run):** a structurally bound
+- **The extra-paragraph pattern (3 instances; resolved by checkpoint 4.6, verified live on run `288639f4…`):** a structurally bound
   answer adds one paragraph of prose outside its fixed order, usually explaining missing evidence —
   the task plan review's "Observation:" line (run `567a3f11…`), the Director's opening "No recorded
   crawl findings…" line (`aecfca87…`, which is what puts it 17 characters over 1,200) and the
@@ -603,7 +655,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 4 checkpoint 4.6 on `claude/phase4-director-bundle` (above); each further
+**Current work:** Phase 4 is complete (closing checkpoint 4.8 on `claude/phase4-closing`); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -981,7 +1033,7 @@ The Analytics screen reads stored Search Console snapshots and the Analytics & L
 completed runs only (Phase 4, checkpoint 4.3), and the Competitor Intelligence screen this product's
 own crawls of the project's site and its recorded competitors (checkpoint 4.4); the AI Visibility and
 Outbound Links screens the project's latest own-site crawl (checkpoint 4.5).
-Everything else on screen (rankings, competitor, backlink, AI-visibility and reporting figures)
+Everything else on screen (rankings, content, reporting and dashboard figures)
 is still modelled fixture data from `src/lib/mock`. It must stay labelled as
 such (`src/config/build-status.ts`). Never present fixture data as live, or live data as a
 fixture.
@@ -1229,7 +1281,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (b2) | Task priority change: set-priority function, priority-changed event, Change priority control (checkpoint 2.3b) | Complete: PR #31 (`0921c1f8`), deployed; migration `20261005120000` applied and recorded; browser verified (events seq 15–16) |
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
-| Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Started:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) on `claude/phase4-director-bundle`, not merged; then 4.8 closing |
+| Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1246,18 +1298,21 @@ Carried forward: the single-project Director `priority-review` has no structural
 `33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 4 checkpoint 4.6 on
-`claude/phase4-director-bundle`. Phase 3 — the MVP target — is complete.
-Phase 1, Phase 2 and Phase 3 are complete. Phase 2, Project Manager loop closure: the handoff
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Phase 4 is complete (PR #39–#43
+and the closing checkpoint 4.8). Next: the Phase 5 design checkpoint (5.1), under its own explicit
+approval. Phase 3 — the MVP target — is complete.
+Phase 1, Phase 2, Phase 3 and Phase 4 are complete. Phase 2, Project Manager loop closure: the handoff
 outcome read-back, handoffs for five of the six deferred agents (the Writer stays deferred) with the
 structural crawl-review bound, priority change, and tasks as grounding with the Project Manager
 task-plan review. Phase 3, Technical & Keywords realification — the MVP target: the Technical SEO
 screen, page detail and derived finding history over this product's own crawls; the Keyword
 Intelligence screen over the stored Search Console rows; and the operator's curated keywords
-(the one Phase 3 migration, applied). Not started, each under its own explicit approval: further
-Director sources and the single-project Director bound (Phase 4), the remaining fixture screens
-(Competitors, Content, AI Visibility — whose links to the removed keyword cluster route stay 404
-until then), and curated keywords as agent grounding (deferred by Q6).
+(the one Phase 3 migration, applied). Phase 4: the Analytics, Competitors, AI Visibility and
+Outbound Links screens over stored data, the Director and performance-review bounds, and the
+Director's five-slot bundle. Not started, each under its own explicit approval: the remaining
+fixture screens (Content, whose 8 links to the removed keyword cluster route stay 404 until then,
+and the 2 fixture links to `/competitors/<fixture id>`), and curated keywords as agent grounding
+(deferred by Q6).
 
 ## 15. Definition of Done
 
