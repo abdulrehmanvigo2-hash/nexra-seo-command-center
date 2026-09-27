@@ -3,7 +3,10 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: Phase 3, Technical & Keywords realification — the MVP target — is complete
+**Current stage: Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
+data; the Director's learnings loop) has started: its design note (checkpoint 4.1) is approved, and
+the Director and performance-review output bounds (checkpoint 4.2) are on their branch. Phase 3,
+Technical & Keywords realification — the MVP target — is complete
 (checkpoints 3.1–3.6, PR #34–#38): the Technical SEO and Keyword Intelligence screens read observed
 data only, with live page detail, derived finding history and the operator's curated keywords
 (migration `20261006120000`, applied and recorded); each browser verified in production. Phase 2,
@@ -29,9 +32,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `98b0fbd989c758a711a667f22c6d6de09d2b3805` (merge of PR #37,
-`claude/phase3-curated-keywords`, the curated keyword entity; preceded by PR #36 `201d47a2…` (the
-observed Keywords surfaces), PR #35 `c244efd4…`
+GitHub `master`: `ce1fb3127fba4555a3f4f41a707314ec9c1804af` (merge of PR #38,
+`claude/phase3-closing`, Phase 3 closing and MVP complete; preceded by PR #37 `98b0fbd9…` (the
+curated keyword entity), PR #36 `201d47a2…` (the observed Keywords surfaces), PR #35 `c244efd4…`
 (live Technical page detail and derived finding history), PR #34 `5b79ba8d…` (live Technical SEO
 tabs), PR #33 `e7feedaf…`
 (Phase 2 closing docs), PR #32 `2305b605…` (tasks as
@@ -45,9 +48,10 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_3uX3tKdEBiq671mANbg78HtHaoiv`, READY, built from `master` at
-`98b0fbd9`, serving `nexra-seo-command-center.vercel.app` (previous:
-`dpl_JBsp1YeBpqSSGVW6SN7kKjD1wiLM` at `201d47a2`); `master` CI run `36310916032` passed.
+Production deployment: `dpl_HH217S1vrjgJi8ihFg1W8o9UZd6H`, READY, built from `master` at
+`ce1fb312`, serving `nexra-seo-command-center.vercel.app` (previous:
+`dpl_3uX3tKdEBiq671mANbg78HtHaoiv` at `98b0fbd9`); `master` CI run `36313957551` passed. PR #38
+(Phase 3 closing) merged as `ce1fb312…`.
 
 **Phase 1 checkpoint 1.2 (docs reconciliation, 26 Sep):** PR #23 merged as `97aa0018…`; docs and
 source comments only, no behaviour change, no migration; deployment `dpl_88CT3m…` READY.
@@ -322,9 +326,43 @@ before); the probes consumed identity values of the keyword events `seq`, which 
 - No schema change, no behaviour change on a live surface.
 - **Next step:** Phase 4 design checkpoint (4.1), under its own explicit approval.
 
+**Phase 4 checkpoint 4.1 (design, 27 Sep):** an audit-only design note for Phase 4 (roadmap
+checkpoints 9–11: Analytics, Competitors, AI Visibility and Backlinks over stored data; the Director
+consuming the performance and answer-readiness reviews; learnings; the carried Director bound), no
+external provider. Approved with decisions: **Q1** the performance review gets the structural bound
+beside the Director fix (4.2); **Q2** learnings are read from completed `performance-review` runs, no
+table — the planned learnings migration (4.7) is dropped; **Q3** the competitor detail route is
+replaced in place, keyed by the competitor's host; **Q4** the navigation label for the Backlinks
+screen becomes "Outbound Links" (outbound edges only, never backlinks); **Q5** AI-bot robots access
+stays hidden (the crawler records only its own user agent); **Q6** Analytics tiles show the latest
+stored window only; **Q7** the Director ranks recorded finding > measurement > inference; **Q8** each
+live verification run is approved separately. Planned split: 4.2 bounds; 4.3 Analytics; 4.4
+Competitors; 4.5 AI Visibility and Outbound Links; 4.6 the Director bundle with five slots; 4.8
+closing docs. P4d first verifies with a window ending 28 Sep or later (the 7-day `MIN_GAP_DAYS`;
+windows 21–23 Sep stored), captured around 2 Oct; full confidence (14 days) around 9 Oct.
+
+**Phase 4 checkpoint 4.2 (Director and performance-review bounds, parts A and Q1):**
+`PRIORITY_REVIEW_INSTRUCTIONS` (`src/lib/agent-runs/run-grounding.ts`) rewritten in the 2.3d
+structural shape: a fixed order (the items, then one NEXT line); at most three items, each six lines —
+PRIORITY, BASIS, ACTION (under 20 words), SOURCE in short form (a rule id and URL path, or the
+agent's name and a quote under 8 words; never a full URL or a whole finding), WHY THIS RANK (under
+15), VERIFY (under 8); one NEXT line under 25 words; and as the last rule the whole under 1,200
+characters, dropping the lowest-ranked item first and never a SOURCE or the NEXT line. The
+single-run Director review's history: four of its first five production runs were refused as
+`rejected-output` at the worker's 2,000-character ceiling (`a6a5bfcf…`, `55a0d422…`, `559fdffa…`,
+`33ac8a25…`), and the one that completed, `393cf8ae…`, ran to 1,965 characters.
+`PERFORMANCE_REVIEW_INSTRUCTIONS` (`src/lib/search-console/grounding.ts`), which had no bound (its one
+production answer ran to 1,587 characters), gets the same treatment: one WINDOWS line (under 25
+words, never dropped), at most three findings (OBSERVED under 20 words, INFERENCE under 12,
+RECOMMENDATION under 15), its two closing lines kept (each under 20 words), and the whole under
+1,200 characters as the last rule. Every sentence not about length is kept word for word; both texts
+are hash-pinned. The `link-grounding.ts` header now says anchor text is recorded (since
+`20260929120000`) and that the reader does not read it. No schema, worker, screen or bundle change.
+On `claude/phase4-director-bounds`; not merged.
+
 **Findings recorded for later phases:**
 
-- **Carried forward to Phase 4:** the single-project Director `priority-review` run `33ac8a25…`
+- **Carried forward to Phase 4 (addressed by checkpoint 4.2, awaiting a live run):** the single-project Director `priority-review` run `33ac8a25…`
   (SEO Director, queued by an operator on 26 Sep 08:45) was executed by the scheduled worker on
   27 Sep 06:19 UTC and failed `rejected-output`; not retried. `PRIORITY_REVIEW_INSTRUCTIONS` still
   lack the structural bound the project Director, intake, crawl and plan reviews carry; it is
@@ -429,8 +467,8 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 3 closing, checkpoint 3.6, on `claude/phase3-closing` (above). Phase 3 — the
-MVP target — is complete with it; the next phase starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+**Current work:** Phase 4 checkpoint 4.2 on `claude/phase4-director-bounds` (above); each further
+step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -1051,6 +1089,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (b2) | Task priority change: set-priority function, priority-changed event, Change priority control (checkpoint 2.3b) | Complete: PR #31 (`0921c1f8`), deployed; migration `20261005120000` applied and recorded; browser verified (events seq 15–16) |
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
+| Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Started:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) on `claude/phase4-director-bounds`, not merged; then 4.3 Analytics, 4.4 Competitors, 4.5 AI Visibility and Outbound Links, 4.6 the Director bundle, 4.8 closing |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1067,9 +1106,8 @@ Carried forward: the single-project Director `priority-review` has no structural
 `33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 3 closing, checkpoint 3.6,
-on `claude/phase3-closing`. Phase 3 — the MVP target — is complete; the next phase starts only with
-explicit approval.
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 4 checkpoint 4.2 on
+`claude/phase4-director-bounds`. Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2 and Phase 3 are complete. Phase 2, Project Manager loop closure: the handoff
 outcome read-back, handoffs for five of the six deferred agents (the Writer stays deferred) with the
 structural crawl-review bound, priority change, and tasks as grounding with the Project Manager

@@ -388,14 +388,24 @@ export const RUN_LIMITS_NOTE = [
  * verification step on each, because the source is a model's inference and
  * the Director cannot check it. The queue is a proposal: the Director changes
  * nothing, assigns nothing, and says so.
+ *
+ * Checkpoint 4.2: the bound is structural, as for the crawl review (2.3d) and
+ * the project Director review — four of the first five single-run reviews in
+ * production were refused as `rejected-output` at the worker's 2,000-character
+ * ceiling, and the one that completed ran to 1,965. A fixed order, at most
+ * three items with a word cap on each line, SOURCE in short form, one NEXT
+ * line, and as the last rule the whole under 1,200 characters with what to
+ * drop first and what never to drop.
  */
 export const PRIORITY_REVIEW_INSTRUCTIONS = [
   "Produce a prioritised action queue for this project from the upstream agent review supplied with this task and, where they are supplied beneath it, the recorded crawl findings, and from nothing else.",
-  "Give at most five items, fewer where the evidence supports fewer, ranked 1 first. Structure every item as: PRIORITY (its rank), BASIS (OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on the review's inference), ACTION (one concrete next step for a person to take), SOURCE (for a recorded finding: its rule id and the URL or URLs it names, quoted from the findings block; for the review: the upstream agent's name and the exact finding it comes from, quoted from the review), WHY THIS RANK (the effort you judge, how many pages the evidence names, and how confident you are), then VERIFY (what a person must check before acting, because the upstream finding is a model's inference, not a measurement, and a recorded finding is one fixed rule's reading of one crawl).",
+  "Answer in this fixed order and no other: the items, then one NEXT line.",
+  "Give at most three items, fewer where the evidence supports fewer, ranked 1 first. Structure every item as six lines: PRIORITY (its rank), BASIS (OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on the review's inference), ACTION (under 20 words: one concrete next step for a person to take), SOURCE (in short form: for a recorded finding its rule id and the URL path it names, for example h1-missing /contact; for the review the upstream agent's name and a quoted phrase of under 8 words from it; never a full URL and never a whole finding), WHY THIS RANK (under 15 words: the effort you judge, how many pages the evidence names, and how confident you are), then VERIFY (under 8 words: what a person must check before acting).",
+  "VERIFY is there because the upstream finding is a model's inference, not a measurement, and a recorded finding is one fixed rule's reading of one crawl.",
   "Every item must trace to a statement in the review or to a recorded finding cited by its rule id. Do not add priorities from general SEO knowledge that neither supports, and do not merge two findings into one item. Where the review and a recorded finding disagree, the recorded finding is the observation and the review is the inference, and you must say so. When the findings block says none are recorded, rank nothing on findings.",
   "Never state or estimate a ranking, traffic, click, revenue or Core Web Vitals effect for any item: nothing supplied measures them. A recorded finding is one rule's observation within one crawl, not a site-wide count and not an indexation fact.",
   "The review is advice from another model. Do not restate its inferences as facts, and do not describe its evidence as something you have seen. Where the review marks a reading 'not established', the only action you may rank on it is establishing it.",
-  "Say plainly what the queue does not cover: it reflects one review of one kind of evidence, and it is not a strategy for the project.",
   "You change nothing and assign nothing: the queue is a proposal for an operator to review, and you must not describe any item as scheduled, assigned, or done.",
-  "End with one line naming the single first action and why it comes before the rest.",
+  "NEXT: end with one line, under 25 words, naming the single first action and why it comes before the rest, and saying the queue reflects one review of one kind of evidence and is not a strategy for the project.",
+  "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest-ranked item first, entirely, then shorten WHY THIS RANK; never drop or shorten a SOURCE or the NEXT line to fit.",
 ].join(" ");

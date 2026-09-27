@@ -4,13 +4,16 @@
  * and the first reader over `nexra_crawl_links`.
  *
  * The crawler records every anchor it resolves as an edge: source URL, target
- * URL, the `rel` attribute as written, and whether the target is within the
- * crawl's host. External edges are recorded and never fetched. That is the
+ * URL, the `rel` attribute as written, whether the target is within the
+ * crawl's host and — since migration 20260929120000 — the anchor text, cut to
+ * 200 characters. External edges are recorded and never fetched. That is the
  * whole of what this product knows about links, and it points one way: it
  * says what the client's pages link *to*, and nothing about who links to the
- * client. No backlink, referring domain, authority figure, anchor text or
- * placement is recorded by anything here, and the block says so in its own
- * text so the caveat travels with the data.
+ * client. No backlink, referring domain, authority figure, inbound anchor
+ * text or placement is recorded by anything here, and the block says so in
+ * its own text so the caveat travels with the data. This reader does not
+ * read the outbound anchor text: the block carries hosts, `rel` values and
+ * source paths only.
  *
  * The reader checks the crawl before a row of links is read: it must exist,
  * belong to the run's project, be the project's own site rather than a
