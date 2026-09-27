@@ -174,6 +174,9 @@ describe("the live tasks panel", () => {
     assert.match(controls, /options=\{TASK_OWNING_AGENTS\.map/);
     assert.match(controls, /Confirm handoff/);
     assert.match(controls, /Nothing runs when you confirm\./);
+    // cp 2.3c: Run Now lives on the project's review panels; the Agents run history has none.
+    assert.match(controls, /or for Run Now on the project&apos;s review panel for that review\./);
+    assert.doesNotMatch(controls, /run history\. Nothing runs|Run now" on the agent's run history|Run now on the agent/);
     assert.match(controls, /Handoff not supported yet for/);
     assert.match(controls, /disabled=\{terminal \|\| busy \|\| mapping === null\}/);
     assert.match(controls, /void post\(\{ action: "handoff", \.\.\.handoffRecordField\(mapping\.record, chosen\) \}/);

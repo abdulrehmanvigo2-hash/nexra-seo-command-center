@@ -33,7 +33,7 @@ import type { AgentRun } from "@/types/agent-run";
  * change tells no agent anything. A handoff opens a confirmation first,
  * naming the one task the owning agent would be handed; only "Confirm
  * handoff" posts, once, and the answer names the queued run — which the
- * scheduled worker or a separate "Run now" on the agent's run history
+ * scheduled worker or a separate "Run Now" on the project's review panel
  * executes, never this control. An owner with no supported handoff shows
  * that, and offers nothing. An owner whose review reads one record (one of
  * the project's own-site crawls, or one competitor domain recorded at
@@ -245,7 +245,7 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
           <p className="text-[11.5px] text-fg-muted">
             Hands this task to <span className="font-medium text-fg">{AGENT_NAMES[task.owningAgent]}</span> as one queued{" "}
             <span className="font-mono">{mapping.taskType}</span> run: {mapping.label}. The run carries this task&apos;s id as its source and waits for the scheduled
-            worker, or for Run now on the agent&apos;s run history. Nothing runs when you confirm.
+            worker, or for Run Now on the project&apos;s review panel for that review. Nothing runs when you confirm.
           </p>
           {mapping.record && <RecordChoice kind={mapping.record} choices={choices} chosen={chosen} onChoose={setChosen} disabled={busy} />}
           <div className="flex flex-wrap items-center gap-2">
