@@ -16,8 +16,9 @@ import {
   type AgentTaskStatus,
   type TaskOwningAgent,
 } from "@/lib/agent-tasks/contract";
-import { handoffFor, handoffUnsupportedReason, taskActionFailure } from "@/lib/agent-tasks/handoff";
+import { handoffFor, handoffUnsupportedReason, taskActionFailure, type HandoffRecordKind } from "@/lib/agent-tasks/handoff";
 import { describeTaskRunOutcome, type TaskRunOutcome } from "@/lib/agent-tasks/outcome";
+import type { HandoffCrawlChoice } from "@/lib/agent-tasks/service";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import { AGENT_NAMES } from "@/lib/mock/agents/registry";
 import type { AgentRun } from "@/types/agent-run";
@@ -34,7 +35,11 @@ import type { AgentRun } from "@/types/agent-run";
  * handoff" posts, once, and the answer names the queued run — which the
  * scheduled worker or a separate "Run now" on the agent's run history
  * executes, never this control. An owner with no supported handoff shows
- * that, and offers nothing. The history view also shows what became of the
+ * that, and offers nothing. An owner whose review reads one record (one of
+ * the project's own-site crawls, or one competitor domain recorded at
+ * intake) lists those records in the confirmation; the operator chooses one,
+ * the server checks it, and nothing is chosen on the operator's behalf. The
+ * history view also shows what became of the
  * newest handoff, as the server computed it from the linked run: read only,
  * and the task's status is never changed by it.
  */
@@ -47,6 +52,13 @@ type Outcome =
   | { readonly kind: "refused"; readonly message: string }
   | { readonly kind: "applied"; readonly message: string };
 
+type Choices =
+  | { readonly status: "loading" }
+  | { readonly status: "failed" }
+  | { readonly status: "crawl"; readonly crawls: readonly HandoffCrawlChoice[] }
+  | { readonly status: "competitor"; readonly domains: readonly string[] }
+  | { readonly status: "none" };
+
 type History =
   | { readonly status: "loading" }
   | { readonly status: "failed" }
@@ -57,6 +69,9 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
   const [mode, setMode] = useState<Mode>("idle");
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none" });
   const [history, setHistory] = useState<History | null>(null);
+  const [choices, setChoices] = useState<Choices | null>(null);
+  /** The record the operator chose for a record-reading handoff; empty until they choose. */
+  const [chosen, setChosen] = useState("");
   const allowed = TASK_TRANSITIONS[task.status];
   const [nextStatus, setNextStatus] = useState<AgentTaskStatus | "">(allowed[0] ?? "");
   const [nextOwner, setNextOwner] = useState<TaskOwningAgent>(task.owningAgent);
@@ -73,6 +88,10 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
     if (next === "owner") setNextOwner(task.owningAgent);
     setMode((current) => (current === next ? "idle" : next));
     if (next === "history") void loadHistory();
+    if (next === "handoff") {
+      setChosen("");
+      if (mapping?.record) void loadChoices();
+    }
   };
 
   const post = async (body: Record<string, unknown>, applied: (body: Record<string, unknown>) => { task: AgentTask; message: string }) => {
@@ -101,6 +120,20 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
       setOutcome({ kind: "refused", message: taskActionFailure(0, null) });
     } finally {
       sending.current = false;
+    }
+  };
+
+  const loadChoices = async () => {
+    setChoices({ status: "loading" });
+    try {
+      const response = await fetch(`${agentTaskUrl(task.id, task.projectId)}&view=handoff-choices`, { cache: "no-store" });
+      if (!response.ok) return setChoices({ status: "failed" });
+      const body = (await response.json()) as { kind?: string; crawls?: HandoffCrawlChoice[]; domains?: string[] };
+      if (body.kind === "crawl" && Array.isArray(body.crawls)) return setChoices({ status: "crawl", crawls: body.crawls });
+      if (body.kind === "competitor" && Array.isArray(body.domains)) return setChoices({ status: "competitor", domains: body.domains });
+      setChoices({ status: "none" });
+    } catch {
+      setChoices({ status: "failed" });
     }
   };
 
@@ -214,14 +247,15 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
             <span className="font-mono">{mapping.taskType}</span> run: {mapping.label}. The run carries this task&apos;s id as its source and waits for the scheduled
             worker, or for Run now on the agent&apos;s run history. Nothing runs when you confirm.
           </p>
+          {mapping.record && <RecordChoice kind={mapping.record} choices={choices} chosen={chosen} onChoose={setChosen} disabled={busy} />}
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="primary"
               size="sm"
-              disabled={busy}
+              disabled={busy || (mapping.record !== undefined && chosen === "")}
               onClick={() =>
-                void post({ action: "handoff" }, (body) => {
+                void post({ action: "handoff", ...handoffRecordField(mapping.record, chosen) }, (body) => {
                   const run = body.run as AgentRun | undefined;
                   const duplicate = body.duplicate === true;
                   return {
@@ -280,6 +314,71 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
         </p>
       )}
     </div>
+  );
+}
+
+/** The one record field a record-reading handoff sends: the operator's choice, never a default. */
+function handoffRecordField(kind: HandoffRecordKind | undefined, chosen: string): Record<string, string> {
+  if (kind === undefined || chosen === "") return {};
+  return kind === "crawl" ? { crawlId: chosen } : { competitorDomain: chosen };
+}
+
+/**
+ * The records an operator may choose for a record-reading handoff, read from
+ * the server's own list: the project's own-site crawls (never a competitor's)
+ * or the competitor domains recorded at intake. Starts with nothing chosen.
+ */
+function RecordChoice({
+  kind,
+  choices,
+  chosen,
+  onChoose,
+  disabled,
+}: {
+  kind: HandoffRecordKind;
+  choices: Choices | null;
+  chosen: string;
+  onChoose: (value: string) => void;
+  disabled: boolean;
+}) {
+  const id = useId();
+  const noun = kind === "crawl" ? "own-site crawl" : "recorded competitor domain";
+  if (choices === null || choices.status === "loading") return <p className="text-[11.5px] text-fg-subtle">Loading the choosable records…</p>;
+  if (choices.status === "failed" || choices.status === "none") {
+    return (
+      <p className="text-[11.5px] text-warning" role="status">
+        The choosable records could not be read. Nothing can be handed off until they are.
+      </p>
+    );
+  }
+  const options =
+    choices.status === "crawl"
+      ? choices.crawls.map((crawl) => ({
+          value: crawl.id,
+          label: `${formatFullDate(crawl.startedAt)} ${formatTimeUtc(crawl.startedAt)} · ${crawl.status} · ${crawl.pagesFetched} page${crawl.pagesFetched === 1 ? "" : "s"} fetched · ${crawl.id.slice(0, 8)}…`,
+        }))
+      : choices.domains.map((domain) => ({ value: domain, label: domain }));
+  if (options.length === 0) {
+    return (
+      <p className="text-[11.5px] text-warning" role="status">
+        {kind === "crawl"
+          ? "This project has no own-site crawl recorded. Run a crawl of the project's site first; a competitor crawl cannot be handed off here."
+          : "This project has no competitor domain recorded at intake. Record one on the project first."}
+      </p>
+    );
+  }
+  return (
+    <label htmlFor={id} className="flex max-w-md flex-col gap-1 text-[11.5px] text-fg-subtle">
+      Choose the {noun} this review reads (the server checks it is this project&apos;s)
+      <Select
+        id={id}
+        size="sm"
+        value={chosen}
+        disabled={disabled}
+        onChange={(event) => onChoose(event.target.value)}
+        options={[{ value: "", label: `Choose a ${noun}…` }, ...options]}
+      />
+    </label>
   );
 }
 
