@@ -1,25 +1,27 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { CompetitorIntelligence } from "@/components/competitors/competitor-intelligence";
+import { CompetitorsScreen } from "@/components/competitors/observed-competitors";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { projectRepository } from "@/lib/projects/repository";
+import { projectOptionsFrom } from "@/lib/projects/selection";
 
 export const metadata: Metadata = {
   title: "Competitor Intelligence",
   description:
-    "The competitive picture: keyword overlap, ranking battles, content gaps, competitor pages, cluster dominance, intent coverage, SERP threats, and the work they produce.",
+    "The competitor domains recorded for a stored project, and what each site's pages declared as this product crawled them, side by side, with the comparison review.",
 };
 
 /**
- * The workspace reads its initial project, competitor, and cluster from the
- * query string, so links from the Command Center, a project, a keyword, and a
- * content page land on a filtered view. `useSearchParams` needs a Suspense
- * boundary during static rendering, which is what this shell provides.
+ * The screen reads its initial project from the query string. `useSearchParams`
+ * needs a Suspense boundary during static rendering, which is what this shell
+ * provides. The projects come from the Projects repository.
  */
-export default function CompetitorsPage() {
+export default async function CompetitorsPage() {
+  const projects = projectOptionsFrom(await projectRepository.listProjects());
   return (
     <Suspense fallback={<CompetitorsFallback />}>
-      <CompetitorIntelligence />
+      <CompetitorsScreen projects={projects} />
     </Suspense>
   );
 }
@@ -27,25 +29,13 @@ export default function CompetitorsPage() {
 function CompetitorsFallback() {
   return (
     <div className="space-y-6" aria-busy="true">
-      {/* Widths are capped to the container: a fixed width here would be wider
-          than a 375px viewport and push the page sideways for as long as the
-          fallback is on screen. */}
       <div className="space-y-2">
         <Skeleton className="h-6 w-full max-w-64" />
         <Skeleton className="h-4 w-full max-w-96" />
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {Array.from({ length: 8 }, (_, index) => (
-          <Panel as="div" key={index} className="p-3.5">
-            <Skeleton className="h-3 w-24" />
-            <Skeleton className="mt-3 h-6 w-16" />
-            <Skeleton className="mt-3 h-3 w-full" />
-          </Panel>
-        ))}
-      </div>
       <Panel>
         <div className="space-y-3 p-4 sm:p-5">
-          {Array.from({ length: 6 }, (_, index) => (
+          {Array.from({ length: 4 }, (_, index) => (
             <Skeleton key={index} className="h-8 w-full" />
           ))}
         </div>
