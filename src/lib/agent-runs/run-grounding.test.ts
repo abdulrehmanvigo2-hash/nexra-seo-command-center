@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 import { checkStorableJson } from "./safety.ts";
+import { getTaskType } from "./task-types.ts";
 import type { AgentRun, AgentRunStatus, AgentTaskType, JsonObject } from "../../types/agent-run.ts";
 import {
   AGENT_RUN_SOURCE,
@@ -398,14 +400,14 @@ describe("the Director's instructions", () => {
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /Never state or estimate a ranking, traffic, click, revenue or Core Web Vitals effect/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /When the findings block says none are recorded, rank nothing on findings/);
     assert.match(RUN_LIMITS_NOTE, /Where RECORDED CRAWL FINDINGS follow beneath this review, they are this product's own observations by fixed rules/);
-    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /at most five items/);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /at most three items/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /PRIORITY .* ACTION .* SOURCE .* WHY THIS RANK .* VERIFY/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /Every item must trace to a statement in the review/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /Do not restate its inferences as facts/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /'not established', the only action you may rank on it is establishing it/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /You change nothing and assign nothing/);
     assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /must not describe any item as scheduled, assigned, or done/);
-    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /End with one line naming the single first action/);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /NEXT: end with one line, under 25 words, naming the single first action/);
   });
 });
 
@@ -539,5 +541,70 @@ describe("the stored upstream evidence is scalar-only (the T6 rejected-output fi
     assert.deepEqual(scalarEvidence(CRAWL_EVIDENCE), CRAWL_EVIDENCE);
     assert.deepEqual(scalarEvidence(SEARCH_CONSOLE_EVIDENCE), Object.fromEntries(Object.entries(SEARCH_CONSOLE_EVIDENCE).filter(([key]) => key !== "partial")));
     assert.deepEqual(scalarEvidence({ a: 1, b: [1], c: { d: 2 }, e: null, f: "x", g: true }), { a: 1, e: null, f: "x", g: true });
+  });
+});
+
+/**
+ * Checkpoint 4.2: the single-run Director review was the one Director task
+ * without a structural bound. Four of its first five production runs were
+ * refused as `rejected-output` at the worker's 2,000-character ceiling
+ * (`a6a5bfcf…`, `55a0d422…`, `559fdffa…`, `33ac8a25…`); the one that completed,
+ * `393cf8ae…`, ran to 1,965. The bound now copies the crawl review (2.3d) and
+ * the project Director review: a fixed order, at most three items with a word
+ * cap on each line, SOURCE in short form, one NEXT line, and the whole under
+ * 1,200 characters as the last rule.
+ */
+describe("the Director's single-run instructions bound what the model emits (checkpoint 4.2)", () => {
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+
+  test("the sentences that were not about length are kept word for word", () => {
+    for (const sentence of [
+      "Produce a prioritised action queue for this project from the upstream agent review supplied with this task and, where they are supplied beneath it, the recorded crawl findings, and from nothing else.",
+      "Every item must trace to a statement in the review or to a recorded finding cited by its rule id. Do not add priorities from general SEO knowledge that neither supports, and do not merge two findings into one item. Where the review and a recorded finding disagree, the recorded finding is the observation and the review is the inference, and you must say so. When the findings block says none are recorded, rank nothing on findings.",
+      "Never state or estimate a ranking, traffic, click, revenue or Core Web Vitals effect for any item: nothing supplied measures them. A recorded finding is one rule's observation within one crawl, not a site-wide count and not an indexation fact.",
+      "The review is advice from another model. Do not restate its inferences as facts, and do not describe its evidence as something you have seen. Where the review marks a reading 'not established', the only action you may rank on it is establishing it.",
+      "You change nothing and assign nothing: the queue is a proposal for an operator to review, and you must not describe any item as scheduled, assigned, or done.",
+    ]) {
+      assert.ok(PRIORITY_REVIEW_INSTRUCTIONS.includes(sentence), sentence.slice(0, 60));
+    }
+    assert.doesNotMatch(PRIORITY_REVIEW_INSTRUCTIONS, /at most five items|End with one line naming/);
+  });
+
+  test("a fixed order: at most three items, then one NEXT line, then the cap as the last rule", () => {
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /Answer in this fixed order and no other: the items, then one NEXT line\./);
+    const order = ["Answer in this fixed order", "Give at most three items", "NEXT: end with one line", "Keep the whole answer under 1,200 characters"];
+    const at = order.map((phrase) => PRIORITY_REVIEW_INSTRUCTIONS.indexOf(phrase));
+    assert.ok(at.every((index) => index >= 0), JSON.stringify(at));
+    assert.deepEqual([...at].sort((a, b) => a - b), at, "stated in this order");
+  });
+
+  test("each item line carries its own cap, and SOURCE is in short form", () => {
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /Structure every item as six lines: PRIORITY \(its rank\), BASIS \(OBSERVED when the item rests on a recorded crawl finding, PROPOSED when it rests on the review's inference\), ACTION \(under 20 words: /);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /SOURCE \(in short form: for a recorded finding its rule id and the URL path it names, for example h1-missing \/contact; for the review the upstream agent's name and a quoted phrase of under 8 words from it; never a full URL and never a whole finding\)/);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /WHY THIS RANK \(under 15 words: /);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /VERIFY \(under 8 words: /);
+    assert.match(PRIORITY_REVIEW_INSTRUCTIONS, /NEXT: end with one line, under 25 words, naming the single first action and why it comes before the rest, and saying the queue reflects one review of one kind of evidence and is not a strategy for the project\./);
+  });
+
+  test("the whole-answer cap is the last rule, with the drop order and what is never dropped", () => {
+    assert.ok(
+      PRIORITY_REVIEW_INSTRUCTIONS.endsWith(
+        "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest-ranked item first, entirely, then shorten WHY THIS RANK; never drop or shorten a SOURCE or the NEXT line to fit.",
+      ),
+    );
+    assert.equal(getTaskType("priority-review")?.instructions, PRIORITY_REVIEW_INSTRUCTIONS);
+  });
+
+  test("at every cap an answer stays under the worker's 2,000-character ceiling", () => {
+    // Per item: PRIORITY and BASIS about 3 words, ACTION 20, SOURCE a rule id and path or an agent name and
+    // 8 quoted words (about 12), WHY 15, VERIFY 8; three items and a 25-word NEXT line, at 6.5 characters a
+    // word plus the labels. The 1,200 rule asks for less still.
+    const words = 3 * (3 + 20 + 12 + 15 + 8) + 25;
+    const labels = 3 * "PRIORITY: BASIS: ACTION: SOURCE: WHY THIS RANK: VERIFY: ".length + "NEXT: ".length;
+    assert.ok(words * 6.5 + labels < 2_000, String(words * 6.5 + labels));
+  });
+
+  test("the text is pinned", () => {
+    assert.equal(sha256(PRIORITY_REVIEW_INSTRUCTIONS), "9e771cc5e458c98ee35b75a8f4f9b3057de02036f7169c8a68d0c0ff6c935d2e");
   });
 });

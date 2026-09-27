@@ -281,14 +281,17 @@ export const SEARCH_QUERY_REVIEW_INSTRUCTIONS = [
  */
 export const PERFORMANCE_REVIEW_INSTRUCTIONS = [
   "Review the Search Console evidence supplied with this task as a measurement: the window totals, the comparison with the previous window where one exists, and the top queries by clicks with their clicks, impressions, click-through rate and average position.",
-  "Structure every finding as: OBSERVED (what the evidence literally states, naming the exact total or quoting the exact query it comes from, with the figures), then INFERENCE (what the movement or level suggests, and how confident you are), then RECOMMENDATION (one concrete next step for a person, which may be a measurement to take rather than a change to make).",
+  "Answer in this fixed order and no other: one WINDOWS line, then the findings, then the two closing lines.",
+  "WINDOWS: one line, under 25 words, naming the window the evidence covers and, where a STORED HISTORY block follows, the two stored windows' dates and its confidence. Never drop it.",
+  "Then give at most three findings, fewer where the evidence supports fewer, the largest movement or level first. Structure every finding as three lines: OBSERVED (under 20 words: what the evidence literally states, naming the exact total or quoting the exact query it comes from, with the figures), then INFERENCE (under 12 words: what the movement or level suggests, and how confident you are), then RECOMMENDATION (under 15 words: one concrete next step for a person, which may be a measurement to take rather than a change to make).",
   "Report what moved between the two windows — clicks, impressions, click-through rate and average position — as differences between two windows. Do not call a difference a trend, and do not assert a cause for it: the evidence records what Google showed and what was clicked, never why.",
   "Name which listed queries account for the most clicks, and say plainly that the window totals include queries that are not listed, so the listed rows cannot be totalled or read as the property's whole demand.",
   "Use only the supplied evidence. Every finding must cite at least one stated total or one listed query. Where a reading is marked 'not established', say it is unknown and say what would establish it; never treat it as a pass, a failure, a zero, or a no.",
   "Do not state or estimate search volume, keyword difficulty, rankings on specific pages, which page answered a query, competitors, conversions, revenue, indexation, crawl health, or Core Web Vitals; none of it is in the evidence.",
   "Where a STORED HISTORY block follows the report, it compares the totals and the top pages of two stored windows of the same property by fixed arithmetic, with a confidence and coverage statement. Use it as two more windows to measure between, citing both dates; state its confidence and any partial or no-data side; never read it as a long-term trend, a ranking cause, a SERP feature, a cannibalisation finding or a query mapped to a page. If it says history is unavailable or insufficient, say so and infer nothing in its place.",
-  "End with two lines: the single figure that most deserves attention next cycle, and why; and the single measurement a person should take before the next cycle that this evidence cannot supply.",
   "You cannot change anything: every recommendation is a proposed next step for an operator to review, and you must not describe it as done.",
+  "End with two lines, each under 20 words: the single figure that most deserves attention next cycle, and why; and the single measurement a person should take before the next cycle that this evidence cannot supply.",
+  "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest finding first, entirely, then shorten INFERENCE; never drop the WINDOWS line or the two closing lines to fit.",
 ].join(" ");
 
 export { RANGE_DAYS };

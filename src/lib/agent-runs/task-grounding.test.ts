@@ -3035,7 +3035,8 @@ describe("the SEO Director's project bundle through the dispatch", () => {
 
     const { seen, provider } = capturingProvider();
     await createAiExecutor(provider, createTaskGrounding(readers())).execute(priorityReviewTask, new AbortController().signal);
-    assert.match(seen.prompt ?? "", /Give at most five items/);
+    // Checkpoint 4.2 bounded the single-run instructions structurally: three items, not five.
+    assert.match(seen.prompt ?? "", /Give at most three items/);
     assert.doesNotMatch(seen.prompt ?? "", /PROJECT DIRECTOR BUNDLE/);
   });
 

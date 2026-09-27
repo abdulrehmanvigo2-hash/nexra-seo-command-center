@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 import { agentMayRun, getTaskType } from "../agent-runs/task-types.ts";
 import type { RangeId } from "../../types/dashboard.ts";
@@ -356,5 +357,70 @@ describe("the performance review task type", () => {
     assert.deepEqual(getTaskType("search-query-review")?.agents, ["keyword-intent"]);
     assert.equal(getTaskType("crawl-review")?.evidence, "crawl");
     assert.equal(getTaskType("on-page-review")?.evidence, "crawl");
+  });
+});
+
+/**
+ * Checkpoint 4.2 (decision Q1): the Analytics & Learning performance review
+ * had no output bound; its one production answer ran to 1,587 characters of
+ * the worker's 2,000. Before the Director reads it (checkpoint 4.6) it gets
+ * the structural bound the crawl review (2.3d) carries: a fixed order, at
+ * most three findings with a word cap on each line, its two closing lines
+ * kept, and the whole under 1,200 characters as the last rule.
+ */
+describe("the performance-review instructions bound what the model emits (checkpoint 4.2)", () => {
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+
+  test("the sentences that were not about length are kept word for word", () => {
+    for (const sentence of [
+      "Review the Search Console evidence supplied with this task as a measurement: the window totals, the comparison with the previous window where one exists, and the top queries by clicks with their clicks, impressions, click-through rate and average position.",
+      "Report what moved between the two windows — clicks, impressions, click-through rate and average position — as differences between two windows. Do not call a difference a trend, and do not assert a cause for it: the evidence records what Google showed and what was clicked, never why.",
+      "Name which listed queries account for the most clicks, and say plainly that the window totals include queries that are not listed, so the listed rows cannot be totalled or read as the property's whole demand.",
+      "Use only the supplied evidence. Every finding must cite at least one stated total or one listed query. Where a reading is marked 'not established', say it is unknown and say what would establish it; never treat it as a pass, a failure, a zero, or a no.",
+      "Do not state or estimate search volume, keyword difficulty, rankings on specific pages, which page answered a query, competitors, conversions, revenue, indexation, crawl health, or Core Web Vitals; none of it is in the evidence.",
+      "Where a STORED HISTORY block follows the report, it compares the totals and the top pages of two stored windows of the same property by fixed arithmetic, with a confidence and coverage statement. Use it as two more windows to measure between, citing both dates; state its confidence and any partial or no-data side; never read it as a long-term trend, a ranking cause, a SERP feature, a cannibalisation finding or a query mapped to a page. If it says history is unavailable or insufficient, say so and infer nothing in its place.",
+      "You cannot change anything: every recommendation is a proposed next step for an operator to review, and you must not describe it as done.",
+    ]) {
+      assert.ok(PERFORMANCE_REVIEW_INSTRUCTIONS.includes(sentence), sentence.slice(0, 60));
+    }
+  });
+
+  test("a fixed order: one WINDOWS line, at most three findings, the two closing lines, then the cap", () => {
+    assert.match(PERFORMANCE_REVIEW_INSTRUCTIONS, /Answer in this fixed order and no other: one WINDOWS line, then the findings, then the two closing lines\./);
+    assert.match(PERFORMANCE_REVIEW_INSTRUCTIONS, /WINDOWS: one line, under 25 words, .*Never drop it\./);
+    const order = ["Answer in this fixed order", "WINDOWS: one line", "at most three findings", "End with two lines", "Keep the whole answer under 1,200 characters"];
+    const at = order.map((phrase) => PERFORMANCE_REVIEW_INSTRUCTIONS.indexOf(phrase));
+    assert.ok(at.every((index) => index >= 0), JSON.stringify(at));
+    assert.deepEqual([...at].sort((a, b) => a - b), at, "stated in this order");
+  });
+
+  test("each finding line carries its own cap, and the two closing lines are kept", () => {
+    assert.match(PERFORMANCE_REVIEW_INSTRUCTIONS, /OBSERVED \(under 20 words: /);
+    assert.match(PERFORMANCE_REVIEW_INSTRUCTIONS, /INFERENCE \(under 12 words: /);
+    assert.match(PERFORMANCE_REVIEW_INSTRUCTIONS, /RECOMMENDATION \(under 15 words: /);
+    assert.match(
+      PERFORMANCE_REVIEW_INSTRUCTIONS,
+      /End with two lines, each under 20 words: the single figure that most deserves attention next cycle, and why; and the single measurement a person should take before the next cycle that this evidence cannot supply\./,
+    );
+  });
+
+  test("the whole-answer cap is the last rule, with the drop order and what is never dropped", () => {
+    assert.ok(
+      PERFORMANCE_REVIEW_INSTRUCTIONS.endsWith(
+        "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest finding first, entirely, then shorten INFERENCE; never drop the WINDOWS line or the two closing lines to fit.",
+      ),
+    );
+    assert.equal(getTaskType("performance-review")?.instructions, PERFORMANCE_REVIEW_INSTRUCTIONS);
+  });
+
+  test("at every cap an answer stays under the worker's 2,000-character ceiling", () => {
+    const words = 25 + 3 * (20 + 12 + 15) + 2 * 20;
+    const labels = "WINDOWS: ".length + 3 * "OBSERVED: INFERENCE: RECOMMENDATION: ".length;
+    assert.ok(words * 6.5 + labels < 2_000, String(words * 6.5 + labels));
+  });
+
+  test("the text is pinned, and the search-query review is untouched", () => {
+    assert.equal(sha256(PERFORMANCE_REVIEW_INSTRUCTIONS), "783380a1073fb91428dab408f4ad1b85c8591ebad8a2f728c79db39bfb1f62a1");
+    assert.doesNotMatch(SEARCH_QUERY_REVIEW_INSTRUCTIONS, /WINDOWS: one line|under 1,200 characters/);
   });
 });
