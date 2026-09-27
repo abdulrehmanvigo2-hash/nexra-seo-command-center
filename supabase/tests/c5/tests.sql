@@ -199,6 +199,8 @@ begin
              'nexra_content_publication_propose(text,uuid,smallint,uuid,text,uuid,timestamp with time zone,text,text,text,text,uuid)',
              'nexra_crawl_finding_triage_set(text,uuid,text,text,text,uuid)',
              'nexra_crawl_findings_record(text,uuid,smallint,integer,integer,integer,integer,integer,boolean,jsonb,text[],jsonb)',
+             'nexra_keyword_add(text,text,text,text,text,uuid)','nexra_keyword_set_group(text,uuid,text,uuid)','nexra_keyword_set_note(text,uuid,text,uuid)',
+             'nexra_keyword_set_status(text,uuid,text,uuid)','nexra_keyword_set_target(text,uuid,text,uuid)',
              'nexra_search_console_query_pages_record(text,text,text,date,date,jsonb,timestamp with time zone)',
              'nexra_search_console_snapshot_record(text,text,text,date,date,text,bigint,bigint,numeric,numeric,jsonb,jsonb,text[],timestamp with time zone)',
              'rate_limit_consume(text,integer,integer)'],
