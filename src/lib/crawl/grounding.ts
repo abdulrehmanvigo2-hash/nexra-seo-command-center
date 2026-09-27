@@ -474,22 +474,35 @@ export const LIMITS_NOTE = [
  * The separation demanded first is the point of the task: an observation is
  * something the evidence states, an inference is the agent's reading of it,
  * and a recommendation is neither. A finding with no URL beside it cannot be
- * checked, so every one must carry the URL it came from. The output bound
- * mirrors the On-Page review's (PR #13): without one, answers over the same
- * five-page crawl ran 1,596 to 1,946 characters and one was refused as
- * `rejected-output` at the worker's 2,000-character ceiling (checkpoint 2.3c).
+ * checked, so every one must carry the URL it came from.
+ *
+ * The bound is structural (checkpoint 2.3d). A character cap alone did not
+ * hold the model (checkpoint 2.3c, PR #29): bounded answers over crawl
+ * `3398ff1a…` ran to 1,926 characters and one, `98e56366…`, was refused as
+ * `rejected-output` at the worker's 2,000-character ceiling. The shape copies
+ * the fixes that did hold for the Project Director review
+ * (`PROJECT_PRIORITY_REVIEW_INSTRUCTIONS`, `director-bundle.ts`: at most three
+ * items with a word cap each, the whole under 1,200 characters, what to drop
+ * first) and the intake review (`INTAKE_REVIEW_INSTRUCTIONS`,
+ * `projects/grounding.ts`: fixed sections in a fixed order, each with its own
+ * cap): one COVERAGE line, at most three findings of three capped lines each,
+ * one NEXT line. At every cap an answer with ordinary words stays near 1,200
+ * characters and one with long URLs under the 2,000 ceiling. The evidence,
+ * safety and findings-block sentences are the earlier ones, unchanged.
  */
 export const CRAWL_REVIEW_INSTRUCTIONS = [
   "Review the crawl evidence supplied with this task and report what it supports.",
-  "Structure every finding as: OBSERVED (what the evidence literally states, with the exact URL or URLs it comes from), then INFERENCE (what you conclude from it, and how confident you are), then RECOMMENDATION (one concrete next step).",
+  "Answer in this fixed order and no other: one COVERAGE line, then the findings, then one NEXT line.",
+  "COVERAGE: one line, under 25 words, stating the pages fetched and, where a findings block is supplied, the link edges read and anything cut. Never drop it.",
+  "Then give at most three findings, fewer where the evidence supports fewer, most severe first and recorded findings before your own observations. Structure every finding as three lines: OBSERVED (under 20 words: what the evidence literally states, with the exact URL or URLs it comes from), then INFERENCE (under 12 words: what you conclude from it, and how confident you are), then RECOMMENDATION (under 15 words: one concrete next step).",
   "Use only the supplied evidence. Every finding must cite at least one crawled URL.",
   "Where a reading is marked 'not established', say it is unknown and say what would establish it. Never treat it as a pass, a failure, a zero, or a no.",
   "URLs listed as discovered but not reached were NOT audited. You may say they exist and were not examined. Do not describe their contents, their health, or their issues.",
   "Do not state or estimate search volume, rankings, traffic, indexation status, or Core Web Vitals; none of it is in the evidence and none of it is knowable from a crawl.",
   "Do not describe the crawl as a full site audit or state site-wide totals. Say plainly that this covers only the pages listed.",
   "Where a DETERMINISTIC CRAWL FINDINGS block follows the crawl evidence, each finding there is an observation by a fixed rule over the pages this crawl recorded: cite it by its rule id in square brackets and the exact URL or URLs it names, treat it as OBSERVED, and keep your own reading and next step as INFERENCE and RECOMMENDATION. State the coverage that block gives (pages fetched, link edges read, anything cut) and never extend a finding to pages it does not name, to indexation, rankings, Core Web Vitals, external links or site-wide totals. If the block says findings are unavailable or no rule fired, say so and infer nothing in their place.",
-  "OUTPUT BOUND: give at most 4 findings and keep the whole answer, including the coverage statement and the closing line, under 1,500 characters. When the evidence supports more, keep the most severe findings, recorded findings first; cite the rule id in square brackets and the exact URL wherever the evidence gives them; keep each finding's OBSERVED, INFERENCE and RECOMMENDATION separate and short; and drop the lowest-severity findings first, entirely, rather than exceed the bound. Never drop the coverage statement to make room.",
-  "End with one line naming the single most useful thing to check or measure next.",
+  "NEXT: end with one line, under 15 words, naming the single most useful thing to check or measure next.",
+  "Keep the whole answer under 1,200 characters. If it would exceed that, drop the lowest-severity finding first, entirely, then shorten INFERENCE; never drop the COVERAGE line or a finding's cited URL to fit.",
 ].join(" ");
 
 /**
