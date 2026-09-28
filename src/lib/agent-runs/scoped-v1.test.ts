@@ -10,6 +10,7 @@ import { isUpstreamTaskType } from "./run-grounding.ts";
 import {
   COMPETITOR_PAGE_GAP_REVIEW_INSTRUCTIONS,
   INTERNAL_LINK_REVIEW_INSTRUCTIONS,
+  LIMITS_LINE,
   NO_OTHER_PARAGRAPH,
   SCHEMA_ENTITY_REVIEW_INSTRUCTIONS,
 } from "./second-tasks.ts";
@@ -27,9 +28,9 @@ import { getTaskType, TASK_TYPES } from "./task-types.ts";
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
 const SCOPED = [
-  { id: "competitor-page-gap-review", agent: "market-intelligence", evidence: "competitor-comparison", text: COMPETITOR_PAGE_GAP_REVIEW_INSTRUCTIONS, hash: "9a7b1449117c786afe2373e2d361bc3505243372f49191a0ff4ea04e13750d3c" },
-  { id: "schema-entity-review", agent: "ai-visibility", evidence: "crawl", text: SCHEMA_ENTITY_REVIEW_INSTRUCTIONS, hash: "10ef1d3afc6620106edebb7e5615bd59e9bb50c3a041b33c29a3cf76edf4e585" },
-  { id: "internal-link-review", agent: "authority-backlink", evidence: "crawl-links", text: INTERNAL_LINK_REVIEW_INSTRUCTIONS, hash: "d65b6abcb47ba05b3d261b0d76e8c8b04faaa8558f598d479253db5c118bd826" },
+  { id: "competitor-page-gap-review", agent: "market-intelligence", evidence: "competitor-comparison", text: COMPETITOR_PAGE_GAP_REVIEW_INSTRUCTIONS, hash: "b87fc8e15d3e3433749540880262b9f106e69773125a66d996206cdacf2faac0", hash6_6: "9a7b1449117c786afe2373e2d361bc3505243372f49191a0ff4ea04e13750d3c" },
+  { id: "schema-entity-review", agent: "ai-visibility", evidence: "crawl", text: SCHEMA_ENTITY_REVIEW_INSTRUCTIONS, hash: "bbecdbc5a1fa62ba859b12120fbb2ef091aca811a7a3141bc3bda83683997b17", hash6_6: "10ef1d3afc6620106edebb7e5615bd59e9bb50c3a041b33c29a3cf76edf4e585" },
+  { id: "internal-link-review", agent: "authority-backlink", evidence: "crawl-links", text: INTERNAL_LINK_REVIEW_INSTRUCTIONS, hash: "e8536140b3db982df059f47a58ff9ace9fccd8ace9b1fd8089a8205adbcb2670", hash6_6: "d65b6abcb47ba05b3d261b0d76e8c8b04faaa8558f598d479253db5c118bd826" },
 ] as const;
 
 describe("the registry: the three scoped-V1 second tasks", () => {
@@ -66,7 +67,11 @@ describe("the registry: the three scoped-V1 second tasks", () => {
 describe("the instructions: the 6.5 shape, and what each scoped task must not claim", () => {
   test("COVERAGE first, at most three findings of three capped lines, NEXT last, the 4.6 sentence, then the under-1,200 rule", () => {
     for (const task of SCOPED) {
-      assert.match(task.text, /Answer in this fixed order and no other: one COVERAGE line, then the findings, then one NEXT line\./, task.id);
+      assert.match(task.text, /Answer in this fixed order and no other: one COVERAGE line, then the findings, then one LIMITS line, then one NEXT line\./, task.id);
+      // 6.6c: the LIMITS line just before NEXT; without it, the 6.6 text word for word.
+      assert.ok(task.text.includes(`${LIMITS_LINE} NEXT: end with one line`), task.id);
+      const without = task.text.replace(` ${LIMITS_LINE}`, "").replace(" then one LIMITS line,", "");
+      assert.equal(sha256(without), task.hash6_6, task.id);
       assert.match(task.text, /OBSERVED \(under 20 words: [^)]+\), then INFERENCE \(under 12 words: [^)]+\), then RECOMMENDATION \(under 15 words: [^)]+\)/, task.id);
       const tail = task.text.slice(task.text.lastIndexOf(NO_OTHER_PARAGRAPH));
       assert.match(tail, /^State anything the evidence lacks inside the fixed lines; add no other paragraph\. Keep the whole answer under 1,200 characters\. If it would exceed that, drop the lowest finding first, entirely, then shorten INFERENCE; never drop the COVERAGE line or a finding's cited [A-Za-z ]+ to fit\.$/, task.id);
@@ -86,7 +91,7 @@ describe("the instructions: the 6.5 shape, and what each scoped task must not cl
   test("a full-caps answer stays under the worker's 2,000 ceiling", () => {
     const words = (n: number) => Array.from({ length: n }, () => "declares").join(" ");
     const finding = `OBSERVED: https://www.2vautomation.ai/services/ai-voice-agents ${words(18)}\nINFERENCE: ${words(11)}\nRECOMMENDATION: ${words(14)}`;
-    const answer = [`COVERAGE: ${words(24)}`, finding, finding, finding, `NEXT: ${words(14)}`].join("\n\n");
+    const answer = [`COVERAGE: ${words(24)}`, finding, finding, finding, `LIMITS: ${words(19)}`, `NEXT: ${words(14)}`].join("\n\n");
     assert.ok(answer.length < 2_000, `${answer.length}`);
   });
 });

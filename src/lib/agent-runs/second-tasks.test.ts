@@ -22,6 +22,7 @@ import {
   FINDING_HISTORY_REVIEW_INSTRUCTIONS,
   KEYWORD_OPPORTUNITY_REVIEW_INSTRUCTIONS,
   LEARNING_REVIEW_INSTRUCTIONS,
+  LIMITS_LINE,
   NO_OTHER_PARAGRAPH,
   PAGE_QUERY_ALIGNMENT_REVIEW_INSTRUCTIONS,
 } from "./second-tasks.ts";
@@ -48,8 +49,21 @@ const SECOND = [
   { id: "learning-review", agent: "analytics-learning", policy: "read-only", evidence: "search-console", text: LEARNING_REVIEW_INSTRUCTIONS, first: "WINDOWS", last: "LEARNING" },
 ] as const;
 
-/** The pinned texts: a change to any instruction is deliberate and changes its hash here. */
+/**
+ * The pinned texts: a change to any instruction is deliberate and changes its hash here.
+ * 6.6c: the LIMITS line added; the 6.5 hashes, pinned below, are those texts without it.
+ */
 const HASHES: Record<(typeof SECOND)[number]["id"], string> = {
+  "keyword-opportunity-review": "653f59b8b76d60b983cea168989aa4e44d4be565ed0d1fc452371d5d74fbec3d",
+  "content-refresh-review": "b027d90dbd7fde9ee574aa019ed039fa257b1db1e73b7d8738da84290d940d19",
+  "article-revision-draft": "0dd3eeea667ecffb3417b1be5094e5899040cdfedb06b0538c0243676ea79456",
+  "page-query-alignment-review": "7cf11088c3604c55c8c4e1d249ee446f54c2a2770e5d76183fb1f18b5c6c9def",
+  "finding-history-review": "24911c5ae5192ce02aa009996164cd982bfc3f5b724b18f10314c672e9ddc300",
+  "learning-review": "ac7cc936c7846f12c0fb2a465608ea0c2efbcd8a39e586f98567345e64055830",
+};
+
+/** The 6.5 hashes (before the 6.6c LIMITS line). */
+const HASHES_6_5: Record<(typeof SECOND)[number]["id"], string> = {
   "keyword-opportunity-review": "771b1ef7f27027e5b8c81089b68ca6a89ecdee1fd9896b32ffc1e0c81361823f",
   "content-refresh-review": "c9ffd8c23a2c88affbf29fb6395289b85be6b55b65b9a3daa30dacbda52ed7f1",
   "article-revision-draft": "921e3f220ec20c10a837492da6b34c822c6f4735e8471e80bfb93c6986c1ce94",
@@ -57,6 +71,9 @@ const HASHES: Record<(typeof SECOND)[number]["id"], string> = {
   "finding-history-review": "8483f822967dcfdfc252a20f0077cf34cad5509ba43f8413dfc923039fcfb48b",
   "learning-review": "36f6168093f16d9160206b7262b4fc34d6c5183b0607b6ef15b518b096d9d5eb",
 };
+
+/** A text with the 6.6c LIMITS line and its place in the fixed order taken out. */
+const withoutLimits = (text: string) => text.replace(` ${LIMITS_LINE}`, "").replace(" then one LIMITS line,", "");
 
 describe("the registry: six second tasks, one agent each, over existing evidence kinds", () => {
   test("each is registered for its one agent, with its policy, evidence kind and instructions", () => {
@@ -114,6 +131,16 @@ describe("the instructions: the 2.3d shape, the 4.6 sentence, the under-1,200 la
     for (const task of SECOND) assert.equal(sha256(task.text), HASHES[task.id], task.id);
   });
 
+  test("6.6c: the LIMITS line in the fixed order, just before the closing line; every other sentence the 6.5 text word for word", () => {
+    assert.equal(LIMITS_LINE, "LIMITS: one line, under 20 words, naming what the supplied evidence does not cover.");
+    for (const task of SECOND) {
+      assert.match(task.text, new RegExp(`Answer in this fixed order and no other: one ${task.first} line, then the (findings|revisions), then one LIMITS line, then one ${task.last} line\\.`), task.id);
+      assert.equal(task.text.split(LIMITS_LINE).length, 2, task.id);
+      assert.ok(task.text.includes(`${LIMITS_LINE} ${task.last}: end with one line`), task.id);
+      assert.equal(sha256(withoutLimits(task.text)), HASHES_6_5[task.id], task.id);
+    }
+  });
+
   test("a fixed order with its first line never dropped, capped lines, the extra-paragraph sentence just before the last rule", () => {
     for (const task of SECOND) {
       const tail = task.text.slice(task.text.lastIndexOf(NO_OTHER_PARAGRAPH));
@@ -124,7 +151,8 @@ describe("the instructions: the 2.3d shape, the 4.6 sentence, the under-1,200 la
       // The 4.6 sentence, then the last rule, and nothing after it.
       assert.match(tail, new RegExp(`^${NO_OTHER_PARAGRAPH.replace(/[.;]/g, "\\$&")} Keep the whole answer under 1,200 characters\\. If it would exceed that, drop the (lowest|lowest-severity|last) (finding|revision) first, entirely, then shorten [A-Z]+; never drop the [A-Z]+ line[^.]+ to fit\\.$`), task.id);
       assert.equal(task.text.match(/add no other paragraph/g)?.length, 1, task.id);
-      assert.ok(task.text.length < 2_600, `${task.id}: ${task.text.length}`);
+      // 2,700 since 6.6c (the LIMITS line; the keyword text is 2,606), deliberately.
+      assert.ok(task.text.length < 2_700, `${task.id}: ${task.text.length}`);
     }
   });
 
@@ -148,20 +176,25 @@ describe("full-caps answers stay under the worker's 2,000 ceiling", () => {
   const words = (n: number, word = "declares") => Array.from({ length: n }, () => word).join(" ");
   const url = "https://www.nexraagency.com/services/ai-lead-follow-up";
 
-  test("the four three-finding reviews: first line, three findings at every cap with a URL, and the closing line", () => {
-    for (const [first, last, lastWords] of [
-      ["COVERAGE", "NEXT", 14],
-      ["WINDOWS", "LEARNING", 19],
+  // Each OBSERVED line at its cap cites what its task asks it to cite: a URL for the
+  // crawl and keyword reviews, both window dates for the learning review (it cites no
+  // URL). Since 6.6c each answer also carries a LIMITS line at its cap.
+  const dates = "2026-08-26 to 2026-09-24, 2026-08-19 to 2026-09-17";
+
+  test("the four three-finding reviews: first line, three findings at every cap with what they cite, LIMITS and the closing line", () => {
+    for (const [first, last, lastWords, cited] of [
+      ["COVERAGE", "NEXT", 14, `${url} ${words(18)}`],
+      ["WINDOWS", "LEARNING", 19, `${dates} ${words(13)}`],
     ] as const) {
-      const finding = `OBSERVED: ${url} ${words(18)}\nINFERENCE: ${words(11)}\nRECOMMENDATION: ${words(14)}`;
-      const answer = [`${first}: ${words(24)}`, finding, finding, finding, `${last}: ${words(lastWords)}`].join("\n\n");
+      const finding = `OBSERVED: ${cited}\nINFERENCE: ${words(11)}\nRECOMMENDATION: ${words(14)}`;
+      const answer = [`${first}: ${words(24)}`, finding, finding, finding, `LIMITS: ${words(19)}`, `${last}: ${words(lastWords)}`].join("\n\n");
       assert.ok(answer.length < 2_000, `${first}: ${answer.length}`);
     }
   });
 
-  test("the revision draft: SCOPE, three revisions at every cap with record tags, and NEXT", () => {
+  test("the revision draft: SCOPE, three revisions at every cap with record tags, LIMITS and NEXT", () => {
     const revision = `STATEMENT: S1 ${words(9)}\nREVISED: ${words(28)} [crawl /services/ai-lead-follow-up]\nBASIS: ${words(9)}`;
-    const answer = [`SCOPE: ${words(24)}`, revision, revision, revision, `NEXT: ${words(14)}`].join("\n\n");
+    const answer = [`SCOPE: ${words(24)}`, revision, revision, revision, `LIMITS: ${words(19)}`, `NEXT: ${words(14)}`].join("\n\n");
     assert.ok(answer.length < 2_000, `${answer.length}`);
   });
 });
