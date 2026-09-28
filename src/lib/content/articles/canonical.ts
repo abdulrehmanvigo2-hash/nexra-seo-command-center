@@ -35,13 +35,30 @@
  * `encode(sha256(convert_to(canonical, 'UTF8')), 'hex')`. The text must be
  * stored as `text`, not `jsonb` — `jsonb` reorders keys and changes spacing.
  *
+ * FORMAT 2 (Phase 6, checkpoint 6.8b). An article with operator-attested
+ * paragraphs is written as `nexra-article-content/2`: the same members in
+ * the same order, then one last member, `attestations`, a list of
+ * `{"locator":…,"basis":…}` in the author's order. An article with none is
+ * written as format 1, exactly as before — no `attestations` member, the same
+ * bytes, the same hash — so every stored version, unit, approval and
+ * preview made before 6.8b keeps its bytes. Only the format a text's content
+ * implies is ever accepted back: a format 2 text with no attestations, or a
+ * format 1 text carrying any, is refused.
+ *
  * Pure.
  */
 
 import { validateArticleContent } from "@/lib/content/articles/validate";
-import type { ArticleContent, ArticleFaq, ArticleInternalLink, ArticleSection, ArticleSubsection, ValidatedArticleContent } from "@/types/content-article";
+import type { ArticleAttestation, ArticleContent, ArticleFaq, ArticleInternalLink, ArticleSection, ArticleSubsection, ValidatedArticleContent } from "@/types/content-article";
 
 export const ARTICLE_CANONICAL_FORMAT = "nexra-article-content/1";
+/** The format of an article with at least one attested paragraph (6.8b). */
+export const ARTICLE_CANONICAL_FORMAT_ATTESTED = "nexra-article-content/2";
+
+/** The format an article's content is written in: 2 only when it attests a paragraph. */
+export function articleCanonicalFormat(article: Pick<ArticleContent, "attestations">): string {
+  return article.attestations.length > 0 ? ARTICLE_CANONICAL_FORMAT_ATTESTED : ARTICLE_CANONICAL_FORMAT;
+}
 
 type Member = readonly [key: string, json: string];
 
@@ -89,9 +106,17 @@ function link(value: ArticleInternalLink): string {
   ]);
 }
 
-function write(article: ArticleContent): string {
+function attestation(value: ArticleAttestation): string {
   return object([
-    ["format", str(ARTICLE_CANONICAL_FORMAT)],
+    ["locator", str(value.locator)],
+    ["basis", str(value.basis)],
+  ]);
+}
+
+function write(article: ArticleContent): string {
+  const attested = article.attestations.length > 0;
+  return object([
+    ["format", str(articleCanonicalFormat(article))],
     ["topic", str(article.topic)],
     ["searchIntent", str(article.searchIntent)],
     ["slug", str(article.slug)],
@@ -109,6 +134,7 @@ function write(article: ArticleContent): string {
     ["ctaTitle", str(article.ctaTitle)],
     ["ctaBody", str(article.ctaBody)],
     ["topicDecision", str(article.topicDecision)],
+    ...(attested ? ([["attestations", array(article.attestations, attestation)]] as const) : []),
   ]);
 }
 
@@ -136,7 +162,7 @@ export function readCanonicalArticle(text: string): ValidatedArticleContent | nu
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
   const { format, ...content } = parsed as Record<string, unknown>;
-  if (format !== ARTICLE_CANONICAL_FORMAT) return null;
+  if (format !== ARTICLE_CANONICAL_FORMAT && format !== ARTICLE_CANONICAL_FORMAT_ATTESTED) return null;
   const checked = validateArticleContent(content);
   if (!checked.ok) return null;
   return write(checked.article) === text ? checked.article : null;

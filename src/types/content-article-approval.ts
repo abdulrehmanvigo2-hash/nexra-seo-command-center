@@ -24,6 +24,14 @@ export type ArticleApproval = {
   readonly unitsSha256: string;
   readonly approvedBy: string;
   readonly approvedAt: string;
+  /**
+   * Operator-attested paragraphs in the approved version (6.8b), computed by
+   * the database from its stored text; 0 for format 1 and for every row
+   * recorded before 20261010120000.
+   */
+  readonly attestedCount: number;
+  /** The operator's attestation tick for this approval: true exactly when the count is positive. */
+  readonly attestedConfirmed: boolean;
 };
 
 /**
@@ -54,7 +62,9 @@ export type ArticleApprovalBlock =
   /** The topic decision is not `update-existing` or `different-angle`. */
   | "topic-decision"
   /** The text still carries a `[NEEDS EVIDENCE` placeholder. */
-  | "unresolved-placeholder";
+  | "unresolved-placeholder"
+  /** The version attests paragraphs, and its check found fewer than three supported statements (6.8b). */
+  | "too-few-supported";
 
 export type ArticleApprovalEligibility =
   /** Every rule holds: the version may be approved. */
@@ -71,6 +81,12 @@ export type ArticleApprovalState = {
   readonly versionId: string;
   readonly contentSha256: string;
   readonly topicDecision: ArticleTopicDecision | null;
+  /** Operator-attested paragraphs in the current version (6.8b); approving one with any needs the operator's tick. */
+  readonly attestedCount: number;
+  /** Supported statements the current version's recorded checks found, across its units; null when not every unit is recorded. */
+  readonly supportedCount: number | null;
+  /** Statements the checks placed under ATTESTED, across the units. */
+  readonly attestedStatementCount: number;
   readonly checkState: ArticleCheckState | null;
   readonly checkRefusal: ArticleCheckPlanRefusal | null;
   readonly unitCounts: {

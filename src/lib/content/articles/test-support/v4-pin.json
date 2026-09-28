@@ -1,0 +1,39 @@
+{
+  "note": "Production article c89182f9-4954-4834-8446-a831fc3c42d0 Version 4 (checkpoint 5.3), read read-only on 28 Sep: the regression pin for 6.8b. Never rewritten. approvedBy is a placeholder, not the production approver (no user id is kept in the repository); previewSha256 is the production preview hash, reproduced once with the stored approver; previewSha256WithPlaceholderApprover is the same preview computed by master's code before 6.8b (4a8b5562) with the placeholder approver, which the tests pin.",
+  "articleId": "c89182f9-4954-4834-8446-a831fc3c42d0",
+  "versionId": "4df96c9a-3f03-4912-9a2b-9f10a5d2cb58",
+  "canonical": "{\"format\":\"nexra-article-content/1\",\"topic\":\"What nexraagency.com declares about AI lead follow-up\",\"searchIntent\":\"informational\",\"slug\":\"nexra-ai-website-lead-follow-up\",\"title\":\"What Nexra AI's Website Says About AI Lead Follow-Up\",\"metaTitle\":\"What Nexra AI's Website Says About Lead Follow-Up\",\"metaDescription\":\"The Nexra AI blog page's meta description describes practical writing on AI agents, lead follow-up automation and workflow systems.\",\"excerpt\":\"The Nexra AI homepage meta description says Nexra AI builds AI sales agents, voice agents and automated workflows.\",\"category\":\"AI Automation\",\"keywords\":[\"AI lead follow-up automation\",\"lead response automation\"],\"lead\":\"The Nexra AI blog page's meta description names lead follow-up automation as one of its subjects.\",\"introduction\":[],\"sections\":[{\"id\":\"what-the-pages-declare\",\"heading\":\"What the site's pages declare\",\"paragraphs\":[\"The Nexra AI homepage is titled \\\"Nexra AI — AI Automation That Works While You Grow\\\". The homepage meta description reads \\\"Nexra AI builds AI sales agents, voice agents and automated workflows that answer every lead, qualify it, book the meeting and keep your CRM accurate — around the clock\\\". The homepage declares ProfessionalService and FAQPage structured data.\",\"The about page's meta description says Nexra AI designs and builds AI agents, automation and internal systems around how a business actually operates. The blog page's first heading reads \\\"How automation actually works in a business\\\".\"],\"subsections\":[]}],\"faqs\":[],\"internalLinks\":[],\"ctaTitle\":\"Request an AI strategy call\",\"ctaBody\":\"The Nexra AI contact page's meta description begins \\\"Tell us what you want to automate\\\".\",\"topicDecision\":\"different-angle\"}",
+  "contentSha256": "e9db287fedb6124f736aa036717a34400f9d6f34a4b437115da729827789721d",
+  "units": [
+    {
+      "index": 0,
+      "key": "metadata:1",
+      "sha256": "65a5399c093035825dfaf1a0e4084231a930153a894cc3655a4d0a3441a756d2"
+    },
+    {
+      "index": 1,
+      "key": "lead-introduction:1",
+      "sha256": "04ebe2baacfbe11f637536604e68bc8db049b47809f77360a824be7a653e2060"
+    },
+    {
+      "index": 2,
+      "key": "section:what-the-pages-declare:1",
+      "sha256": "18352d717eab1ccee4d634c4ae5b1437c2515fba03ddda9392ce6703bc1f68c9"
+    },
+    {
+      "index": 3,
+      "key": "cta:1",
+      "sha256": "983a6dab1045b6492a9b643caca55a2268c29a0d6b0efe37fc82d409a684fe4a"
+    }
+  ],
+  "unitsSha256": "e4bfde005b8b7d06fb1470933ec5e963ddba56bdda5ebec8b4d84e235114ec3a",
+  "approvalId": "5f02d149-5766-40fc-be43-8cb43576869a",
+  "approvedBy": "00000000-0000-4000-8000-00000000a4a4",
+  "approvedAt": "2026-09-28T03:35:47.489981+00:00",
+  "proposalId": "5f229630-4f9d-4882-8875-27694f8f889c",
+  "previewFormat": "article-proposal-text/1",
+  "previewSha256": "bbf3fae3c206dfbd9466f272e2e5af0ab6934072d38e44ba18e0e191ce5c50c4",
+  "previewSha256WithPlaceholderApprover": "7a232c68d077cd404300cf5a5a24a89d77abff140edbdaf2cb310417024c1e78",
+  "destination": "nexra-agency-website",
+  "slug": "nexra-ai-website-lead-follow-up"
+}

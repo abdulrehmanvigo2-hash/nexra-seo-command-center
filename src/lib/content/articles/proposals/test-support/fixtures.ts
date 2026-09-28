@@ -72,6 +72,8 @@ export function eligibleFacts(overrides: Partial<ArticleProposalFacts> = {}, con
     unitsSha256: "e".repeat(64),
     approvedBy: APPROVER,
     approvedAt: APPROVED_AT,
+    attestedCount: 0,
+    attestedConfirmed: false,
   };
   return {
     projectId: PROJECT_ID,

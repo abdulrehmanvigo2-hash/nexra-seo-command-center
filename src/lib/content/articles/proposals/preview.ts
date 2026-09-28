@@ -31,11 +31,19 @@
  * built for anything that would not be eligible. The content hash itself is
  * checked on the server (`./preview-hash`), since hashing is server-only.
  *
+ * FORMAT 2 (Phase 6, checkpoint 6.8b). An article with operator-attested
+ * paragraphs gets `article-proposal-text/2`: the same lines, then — before
+ * the canonical content — an ATTESTED PARAGRAPHS section with each attested
+ * paragraph prefixed by its label, as a reader would see it. An article with
+ * none gets format 1, byte for byte as before (the verification proposal's
+ * preview hash is pinned in the tests).
+ *
  * Nothing is rendered as TSX, stored or sent. Pure.
  */
 
 import { hasArticlePlaceholder } from "@/lib/content/articles/approvals/eligibility";
-import { ARTICLE_CANONICAL_FORMAT, readCanonicalArticle } from "@/lib/content/articles/canonical";
+import { attestedParagraphs, labelledParagraph } from "@/lib/content/articles/attestations";
+import { articleCanonicalFormat, readCanonicalArticle } from "@/lib/content/articles/canonical";
 import { liveSlugsFor } from "@/lib/content/articles/proposals/eligibility";
 import { websiteCompleteness } from "@/lib/content/articles/website-completeness";
 import { isProjectId, isUuid } from "@/lib/content/drafts/service";
@@ -46,6 +54,8 @@ import type { WebsiteCompletenessReport } from "@/types/content-article";
 import type { ArticleProposalBinding, ArticleProposalPreview, ArticleProposalPreviewFormat } from "@/types/content-article-proposal";
 
 export const ARTICLE_PROPOSAL_PREVIEW_FORMAT: ArticleProposalPreviewFormat = "article-proposal-text/1";
+/** The preview format of an article with operator-attested paragraphs (6.8b). */
+export const ARTICLE_PROPOSAL_PREVIEW_FORMAT_ATTESTED: ArticleProposalPreviewFormat = "article-proposal-text/2";
 
 export const PROPOSAL_ONLY_LABEL = "PROPOSAL ONLY — NOT PUBLISHED";
 
@@ -126,10 +136,12 @@ export function buildArticleProposalPreview(input: ArticleProposalPreviewInput):
   const live = liveSlugsFor(binding.destination).includes(binding.slug);
   if (live && content.topicDecision !== "update-existing") return { ok: false, reason: "slug-live-collision" };
 
+  const attested = attestedParagraphs(content);
+  const format = attested.length > 0 ? ARTICLE_PROPOSAL_PREVIEW_FORMAT_ATTESTED : ARTICLE_PROPOSAL_PREVIEW_FORMAT;
   const template = templateForDestination(binding.destination);
   const route = template === null ? "unresolved (no pinned template for this destination)" : routeFor(template, binding.slug);
   const lines = [
-    `ARTICLE PUBLICATION PROPOSAL PREVIEW (${ARTICLE_PROPOSAL_PREVIEW_FORMAT})`,
+    `ARTICLE PUBLICATION PROPOSAL PREVIEW (${format})`,
     PROPOSAL_ONLY_LABEL,
     NO_PUBLICATION_NOTICE,
     "",
@@ -156,8 +168,15 @@ export function buildArticleProposalPreview(input: ArticleProposalPreviewInput):
     "",
     ...completenessLines(websiteCompleteness(content)),
     "",
-    `APPROVED CANONICAL CONTENT (${ARTICLE_CANONICAL_FORMAT}, exact stored text)`,
+    ...(attested.length > 0
+      ? [
+          `ATTESTED PARAGRAPHS (${attested.length}) — operator-attested, not checked against the records; each shown with its label`,
+          ...attested.map((paragraph) => `${paragraph.locator} (${paragraph.heading}): ${labelledParagraph(paragraph)}`),
+          "",
+        ]
+      : []),
+    `APPROVED CANONICAL CONTENT (${articleCanonicalFormat(content)}, exact stored text)`,
     canonicalContent,
   ];
-  return { ok: true, preview: { format: ARTICLE_PROPOSAL_PREVIEW_FORMAT, document: lines.join("\n") } };
+  return { ok: true, preview: { format, document: lines.join("\n") } };
 }

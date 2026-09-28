@@ -107,7 +107,7 @@ function hash(value: unknown, field: string): string {
 
 export function proposalRowToProposal(row: unknown): ArticlePublicationProposal {
   const r = record(row, "the proposal row");
-  if (r.preview_format !== "article-proposal-text/1") throw new ArticleRowError("preview_format is not article-proposal-text/1.");
+  if (r.preview_format !== "article-proposal-text/1" && r.preview_format !== "article-proposal-text/2") throw new ArticleRowError("preview_format is not article-proposal-text/1 or /2.");
   if (r.status !== "proposed" && r.status !== "withdrawn") throw new ArticleRowError("status is not proposed or withdrawn.");
   const withdrawnBy = nullableText(r.withdrawn_by, "withdrawn_by");
   const withdrawnAt = nullableText(r.withdrawn_at, "withdrawn_at");
@@ -126,7 +126,7 @@ export function proposalRowToProposal(row: unknown): ArticlePublicationProposal 
     approvedAt: text(r.approved_at, "approved_at"),
     destination: text(r.destination, "destination"),
     slug: text(r.slug, "slug"),
-    previewFormat: "article-proposal-text/1",
+    previewFormat: r.preview_format,
     previewSha256: hash(r.preview_sha256, "preview_sha256"),
     status: r.status,
     requestedBy: text(r.requested_by, "requested_by"),

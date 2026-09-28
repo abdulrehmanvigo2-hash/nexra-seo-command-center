@@ -22,6 +22,11 @@ import type { ArticleTopicDecision } from "@/types/content-article";
  * anything is sent. The server re-reads everything before approving, and
  * the database checks it all again.
  *
+ * A version with operator-attested paragraphs (6.8b) shows how many, the
+ * supported statements its checks found, and an attestation tick the
+ * operator must set before Confirm is enabled; the tick is stored with the
+ * approval.
+ *
  * Approval only. There is no publish, proposal, pull request, merge, deploy
  * or delete control here.
  */
@@ -58,6 +63,7 @@ const APPROVE_FAILURE: Readonly<Record<Exclude<ApproveArticleVersionActionResult
   stale: "The article has a newer version than the one shown. Nothing was approved; review the current version.",
   ineligible: "The server found this version is not eligible. Nothing was approved.",
   refused: "The database refused the approval on one of its own checks. Nothing was written.",
+  "attestation-unconfirmed": "This version attests paragraphs: tick the attestation before approving. Nothing was approved.",
   failed: "The approval could not be completed. Nothing is known to have been written.",
 };
 
@@ -86,6 +92,8 @@ export function ArticleApprovalSection({
 }) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [confirming, setConfirming] = useState(false);
+  /** The operator's attestation tick for this approval (6.8b); never set on their behalf. */
+  const [attestationTicked, setAttestationTicked] = useState(false);
   const [approving, setApproving] = useState(false);
   const [note, setNote] = useState<{ readonly tone: "positive" | "critical"; readonly text: string } | null>(null);
 
@@ -109,13 +117,16 @@ export function ArticleApprovalSection({
 
   const state = load.status === "ready" ? load.state : null;
   const eligible = state !== null && state.eligibility.status === "eligible";
+  const needsTick = state !== null && state.attestedCount > 0;
 
   async function approve() {
-    if (approving || state === null || !eligible) return;
+    if (approving || state === null || !eligible || (needsTick && !attestationTicked)) return;
     setApproving(true);
     setNote(null);
     try {
-      const result = await approveArticleVersion(projectId, state.articleId, state.currentVersion);
+      const result = needsTick
+        ? await approveArticleVersion(projectId, state.articleId, state.currentVersion, attestationTicked)
+        : await approveArticleVersion(projectId, state.articleId, state.currentVersion);
       if (result.ok) {
         setLoad({ status: "ready", state: result.state });
         setNote({
@@ -134,6 +145,7 @@ export function ArticleApprovalSection({
     } finally {
       setApproving(false);
       setConfirming(false);
+      setAttestationTicked(false);
     }
   }
 
@@ -189,6 +201,14 @@ export function ArticleApprovalSection({
               <dd className="text-fg">{state.topicDecision === null ? "Not readable" : TOPIC_LABEL[state.topicDecision]}</dd>
             </div>
             <div className="flex gap-2">
+              <dt className="text-fg-subtle">Attested paragraphs</dt>
+              <dd className="text-fg">
+                {state.attestedCount === 0
+                  ? "None"
+                  : `${state.attestedCount} · ${state.attestedStatementCount} statements placed under Attested · ${state.supportedCount === null ? "supported not yet counted" : `${state.supportedCount} supported (at least 3 needed)`}`}
+              </dd>
+            </div>
+            <div className="flex gap-2">
               <dt className="text-fg-subtle">Approved version</dt>
               <dd className="text-fg">
                 {state.approvedVersion === null
@@ -236,8 +256,23 @@ export function ArticleApprovalSection({
                   <p className="text-xs text-fg">
                     Approve version {state.currentVersion} (hash {state.contentSha256.slice(0, 12)}…, {state.unitCounts.total} check units passed)? {ARTICLE_APPROVAL_NOTICE}
                   </p>
+                  {needsTick && (
+                    <label className="flex items-start gap-2 text-xs text-fg">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={attestationTicked}
+                        onChange={(event) => setAttestationTicked(event.target.checked)}
+                        disabled={approving}
+                      />
+                      <span>
+                        I attest the {state.attestedCount} marked {state.attestedCount === 1 ? "paragraph" : "paragraphs"}: first-hand client experience or our own view,
+                        as each is labelled. They are not checked against the records, and readers will see the label beside each.
+                      </span>
+                    </label>
+                  )}
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => void approve()} disabled={approving}>
+                    <Button onClick={() => void approve()} disabled={approving || (needsTick && !attestationTicked)}>
                       {approving ? "Approving…" : `Confirm approval of version ${state.currentVersion}`}
                     </Button>
                     <Button variant="ghost" onClick={() => setConfirming(false)} disabled={approving}>
@@ -283,6 +318,7 @@ function ApprovalHistory({ history, currentVersion }: { history: readonly Articl
               Version {entry.articleVersion}
               {entry.articleVersion === currentVersion ? " (current)" : ""} · approved {stamp(entry.approvedAt)} by {entry.approvedBy} · content hash{" "}
               {entry.contentSha256.slice(0, 12)}… · {entry.unitCount} units · unit set {entry.unitsSha256.slice(0, 12)}…
+              {entry.attestedCount > 0 ? ` · ${entry.attestedCount} attested ${entry.attestedCount === 1 ? "paragraph" : "paragraphs"}, attestation ticked` : ""}
             </li>
           ))}
         </ul>

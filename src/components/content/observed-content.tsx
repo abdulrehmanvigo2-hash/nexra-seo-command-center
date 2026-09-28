@@ -483,6 +483,7 @@ export function ArticleDetailView({ projectId, projectName, articleId }: { proje
                 <TableRow>
                   <TableHeaderCell>Unit</TableHeaderCell>
                   <TableHeaderCell align="right">Statements</TableHeaderCell>
+                  <TableHeaderCell align="right">Attested</TableHeaderCell>
                   <TableHeaderCell>Verdict</TableHeaderCell>
                   <TableHeaderCell>Counts</TableHeaderCell>
                   <TableHeaderCell>Run</TableHeaderCell>
@@ -498,13 +499,18 @@ export function ArticleDetailView({ projectId, projectName, articleId }: { proje
                     <TableCell numeric className="text-xs">
                       {unit.statementCount}
                     </TableCell>
+                    <TableCell numeric className="text-xs">
+                      {unit.attestedStatementCount === 0 ? "—" : unit.attestedStatementCount}
+                    </TableCell>
                     <TableCell>
                       <Badge tone={unit.status === "passed" ? "positive" : unit.status === "needs-review" || unit.status === "failed" ? "warning" : "neutral"}>{unitStatusLabel(unit.status)}</Badge>
                     </TableCell>
                     <TableCell className="text-xs">
                       {unit.counts === null
                         ? "—"
-                        : `${unit.counts.supported} supported · ${unit.counts.partial} partial · ${unit.counts.unsupported} unsupported · ${unit.counts.unverifiable} unverifiable`}
+                        : `${unit.counts.supported} supported · ${unit.counts.partial} partial · ${unit.counts.unsupported} unsupported · ${unit.counts.unverifiable} unverifiable${
+                            unit.counts.attested === null ? "" : ` · ${unit.counts.attested} attested`
+                          }`}
                     </TableCell>
                     <TableCell className="font-mono text-[11px]">{unit.runId === null ? "—" : unit.runId.slice(0, 8)}</TableCell>
                   </TableRow>
@@ -532,6 +538,7 @@ export function ArticleDetailView({ projectId, projectName, articleId }: { proje
               <TableHeaderCell>Saved</TableHeaderCell>
               <TableHeaderCell>Content hash</TableHeaderCell>
               <TableHeaderCell>Topic decision</TableHeaderCell>
+              <TableHeaderCell align="right">Attested paragraphs</TableHeaderCell>
               <TableHeaderCell>Source draft versions</TableHeaderCell>
             </TableRow>
           </TableHead>
@@ -547,6 +554,9 @@ export function ArticleDetailView({ projectId, projectName, articleId }: { proje
                   {version.contentSha256.slice(0, 12)}… {version.verified ? "" : <span className="text-critical">does not verify</span>}
                 </TableCell>
                 <TableCell className="text-xs">{version.topicDecision ?? "not readable"}</TableCell>
+                <TableCell numeric className="text-xs">
+                  {version.attestedCount === null ? "—" : version.attestedCount}
+                </TableCell>
                 <TableCell className="font-mono text-[11px]">{version.sources.map((s) => `${s.draftId.slice(0, 8)} v${s.version}`).join(", ") || "—"}</TableCell>
               </TableRow>
             ))}

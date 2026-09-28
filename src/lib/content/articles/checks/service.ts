@@ -110,6 +110,7 @@ export function createArticleCheckService(dependencies: { readonly store: Articl
         label: unit.label,
         sha256,
         statementCount: unit.statementCount,
+        attestedStatementCount: unit.statements.filter((statement) => statement.attested !== undefined).length,
         bytes: unit.bytes,
         record: row,
       };
@@ -201,6 +202,7 @@ export function createArticleCheckService(dependencies: { readonly store: Articl
             output: disposition.output,
             evidence: disposition.evidence,
             statementCount: unit.statementCount,
+            statements: unit.statements,
             checkedByRunId: run.id,
             checkedAt: disposition.checkedAt,
             recordedBy: operatorId,

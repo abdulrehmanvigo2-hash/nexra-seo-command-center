@@ -27,7 +27,7 @@ function world(options: { readonly approved?: boolean } = {}) {
   const db: MemoryDb = memoryDb({
     articles: [approved ? approvedArticle() : approvedArticle({ status: "drafting", approvedVersion: null, approvedBy: null, approvedAt: null })],
     versions: [{ id: VERSION_ID, articleId: ARTICLE_ID, version: 2, origin: "operator", canonicalContent: text, contentSha256: sha256, createdBy: OPERATOR.id, createdAt: APPROVED_AT }],
-    approvals: approved ? [{ id: APPROVAL_ID, articleId: ARTICLE_ID, articleVersion: 2, articleVersionId: VERSION_ID, contentSha256: sha256, unitCount: 4, unitsSha256: "e".repeat(64), approvedBy: APPROVER, approvedAt: APPROVED_AT }] : [],
+    approvals: approved ? [{ id: APPROVAL_ID, articleId: ARTICLE_ID, articleVersion: 2, articleVersionId: VERSION_ID, contentSha256: sha256, unitCount: 4, unitsSha256: "e".repeat(64), approvedBy: APPROVER, approvedAt: APPROVED_AT, attestedCount: 0, attestedConfirmed: false }] : [],
   });
   const real = createArticleProposalService(memoryStores(db));
   let serviceCalls = 0;

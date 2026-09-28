@@ -14,7 +14,8 @@
 import type { ValidatedArticleContent, WebsiteCompletenessReport } from "@/types/content-article";
 
 /** The one preview format the C6 table accepts (`preview_format`). */
-export type ArticleProposalPreviewFormat = "article-proposal-text/1";
+/** `/2` only for an article with operator-attested paragraphs (6.8b); every other preview is `/1`, byte for byte as before. */
+export type ArticleProposalPreviewFormat = "article-proposal-text/1" | "article-proposal-text/2";
 
 /**
  * The exact binding a proposal records: the arguments the database function

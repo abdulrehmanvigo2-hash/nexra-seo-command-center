@@ -41,6 +41,10 @@ export function createSupabaseArticleApprovalStore(client: SupabaseClient<Articl
         p_units: input.units.map((u) => ({ index: u.index, key: u.key, sha256: u.sha256 })),
         p_units_sha256: input.unitsSha256,
         p_approved_by: input.approvedBy,
+        // Named only for a version that attests paragraphs: a database without
+        // 20261010120000 has the eight-parameter function, which a call naming
+        // the tick would not find, so every other approval works before and after it.
+        ...(input.attestationConfirmed === undefined ? {} : { p_attestation_confirmed: input.attestationConfirmed }),
       });
       if (error) throw new ArticleStoreError("approve article version", error);
       return approveResultToOutcome(data);

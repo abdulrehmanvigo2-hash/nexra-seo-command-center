@@ -26,6 +26,12 @@ export type ApproveVersionInput = {
   readonly unitsSha256: string;
   /** The operator's Supabase Auth user id, confirmed by the caller. */
   readonly approvedBy: string;
+  /**
+   * The operator's attestation tick (6.8b). Sent only for a version that
+   * attests paragraphs; the database requires it then and ignores it
+   * otherwise.
+   */
+  readonly attestationConfirmed?: boolean;
 };
 
 export type ApproveVersionOutcome =
@@ -46,7 +52,11 @@ export type ApproveVersionOutcome =
         | "units-not-passed"
         | "units-incomplete"
         | "topic-decision"
-        | "unresolved-placeholder";
+        | "unresolved-placeholder"
+        /** 6.8b: the version attests paragraphs and the tick was not given. */
+        | "attestation-unconfirmed"
+        /** 6.8b: the version attests paragraphs and its checks found fewer than three supported statements. */
+        | "too-few-supported";
     };
 
 export type ArticleApprovalStore = {

@@ -45,6 +45,14 @@
  * changes the units of that block and no other block's text. The hash
  * (server-only, `./unit-hash`) is SHA-256 over the text's UTF-8 bytes.
  *
+ * ATTESTED STATEMENTS (Phase 6, checkpoint 6.8b). Each sentence of an
+ * operator-attested H2 or H3 paragraph carries one more member after its
+ * text, `"attested":"experience"` or `"attested":"opinion"`, and a unit
+ * holding at least one such statement is written as
+ * `nexra-article-check-unit/2`. A unit with none is format 1, byte for
+ * byte as before, so every unit of an article without attestations keeps
+ * its text and hash.
+ *
  * Pure: no store, no network, no hash; safe to import from either side.
  */
 
@@ -55,9 +63,11 @@ import type {
   ArticleCheckUnit,
   ArticleCheckUnitKind,
 } from "@/types/content-article-check";
-import type { ArticleContent, ValidatedArticleContent } from "@/types/content-article";
+import type { ArticleAttestationBasis, ArticleContent, ValidatedArticleContent } from "@/types/content-article";
 
 export const ARTICLE_CHECK_UNIT_FORMAT = "nexra-article-check-unit/1";
+/** The format of a unit holding at least one attested statement (6.8b). */
+export const ARTICLE_CHECK_UNIT_FORMAT_ATTESTED = "nexra-article-check-unit/2";
 
 /** The most statements one unit may hold: what one bounded answer places, each once. */
 export const MAX_UNIT_STATEMENTS = 10;
@@ -89,6 +99,8 @@ type Leaf = {
   readonly text: string;
   /** Headings above this statement, outermost first, identified by their field. */
   readonly under: readonly ArticleCheckContext[];
+  /** The paragraph's attestation basis, when the operator attested it. */
+  readonly attested?: ArticleAttestationBasis;
 };
 
 /** Statements kept together when they fit. */
@@ -98,8 +110,8 @@ type Node = Leaf | Group;
 
 type Block = { readonly kind: ArticleCheckUnitKind; readonly block: string; readonly label: string; readonly nodes: readonly Node[] };
 
-function leaf(field: string, text: string, under: readonly ArticleCheckContext[] = []): Leaf {
-  return { type: "leaf", field, text, under };
+function leaf(field: string, text: string, under: readonly ArticleCheckContext[] = [], attested?: ArticleAttestationBasis): Leaf {
+  return attested === undefined ? { type: "leaf", field, text, under } : { type: "leaf", field, text, under, attested };
 }
 
 function group(children: readonly Node[]): Group {
@@ -107,8 +119,8 @@ function group(children: readonly Node[]): Group {
 }
 
 /** A paragraph or field value: its sentences, kept together when they fit. */
-function passage(field: string, text: string, under: readonly ArticleCheckContext[] = []): Group {
-  return group(sentencesOf(text).map((sentence) => leaf(field, sentence, under)));
+function passage(field: string, text: string, under: readonly ArticleCheckContext[] = [], attested?: ArticleAttestationBasis): Group {
+  return group(sentencesOf(text).map((sentence) => leaf(field, sentence, under, attested)));
 }
 
 /** A heading with the first paragraph under it, kept together when they fit, then the rest. */
@@ -117,6 +129,8 @@ function headed(heading: Leaf, paragraphs: readonly Group[]): readonly Node[] {
 }
 
 function blocksOf(article: ArticleContent): readonly Block[] {
+  const bases = new Map(article.attestations.map((a) => [a.locator, a.basis] as const));
+  const basis = (id: string, p: number) => bases.get(`${id}/${p}`);
   const blocks: Block[] = [
     {
       kind: "metadata",
@@ -141,10 +155,10 @@ function blocksOf(article: ArticleContent): readonly Block[] {
     },
     ...article.sections.map((section): Block => {
       const h2: ArticleCheckContext = { field: "heading", text: section.heading };
-      const nodes: Node[] = [...headed(leaf(h2.field, h2.text), section.paragraphs.map((p, i) => passage(`paragraphs[${i}]`, p, [h2])))];
+      const nodes: Node[] = [...headed(leaf(h2.field, h2.text), section.paragraphs.map((p, i) => passage(`paragraphs[${i}]`, p, [h2], basis(section.id, i))))];
       section.subsections.forEach((sub, s) => {
         const h3: ArticleCheckContext = { field: `subsections[${s}].heading`, text: sub.heading };
-        nodes.push(group(headed(leaf(h3.field, h3.text, [h2]), sub.paragraphs.map((p, i) => passage(`subsections[${s}].paragraphs[${i}]`, p, [h2, h3])))));
+        nodes.push(group(headed(leaf(h3.field, h3.text, [h2]), sub.paragraphs.map((p, i) => passage(`subsections[${s}].paragraphs[${i}]`, p, [h2, h3], basis(sub.id, i))))));
       });
       return { kind: "section", block: `section:${section.id}`, label: section.heading, nodes };
     }),
@@ -186,7 +200,7 @@ function contextOf(leaves: readonly Leaf[]): readonly ArticleCheckContext[] {
 }
 
 function numbered(leaves: readonly Leaf[]): readonly ArticleCheckStatement[] {
-  return leaves.map((l, i) => ({ n: i + 1, field: l.field, text: l.text }));
+  return leaves.map((l, i) => (l.attested === undefined ? { n: i + 1, field: l.field, text: l.text } : { n: i + 1, field: l.field, text: l.text, attested: l.attested }));
 }
 
 /** The canonical text of one unit. */
@@ -196,9 +210,10 @@ function unitText(kind: ArticleCheckUnitKind, block: string, part: number, partC
     .map((c) => `{"field":${str(c.field)},"text":${str(c.text)}}`)
     .join(",");
   const statements = numbered(leaves)
-    .map((s) => `{"n":${s.n},"field":${str(s.field)},"text":${str(s.text)}}`)
+    .map((s) => `{"n":${s.n},"field":${str(s.field)},"text":${str(s.text)}${s.attested === undefined ? "" : `,"attested":${str(s.attested)}`}}`)
     .join(",");
-  return `{"format":${str(ARTICLE_CHECK_UNIT_FORMAT)},"kind":${str(kind)},"block":${str(block)},"key":${str(`${block}:${part}`)},"part":${part},"partCount":${partCount},"context":[${context}],"statements":[${statements}]}`;
+  const format = leaves.some((l) => l.attested !== undefined) ? ARTICLE_CHECK_UNIT_FORMAT_ATTESTED : ARTICLE_CHECK_UNIT_FORMAT;
+  return `{"format":${str(format)},"kind":${str(kind)},"block":${str(block)},"key":${str(`${block}:${part}`)},"part":${part},"partCount":${partCount},"context":[${context}],"statements":[${statements}]}`;
 }
 
 class StatementTooLarge extends Error {}

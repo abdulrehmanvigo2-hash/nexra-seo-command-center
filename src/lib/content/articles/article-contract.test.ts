@@ -85,8 +85,10 @@ describe("valid complete article", () => {
       "ctaTitle",
       "ctaBody",
       "topicDecision",
+      // 6.8b: always present in the validated copy, empty when none; format 1 writes no member for it.
+      "attestations",
     ]);
-    assert.deepEqual(JSON.parse(JSON.stringify(article)), input);
+    assert.deepEqual(JSON.parse(JSON.stringify(article)), { ...input, attestations: [] });
   });
 
   test("accepts every topic decision, and none is chosen for the author", () => {

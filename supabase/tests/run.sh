@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, and approval records).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, and operator-attested paragraphs).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -31,9 +31,10 @@ T5_MIGRATION="$MIGRATIONS/20260929120000_extend_crawl_page_signals.sql"
 M2_MIGRATION="$MIGRATIONS/20261001120000_extend_crawl_page_content_signals.sql"
 PRIORITY_MIGRATION="$MIGRATIONS/20261005120000_agent_task_priority.sql"
 LEARNING_MIGRATION="$MIGRATIONS/20261008120000_task_priority_director_run.sql"
+ATTESTED_MIGRATION="$MIGRATIONS/20261010120000_attested_paragraphs.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -564,7 +565,19 @@ suite_approvals_races() {
     "$([ "$R1" = consumed ] && [ "$R2" = consumed ] && [ "$WAIT_MS" -ge 1200 ] && [ "$used" = "1" ]; echo $?)"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races)
+# Operator-attested paragraphs (checkpoint 6.8b): the count function, formats, the approval gate, the guards, proposals.
+suite_attested() {
+  fresh_db
+  run_sql_suite attested "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/attested/tests.sql"
+}
+
+# The 6.8b migration over an approved, proposed format 1 article: every stored byte unchanged.
+suite_attested_upgrade() {
+  fresh_db "$ATTESTED_MIGRATION"
+  run_sql_suite attested-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/attested/upgrade-before.sql" "$ATTESTED_MIGRATION" "$HERE/attested/upgrade-after.sql"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -582,6 +595,7 @@ for s in "${SUITES[@]}"; do
     keywords) suite_keywords ;; keywords-races) suite_keywords_races ;;
     guards) suite_guards ;; claim-races) suite_claim_races ;;
     approvals) suite_approvals ;; approvals-races) suite_approvals_races ;;
+    attested) suite_attested ;; attested-upgrade) suite_attested_upgrade ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

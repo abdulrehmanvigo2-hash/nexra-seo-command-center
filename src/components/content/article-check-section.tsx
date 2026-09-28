@@ -94,7 +94,7 @@ function countsLine(result: ArticleCheckUnitResult | null): string {
   if (result === null) return "—";
   if (result.status === "failed") return `No verdict: ${FAILURE_LABEL[result.reason]}`;
   const c = result.counts;
-  return `${c.supported} supported · ${c.partial} partial · ${c.unsupported} unsupported · ${c.unverifiable} unverifiable · ${c.editorial} editorial`;
+  return `${c.supported} supported · ${c.partial} partial · ${c.unsupported} unsupported · ${c.unverifiable} unverifiable · ${c.editorial} editorial${c.attested === undefined ? "" : ` · ${c.attested} attested`}`;
 }
 
 export function ArticleCheckSection({
@@ -190,6 +190,7 @@ export function ArticleCheckSection({
                 <tr>
                   <th className="py-1 pr-2 font-medium">#</th>
                   <th className="py-1 pr-2 font-medium">Unit</th>
+                  <th className="py-1 pr-2 font-medium">Attested</th>
                   <th className="py-1 pr-2 font-medium">Status</th>
                   <th className="py-1 pr-2 font-medium">Result</th>
                   <th className="py-1 font-medium">
@@ -241,6 +242,9 @@ function UnitRow({ unit, active, onSelect }: { unit: ArticleCheckUnitView; activ
         <span className="block text-[11px] text-fg-subtle">
           {unit.key} · {unit.statementCount} statements · hash {unit.sha256.slice(0, 12)}…
         </span>
+      </td>
+      <td className="py-1.5 pr-2 align-top text-fg-muted" title="Statements from operator-attested paragraphs (first-hand or opinion); not checked against the records">
+        {unit.attestedStatementCount === 0 ? "—" : unit.attestedStatementCount}
       </td>
       <td className="py-1.5 pr-2 align-top">
         {meta === null ? (
@@ -437,6 +441,7 @@ function UnitResult({ result }: { result: ArticleCheckUnitResult }) {
       <ItemGroup label="Unsupported — no record holds this" items={result.unsupported} />
       <ItemGroup label="Unverifiable from these records" items={result.unverifiable} />
       <ItemGroup label="Editorial — no factual claim" items={result.editorial} />
+      {result.attested && <ItemGroup label="Attested by the operator — first-hand or opinion, not checked against the records (the note is its basis)" items={result.attested} />}
       {result.observations && result.observations.length > 0 && (
         <ItemGroup label="Observations — notes about no statement; not a classification and not evidence" items={result.observations} />
       )}

@@ -249,7 +249,7 @@ describe("the prompt", () => {
     assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /the word Observation and a colon, with no statement number and no quotation marks/);
     assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /Write at most 3 observations/);
     assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /an observation never classifies a statement and never replaces one/);
-    assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /Write nothing else outside the six sections/);
+    assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /Write nothing else outside the seven sections/, "6.8b: seven sections, ATTESTED before SUMMARY");
     assert.match(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /under exactly one heading, once each, and nothing else apart from the observations described below/);
     assert.doesNotMatch(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /report it as an observation under EDITORIAL and carry on/);
     assert.doesNotMatch(ARTICLE_CHECK_UNIT_INSTRUCTIONS, /\$\{/, "the template is filled in");

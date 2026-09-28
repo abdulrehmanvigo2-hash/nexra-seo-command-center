@@ -18,13 +18,17 @@
  * read from the model's words. Absence from the records is recorded as
  * absence, not as falsehood, in the wording the record carries.
  *
+ * The article check (Phase 6, checkpoint 6.8b) passes its own heading list:
+ * the same five, then ATTESTED, then SUMMARY. The draft check passes none and
+ * reads exactly the six it always has.
+ *
  * Pure: no store, no network, safe to import from either side.
  */
 
 import { FACT_CHECK_CLOSING, FACT_CHECK_SECTIONS } from "@/lib/content/drafts/fact-check-grounding";
 import type { DraftFactCheck, FactCheckItem, FactCheckStatus } from "@/types/content-draft";
 
-type Heading = (typeof FACT_CHECK_SECTIONS)[number];
+type Heading = string;
 
 export type ParsedFactCheckItem = {
   readonly text: string;
@@ -39,6 +43,8 @@ export type ParsedFactCheckOutput = {
   readonly unsupported: readonly ParsedFactCheckItem[];
   readonly unverifiable: readonly ParsedFactCheckItem[];
   readonly editorial: readonly ParsedFactCheckItem[];
+  /** The ATTESTED section's lines, only when the heading list read has one (the article check, 6.8b). */
+  readonly attested?: readonly ParsedFactCheckItem[];
   readonly summary: string;
 };
 
@@ -82,7 +88,10 @@ function undecorated(line: string): string {
  * Capitals are required here, unlike for a heading alone, so a sentence
  * that merely begins with "Partial" or "Summary" is never read as one.
  */
-const INLINE_HEADING = new RegExp(`^(${FACT_CHECK_SECTIONS.join("|")})(?:[*_]+)?\\s*[:\\-–—]\\s*(\\S.*)$`);
+function inlineHeading(sections: readonly string[]): RegExp {
+  return new RegExp(`^(${sections.join("|")})(?:[*_]+)?\\s*[:\\-–—]\\s*(\\S.*)$`);
+}
+const INLINE_HEADING = inlineHeading(FACT_CHECK_SECTIONS);
 
 /** The line without leading presentation: hashes, a list marker, opening emphasis. */
 function stripLeading(line: string): string {
@@ -96,11 +105,11 @@ function stripLeading(line: string): string {
 }
 
 /** The heading a line carries, and the content that shares its line, if any. */
-function headingOf(line: string): { readonly heading: Heading; readonly inline: string | null } | null {
+function headingOf(line: string, sections: readonly string[], pattern: RegExp): { readonly heading: Heading; readonly inline: string | null } | null {
   const words = undecorated(line).toUpperCase();
-  const alone = FACT_CHECK_SECTIONS.find((heading) => heading === words);
+  const alone = sections.find((heading) => heading === words);
   if (alone !== undefined) return { heading: alone, inline: null };
-  const inline = INLINE_HEADING.exec(stripLeading(line));
+  const inline = pattern.exec(stripLeading(line));
   if (inline === null) return null;
   return { heading: inline[1] as Heading, inline: inline[2].trim() };
 }
@@ -151,15 +160,22 @@ export function parseFactCheckLine(line: string): ParsedFactCheckItem {
   };
 }
 
-export function parseFactCheckOutput(text: string): ParseFactCheckOutputResult {
+/**
+ * The sections in order. `sections` defaults to the draft check's six; the
+ * article check passes its seven (ATTESTED before SUMMARY). Every heading
+ * given must be present, once, in that order, whatever the list.
+ */
+export function parseFactCheckOutput(text: string, sections: readonly string[] = FACT_CHECK_SECTIONS): ParseFactCheckOutputResult {
+  const pattern = sections === FACT_CHECK_SECTIONS ? INLINE_HEADING : inlineHeading(sections);
+  const attestedAt = sections.indexOf("ATTESTED");
   const lines = text.split("\n");
   const found: { heading: Heading; index: number; inline: string | null }[] = [];
   for (const [index, line] of lines.entries()) {
-    const heading = headingOf(line);
+    const heading = headingOf(line, sections, pattern);
     if (heading !== null) found.push({ heading: heading.heading, index, inline: heading.inline });
   }
-  if (found.length !== FACT_CHECK_SECTIONS.length) return { ok: false, reason: "headings" };
-  if (found.some((entry, position) => entry.heading !== FACT_CHECK_SECTIONS[position])) {
+  if (found.length !== sections.length) return { ok: false, reason: "headings" };
+  if (found.some((entry, position) => entry.heading !== sections[position])) {
     return { ok: false, reason: "headings" };
   }
 
@@ -178,16 +194,17 @@ export function parseFactCheckOutput(text: string): ParseFactCheckOutputResult {
   const unsupported = listOf(2);
   const unverifiable = listOf(3);
   const editorial = listOf(4);
-  if (supported.length + partial.length + unsupported.length + unverifiable.length + editorial.length > MAX_FACT_CHECK_ITEMS) {
+  const attested = attestedAt === -1 ? undefined : listOf(attestedAt);
+  if (supported.length + partial.length + unsupported.length + unverifiable.length + editorial.length + (attested?.length ?? 0) > MAX_FACT_CHECK_ITEMS) {
     return { ok: false, reason: "too-many-items" };
   }
 
   const closing = FACT_CHECK_CLOSING.replace(/[.]+$/, "").toLowerCase();
-  const summaryLines = sectionOf(5).filter((line) => undecorated(line).replace(/[.]+$/, "").toLowerCase() !== closing);
+  const summaryLines = sectionOf(sections.length - 1).filter((line) => undecorated(line).replace(/[.]+$/, "").toLowerCase() !== closing);
   const summary = cut(summaryLines.join(" ").replace(/[*_]+/g, ""), MAX_SUMMARY_LENGTH);
   if (summary.length === 0) return { ok: false, reason: "summary-missing" };
 
-  return { ok: true, output: { supported, partial, unsupported, unverifiable, editorial, summary } };
+  return { ok: true, output: { supported, partial, unsupported, unverifiable, editorial, ...(attested === undefined ? {} : { attested }), summary } };
 }
 
 /** The records a tag may name: the fetched paths and the one window the run's evidence carried. */

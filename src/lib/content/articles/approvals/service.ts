@@ -40,6 +40,8 @@ export type ApproveArticleRequest = {
   readonly articleVersion: number;
   /** The operator's Supabase Auth user id, confirmed by the caller. */
   readonly operatorId: string;
+  /** The operator's attestation tick (6.8b); required when the version attests paragraphs. */
+  readonly attestationConfirmed?: boolean;
 };
 
 export type ApproveArticleResult =
@@ -48,6 +50,8 @@ export type ApproveArticleResult =
   | { readonly ok: false; readonly reason: "invalid" | "unavailable" | "not-found" | "version-not-found" | "failed" }
   /** The version asked about is no longer the current one. */
   | { readonly ok: false; readonly reason: "stale"; readonly state: ArticleApprovalState }
+  /** The version attests paragraphs and the operator did not tick the attestation (6.8b). Nothing was written. */
+  | { readonly ok: false; readonly reason: "attestation-unconfirmed"; readonly state: ArticleApprovalState }
   /** The rule refused, with every reason that applies. */
   | { readonly ok: false; readonly reason: "ineligible"; readonly blocks: readonly ArticleApprovalBlock[]; readonly state: ArticleApprovalState }
   /** The database refused on a rule it re-checked. */
@@ -89,6 +93,8 @@ export function createArticleApprovalService(dependencies: {
     let unitStatuses: ("pending" | "passed" | "needs-review" | "failed" | null)[] = [];
     let units: ApprovalUnitIdentity[] = [];
     let mismatched = 0;
+    let supportedCount: number | null = null;
+    let attestedStatementCount = 0;
     let counts = { total: 0, passed: 0, needsReview: 0, failed: 0, pending: 0, unchecked: 0 };
     if (contentReadable) {
       const read = await checks.getVersionChecks(projectId, article.id, version.version);
@@ -100,6 +106,10 @@ export function createArticleApprovalService(dependencies: {
       counts = view.counts;
       unitStatuses = view.units.map((unit) => unit.record?.status ?? null);
       units = view.units.map((unit) => ({ index: unit.index, key: unit.key, sha256: unit.sha256 }));
+      // 6.8b: supported and attested statements across the recorded verdicts; unknown until every unit has one.
+      const verdicts = view.units.map((unit) => (unit.record?.result && unit.record.result.status !== "failed" ? unit.record.result : null));
+      supportedCount = verdicts.length > 0 && verdicts.every((v) => v !== null) ? verdicts.reduce((sum, v) => sum + (v?.counts.supported ?? 0), 0) : null;
+      attestedStatementCount = verdicts.reduce((sum, v) => sum + (v?.counts.attested ?? 0), 0);
       const rows = await store.listUnitRecords(version.id);
       mismatched = rows.length - view.units.filter((unit) => unit.record !== null).length;
     }
@@ -114,6 +124,8 @@ export function createArticleApprovalService(dependencies: {
       mismatchedRows: mismatched,
       topicDecision: content?.topicDecision ?? null,
       hasPlaceholder: hasArticlePlaceholder(version.canonicalContent),
+      attestedCount: content?.attestations.length ?? 0,
+      supportedCount,
       approval,
     });
 
@@ -128,6 +140,9 @@ export function createArticleApprovalService(dependencies: {
           versionId: version.id,
           contentSha256: version.contentSha256,
           topicDecision: content?.topicDecision ?? null,
+          attestedCount: content?.attestations.length ?? 0,
+          supportedCount,
+          attestedStatementCount,
           checkState,
           checkRefusal,
           unitCounts: { ...counts, mismatched },
@@ -161,6 +176,7 @@ export function createArticleApprovalService(dependencies: {
       if (state.currentVersion !== request.articleVersion) return { ok: false, reason: "stale", state };
       if (state.eligibility.status === "approved") return { ok: true, approved: false, approval: state.eligibility.approval, state };
       if (state.eligibility.status === "blocked") return { ok: false, reason: "ineligible", blocks: state.eligibility.blocks, state };
+      if (state.attestedCount > 0 && request.attestationConfirmed !== true) return { ok: false, reason: "attestation-unconfirmed", state };
 
       const outcome = await approvals.approve({
         projectId,
@@ -171,6 +187,7 @@ export function createArticleApprovalService(dependencies: {
         units,
         unitsSha256: approvalUnitsSha256(units),
         approvedBy: request.operatorId.toLowerCase(),
+        ...(state.attestedCount > 0 ? { attestationConfirmed: true } : {}),
       });
 
       switch (outcome.status) {

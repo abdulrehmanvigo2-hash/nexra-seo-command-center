@@ -20,6 +20,7 @@
  * Pure: no store, no network; safe to import from either side.
  */
 
+import { ARTICLE_CHECK_SECTIONS } from "@/lib/content/article-check-prompt";
 import { parseFactCheckOutput, type FactCheckEvidence, type ParsedFactCheckOutput } from "@/lib/content/drafts/parse-fact-check-output";
 import type { AgentRun, JsonObject, JsonValue } from "@/types/agent-run";
 import type { ArticleCheckFailureReason } from "@/types/content-article-check";
@@ -117,7 +118,14 @@ export function articleCheckRunDisposition(run: AgentRun, target: ArticleCheckTa
   const recordPaths = Array.isArray(evidence.recordPaths) ? evidence.recordPaths.filter((entry): entry is string => typeof entry === "string") : [];
   const searchWindow = typeof evidence.searchWindow === "string" && evidence.searchWindow.length > 0 ? evidence.searchWindow : null;
 
-  const parsed = run.resultSummary === null ? null : parseFactCheckOutput(run.resultSummary);
+  // Version 2's seven headings (6.8b); an answer to version 1's six, from a run made before it, reads as it always did.
+  const parsed =
+    run.resultSummary === null
+      ? null
+      : ((): ReturnType<typeof parseFactCheckOutput> => {
+          const seven = parseFactCheckOutput(run.resultSummary, ARTICLE_CHECK_SECTIONS);
+          return seven.ok ? seven : parseFactCheckOutput(run.resultSummary);
+        })();
   if (parsed === null || !parsed.ok) return { ok: true, status: "failed", reason: "output-malformed", checkedAt: finishedAt };
 
   return { ok: true, status: "verdict", output: parsed.output, evidence: { crawlId, searchWindow, recordPaths }, checkedAt: finishedAt };
