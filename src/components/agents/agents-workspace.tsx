@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Icon } from "@/components/icons";
+import { useMemo, useState } from "react";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -94,20 +93,7 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
     Record<string, BlockerResolution>
   >({});
 
-  const [synced, setSynced] = useState(false);
-
   const view = useAgentView();
-
-  // The sync confirmation clears itself; the timer is tracked so an unmount
-  // cannot leave a pending update to run against a component that is gone.
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
 
   const statusCounts = useMemo(() => {
     const tally = { all: roster.length } as Record<AgentStatus | "all", number>;
@@ -143,57 +129,13 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
 
   const changeView = (next: AgentView) => setAgentView(next);
 
-  const runSync = () => {
-    setSynced(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setSynced(false), 8_000);
-  };
-
-  const attention = roster.filter((agent) => agent.attention).length;
-
   return (
     <div className="space-y-6">
       <SectionHeader
         size="page"
         title="AI Agents"
         description="The twelve specialist agents behind every project: what each is working on, how loaded it is, and where the pipeline is waiting."
-        actions={
-          <>
-            <span className="hidden items-center gap-1.5 text-[11.5px] text-fg-subtle sm:inline-flex">
-              <Icon name="alert" className="h-3.5 w-3.5" />
-              {attention} needing attention
-            </span>
-            <Button variant="primary" icon="refresh" onClick={runSync}>
-              Run agent sync
-            </Button>
-          </>
-        }
       />
-
-      <div aria-live="polite">
-        {synced && (
-          <div className="flex flex-wrap items-start gap-3 rounded-panel border border-accent/30 bg-accent-soft px-4 py-3">
-            <Icon
-              name="refresh"
-              className="mt-0.5 h-4 w-4 shrink-0 text-accent"
-            />
-            <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-fg-muted">
-              <span className="font-medium text-fg">Sync queued.</span> This
-              orchestration pass is simulated — it starts no agent runs, and the
-              figures below are unchanged fixtures. Executed runs are listed in
-              Run History.
-            </p>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSynced(false)}
-              aria-label="Dismiss sync notice"
-            >
-              <Icon name="close" className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-      </div>
 
       <ModelledSection name="Team health">
         <TeamHealthSummary health={health} referenceIso={AGENTS_AS_OF} />

@@ -6,7 +6,8 @@ project. Read it before writing any code.
 **Current stage: PRODUCTION READY; Phase 6 (→ the full 12-agent V1) has started.** Its design note
 (6.1) and the attestation design (6.1b) are approved; the per-agent run history (6.2) and its
 follow-up (the agent header's figures labelled Modelled, the fake sync button removed) are merged,
-deployed and browser checked; the Command Center over stored data (6.3) is on its branch. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
+deployed and browser checked; the Command Center over stored data (6.3) is merged and deployed; Reports on
+read (6.4) is on its branch. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
 complete (checkpoints 5.1–5.7, PR #45–#49; see the *PRODUCTION READY* block in §14): the observed
 Content Studio (5.2) is merged and deployed; the article positive path (5.3) is recorded live — one
 verification article checked, approved and record-proposed, nothing published; the delete and
@@ -45,8 +46,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `17ee0a646365fcc053b954adcfe20c5363300cf9` (merge of PR #51,
-`claude/phase6-agent-header-labels`, the 6.2 follow-up; preceded by PR #50 `b2b7da00…` (the per-agent
+GitHub `master`: `c8ac155c12e61880b7ebb0a29418b53ba19c45f8` (merge of PR #52,
+`claude/phase6-command-center`, the Command Center over stored data; preceded by PR #51 `17ee0a64…`
+(the 6.2 follow-up), PR #50 `b2b7da00…` (the per-agent
 run history), PR #49 `bf71dd73…` (Phase 5
 closing — PRODUCTION READY), PR #48 `fb048e81…` (the
 runbook and the claim race test), PR #47 `6b776b3a…` (health,
@@ -73,11 +75,11 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_D8L7aLiUPe7rooPtY1Wkqeve8wAw`, READY (28 Sep 07:45 UTC), built
-automatically from `master` at `17ee0a64` (the auto-deploy worked; no redeploy), serving
-`nexra-seo-command-center.vercel.app` (previous: `dpl_GoSs6ztVbMeL5L9NoGmAYsj5AghH` at `b2b7da00`,
-also automatic); `master` CI run `36393369165` passed. PR #51 (the 6.2 follow-up) merged as
-`17ee0a64…`; PR #50 (checkpoint 6.2) as `b2b7da00…` (`master` CI `36391754452`); PR #49 (checkpoint 5.7) as `bf71dd73…` (`master` CI `36386424748`); PR #48 (checkpoint 5.6) as `fb048e81…` (`master` CI `36384855012`); PR #47 (checkpoint 5.5) as `6b776b3a…` (`master` CI `36382919799`); PR #46 (checkpoint 5.4) as `7bd748f7…` (`master` CI `36375497802`); PR #45 (checkpoint 5.2) as `f9a32773…` (`master` CI `36333709886`); PR #44 (checkpoint 4.8) as `aef49419…` (`master` CI `36332161488`); PR #43
+Production deployment: `dpl_5fzpNZrBzgWzYi1TYj1mHVCaDgEy`, READY (28 Sep 07:59 UTC), built
+automatically from `master` at `c8ac155c` (the auto-deploy worked; no redeploy), serving
+`nexra-seo-command-center.vercel.app` (previous: `dpl_D8L7aLiUPe7rooPtY1Wkqeve8wAw` at `17ee0a64`,
+also automatic); `master` CI run `36394607712` passed. PR #52 (checkpoint 6.3) merged as
+`c8ac155c…`; PR #51 (the 6.2 follow-up) as `17ee0a64…` (`master` CI `36393369165`); PR #50 (checkpoint 6.2) as `b2b7da00…` (`master` CI `36391754452`); PR #49 (checkpoint 5.7) as `bf71dd73…` (`master` CI `36386424748`); PR #48 (checkpoint 5.6) as `fb048e81…` (`master` CI `36384855012`); PR #47 (checkpoint 5.5) as `6b776b3a…` (`master` CI `36382919799`); PR #46 (checkpoint 5.4) as `7bd748f7…` (`master` CI `36375497802`); PR #45 (checkpoint 5.2) as `f9a32773…` (`master` CI `36333709886`); PR #44 (checkpoint 4.8) as `aef49419…` (`master` CI `36332161488`); PR #43
 (checkpoint 4.6) as `ddc6cbb4…` (`master` CI `36330205806`, the manual redeploy `dpl_2bUN9N9R…`).
 
 **Auto-deploy skip (27 Sep):** the push of `ddc6cbb4` to `master` left no Vercel deployment record
@@ -853,8 +855,8 @@ title and responsibility; the button, its queued notice and the workspace's sync
 so the header has no control (§12: no control that does nothing). The page note is unchanged. Tests:
 `modelled-screens.test.ts` (one Modelled block holding every figure, none outside it, no button or
 sync state) and the task-surface test's header line (whitespace-normalised). No schema, route,
-instruction or other screen; the AI Agents list keeps its own simulated "Run agent sync" button, not
-in this scope. PR #51 merged as `17ee0a64…`; deployment `dpl_D8L7aLiU…` READY on the production
+instruction or other screen; the AI Agents list kept its own simulated "Run agent sync" button, not
+in this scope (removed in 6.4). PR #51 merged as `17ee0a64…`; deployment `dpl_D8L7aLiU…` READY on the production
 alias; `master` CI run `36393369165` green.
 
 **Phase 6 checkpoint 6.3 (Command Center over stored data, Part C, decision Q8):** the Command
@@ -890,8 +892,49 @@ each tile over production-shaped answers — 140 impressions and 1 click, 5 find
 low with the crawl's coverage, 1 open task, the approved article with its proposal; the empty,
 failed and not-kept states; the five links; the routes; no fixture import, the Observed badge, no
 control) and `modelled-screens.test.ts` (the Command Center moved from the fully modelled list to
-the observed one). No schema, route, instruction or other screen. On `claude/phase6-command-center`;
-not merged.
+the observed one). No schema, route, instruction or other screen. PR #52 merged as `c8ac155c…`;
+deployment `dpl_5fzpNZrB…` READY on the production alias; `master` CI run `36394607712` green.
+**Browser verification: not recorded** — no operator result for 6.3 had been received when 6.4 was
+written; it is recorded when the operator gives it.
+
+**Phase 6 checkpoint 6.4 (Reports on read, decision Q6):** `/reports` generates one stored project's
+report on read (the `?project=` one first, chosen on the screen), in the browser, from the project's
+stored records each time it opens — no report table, no stored copy, no schedule, no send
+(`src/lib/reports/project-report.ts`, the screen `src/components/reports/observed-report.tsx`; no new
+route, no schema). Five sections, each read through an existing route and each labelled **Observed**
+(figures read from stored records), **Not recorded** (the store holds nothing of this kind), **Not
+read** (the read failed) or **Not kept** (the deployment keeps no such records) — never a zero for
+"nothing read":
+
+- **Search Console** (`latest-window` and `history?range=30d`): the latest stored window's dates,
+  capture date, clicks, impressions, click-through rate and average position ("not rank"), and the
+  P4d history state in one line — the comparison's window ends, gap, confidence and click and
+  impression change ("not a trend"), or why there is none (for Nexra Agency today: not enough
+  history).
+- **Crawl findings** (`latest-findings` and `finding-history`): the newest own-site crawl with
+  recorded findings — crawl, pages fetched of discovered, total at its rule version and by severity,
+  the stop reason — and the derived finding-history summary.
+- **Tasks by status** (`agent-tasks`): every recorded task, counted under each of the seven statuses.
+- **SEO Director's latest plan** (`agent-runs?agent=seo-director`, the 25 newest): the newest
+  completed, model-executed `project-priority-review`, its stored text quoted as stored, with run,
+  date and model — labelled "A model's reading of the stored specialist reviews, not a measurement".
+- **Content pipeline and proposals** (`content-articles`, then the proposal route for the 10 newest):
+  articles by status, each active proposal (slug, version, destination, date), and always "Nothing
+  is published: a proposal is a record of intent, and this product has no publishing path."
+
+The report states when it was generated (date and UTC time) and lists the stored windows, crawls and
+runs it read (*Windows and records used*). Print-friendly: a Print button (`window.print()`); in
+print the sidebar, header, drawer, project selector and section links are hidden
+(`print:hidden` in `app-shell.tsx` and on the controls) and sections do not split across pages.
+**`/reports/[reportId]` is removed** (the smaller honest option: its only links came from the
+fixture report library, and a stored report does not exist to key it by). The fixture report
+components the screen no longer imports stay in the tree, unimported, for 6.12. **Also:** the AI
+Agents list (`agents-workspace.tsx`) loses its simulated "Run agent sync" button, its "Sync queued"
+notice and timer, and the header's fixture "N needing attention" count (a fixture figure outside any
+Modelled section, the 5.7 rule). The sidebar note names Reports as observed. Tests:
+`src/lib/reports/project-report.test.ts` (11) and `modelled-screens.test.ts` (Reports moved to the
+observed list — no screen is wholly fixture now — plus the agents-list and route checks). No
+schema, no instruction, no write. On `claude/phase6-reports`; not merged.
 
 **Findings recorded for later phases:**
 
@@ -1006,7 +1049,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 checkpoint 6.3 on `claude/phase6-command-center` (above); each further
+**Current work:** Phase 6 checkpoint 6.4 on `claude/phase6-reports` (above); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1388,8 +1431,9 @@ completed runs only (Phase 4, checkpoint 4.3), and the Competitor Intelligence s
 own crawls of the project's site and its recorded competitors (checkpoint 4.4); the AI Visibility and
 Outbound Links screens the project's latest own-site crawl (checkpoint 4.5); the Content Studio the
 project's stored articles and drafts (Phase 5, checkpoint 5.2); the Command Center one stored
-project's own records (Phase 6, checkpoint 6.3).
-Everything else on screen (rankings and reporting figures)
+project's own records (Phase 6, checkpoint 6.3); Reports a project's report generated on read from
+them (checkpoint 6.4).
+Everything else on screen (fixture figures on the Projects, project, agent and AI Agents screens)
 is still modelled fixture data from `src/lib/mock`. It must stay labelled as
 such (`src/config/build-status.ts`). Never present fixture data as live, or live data as a
 fixture.
@@ -1639,7 +1683,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) on `claude/phase6-command-center`, not merged; then 6.4–6.12 in order, the one external write (6.11) last |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read) on `claude/phase6-reports`, not merged; then 6.5–6.12 in order, the one external write (6.11) last |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1684,8 +1728,8 @@ production-ready criterion from the audit (§J), with its evidence:
 Next step: the Phase 6 design checkpoint (6.1), under its own explicit approval.
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.3
-on `claude/phase6-command-center` (6.2 and its follow-up merged, PR #50–#51). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.4
+on `claude/phase6-reports` (6.2, its follow-up and 6.3 merged, PR #50–#52). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
 complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3, Phase 4 and Phase 5 are complete. Phase 2, Project Manager loop closure: the handoff
@@ -1698,7 +1742,7 @@ Intelligence screen over the stored Search Console rows; and the operator's cura
 Outbound Links screens over stored data, the Director and performance-review bounds, and the
 Director's five-slot bundle. Phase 5: the Content Studio, the article positive path and the hardening
 (guards, health, caps, the abort fix, the runbook). Not started, each under its own explicit
-approval: Phase 6 checkpoints 6.4–6.12 (6.4 realifies Reports).
+approval: Phase 6 checkpoints 6.5–6.12.
 
 ## 15. Definition of Done
 

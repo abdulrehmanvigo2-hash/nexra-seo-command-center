@@ -73,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
 
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-width)] transition-[width] duration-200 lg:block">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-width)] transition-[width] duration-200 lg:block print:hidden">
         <Sidebar
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((value) => !value)}
@@ -83,7 +83,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Mobile drawer */}
       <div
         className={cn(
-          "fixed inset-0 z-50 lg:hidden",
+          "fixed inset-0 z-50 lg:hidden print:hidden",
           !navOpen && "pointer-events-none",
         )}
       >
@@ -111,8 +111,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       {/* Content column */}
-      <div className="flex min-h-screen flex-col transition-[padding] duration-200 lg:pl-[var(--sidebar-width)]">
-        <Header onOpenNav={() => setNavOpen(true)} />
+      <div className="flex min-h-screen flex-col transition-[padding] duration-200 lg:pl-[var(--sidebar-width)] print:pl-0">
+        {/* Printing (a report, checkpoint 6.4) keeps the page content only. */}
+        <div className="contents print:hidden">
+          <Header onOpenNav={() => setNavOpen(true)} />
+        </div>
         <main id="main-content" className="flex-1 px-4 py-6 sm:px-6 sm:py-8">
           <div className="mx-auto w-full max-w-[1600px]">{children}</div>
         </main>
