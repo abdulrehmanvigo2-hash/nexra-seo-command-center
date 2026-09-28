@@ -251,6 +251,9 @@ block. The section-id derivation is not needed, because our ids are given.
 
 ### B.9 The 6.11 pull request in nexra-ai — estimate
 
+> **Superseded by decision D7 below:** 6.11 is one PR of **three** files — the two listed here plus one link in the
+> live article's revive section.
+
 **One PR, two files, no component, config or dependency change:**
 
 1. **Add** `app/blog/ai-dead-lead-reactivation/page.tsx`: the rendered route file. It imports only from
@@ -321,3 +324,60 @@ BreadcrumbList, FAQPage (when FAQs exist), and the Open Graph and Twitter meta.
 11. **The verification proposal `5f229630…`?**
     - **Recommend:** withdraw it in 6.10, as planned, before the real article is proposed.
     - Its slug `nexra-ai-website-lead-follow-up` does not collide, but it is a verification record, not content.
+
+---
+
+## Decisions (operator, 28 Sep)
+
+The open questions above are numbered 1–11; decision Dn answers question n.
+
+- **D1 — accepted as recommended.** Re-pin as a new template, `nexra-ai-blog-tsx/2`, at `1a688bd`. `/1` stays
+  untouched for the old draft dry-run.
+- **D2 — accepted.** `readingTime` is derived at render time as `ceil(words / 200)` + " min read", over the lead,
+  introduction, sections (paragraphs and H3s) and FAQ answers. The rule is stated in the renderer.
+- **D3 — accepted.** The operator chooses `published` in the C7 approval step. It is part of the approved payload
+  (bound by the 6.8 payload digest) and is never read from a clock at render time.
+- **D4 — accepted.** Each internal link becomes an `<A>` around the first exact occurrence of its `anchorText` in
+  its `sectionId` section's paragraphs (H2 paragraphs first, then its H3s). If the text is not found, rendering is
+  refused.
+- **D5 — accepted.** A link whose fragment names a subsection (H3) id is refused. H2 ids and site paths are fine.
+- **D6 — accepted.** Attested labels use the existing `Meta` + `P` in the page file. No new component, never
+  `OperatorNote`, never `Callout`.
+- **D7 — changed.**
+  - **Angle.** The new article (`ai-dead-lead-reactivation`) is **AI-driven reactivation**: how an AI agent
+    re-engages dead leads — the workflow, and the human approval gates in it. Its topic decision is
+    `different-angle`.
+  - **Keywords.** The new article's keywords must **not** repeat the live article's. In particular, neither
+    "reactivate old CRM leads" nor "dead lead follow-up" may appear.
+  - **Overlap check.** Both keyword sets go into it: the live article's (including the two PR #8 added) and the
+    new article's own. The `/2` template's `topicPhrases` then flag any reuse either way.
+  - **Cross-link.** The link from the live article's revive section (`#revive-dead-crm-leads` in
+    `app/blog/ai-lead-follow-up-automation/page.tsx`) to the new article is **included in 6.11**.
+  - **6.11 = one PR, three files:**
+    1. add `app/blog/ai-dead-lead-reactivation/page.tsx`;
+    2. modify `lib/blog.ts` to append one record;
+    3. modify `app/blog/ai-lead-follow-up-automation/page.tsx` to add one link in the revive section.
+- **D8 — accepted.** Keep the site's conventions: author = the Organization, the site-wide `/opengraph-image`, no
+  tags.
+- **D9 — changed. The gate for 6.11 is:**
+  1. a local `npm run build` in nexra-ai before the PR is opened;
+  2. the Vercel preview build of the PR;
+  3. the operator's review of the preview. On the preview, the operator confirms the `Meta` attested label is
+     **visible**, not hidden.
+- **D10 — accepted.** After the 6.11 PR merges, record `ai-dead-lead-reactivation` as live in a small follow-up
+  (the SQL live-slug function and `liveSlugsFor`, kept in step).
+- **D11 — accepted.** Withdraw the verification proposal `5f229630…` in 6.10, before the real article is
+  proposed.
+
+### Roadmap change: checkpoint 6.9b (new, before 6.10)
+
+**6.9b — the full article renderer** (Command Center only; no nexra-ai write):
+- the template re-pinned at `1a688bd` (`nexra-ai-blog-tsx/2`, D1, with D7's topic phrases);
+- every registry field (D2, D3);
+- the full body: introduction, H2 sections, H3 subsections, FAQs (the block and FAQPage), inline links (D4, D5),
+  attested labels (D6) and the CTA;
+- deterministic output; refuses anything incomplete rather than emitting placeholders;
+- plus a renderer for the third file: the one-link edit in the live article's revive section (D7). It must be an
+  exact, minimal, reviewable change against the file at `1a688bd`, refused if that file has changed.
+
+The Phase 6 order is now: 6.9 → **6.9b** → 6.10 → 6.11 → 6.12.
