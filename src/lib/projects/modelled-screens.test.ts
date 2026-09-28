@@ -120,6 +120,23 @@ test("a mixed screen has no header badge", () => {
   assert.doesNotMatch(read("components/agents/agent-detail-header.tsx"), /ModelledBadge|Modelled operating data/);
 });
 
+test("an agent page's header labels its fixture figures as one Modelled block and has no fake control", () => {
+  const header = read("components/agents/agent-detail-header.tsx");
+  assert.equal(header.match(/<ModelledSection name="/g)?.length, 1);
+  const block = header.slice(header.indexOf('<ModelledSection name="Operating figures">'), header.indexOf("</ModelledSection>"));
+  assert.ok(block.length > 0, "the Operating figures block exists");
+  // Every fixture figure sits inside it: the status and load badges, the last action and the eight facts.
+  for (const figure of ["<AgentStatusBadge", "load", "Last action", "{facts.map("]) assert.ok(block.includes(figure), figure);
+  for (const fact of ["Stage", "Category", "Projects", "Active tasks", "Queue", "Workload", "Quality", "Outputs"]) {
+    assert.match(header, new RegExp(`label: "${fact}"`), fact);
+  }
+  const outside = header.replace(block, "");
+  assert.doesNotMatch(outside, /<AgentStatusBadge|Last action|facts\.map\(/, "no fixture figure outside the block");
+  // No control that does nothing: the simulated sync button and its state are gone.
+  assert.doesNotMatch(header, /Run agent sync|Sync queued|onRunSync|<Button/);
+  assert.doesNotMatch(read("components/agents/agent-workspace.tsx"), /syncQueued|runSync|onRunSync/);
+});
+
 test("a mixed screen labels each fixture section, and nothing else", () => {
   for (const { screen, path, modelled } of MIXED) {
     const source = read(path);

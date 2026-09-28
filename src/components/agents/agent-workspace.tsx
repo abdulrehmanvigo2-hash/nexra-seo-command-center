@@ -83,7 +83,6 @@ export function AgentWorkspace({
     () => detail?.configuration ?? null,
   );
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [syncQueued, setSyncQueued] = useState(false);
 
   const [taskStatuses, setTaskStatuses] = useState<
     Record<string, AgentTaskStatus>
@@ -116,11 +115,6 @@ export function AgentWorkspace({
     schedule(() => setSavedAt(null), 5_000);
   };
 
-  const runSync = () => {
-    setSyncQueued(true);
-    schedule(() => setSyncQueued(false), 4_000);
-  };
-
   const changeTaskStatus = (id: string, status: AgentTaskStatus) =>
     setTaskStatuses((current) => ({ ...current, [id]: status }));
 
@@ -139,8 +133,6 @@ export function AgentWorkspace({
         listItem={detail.listItem}
         configuration={configuration}
         referenceIso={detail.generatedAt}
-        queued={syncQueued}
-        onRunSync={runSync}
       />
 
       <TabList
