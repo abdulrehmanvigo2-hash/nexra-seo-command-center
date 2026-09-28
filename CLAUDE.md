@@ -1097,7 +1097,10 @@ line and its place in the order out and match the 6.5 and 6.6 hashes. New hashes
 schema-entity `bbecdbc5…`, internal-link `e8536140…`. Full-caps answers (eight-letter words at every cap,
 LIMITS included) stay under the worker's 2,000 ceiling: 1,978 (COVERAGE reviews and the revision draft),
 1,972 (scoped), 1,879 (learning — its OBSERVED cites both window dates, not a URL; modelled with a URL, as the
-6.5 test did, it would be 2,031). The margins are thin (22–28 characters). The instruction-length guard in
+6.5 test did, it would be 2,031). The margins are thin (22–28 characters). **Accepted (operator, 28 Sep):**
+worst cases 1,978 / 1,972 / 1,879 against the 2,000 ceiling, because live answers average about 1,000
+characters (the eight 6.6b runs: 951–1,247); if any live run of these tasks is refused `rejected-output`,
+tighten the word caps. The instruction-length guard in
 `second-tasks.test.ts` moves from 2,600 to 2,700 deliberately (the keyword text is 2,606). No other
 instruction, no schema, no screen, no run.
 
