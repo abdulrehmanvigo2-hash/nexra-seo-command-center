@@ -12,7 +12,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { getAgentDetail } from "@/lib/mock/agents";
 import type { ProjectOption } from "@/lib/projects/selection";
 import { LiveTasksPanel } from "@/components/agent-tasks/live-tasks-panel";
-import { AgentRunHistory } from "@/components/agents/agent-run-history";
+import { AgentRunsSection } from "@/components/agents/agent-runs-section";
 import { ModelledSection } from "@/components/ui/modelled-badge";
 import { AgentAssignments } from "@/components/agents/agent-assignments";
 import { AgentBlockers } from "@/components/agents/agent-blockers";
@@ -157,7 +157,7 @@ export function AgentWorkspace({
               existing list route preset to the agent. Every other section on
               this page is fixture data and carries its own Modelled label.
             */}
-            <AgentRunHistory projects={projects} presetAgentId={detail.agent.id} />
+            <AgentRunsSection projects={projects} agentId={detail.agent.id} />
 
             <ModelledSection name="Operating state">
             <section className="space-y-3">

@@ -6,8 +6,9 @@ project. Read it before writing any code.
 **Current stage: PRODUCTION READY; Phase 6 (→ the full 12-agent V1) has started.** Its design note
 (6.1) and the attestation design (6.1b) are approved; the per-agent run history (6.2) and its
 follow-up (the agent header's figures labelled Modelled, the fake sync button removed) are merged,
-deployed and browser checked; the Command Center over stored data (6.3) is merged and deployed; Reports on
-read (6.4), the second grounded tasks, batch 1 (6.5), and the scoped V1 (6.6) are on their branches. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
+deployed and browser checked; the Command Center over stored data (6.3), Reports on read (6.4), the second
+grounded tasks, batch 1 (6.5), and the scoped V1 (6.6) are merged and deployed (browser confirmed); the queue
+controls on agent pages (6.6b) are on their branch. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
 complete (checkpoints 5.1–5.7, PR #45–#49; see the *PRODUCTION READY* block in §14): the observed
 Content Studio (5.2) is merged and deployed; the article positive path (5.3) is recorded live — one
 verification article checked, approved and record-proposed, nothing published; the delete and
@@ -46,8 +47,10 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `c8ac155c12e61880b7ebb0a29418b53ba19c45f8` (merge of PR #52,
-`claude/phase6-command-center`, the Command Center over stored data; preceded by PR #51 `17ee0a64…`
+GitHub `master`: `04be98aee04104c178ee0579b9c0c260baac748b` (merge of PR #55,
+`claude/phase6-scoped-v1`, the scoped-down V1; preceded by PR #54 `1b2c2cbd…` (second grounded tasks,
+batch 1), PR #53 `a2e3cdc1…` (Reports on read), PR #52 `c8ac155c…` (the Command Center over stored
+data), PR #51 `17ee0a64…`
 (the 6.2 follow-up), PR #50 `b2b7da00…` (the per-agent
 run history), PR #49 `bf71dd73…` (Phase 5
 closing — PRODUCTION READY), PR #48 `fb048e81…` (the
@@ -75,11 +78,17 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_5fzpNZrBzgWzYi1TYj1mHVCaDgEy`, READY (28 Sep 07:59 UTC), built
-automatically from `master` at `c8ac155c` (the auto-deploy worked; no redeploy), serving
-`nexra-seo-command-center.vercel.app` (previous: `dpl_D8L7aLiUPe7rooPtY1Wkqeve8wAw` at `17ee0a64`,
-also automatic); `master` CI run `36394607712` passed. PR #52 (checkpoint 6.3) merged as
-`c8ac155c…`; PR #51 (the 6.2 follow-up) as `17ee0a64…` (`master` CI `36393369165`); PR #50 (checkpoint 6.2) as `b2b7da00…` (`master` CI `36391754452`); PR #49 (checkpoint 5.7) as `bf71dd73…` (`master` CI `36386424748`); PR #48 (checkpoint 5.6) as `fb048e81…` (`master` CI `36384855012`); PR #47 (checkpoint 5.5) as `6b776b3a…` (`master` CI `36382919799`); PR #46 (checkpoint 5.4) as `7bd748f7…` (`master` CI `36375497802`); PR #45 (checkpoint 5.2) as `f9a32773…` (`master` CI `36333709886`); PR #44 (checkpoint 4.8) as `aef49419…` (`master` CI `36332161488`); PR #43
+Production deployment for `04be98ae` (PR #55, 28 Sep ~09:42 UTC): **confirmed by the operator in the
+browser** — Reports on read, the Command Center tiles and no "Run agent sync" on `/agents` are live on
+`nexra-seo-command-center.vercel.app`. Its deployment id is **not recorded**: the Vercel API refused this
+session's access (403 for the `abdulrehmanvigo2-hash` scope), so the id, READY state and alias were not read
+and no redeploy was attempted. `master` CI run `36405118649` passed at `04be98ae`. The stacked merges, each
+after CI green on its final base (`master`, reached by merging `master` into the PR branch — no force-push):
+PR #53 (checkpoint 6.4) merged as `a2e3cdc1…` (`master` CI `36404604165`); PR #54 (checkpoint 6.5) as
+`1b2c2cbd…` (its `master` run `36404872526` was cancelled by the next push — superseded, by design); PR #55
+(checkpoint 6.6) as `04be98ae…`. Previous deployment: `dpl_5fzpNZrBzgWzYi1TYj1mHVCaDgEy`, READY (28 Sep
+07:59 UTC) at `c8ac155c`. PR #52 (checkpoint 6.3) merged as
+`c8ac155c…` (`master` CI `36394607712`); PR #51 (the 6.2 follow-up) as `17ee0a64…` (`master` CI `36393369165`); PR #50 (checkpoint 6.2) as `b2b7da00…` (`master` CI `36391754452`); PR #49 (checkpoint 5.7) as `bf71dd73…` (`master` CI `36386424748`); PR #48 (checkpoint 5.6) as `fb048e81…` (`master` CI `36384855012`); PR #47 (checkpoint 5.5) as `6b776b3a…` (`master` CI `36382919799`); PR #46 (checkpoint 5.4) as `7bd748f7…` (`master` CI `36375497802`); PR #45 (checkpoint 5.2) as `f9a32773…` (`master` CI `36333709886`); PR #44 (checkpoint 4.8) as `aef49419…` (`master` CI `36332161488`); PR #43
 (checkpoint 4.6) as `ddc6cbb4…` (`master` CI `36330205806`, the manual redeploy `dpl_2bUN9N9R…`).
 
 **Auto-deploy skip (27 Sep):** the push of `ddc6cbb4` to `master` left no Vercel deployment record
@@ -894,8 +903,7 @@ failed and not-kept states; the five links; the routes; no fixture import, the O
 control) and `modelled-screens.test.ts` (the Command Center moved from the fully modelled list to
 the observed one). No schema, route, instruction or other screen. PR #52 merged as `c8ac155c…`;
 deployment `dpl_5fzpNZrB…` READY on the production alias; `master` CI run `36394607712` green.
-**Browser verification: not recorded** — no operator result for 6.3 had been received when 6.4 was
-written; it is recorded when the operator gives it.
+**Browser confirmation (operator, 28 Sep, on the #55 build):** the Command Center tiles are live.
 
 **Phase 6 checkpoint 6.4 (Reports on read, decision Q6):** `/reports` generates one stored project's
 report on read (the `?project=` one first, chosen on the screen), in the browser, from the project's
@@ -934,7 +942,9 @@ notice and timer, and the header's fixture "N needing attention" count (a fixtur
 Modelled section, the 5.7 rule). The sidebar note names Reports as observed. Tests:
 `src/lib/reports/project-report.test.ts` (11) and `modelled-screens.test.ts` (Reports moved to the
 observed list — no screen is wholly fixture now — plus the agents-list and route checks). No
-schema, no instruction, no write. On `claude/phase6-reports`; not merged.
+schema, no instruction, no write. PR #53 merged as `a2e3cdc1…`; `master` CI `36404604165` green.
+**Browser confirmation (operator, 28 Sep, on the #55 build):** Reports on read is live, and `/agents` has
+no "Run agent sync".
 
 **Phase 6 checkpoint 6.5 (second grounded tasks, batch 1, decision Q5):** six agents gain a second
 grounded task, each over an evidence kind that already exists, with one block appended for its
@@ -981,7 +991,7 @@ deviation, left for a later checkpoint. Tests: `src/lib/agent-runs/second-tasks.
 deliberate pin updates — the task count (18 → 24) and the non-read-only list (now `section-draft`,
 `article-revision-draft`) in seven suites, the curated-keyword grounding rule (Q6 → Q5: only the
 runtime's one reader) and the M4 wiring regex. `docs/BACKEND.md` gains *Second grounded tasks*. No
-schema, no run. On `claude/phase6-second-tasks`; not merged.
+schema, no run. PR #54 merged as `1b2c2cbd…` (after the allowlist fix below and a merge of `master`).
 
 **Phase 6 checkpoint 6.6 (the scoped-down V1, decision Q4 option B):** §13 gains *Scoped V1* — for
 Market & Competitor Intelligence, AI Visibility and Authority & Backlink, what V1 reads, its two
@@ -1005,8 +1015,38 @@ tasks and what it never claims. Their second tasks, in the 6.5 shape (hash-pinne
 Every one of the twelve agents now holds two or more grounded tasks (tested). The outbound review's
 grounding is unchanged. Tests: `src/lib/agent-runs/scoped-v1.test.ts` (9); pins updated deliberately —
 the task count (24 → 27) and the Authority agent's task set (outbound and internal). No schema, no
-run, no screen control (queued through `POST /api/agent-runs`, as 6.5). On
-`claude/phase6-scoped-v1`; not merged.
+run, no screen control (queued through `POST /api/agent-runs`, as 6.5). PR #55 merged as `04be98ae…`;
+`master` CI `36405118649` green. (The 6.5 test's synthetic `sk-ant-` keyword fixture is admitted in
+`.github/secret-scan-allowlist`, as PR #32's was.)
+
+**Phase 6 checkpoint 6.6b (queue controls on agent pages):** every agent page (`/agents/[agentId]`) gains
+*Queue a review* above its Run History, the two in one live section (`AgentRunsSection`) on one shared
+project, so a queued run is listed at once (`AgentRunHistory` gains optional `projectId`,
+`onProjectChange` and `refreshToken`; the AI Agents list is unchanged). The control
+(`src/components/agents/queue-review-control.tsx`, presenter `src/lib/agent-runs/queue-control.ts`)
+lists exactly the agent's grounded task types from the registry (evidence other than `none`, not open to
+any agent), each with its description, and offers the record chooser its evidence needs: none (project,
+evidence pack, tasks, the Director bundle); a finished own-site crawl (`crawl`, `crawl-links`, from `GET
+/api/crawls`); a Search Console window (`search-console`); a recorded competitor (`GET
+/api/crawls/competitor-overview`); for `article-revision-draft`, an article and one unit of its current
+version whose recorded check **needs review** (`GET /api/content-articles`, then `/api/content-article-checks`).
+Tasks whose record is chosen by its own panel (`priority-review`, `section-draft`, `draft-fact-check`,
+`article-check-unit`) say where on the project screen and are not queued here. The task and the record
+start empty ("Choose a task…"); Queue stays disabled until the request is valid. Queue sends one `POST
+/api/agent-runs` (project, agent, task, the chosen record) and executes nothing: "Queued, not run … It
+appears in Run History below. Run now here, or the scheduled worker picks it up."; a duplicate is named as
+one. **Amendment (before merge):** the agent page's Run History offers **Run Now** on each queued run of that
+agent only (`runNowOffered`; never a running, completed, failed or cancelled run, and none on the AI Agents
+list), through the review panels' own control, extracted into `src/components/agent-runs/run-now.tsx`
+(`useRunNow`, `RunNowButton`, `RunNowNote`) and now shared by `queued-review.tsx` and Run History: one
+`POST /api/agent-runs/<id> {action:"execute"}`, the route's operator gate and daily caps (a capped run is
+held, `DAILY_CAP_HELD_MESSAGE`), the run read back and the list refreshed. Draft-policy tasks carry "Writes a draft for your review, publishes
+nothing." Refusals, the daily cap (429, `DAILY_CAP_MESSAGE`) included, use the review controls' wording
+(`queueRefusal`). Tests: `src/lib/agent-runs/queue-control.test.ts` (8) and two Run Now tests in
+`run-history-view.test.ts`; pins updated deliberately —
+the agent page's Run History mount (`run-history-view.test.ts`) and its live section
+(`modelled-screens.test.ts`). No schema, route, instruction or run. On `claude/phase6-queue-controls`; not
+merged.
 
 **Findings recorded for later phases:**
 
@@ -1121,7 +1161,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 checkpoint 6.6 on `claude/phase6-scoped-v1`, stacked on 6.5 (`claude/phase6-second-tasks`) and 6.4 (`claude/phase6-reports`) (above); each further
+**Current work:** Phase 6 checkpoint 6.6b on `claude/phase6-queue-controls` (above); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1440,7 +1480,8 @@ overwrite live content.
 - Vercel deploys every push to `master` to production automatically.
 - Any external write requires explicit user approval (§6).
 - Migration `20261006120000_curated_keywords.sql` (checkpoint 3.5) is applied to production and
-  recorded; curated keywords are operator records only and are not agent grounding (Q6).
+  recorded; curated keywords are operator records, and since 6.5 ground one agent task only —
+  the Keyword agent's `keyword-opportunity-review` (decision Q5 of the 6.1 note, lifting 3.5's Q6).
 - Migration `20261007120000_delete_truncate_guards.sql` (checkpoint 5.4) is applied to production
   and recorded: projects, runs and attempts can no longer be deleted or truncated, crawl records not
   truncated. Agent runs are capped at 40 a project and 100 in all per UTC day (checkpoint 5.5).
@@ -1769,7 +1810,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read) on `claude/phase6-reports` 6.5 (second grounded tasks, batch 1) on `claude/phase6-second-tasks` and 6.6 (the scoped V1: §13 definitions and three second tasks) on `claude/phase6-scoped-v1`, not merged; then 6.7–6.12 in order, the one external write (6.11) last |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) on `claude/phase6-queue-controls`, not merged; then 6.7–6.12 in order, the one external write (6.11) last |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1814,8 +1855,8 @@ production-ready criterion from the audit (§J), with its evidence:
 Next step: the Phase 6 design checkpoint (6.1), under its own explicit approval.
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.6
-on `claude/phase6-scoped-v1`, stacked on 6.5 and 6.4 (6.2, its follow-up and 6.3 merged, PR #50–#52). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.6b
+on `claude/phase6-queue-controls` (6.2 through 6.6 merged, PR #50–#55). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
 complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3, Phase 4 and Phase 5 are complete. Phase 2, Project Manager loop closure: the handoff

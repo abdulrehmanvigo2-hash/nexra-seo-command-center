@@ -7,7 +7,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/field";
 import { Panel, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { runHistoryEmptyState, runHistoryListUrl } from "@/lib/agent-runs/run-history-view";
+import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
+import { runHistoryEmptyState, runHistoryListUrl, runNowOffered } from "@/lib/agent-runs/run-history-view";
 import { getTaskType } from "@/lib/agent-runs/task-types";
 import { outputProvenance } from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
@@ -108,18 +109,29 @@ function upstreamRunId(run: AgentRun): string | null {
  * The stored runs of one project, newest first. On AI Agents the operator
  * picks any agent; on an agent's page `presetAgentId` fixes the list to that
  * agent and the agent picker is not shown (checkpoint 6.2). Either way it
- * reads the existing list route and changes nothing.
+ * reads the existing list route and changes nothing. An agent's page may
+ * hold the project outside (checkpoint 6.6b), so its "Queue a review"
+ * control and this list read the same project, and bumps `refreshToken`
+ * after queueing so the new run is listed.
  */
 export function AgentRunHistory({
   projects,
   presetAgentId,
+  projectId: heldProjectId,
+  onProjectChange,
+  refreshToken = 0,
 }: {
   projects: readonly ProjectOption[];
   presetAgentId?: AgentId;
+  projectId?: string;
+  onProjectChange?: (projectId: string) => void;
+  refreshToken?: number;
 }) {
-  const [projectId, setProjectId] = useState<string>(
+  const [ownProjectId, setOwnProjectId] = useState<string>(
     () => projects.find((project) => project.measured)?.id ?? projects[0]?.id ?? "",
   );
+  const projectId = heldProjectId ?? ownProjectId;
+  const setProjectId = (id: string) => (onProjectChange ? onProjectChange(id) : setOwnProjectId(id));
   const [pickedAgentId, setAgentId] = useState<string>("");
   const agentId: string = presetAgentId ?? pickedAgentId;
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -153,7 +165,7 @@ export function AgentRunHistory({
       });
 
     return () => controller.abort();
-  }, [listUrl, projectId, refreshKey]);
+  }, [listUrl, projectId, refreshKey, refreshToken]);
 
   /**
    * The next page, by offset. A run created since the first page shifts the
@@ -297,6 +309,8 @@ export function AgentRunHistory({
                 open={expanded === run.id}
                 onToggle={() => toggle(run.id)}
                 attempts={attempts[run.id]}
+                offersRunNow={runNowOffered(run, presetAgentId)}
+                onRunChanged={() => setRefreshKey((key) => key + 1)}
               />
             ))}
           </ul>
@@ -325,16 +339,31 @@ export function AgentRunHistory({
   );
 }
 
+/** The shared Run Now control for one queued run; its read-back refreshes the list. */
+function RunNowInRow({ run, onRunChanged }: { run: AgentRun; onRunChanged: () => void }) {
+  const { executing, executeNote, runNow } = useRunNow(onRunChanged);
+  return (
+    <div className="mt-2 space-y-1">
+      <RunNowButton run={run} executing={executing} onRunNow={() => void runNow(run)} />
+      <RunNowNote note={executeNote} />
+    </div>
+  );
+}
+
 function RunRow({
   run,
   open,
   onToggle,
   attempts,
+  offersRunNow = false,
+  onRunChanged,
 }: {
   run: AgentRun;
   open: boolean;
   onToggle: () => void;
   attempts: AttemptsLoad | undefined;
+  offersRunNow?: boolean;
+  onRunChanged?: () => void;
 }) {
   const status = STATUS[run.status];
   const task = getTaskType(run.taskType);
@@ -411,6 +440,8 @@ function RunRow({
       {run.status === "queued" && run.nextAttemptAt && (
         <p className="mt-1 text-[11.5px] text-fg-subtle">Automatic retry not before {stamp(run.nextAttemptAt)}.</p>
       )}
+
+      {offersRunNow && <RunNowInRow run={run} onRunChanged={onRunChanged ?? (() => {})} />}
 
       {open && (
         <div id={panelId} className="mt-3 rounded-md border border-border">

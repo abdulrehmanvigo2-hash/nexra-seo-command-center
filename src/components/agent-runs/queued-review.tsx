@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { RecordTaskControl } from "@/components/agent-tasks/record-task-control";
+import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
 import { SaveDraftControl } from "@/components/content/draft-panel";
 import { directorTaskProposal, offersDirectorTask } from "@/lib/agent-tasks/proposals";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +11,6 @@ import {
   PRIORITY_REVIEW,
   RUN_STATUS,
   SECTION_DRAFT,
-  executability,
-  executeOutcome,
   draftRequest,
   handoffRequest,
   hasResult,
@@ -20,7 +19,6 @@ import {
   outputProvenance,
   queueRefusal,
   queuedNote,
-  reconciledNote,
   restoreReviewRun,
   type Queueability,
   type QueueState,
@@ -70,9 +68,8 @@ export function useQueuedReview(
   const [state, setState] = useState<QueueState>({ status: "idle" });
   /** A ref refuses the second click of a pair before React has re-rendered. */
   const queueing = useRef(false);
-  const [executing, setExecuting] = useState(false);
-  const runningNow = useRef(false);
-  const [executeNote, setExecuteNote] = useState<{ text: string; tone: Tone } | null>(null);
+  // Run Now is the shared control (`run-now.tsx`); its read-back replaces the run shown.
+  const { executing, executeNote, setExecuteNote, runNow: runNowFor } = useRunNow((run) => setState({ status: "queued", run, duplicate: false }));
 
   /**
    * The evidence the request names, as a stable key. The request object is
@@ -102,7 +99,7 @@ export function useQueuedReview(
       );
     });
     return () => controller.abort();
-  }, [resetKey, projectId, review, inputKey]);
+  }, [resetKey, projectId, review, inputKey, setExecuteNote]);
 
   const reviewable = request;
 
@@ -151,7 +148,8 @@ export function useQueuedReview(
   };
 
   /**
-   * Runs the queued review now, instead of waiting for the scheduled worker.
+   * Runs the queued review now, instead of waiting for the scheduled worker,
+   * through the shared Run Now control (`run-now.tsx`).
    *
    * The request names the run on screen — `/api/agent-runs/<id>` with
    * `{action:"execute"}` — so the attempt it claims is provably this one. The
@@ -164,47 +162,7 @@ export function useQueuedReview(
    * that anything was analysed, and a 409 means something else claimed the run
    * first — which is the lease working, not a failure.
    */
-  const runNow = async () => {
-    const current = state.status === "queued" ? state.run : null;
-    if (runningNow.current || current === null || !executability(current).ok) return;
-    runningNow.current = true;
-    setExecuting(true);
-    setExecuteNote(null);
-
-    const runId = current.id;
-    let outcome;
-    try {
-      const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "execute" }),
-        cache: "no-store",
-      });
-      const body: unknown = await response.json().catch(() => null);
-      outcome = executeOutcome(response.status, body);
-    } catch {
-      // The attempt may or may not have started. The read below decides.
-      outcome = executeOutcome(0, null);
-    }
-
-    // Always reconcile, including after a success: the POST body is not the
-    // authority on what was stored.
-    let persisted: AgentRun | null = null;
-    try {
-      const read = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
-      if (read.ok) {
-        const body = (await read.json()) as { run?: AgentRun };
-        persisted = body.run ?? null;
-      }
-    } catch {
-      persisted = null;
-    }
-
-    if (persisted) setState({ status: "queued", run: persisted, duplicate: false });
-    setExecuteNote(reconciledNote(outcome, persisted));
-    runningNow.current = false;
-    setExecuting(false);
-  };
+  const runNow = () => runNowFor(state.status === "queued" ? state.run : null);
 
   return {
     state,
@@ -260,7 +218,6 @@ export function QueuedReview({
   const queued = state.status === "queued" ? state : null;
   const run = queued?.run ?? null;
   const provenance = run ? outputProvenance(run, review.groundedIn) : null;
-  const runnable = executability(run);
 
   return (
     <section
@@ -309,34 +266,9 @@ export function QueuedReview({
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              icon="bolt"
-              onClick={onRunNow}
-              disabled={!runnable.ok || executing}
-              title={runnable.why ?? undefined}
-              aria-busy={executing}
-            >
-              {executing ? "Running…" : "Run Now"}
-            </Button>
-            <span className="text-xs text-fg-subtle">
-              {runnable.ok
-                ? "Runs this run through the operator worker now, instead of waiting for the scheduled one."
-                : (runnable.why ?? "")}
-            </span>
-          </div>
+          <RunNowButton run={run} executing={executing} onRunNow={onRunNow} />
 
-          {executeNote && (
-            <p
-              className={
-                executeNote.tone === "warning" ? "text-sm text-warning" : "text-sm text-fg-muted"
-              }
-              role="status"
-            >
-              {executeNote.text}
-            </p>
-          )}
+          <RunNowNote note={executeNote} />
 
           {run.error && (
             <p className="text-sm text-critical">
