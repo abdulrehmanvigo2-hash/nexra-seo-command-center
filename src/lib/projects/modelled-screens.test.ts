@@ -16,7 +16,6 @@ import { test } from "node:test";
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
 const FULLY_MODELLED = [
-  "components/dashboard/dashboard-header.tsx", // Command Center
   "components/reports/reports-workspace.tsx", // Reports
   "components/reports/report-preview.tsx", // a report
 ];
@@ -90,6 +89,7 @@ const MIXED = [
 ];
 
 const OBSERVED = [
+  "components/dashboard/observed-command-center.tsx", // Command Center, observed since checkpoint 6.3
   "components/technical/technical-seo.tsx",
   "components/content/observed-content.tsx",
   "components/competitors/observed-competitors.tsx",
