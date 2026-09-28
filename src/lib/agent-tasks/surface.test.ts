@@ -258,7 +258,10 @@ describe("the live tasks panel", () => {
     assert.match(page, /<AgentWorkspace agentId=\{agentId\} projects=\{projects\} \/>/);
     const header = await read("../../components/agents/agent-detail-header.tsx");
     // Checkpoint 6.2: the page carries a live Run History, so the header no longer calls the whole page modelled.
-    assert.match(header, /Nothing on this page starts an agent run\. Run History lists this agent's stored runs; every section labelled Modelled is fixture data\./);
+    assert.match(
+      header.replace(/\s+/g, " "),
+      /Nothing on this page starts an agent run\. Run History lists this agent&apos;s stored runs; every section labelled Modelled is fixture data\./,
+    );
   });
 
   test("no task is ever created outside the operator's control: the runtime, the keyword module and the Director bundle never write one", async () => {
