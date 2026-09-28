@@ -28,12 +28,13 @@ const task = (over: Partial<AgentTask> = {}): AgentTask => ({
 });
 
 /** The workflow methods, refusing everything: the read and create tests never reach them. */
-const noWorkflow: Pick<AgentTaskStore, "getForProject" | "listEvents" | "setStatus" | "setOwner" | "setPriority" | "handoffRequest" | "handoffLink"> = {
+const noWorkflow: Pick<AgentTaskStore, "getForProject" | "listEvents" | "setStatus" | "setOwner" | "setPriority" | "listCitedPriorityChanges" | "handoffRequest" | "handoffLink"> = {
   async getForProject() { return null; },
   async listEvents() { return []; },
   async setStatus() { return { status: "task-not-found" }; },
   async setOwner() { return { status: "task-not-found" }; },
   async setPriority() { return { status: "task-not-found" }; },
+  async listCitedPriorityChanges() { return []; },
   async handoffRequest() { return { status: "task-not-found" }; },
   async handoffLink() { return { status: "task-not-found" }; },
 };
@@ -152,6 +153,9 @@ function workflowStore(initial: AgentTask) {
       const from = current.priority;
       current = { ...current, priority: input.priority };
       return { status: "priority-changed", task: current, event: event({ type: "priority-changed", fromPriority: from, toPriority: input.priority }) };
+    },
+    async listCitedPriorityChanges() {
+      return [];
     },
     async handoffRequest(input) {
       if (!own(input.projectId, input.taskId)) return { status: "task-not-found" };
@@ -378,6 +382,7 @@ describe("readOutcome (checkpoint 2.2): computed from the linked run, never writ
     async setStatus() { throw new Error("no write"); },
     async setOwner() { throw new Error("no write"); },
     async setPriority() { throw new Error("no write"); },
+    async listCitedPriorityChanges() { throw new Error("no read"); },
     async handoffRequest() { throw new Error("no write"); },
     async handoffLink() { throw new Error("no write"); },
   };

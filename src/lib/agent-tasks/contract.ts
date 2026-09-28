@@ -270,7 +270,11 @@ export type AgentTaskEvent = {
   readonly toStatus: AgentTaskStatus | null;
   readonly fromAgent: TaskOwningAgent | null;
   readonly toAgent: TaskOwningAgent | null;
-  /** The run a handoff produced, on `handoff-run-linked` only. */
+  /**
+   * The run a handoff produced, on `handoff-run-linked`; on `priority-changed`,
+   * optionally, the completed project Director review the operator cited
+   * (checkpoint 6.7, 20261008120000).
+   */
   readonly runId: string | null;
   /** The priorities before and after, on `priority-changed` only (20261005120000). */
   readonly fromPriority: AgentTaskPriority | null;
@@ -290,6 +294,8 @@ export const TASK_EVENT_META: Readonly<Record<AgentTaskEventType, string>> = {
 
 /** The most events one read returns; a task sees far fewer. */
 export const TASK_EVENT_READ_LIMIT = 200;
+/** How many of a project's Director-cited priority changes are read back, newest first (checkpoint 6.7). */
+export const CITED_PRIORITY_READ_LIMIT = 50;
 
 export type ChangeTaskStatusInput = { readonly projectId: string; readonly taskId: string; readonly status: AgentTaskStatus; readonly operatorId: string };
 export type ChangeTaskStatusOutcome =
@@ -307,12 +313,25 @@ export type ChangeTaskOwnerOutcome =
   | { readonly status: "same-owner"; readonly task: AgentTask }
   | { readonly status: "terminal"; readonly task: AgentTask };
 
-export type ChangeTaskPriorityInput = { readonly projectId: string; readonly taskId: string; readonly priority: AgentTaskPriority; readonly operatorId: string };
+export type ChangeTaskPriorityInput = {
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly priority: AgentTaskPriority;
+  readonly operatorId: string;
+  /**
+   * The completed project Director review (`project-priority-review`) of the
+   * same project the operator cites as the reason, or none (checkpoint 6.7,
+   * 20261008120000). The database accepts only such a run.
+   */
+  readonly directorRunId?: string | null;
+};
 export type ChangeTaskPriorityOutcome =
   | { readonly status: "priority-changed"; readonly task: AgentTask; readonly event: AgentTaskEvent }
   /** No such task, or another project's. Never says which. */
   | { readonly status: "task-not-found" }
   | { readonly status: "same-priority"; readonly task: AgentTask }
+  /** The cited run is not a completed project-priority-review of this project. Never says which. */
+  | { readonly status: "run-not-accepted"; readonly task: AgentTask }
   | { readonly status: "terminal"; readonly task: AgentTask };
 
 export type HandoffRequestInput = { readonly projectId: string; readonly taskId: string; readonly operatorId: string };
@@ -337,7 +356,7 @@ export type TaskActionName = (typeof TASK_ACTIONS)[number];
 export type TaskActionRequest =
   | { readonly ok: true; readonly projectId: string; readonly action: "status"; readonly status: AgentTaskStatus }
   | { readonly ok: true; readonly projectId: string; readonly action: "owner"; readonly owningAgent: TaskOwningAgent }
-  | { readonly ok: true; readonly projectId: string; readonly action: "priority"; readonly priority: AgentTaskPriority }
+  | { readonly ok: true; readonly projectId: string; readonly action: "priority"; readonly priority: AgentTaskPriority; readonly directorRunId: string | null }
   | {
       readonly ok: true;
       readonly projectId: string;
@@ -352,8 +371,10 @@ export const HANDOFF_DOMAIN_MAX_LENGTH = 253;
 
 /**
  * An action request as the task route receives it: `{ project, action,
- * status? | owningAgent? | priority? | crawlId? | competitorDomain? }` and
- * nothing else.
+ * status? | owningAgent? | priority? [directorRunId?] | crawlId? |
+ * competitorDomain? }` and nothing else. A priority change may cite one
+ * Director run by id (checkpoint 6.7); whether it is a completed project
+ * Director review of this project is the database's check.
  * A handoff names no agent, no task type and no input — the server maps the
  * task's owning agent to the one executable task type it supports, or
  * refuses — and at most one record the operator chose: a crawl id or a
@@ -376,8 +397,10 @@ export function parseTaskActionRequest(body: unknown): TaskActionRequest {
       return { ok: true, projectId: project, action, owningAgent: fields.owningAgent };
     }
     case "priority": {
-      if (keys.length !== 3 || !keys.includes("priority") || !isTaskPriority(fields.priority)) return { ok: false, error: "invalid" };
-      return { ok: true, projectId: project, action, priority: fields.priority };
+      if (!keys.includes("priority") || !isTaskPriority(fields.priority)) return { ok: false, error: "invalid" };
+      if (keys.length === 3) return { ok: true, projectId: project, action, priority: fields.priority, directorRunId: null };
+      if (keys.length !== 4 || !keys.includes("directorRunId") || !isTaskId(fields.directorRunId)) return { ok: false, error: "invalid" };
+      return { ok: true, projectId: project, action, priority: fields.priority, directorRunId: fields.directorRunId.toLowerCase() };
     }
     case "handoff": {
       if (keys.length === 2) return { ok: true, projectId: project, action, record: null };

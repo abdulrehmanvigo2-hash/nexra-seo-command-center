@@ -2597,6 +2597,31 @@ Merged as PR #31 (`0921c1f8…`); the migration is applied to production and
 recorded, and the round trip high → medium on task `30e79092…` is browser
 verified (events seq 15 and 16).
 
+**The learning loop (Phase 6, checkpoint 6.7, decision Q7; migration
+`20261008120000`, not applied).** A priority change may cite one completed
+SEO Director `project-priority-review` of the same project: `POST
+/api/agent-tasks/[taskId] { project, action: "priority", priority,
+directorRunId? }`; the database accepts only such a run and otherwise answers
+`run-not-accepted` (409), writing nothing. *Change priority* gains an optional
+*Because of Director run…* chooser listing the project's completed Director
+reviews (read through `GET /api/agent-runs?project=&agent=seo-director`),
+starting with none. `GET /api/agent-tasks?project=&view=cited-priority`
+(operator, read limit) answers the project's cited priority changes, newest
+first, at most 50, each with its task's title. The chain is shown where it is
+recorded (`src/lib/agent-tasks/learning-chain.ts`): the task history names a
+cited run and the performance review its stored bundle summary read, and each
+Analytics Learnings entry shows *What followed, as recorded* — performance
+review → the Director runs whose bundle read it → the priority changes citing
+each. Nothing is inferred; citing a run queues and changes nothing.
+
+**Approval records (Phase 6, checkpoint 6.8, decision Q1; migration
+`20261009120000`, not applied).** `nexra_approvals` and its two functions (see
+`supabase/README.md`); `src/lib/approvals` holds the contract (outcomes parsed
+fail-closed, the payload digest `nexra-approval-payload/1` over kind, target
+and payload) and a store over the two functions. Nothing consumes an approval
+yet and no route or screen reads the table; C7 (6.11) is the first consumer.
+The run-claim gate is unchanged.
+
 **Tasks as grounding and the task plan review (Phase 2, checkpoint 2.4).** A
 thirteenth evidence kind, `task`, and one read-only task type,
 `task-plan-review` (Project Manager only, no input, parsed like

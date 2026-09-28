@@ -45,6 +45,12 @@ export type ChangeTaskStatusResult = ChangeTaskStatusOutcome | { readonly status
 export type ChangeTaskOwnerResult = ChangeTaskOwnerOutcome | { readonly status: "unavailable" };
 export type ChangeTaskPriorityResult = ChangeTaskPriorityOutcome | { readonly status: "unavailable" };
 
+/** One priority change citing a Director run, with its task's title (checkpoint 6.7). */
+export type CitedPriorityChange = { readonly event: AgentTaskEvent; readonly taskTitle: string | null };
+export type CitedPriorityChangesResult =
+  | { readonly status: "listed"; readonly changes: readonly CitedPriorityChange[] }
+  | { readonly status: "unavailable" };
+
 export type HandoffTaskResult =
   /** One run was created and linked. `duplicate` says the run path found an identical active run instead of inserting. */
   | { readonly status: "handed-off"; readonly task: AgentTask; readonly run: AgentRun; readonly duplicate: boolean }
@@ -125,6 +131,8 @@ export type AgentTaskService = {
   changeOwner(input: ChangeTaskOwnerInput): Promise<ChangeTaskOwnerResult>;
   /** One priority change to one of the four priorities. Queues nothing and tells no agent anything. */
   changePriority(input: ChangeTaskPriorityInput): Promise<ChangeTaskPriorityResult>;
+  /** The project's priority changes that cite a Director run, newest first, bounded, each with its task's title. Reads only. */
+  citedPriorityChanges(projectId: string): Promise<CitedPriorityChangesResult>;
   /**
    * Records the request, creates at most one queued run for the owning agent, links it. Executes nothing.
    * A record-reading owner's record is checked against the project first; a refusal writes nothing.
@@ -232,6 +240,14 @@ export function createAgentTaskService(
         outcome: outcome.status,
       });
       return outcome;
+    },
+
+    async citedPriorityChanges(projectId) {
+      if (!store.storesTasks) return { status: "unavailable" };
+      const events = (await store.listCitedPriorityChanges(projectId)).filter((event) => event.projectId === projectId && event.runId !== null);
+      const tasks = await store.listForProject({ projectId, limit: TASK_READ_LIMIT });
+      const titles = new Map(tasks.filter((task) => task.projectId === projectId).map((task) => [task.id, task.title]));
+      return { status: "listed", changes: events.map((event) => ({ event, taskTitle: titles.get(event.taskId) ?? null })) };
     },
 
     async handoff(input) {

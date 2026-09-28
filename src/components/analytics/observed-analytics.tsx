@@ -7,6 +7,8 @@ import { MetricTileGrid } from "@/components/ui/metric-tile";
 import { Panel, PanelBody, PanelFooter } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatFullDate } from "@/lib/format";
+import { TASK_PRIORITY_META } from "@/lib/agent-tasks/contract";
+import { DIRECTOR_RUNS_READ_LIMIT, citedPriorityUrl, directorRunLabel, directorRunsUrl, learningChain, type CitedChange } from "@/lib/agent-tasks/learning-chain";
 import { LEARNING_LABEL, LEARNINGS_READ_LIMIT, learningsReadFailure, learningsUrl, presentLearnings, type Learning } from "@/lib/analytics/learnings";
 import {
   LATEST_WINDOW_FOOTER,
@@ -110,6 +112,78 @@ export function LatestWindowTiles({ projectId, readiness }: { projectId: string;
   );
 }
 
+type ChainLoad =
+  | { readonly status: "loading" }
+  | { readonly status: "failed" }
+  | { readonly status: "loaded"; readonly directorRuns: readonly AgentRun[]; readonly changes: readonly CitedChange[] };
+
+/**
+ * The learning loop as recorded (checkpoint 6.7): the project's SEO Director
+ * runs and the priority changes that cite one, read once for the list. Its
+ * own read and states; the learnings show without it.
+ */
+function useLearningChain(projectId: string): ChainLoad {
+  const [load, setLoad] = useState<ChainLoad>({ status: "loading" });
+  useEffect(() => {
+    const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loading state belongs to this request
+    setLoad({ status: "loading" });
+    Promise.all([
+      fetch(directorRunsUrl(projectId), { cache: "no-store", signal: controller.signal }),
+      fetch(citedPriorityUrl(projectId), { cache: "no-store", signal: controller.signal }),
+    ])
+      .then(async ([runs, changes]) => {
+        if (!runs.ok || !changes.ok) return setLoad({ status: "failed" });
+        const runBody = (await runs.json()) as { runs?: AgentRun[] };
+        const changeBody = (await changes.json()) as { changes?: CitedChange[] };
+        setLoad({ status: "loaded", directorRuns: runBody.runs ?? [], changes: changeBody.changes ?? [] });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setLoad({ status: "failed" });
+      });
+    return () => controller.abort();
+  }, [projectId]);
+  return load;
+}
+
+/** One performance review's recorded chain: the Director runs that read it, and the priority changes citing each. */
+function LearningChainLines({ runId, chain }: { runId: string; chain: ChainLoad }) {
+  if (chain.status === "loading") return <p className="text-xs text-fg-subtle">Reading what followed this review…</p>;
+  if (chain.status === "failed") {
+    return (
+      <p className="text-xs text-warning" role="status">
+        The Director runs and cited priority changes could not be read. This is a read failure, not an absent chain.
+      </p>
+    );
+  }
+  const links = learningChain(runId, chain.directorRuns, chain.changes);
+  if (links.length === 0) return <p className="text-xs text-fg-subtle">No SEO Director project review among the {DIRECTOR_RUNS_READ_LIMIT} newest has read this review yet.</p>;
+  return (
+    <ol className="space-y-1.5 text-xs">
+      {links.map((link) => (
+        <li key={link.directorRun.id} className="space-y-0.5">
+          <p className="text-fg-muted">
+            <span className="text-fg-subtle">Performance review {runId.slice(0, 8)} → </span>
+            read by {directorRunLabel(link.directorRun)}
+          </p>
+          {link.changes.length === 0 ? (
+            <p className="pl-4 text-fg-subtle">→ no priority change cites this Director run</p>
+          ) : (
+            link.changes.map((change) => (
+              <p key={change.event.id} className="pl-4 text-fg-muted">
+                → priority change: {change.taskTitle !== null ? `“${change.taskTitle}”` : `task ${change.event.taskId.slice(0, 8)}`}{" "}
+                {change.event.fromPriority ? TASK_PRIORITY_META[change.event.fromPriority].label : "?"} → {change.event.toPriority ? TASK_PRIORITY_META[change.event.toPriority].label : "?"} ·{" "}
+                {formatFullDate(change.event.createdAt)}
+              </p>
+            ))
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 type LearningsLoad =
   | { readonly status: "loading" }
   | { readonly status: "failed"; readonly message: string }
@@ -118,6 +192,7 @@ type LearningsLoad =
 /** The project's completed performance-review runs, newest first. */
 export function LearningsList({ projectId }: { projectId: string }) {
   const [load, setLoad] = useState<LearningsLoad>({ status: "loading" });
+  const chain = useLearningChain(projectId);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -186,6 +261,10 @@ export function LearningsList({ projectId }: { projectId: string }) {
           </div>
           <PanelBody>
             <p className="text-sm whitespace-pre-line text-fg">{learning.summary}</p>
+            <div className="mt-3 border-t border-border pt-2">
+              <p className="mb-1 text-[11px] font-medium tracking-wide text-fg-subtle uppercase">What followed, as recorded</p>
+              <LearningChainLines runId={learning.runId} chain={chain} />
+            </div>
           </PanelBody>
           <PanelFooter>
             <span>{LEARNING_LABEL}.</span>

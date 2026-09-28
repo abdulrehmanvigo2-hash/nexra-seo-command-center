@@ -160,11 +160,53 @@ Editor (or run with the Supabase CLI against a linked project):
 29. `20261007120000_delete_truncate_guards.sql` — delete and truncate guards
     (Phase 5, checkpoint 5.4) — applied to production and recorded on 28 Sep
     (checkpoint 5.6; see `docs/RUNBOOK.md` for the method)
+30. `20261008120000_task_priority_director_run.sql` — the learning loop: a
+    priority change may cite a completed project Director review (Phase 6,
+    checkpoint 6.7) — **NOT applied to production**
+31. `20261009120000_approval_records.sql` — approval records for C7 (Phase 6,
+    checkpoint 6.8) — **NOT applied to production**
 
-All twenty-nine are applied to production and recorded in its migration
+The first twenty-nine are applied to production and recorded in its migration
 history (30 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
 `docs/RUNBOOK.md`).
+
+### The learning loop (Phase 6, checkpoint 6.7) — not applied
+
+`20261008120000_task_priority_director_run.sql` lets a `priority-changed` event
+carry a run id (the existing `run_id` column, a foreign key to `agent_runs`)
+only when that run is a `completed` `project-priority-review` of the event's
+own project. `nexra_agent_task_set_priority` is dropped and recreated with a
+fifth parameter, `p_run_id uuid default null`, so every four-argument call
+behaves as before; given a run it answers `run-not-accepted` (never which
+condition failed) after `task-not-found` and before `same-priority` /
+`terminal`. A new BEFORE INSERT trigger holds the same rule for any writer
+(23514). The shape check is replaced so `priority-changed` may carry a run;
+every other type keeps its shape. service_role executes the new signature;
+nothing else changes. Harness suite `task-learning` (58 assertions); the
+`task-priority` suite now runs on the schema before this migration, which is
+what it pins; the c5 security definer inventory names the new signature.
+
+### Approval records (Phase 6, checkpoint 6.8) — not applied
+
+`20261009120000_approval_records.sql` adds `nexra_approvals`: one operator
+decision (`approve` or `refuse`) on one exact action — project, kind
+(`article-publication` only), target id and payload SHA-256 — with its
+decider, decision time (wall clock), an expiry 1 minute to 24 hours later,
+and, for an approval, `used_at` / `used_by`, set once. Guards: a row is born
+unused; nothing but `used_at` / `used_by` ever changes, once, from null, and
+only inside the consume function; no delete, no truncate. Two `security
+definer` functions: `nexra_approval_record` (`recorded`, `project-not-found`;
+malformed arguments raise 22023) and `nexra_approval_consume`, which locks the
+row and answers, writing nothing, `approval-not-found`, `refused`,
+`action-mismatch`, `digest-mismatch`, `used`, `expired` or `superseded` (a
+later decision on the same action wins) before stamping the use and answering
+`consumed`. RLS on, no policies; service_role SELECT on the table and EXECUTE
+on the two functions only. The run-claim gate is unchanged, and nothing
+consumes an approval yet — C7 (checkpoint 6.11) will. Harness suites
+`approvals` (63 assertions) and `approvals-races` (A1 two consumers of one
+approval: the second waits and answers `used`; A2 the first use rolls back:
+the second consumes).
 
 ### Delete and truncate guards (Phase 5, checkpoint 5.4)
 

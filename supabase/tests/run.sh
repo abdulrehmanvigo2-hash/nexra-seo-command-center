@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow and their priority, curated keywords, and the delete and truncate guards).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, and approval records).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority keywords keywords-races guards claim-races
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -30,9 +30,10 @@ D3_MIGRATION="$MIGRATIONS/20260926120000_publication_proposals_cross_table_slug_
 T5_MIGRATION="$MIGRATIONS/20260929120000_extend_crawl_page_signals.sql"
 M2_MIGRATION="$MIGRATIONS/20261001120000_extend_crawl_page_content_signals.sql"
 PRIORITY_MIGRATION="$MIGRATIONS/20261005120000_agent_task_priority.sql"
+LEARNING_MIGRATION="$MIGRATIONS/20261008120000_task_priority_director_run.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [keywords]=126 [guards]=38)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -463,9 +464,17 @@ suite_task_workflow() {
 }
 
 # Agent task priority (checkpoint 2.3b): the set-priority function, the priority-changed event, the guard.
+# Runs on the schema as 20261005120000 left it (every migration before the learning loop's), which is what it
+# pins; the learning loop's changes to the same function and table are the task-learning suite's.
 suite_task_priority() {
-  fresh_db
+  fresh_db "$LEARNING_MIGRATION"
   run_sql_suite task-priority "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/task-priority/tests.sql"
+}
+
+# The learning loop (checkpoint 6.7): a priority change citing a completed project Director review of the same project.
+suite_task_learning() {
+  fresh_db
+  run_sql_suite task-learning "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/task-learning/tests.sql"
 }
 
 # Curated keywords (checkpoint 3.5): the add function, the four setters, their events, the guards.
@@ -529,7 +538,33 @@ suite_claim_races() {
     "$([ "$R1" = "$r3" ] && [ "$R2" = "$r4" ] && [ "$WAIT_MS" -lt 1000 ] && [ "$(runstate "$r3")" = running/1/1 ] && [ "$(runstate "$r4")" = running/1/1 ]; echo $?)"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority keywords keywords-races guards claim-races)
+# Approval records (checkpoint 6.8): recording, every consume refusal, expiry, single use, the guards, isolation.
+suite_approvals() {
+  fresh_db
+  run_sql_suite approvals "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/approvals/tests.sql"
+}
+
+# Two sessions consume one approval at once: the second waits on the row lock and answers used; one use recorded.
+suite_approvals_races() {
+  fresh_db
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/gsc/setup.sql" >/dev/null
+  local digest a b used
+  digest="$(q "select encode(sha256(convert_to('race', 'UTF8')), 'hex')")"
+  a="$(q "select public.nexra_approval_record('halcyon-fintech', 'article-publication', 'e0000000-0000-4000-8000-000000000001', '$digest', 'approve', '00000000-0000-4000-8000-0000000000aa', 60)->'approval'->>'id'")"
+  local use="select public.nexra_approval_consume('halcyon-fintech', '$a', 'article-publication', 'e0000000-0000-4000-8000-000000000001', '$digest', '00000000-0000-4000-8000-0000000000aa')->>'outcome'"
+  race "$use" "$use"
+  used="$(q "select count(*) filter (where used_at is not null) || '/' || count(*) from public.nexra_approvals")"
+  check "approvals race A1 two consumers of one approval: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, used/rows $used" \
+    "$([ "$R1" = consumed ] && [ "$R2" = used ] && [ "$WAIT_MS" -ge 1200 ] && [ "$used" = "1/1" ]; echo $?)"
+  b="$(q "select public.nexra_approval_record('halcyon-fintech', 'article-publication', 'e0000000-0000-4000-8000-000000000002', '$digest', 'approve', '00000000-0000-4000-8000-0000000000aa', 60)->'approval'->>'id'")"
+  use="select public.nexra_approval_consume('halcyon-fintech', '$b', 'article-publication', 'e0000000-0000-4000-8000-000000000002', '$digest', '00000000-0000-4000-8000-0000000000aa')->>'outcome'"
+  race "$use" "$use" rollback
+  used="$(q "select count(*) filter (where used_at is not null) from public.nexra_approvals where id = '$b'")"
+  check "approvals race A2 the first use rolls back: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, used $used" \
+    "$([ "$R1" = consumed ] && [ "$R2" = consumed ] && [ "$WAIT_MS" -ge 1200 ] && [ "$used" = "1" ]; echo $?)"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -543,9 +578,10 @@ for s in "${SUITES[@]}"; do
     signals) suite_signals ;; signals-upgrade) suite_signals_upgrade ;;
     content) suite_content ;; content-upgrade) suite_content_upgrade ;;
     triage) suite_triage ;; triage-races) suite_triage_races ;;
-    tasks) suite_tasks ;; task-workflow) suite_task_workflow ;; task-priority) suite_task_priority ;;
+    tasks) suite_tasks ;; task-workflow) suite_task_workflow ;; task-priority) suite_task_priority ;; task-learning) suite_task_learning ;;
     keywords) suite_keywords ;; keywords-races) suite_keywords_races ;;
     guards) suite_guards ;; claim-races) suite_claim_races ;;
+    approvals) suite_approvals ;; approvals-races) suite_approvals_races ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

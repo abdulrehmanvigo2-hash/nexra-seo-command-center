@@ -92,7 +92,7 @@ export type AgentTasksDatabase = {
         Returns: unknown;
       };
       nexra_agent_task_set_priority: {
-        Args: { p_project_id: string; p_task_id: string; p_priority: string; p_operator: string };
+        Args: { p_project_id: string; p_task_id: string; p_priority: string; p_operator: string; p_run_id?: string | null };
         Returns: unknown;
       };
       nexra_agent_task_handoff_request: {
@@ -235,6 +235,7 @@ export function priorityResultToOutcome(data: unknown): ChangeTaskPriorityOutcom
       return { status: "task-not-found" };
     case "same-priority":
     case "terminal":
+    case "run-not-accepted":
       return { status: result.outcome, task: taskRowToTask(result.task) };
     default:
       return unexpected(result);

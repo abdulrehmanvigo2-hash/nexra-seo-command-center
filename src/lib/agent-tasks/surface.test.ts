@@ -167,7 +167,8 @@ describe("the live tasks panel", () => {
     assert.match(controls, /^"use client";/);
     assert.match(controls, /fetch\(`\/api\/agent-tasks\/\$\{encodeURIComponent\(task\.id\)\}`, \{\s*method: "POST"/);
     assert.match(controls, /fetch\(agentTaskUrl\(task\.id, task\.projectId\), \{ cache: "no-store" \}\)/);
-    assert.equal((controls.match(/fetch\(/g) ?? []).length, 3, "one write path, one history read, one handoff-choices read");
+    // cp 6.7: a fourth read, the project's Director runs, for the priority chooser and the history's citations.
+    assert.equal((controls.match(/fetch\(/g) ?? []).length, 4, "one write path, one history read, one handoff-choices read, one Director-runs read");
     assert.match(controls, /if \(sending\.current\) return;/);
     assert.match(controls, /const allowed = TASK_TRANSITIONS\[task\.status\];/);
     assert.match(controls, /options=\{allowed\.map/);
@@ -208,13 +209,13 @@ describe("the live tasks panel", () => {
   test("Change priority: one of the four, a confirmed POST with recorded feedback, and the history shows the event (cp 2.3b)", async () => {
     const controls = await read("../../components/agent-tasks/task-row-controls.tsx");
     assert.match(controls, /Change priority/);
-    assert.match(controls, /void post\(\{ action: "priority", priority: nextPriority \}/);
+    assert.match(controls, /void post\(\{ action: "priority", priority: nextPriority, \.\.\.\(citedRun !== "" \? \{ directorRunId: citedRun \} : \{\}\) \}/);
     assert.match(controls, /options=\{TASK_PRIORITIES\.map/);
     assert.match(controls, /disabled=\{busy \|\| nextPriority === task\.priority\}/);
-    assert.match(controls, /Priority recorded as \$\{TASK_PRIORITY_META\[nextPriority\]\.label\.toLowerCase\(\)\}\. No agent was told anything and no run was queued\./);
+    assert.match(controls, /Priority recorded as \$\{TASK_PRIORITY_META\[nextPriority\]\.label\.toLowerCase\(\)\}\$\{citedRun !== "" \? `, citing SEO Director project review \$\{citedRun\.slice\(0, 8\)\}` : ""\}\. No agent was told anything and no run was queued\./);
     assert.match(controls, /case "priority-changed":\s*return `\$\{event\.fromPriority/);
     const route = await read("../../app/api/agent-tasks/[taskId]/route.ts");
-    assert.match(route, /service\.changePriority\(\{ \.\.\.base, priority: parsed\.priority \}\)/);
+    assert.match(route, /service\.changePriority\(\{ \.\.\.base, priority: parsed\.priority, directorRunId: parsed\.directorRunId \}\)/);
     assert.match(route, /agentTaskLimiter\("action"\)/, "the existing action limit covers it");
     const schema = await read("./supabase/schema.ts");
     assert.match(schema, /export const TASK_EVENT_READ_COLUMNS = "\*";/, "the history read works before and after the migration");
