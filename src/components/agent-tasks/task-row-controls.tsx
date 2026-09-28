@@ -20,6 +20,7 @@ import {
   type TaskOwningAgent,
 } from "@/lib/agent-tasks/contract";
 import { handoffFor, handoffUnsupportedReason, taskActionFailure, type HandoffRecordKind } from "@/lib/agent-tasks/handoff";
+import { citableDirectorRuns, describeCitation, directorRunLabel, directorRunsUrl } from "@/lib/agent-tasks/learning-chain";
 import { describeTaskRunOutcome, type TaskRunOutcome } from "@/lib/agent-tasks/outcome";
 import type { HandoffCrawlChoice } from "@/lib/agent-tasks/service";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
@@ -46,6 +47,12 @@ import type { AgentRun } from "@/types/agent-run";
  * history view also shows what became of the
  * newest handoff, as the server computed it from the linked run: read only,
  * and the task's status is never changed by it.
+ *
+ * A priority change may cite one completed project Director review of the
+ * same project as its reason (checkpoint 6.7): the chooser lists that
+ * project's completed Director reviews and starts with none chosen; the
+ * database accepts only such a run. The history names a cited run and the
+ * performance review its bundle read — the learning loop as recorded.
  */
 
 type Mode = "idle" | "status" | "owner" | "priority" | "handoff" | "history";
@@ -63,13 +70,18 @@ type Choices =
   | { readonly status: "competitor"; readonly domains: readonly string[] }
   | { readonly status: "none" };
 
+type DirectorRuns =
+  | { readonly status: "loading" }
+  | { readonly status: "failed" }
+  | { readonly status: "loaded"; readonly runs: readonly AgentRun[] };
+
 type History =
   | { readonly status: "loading" }
   | { readonly status: "failed" }
   | { readonly status: "loaded"; readonly events: readonly AgentTaskEvent[]; readonly outcome: TaskRunOutcome | null };
 
 export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChanged: (task: AgentTask) => void }) {
-  const ids = { status: useId(), owner: useId(), priority: useId() };
+  const ids = { status: useId(), owner: useId(), priority: useId(), director: useId() };
   const [mode, setMode] = useState<Mode>("idle");
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none" });
   const [history, setHistory] = useState<History | null>(null);
@@ -80,6 +92,9 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
   const [nextStatus, setNextStatus] = useState<AgentTaskStatus | "">(allowed[0] ?? "");
   const [nextOwner, setNextOwner] = useState<TaskOwningAgent>(task.owningAgent);
   const [nextPriority, setNextPriority] = useState<AgentTaskPriority>(task.priority);
+  /** The Director run the operator cites for a priority change; empty (none) until they choose one. */
+  const [citedRun, setCitedRun] = useState("");
+  const [directorRuns, setDirectorRuns] = useState<DirectorRuns | null>(null);
   /** A ref refuses the second click of a pair before React has re-rendered. */
   const sending = useRef(false);
   const terminal = isTerminalTaskStatus(task.status);
@@ -91,9 +106,16 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
     // Each form starts from the task as it is now, never from an earlier pick.
     if (next === "status") setNextStatus(allowed[0] ?? "");
     if (next === "owner") setNextOwner(task.owningAgent);
-    if (next === "priority") setNextPriority(task.priority);
+    if (next === "priority") {
+      setNextPriority(task.priority);
+      setCitedRun("");
+      void loadDirectorRuns();
+    }
     setMode((current) => (current === next ? "idle" : next));
-    if (next === "history") void loadHistory();
+    if (next === "history") {
+      void loadHistory();
+      void loadDirectorRuns();
+    }
     if (next === "handoff") {
       setChosen("");
       if (mapping?.record) void loadChoices();
@@ -140,6 +162,18 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
       setChoices({ status: "none" });
     } catch {
       setChoices({ status: "failed" });
+    }
+  };
+
+  const loadDirectorRuns = async () => {
+    setDirectorRuns({ status: "loading" });
+    try {
+      const response = await fetch(directorRunsUrl(task.projectId), { cache: "no-store" });
+      if (!response.ok) return setDirectorRuns({ status: "failed" });
+      const body = (await response.json()) as { runs?: AgentRun[] };
+      setDirectorRuns({ status: "loaded", runs: citableDirectorRuns(Array.isArray(body.runs) ? body.runs : []) });
+    } catch {
+      setDirectorRuns({ status: "failed" });
     }
   };
 
@@ -254,9 +288,9 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
           className="space-y-2 rounded-md border border-border bg-surface-raised p-2"
           onSubmit={(event) => {
             event.preventDefault();
-            void post({ action: "priority", priority: nextPriority }, (body) => ({
+            void post({ action: "priority", priority: nextPriority, ...(citedRun !== "" ? { directorRunId: citedRun } : {}) }, (body) => ({
               task: body.task as AgentTask,
-              message: `Priority recorded as ${TASK_PRIORITY_META[nextPriority].label.toLowerCase()}. No agent was told anything and no run was queued.`,
+              message: `Priority recorded as ${TASK_PRIORITY_META[nextPriority].label.toLowerCase()}${citedRun !== "" ? `, citing SEO Director project review ${citedRun.slice(0, 8)}` : ""}. No agent was told anything and no run was queued.`,
             }));
           }}
           aria-busy={busy}
@@ -271,6 +305,7 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
               options={TASK_PRIORITIES.map((priority) => ({ value: priority, label: TASK_PRIORITY_META[priority].label }))}
             />
           </label>
+          <DirectorRunChoice id={ids.director} runs={directorRuns} chosen={citedRun} onChoose={setCitedRun} disabled={busy} />
           <div className="flex flex-wrap items-center gap-2">
             <Button type="submit" variant="primary" size="sm" disabled={busy || nextPriority === task.priority}>
               {busy ? "Recording…" : "Apply priority"}
@@ -337,6 +372,9 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
                     </span>
                     <Badge tone="neutral">{TASK_EVENT_META[event.type]}</Badge>
                     <span className="text-fg-muted">{describeEvent(event)}</span>
+                    {event.type === "priority-changed" && event.runId !== null && (
+                      <span className="text-fg-subtle">{describeCitation(event, directorRuns?.status === "loaded" ? directorRuns.runs : null)}</span>
+                    )}
                   </li>
                 ))}
               </ol>
@@ -354,6 +392,51 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
         <p className="text-[11.5px] text-fg-muted" role="status">
           <span className="font-medium text-fg">Recorded.</span> {outcome.message}
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The optional reason for a priority change: one of the project's completed
+ * SEO Director project reviews, or none. Starts with none; a read that fails
+ * leaves only "none" and says so — never a guessed run.
+ */
+function DirectorRunChoice({
+  id,
+  runs,
+  chosen,
+  onChoose,
+  disabled,
+}: {
+  id: string;
+  runs: DirectorRuns | null;
+  chosen: string;
+  onChoose: (value: string) => void;
+  disabled: boolean;
+}) {
+  const options = runs?.status === "loaded" ? runs.runs.map((run) => ({ value: run.id, label: directorRunLabel(run) })) : [];
+  return (
+    <div className="space-y-1">
+      <label className="flex max-w-md flex-col gap-1 text-[11.5px] text-fg-subtle" htmlFor={id}>
+        Because of Director run… (optional: a completed SEO Director project review of this project)
+        <Select
+          id={id}
+          size="sm"
+          value={chosen}
+          disabled={disabled || runs?.status !== "loaded"}
+          onChange={(event) => onChoose(event.target.value)}
+          options={[{ value: "", label: "No Director run cited" }, ...options]}
+        />
+      </label>
+      {runs?.status === "loading" && <p className="text-[11.5px] text-fg-subtle">Loading the project&apos;s Director reviews…</p>}
+      {runs?.status === "failed" && (
+        <p className="text-[11.5px] text-warning" role="status">
+          The Director reviews could not be read, so none can be cited. The priority can still change without one.
+        </p>
+      )}
+      {runs?.status === "loaded" && runs.runs.length === 0 && (
+        <p className="text-[11.5px] text-fg-subtle">No completed SEO Director project review is recorded for this project, so none can be cited.</p>
       )}
     </div>
   );

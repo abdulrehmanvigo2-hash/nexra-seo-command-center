@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
-import { TASK_EVENT_READ_LIMIT, TASK_READ_DEFAULT_LIMIT, TASK_READ_LIMIT } from "@/lib/agent-tasks/contract";
+import { CITED_PRIORITY_READ_LIMIT, TASK_EVENT_READ_LIMIT, TASK_READ_DEFAULT_LIMIT, TASK_READ_LIMIT } from "@/lib/agent-tasks/contract";
 import type { AgentTaskStore } from "@/lib/agent-tasks/store-contract";
 import {
   createResultToOutcome,
@@ -114,9 +114,26 @@ export function createSupabaseAgentTaskStore(client: SupabaseClient<AgentTasksDa
         p_task_id: input.taskId,
         p_priority: input.priority,
         p_operator: input.operatorId,
+        // Named only when a run is cited: a database without 20261008120000
+        // has the four-parameter function, which a call naming p_run_id would
+        // not find, so an uncited change works before and after the migration.
+        ...(input.directorRunId ? { p_run_id: input.directorRunId } : {}),
       });
       if (error) throw new AgentTaskStoreError("set task priority", error);
       return priorityResultToOutcome(data);
+    },
+
+    async listCitedPriorityChanges(projectId) {
+      const { data, error } = await client
+        .from("nexra_agent_task_events")
+        .select(TASK_EVENT_READ_COLUMNS)
+        .eq("project_id", projectId)
+        .eq("event_type", "priority-changed")
+        .not("run_id", "is", null)
+        .order("seq", { ascending: false })
+        .limit(CITED_PRIORITY_READ_LIMIT);
+      if (error) throw new AgentTaskStoreError("list cited priority changes", error);
+      return data.map(eventRowToEvent);
     },
 
     async handoffRequest(input) {

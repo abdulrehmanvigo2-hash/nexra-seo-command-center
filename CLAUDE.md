@@ -9,7 +9,8 @@ follow-up (the agent header's figures labelled Modelled, the fake sync button re
 deployed and browser checked; the Command Center over stored data (6.3), Reports on read (6.4), the second
 grounded tasks, batch 1 (6.5), and the scoped V1 (6.6) are merged and deployed (browser confirmed); the queue
 controls on agent pages (6.6b) are merged, and the nine second tasks were run live once each through them
-(eight completed; the Writer's correctly refused to queue). Phase 5 (Content Studio, the article positive path and hardening → production ready) is
+(eight completed; the Writer's correctly refused to queue); the LIMITS line (6.6c) is merged; the learning loop
+(6.7) and approval records (6.8) are on their branch, their two migrations **not applied**. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
 complete (checkpoints 5.1–5.7, PR #45–#49; see the *PRODUCTION READY* block in §14): the observed
 Content Studio (5.2) is merged and deployed; the article positive path (5.3) is recorded live — one
 verification article checked, approved and record-proposed, nothing published; the delete and
@@ -48,8 +49,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `6764326210b3dbf9946f79ac6f62bc5c635a4431` (merge of PR #56,
-`claude/phase6-queue-controls`, the queue controls on agent pages; preceded by PR #55 `04be98ae…` (the
+GitHub `master`: `f039a89baa8f4cd0765c6693258401734575fd52` (merge of PR #57,
+`claude/kind-cannon-7b7swp`, the verification record and the LIMITS line; preceded by PR #56 `67643262…` (the
+queue controls on agent pages), PR #55 `04be98ae…` (the
 scoped-down V1), PR #54 `1b2c2cbd…` (second grounded tasks,
 batch 1), PR #53 `a2e3cdc1…` (Reports on read), PR #52 `c8ac155c…` (the Command Center over stored
 data), PR #51 `17ee0a64…`
@@ -79,6 +81,9 @@ crawl-review bound), PR #29
 PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
+
+Production deployment for `f039a89b` (PR #57, 28 Sep ~13:29 UTC): **not read** — the Vercel API refuses this
+session (403); `master` CI run `36429011683` passed at `f039a89b`.
 
 Production deployment for `67643262` (PR #56, 28 Sep): **not read** — the Vercel API refuses this session
 (403); `master` CI run `36407164456` passed at `67643262`. The operator's live runs from the agent pages'
@@ -1102,7 +1107,54 @@ worst cases 1,978 / 1,972 / 1,879 against the 2,000 ceiling, because live answer
 characters (the eight 6.6b runs: 951–1,247); if any live run of these tasks is refused `rejected-output`,
 tighten the word caps. The instruction-length guard in
 `second-tasks.test.ts` moves from 2,600 to 2,700 deliberately (the keyword text is 2,606). No other
-instruction, no schema, no screen, no run.
+instruction, no schema, no screen, no run. PR #57 merged as `f039a89b…`; `master` CI `36429011683` green;
+deployment id not read (Vercel 403).
+
+**Phase 6 checkpoints 6.7 + 6.8 (the learning loop and approval records; decisions Q7 and Q1; two migrations,
+NOT applied to production):**
+
+- **6.7 — the learning loop** (migration `20261008120000_task_priority_director_run.sql`): a `priority-changed`
+  event may carry a run id (the existing `run_id` column) only when that run is a `completed`
+  `project-priority-review` of the same project. `nexra_agent_task_set_priority` is dropped and recreated with a
+  fifth parameter `p_run_id uuid default null` (an overload would make every four-argument call ambiguous), so
+  existing calls are unchanged; given a run it answers `run-not-accepted` (never which condition failed), after
+  `task-not-found` and before `same-priority` / `terminal`. A BEFORE INSERT trigger
+  (`nexra_agent_task_events_check_priority_run`) holds the same rule for any writer; the shape check is replaced
+  so only `priority-changed` gains an optional run. App: `POST /api/agent-tasks/[taskId] { action: "priority",
+  priority, directorRunId? }` (409 `run-not-accepted`); *Change priority* gains an optional *Because of Director
+  run…* chooser (the project's completed Director reviews through `GET /api/agent-runs?agent=seo-director`,
+  none chosen at first); `GET /api/agent-tasks?project=&view=cited-priority` (the project's cited changes,
+  newest first, at most 50, with titles). The chain is shown as recorded (`src/lib/agent-tasks/learning-chain.ts`):
+  the task history names the cited run and the performance review its stored bundle read; each Analytics
+  Learnings entry shows *What followed, as recorded* — performance review → the Director runs whose bundle read
+  it → the priority changes citing each. Nothing inferred; citing a run queues nothing.
+- **6.8 — approval records** (migration `20261009120000_approval_records.sql`, C7 only, reusable, fail-closed):
+  `nexra_approvals` binds one decision (`approve` / `refuse`) to one exact action — project, kind
+  (`article-publication`), target id, payload SHA-256 — with `decided_by`, `decided_at` (wall clock),
+  `expires_at` (1 minute to 24 hours after) and a single use (`used_at`, `used_by`). Guards: born unused; only
+  `used_at` / `used_by` change, once, from null, inside the consume function; no delete or truncate. `security
+  definer` `nexra_approval_record` (`recorded`, `project-not-found`; 22023 on malformed arguments) and
+  `nexra_approval_consume` (row lock; `approval-not-found`, `refused`, `action-mismatch`, `digest-mismatch`,
+  `used`, `expired`, `superseded` — the newest decision on an action wins — each writing nothing, then
+  `consumed`). RLS on, no policies; service_role SELECT and EXECUTE on the two only. **The run-claim gate is
+  unchanged; nothing consumes an approval yet** — C7 (6.11) is the first. App: `src/lib/approvals` (contract
+  with fail-closed answer parsing and the payload digest `nexra-approval-payload/1`; a store over the two
+  functions), imported by no route.
+- **Harness:** new suites `task-learning` (58), `approvals` (63) and `approvals-races` (A1 two consumers → the
+  second waits and answers `used`; A2 the first rolls back → the second consumes); `task-priority` now runs on
+  the schema before 20261008120000, which it pins (as `task-workflow` pins the pre-priority schema); the c5
+  whole-database security definer inventory names the new signature and the two approval functions. All 76
+  checks pass.
+- **Tests:** `src/lib/agent-tasks/learning-chain.test.ts` (7) and `src/lib/approvals/approvals.test.ts` (7);
+  pins updated deliberately — the priority parse (`directorRunId`), `run-not-accepted`, the row controls' fetch
+  count (3 → 4) and the priority POST and message; `npm test` 2,537.
+- **Before the migrations are applied** (the app is deployed first): an uncited priority change works
+  unchanged — the store names `p_run_id` only when a run is cited, so the four-parameter function is still
+  found; citing a Director run fails (the route answers 500 `failed`) and writes nothing; the cited-priority read
+  and the Learnings chain show no citations; nothing reads `nexra_approvals`.
+- **Deviation:** the approval decision time is `clock_timestamp()`, not the transaction's `now()`, so two
+  decisions recorded in one transaction are still ordered (found by the harness).
+- No production apply, no run, no claim-gate change.
 
 **Findings recorded for later phases:**
 
@@ -1217,7 +1269,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 checkpoint 6.6c on `claude/kind-cannon-7b7swp` (above, not merged); next 6.7; each further
+**Current work:** Phase 6 checkpoints 6.7 + 6.8 on `claude/kind-cannon-7b7swp` (above, not merged; migrations not applied); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1541,6 +1593,8 @@ overwrite live content.
 - Migration `20261007120000_delete_truncate_guards.sql` (checkpoint 5.4) is applied to production
   and recorded: projects, runs and attempts can no longer be deleted or truncated, crawl records not
   truncated. Agent runs are capped at 40 a project and 100 in all per UTC day (checkpoint 5.5).
+- Migrations `20261008120000_task_priority_director_run.sql` (6.7) and `20261009120000_approval_records.sql`
+  (6.8) are in the repository and **not applied to production**; applying each is a separate §6 approval.
 
 Update this section at every Git checkpoint that changes the stage, the next planned
 milestone, or a safety boundary.
@@ -1866,7 +1920,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) on `claude/kind-cannon-7b7swp`, not merged; then 6.7–6.12 in order, the one external write (6.11) last |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) merged (PR #57, `f039a89b`); 6.7 (the learning loop) and 6.8 (approval records) on `claude/kind-cannon-7b7swp`, not merged, migrations not applied; then 6.8b–6.12 in order, the one external write (6.11) last |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1911,8 +1965,8 @@ production-ready criterion from the audit (§J), with its evidence:
 Next step: the Phase 6 design checkpoint (6.1), under its own explicit approval.
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6, next checkpoint 6.7
-(6.2 through 6.6b merged, PR #50–#56). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoints 6.7 + 6.8
+on `claude/kind-cannon-7b7swp` (6.2 through 6.6c merged, PR #50–#57). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
 complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3, Phase 4 and Phase 5 are complete. Phase 2, Project Manager loop closure: the handoff
@@ -1925,7 +1979,7 @@ Intelligence screen over the stored Search Console rows; and the operator's cura
 Outbound Links screens over stored data, the Director and performance-review bounds, and the
 Director's five-slot bundle. Phase 5: the Content Studio, the article positive path and the hardening
 (guards, health, caps, the abort fix, the runbook). Not started, each under its own explicit
-approval: Phase 6 checkpoints 6.7–6.12.
+approval: Phase 6 checkpoints 6.8b–6.12.
 
 ## 15. Definition of Done
 

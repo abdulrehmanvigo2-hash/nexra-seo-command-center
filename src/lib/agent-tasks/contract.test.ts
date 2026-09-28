@@ -283,17 +283,24 @@ describe("the event rows and the function answers", () => {
   test("the priority function's answers are checked (cp 2.3b)", () => {
     assert.equal(priorityResultToOutcome({ outcome: "priority-changed", task: taskRow, event: { ...eventRow, event_type: "priority-changed", from_status: null, to_status: null, from_priority: "medium", to_priority: "high" } }).status, "priority-changed");
     assert.deepEqual(priorityResultToOutcome({ outcome: "task-not-found" }), { status: "task-not-found" });
-    for (const outcome of ["same-priority", "terminal"]) assert.equal(priorityResultToOutcome({ outcome, task: taskRow }).status, outcome);
+    for (const outcome of ["same-priority", "terminal", "run-not-accepted"]) assert.equal(priorityResultToOutcome({ outcome, task: taskRow }).status, outcome);
     assert.throws(() => priorityResultToOutcome({ outcome: "transitioned" }), /"transitioned"/);
   });
 
   test("a priority action names one of the four priorities and nothing else (cp 2.3b)", () => {
-    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "priority", priority: "critical" }), { ok: true, projectId: "nexra-agency", action: "priority", priority: "critical" });
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "priority", priority: "critical" }), { ok: true, projectId: "nexra-agency", action: "priority", priority: "critical", directorRunId: null });
+    // cp 6.7: one Director run may be cited, by id; the database decides whether it is a completed project review of this project.
+    const run = "288639F4-0000-4000-8000-000000000001";
+    assert.deepEqual(parseTaskActionRequest({ project: "nexra-agency", action: "priority", priority: "high", directorRunId: run }), { ok: true, projectId: "nexra-agency", action: "priority", priority: "high", directorRunId: run.toLowerCase() });
     for (const body of [
       { project: "nexra-agency", action: "priority" },
       { project: "nexra-agency", action: "priority", priority: "urgent" },
       { project: "nexra-agency", action: "priority", priority: "High" },
       { project: "nexra-agency", action: "priority", priority: "high", status: "ready" },
+      { project: "nexra-agency", action: "priority", priority: "high", directorRunId: "288639f4" },
+      { project: "nexra-agency", action: "priority", priority: "high", directorRunId: null },
+      { project: "nexra-agency", action: "priority", priority: "high", runId: "288639f4-0000-4000-8000-000000000001" },
+      { project: "nexra-agency", action: "priority", directorRunId: "288639f4-0000-4000-8000-000000000001" },
       { project: "Nexra", action: "priority", priority: "high" },
     ]) assert.deepEqual(parseTaskActionRequest(body), { ok: false, error: "invalid" }, JSON.stringify(body));
     assert.deepEqual([...TASK_ACTIONS], ["status", "owner", "priority", "handoff"]);

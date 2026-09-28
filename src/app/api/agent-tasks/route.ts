@@ -8,6 +8,8 @@ import { getOperator } from "@/lib/auth/session";
  * Agent tasks: list a project's, or record one (Project Manager real task core).
  *
  *   GET  /api/agent-tasks?project=<id>[&status=<status>][&limit=n]
+ *   GET  /api/agent-tasks?project=<id>&view=cited-priority
+ *        the project's priority changes that cite a Director run (checkpoint 6.7)
  *   POST /api/agent-tasks   { project, title, sourceKind, sourceRef, owningAgent, priority? }
  *
  * Operators only, confirmed with the Auth server here rather than left to
@@ -23,6 +25,7 @@ export async function GET(request: NextRequest) {
   if (!operator) return errorResponse("unauthorized", 401);
 
   const params = request.nextUrl.searchParams;
+  if (params.has("view")) return citedPriority(params, operator.id);
   const parsed = parseListTasksRequest({ project: params.get("project"), status: params.get("status"), limit: params.get("limit") });
   if (!parsed.ok) return errorResponse(parsed.error, 400);
 
@@ -35,6 +38,26 @@ export async function GET(request: NextRequest) {
     return json({ tasks: result.tasks });
   } catch (error) {
     logFailure("agent-tasks list", error);
+    return errorResponse("failed", 500);
+  }
+}
+
+/** `view=cited-priority` only; a project and nothing else. Reads only. */
+async function citedPriority(params: URLSearchParams, operatorId: string) {
+  const keys = [...params.keys()];
+  if (params.get("view") !== "cited-priority" || keys.length !== 2 || !keys.includes("project")) return errorResponse("invalid", 400);
+  const parsed = parseListTasksRequest({ project: params.get("project"), status: null, limit: null });
+  if (!parsed.ok) return errorResponse(parsed.error, 400);
+
+  const limited = await limitResponse(agentTaskLimiter("read"), operatorId);
+  if (limited) return limited;
+
+  try {
+    const result = await agentTaskService().citedPriorityChanges(parsed.filter.projectId);
+    if (result.status === "unavailable") return errorResponse("unavailable", 503);
+    return json({ changes: result.changes });
+  } catch (error) {
+    logFailure("agent-tasks cited priority", error);
     return errorResponse("failed", 500);
   }
 }

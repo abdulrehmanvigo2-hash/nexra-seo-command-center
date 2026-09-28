@@ -38,8 +38,10 @@ export type AgentTaskStore = {
   setStatus(input: ChangeTaskStatusInput): Promise<ChangeTaskStatusOutcome>;
   /** One owner change, through `nexra_agent_task_set_owner`. */
   setOwner(input: ChangeTaskOwnerInput): Promise<ChangeTaskOwnerOutcome>;
-  /** One priority change, through `nexra_agent_task_set_priority` (20261005120000). */
+  /** One priority change, through `nexra_agent_task_set_priority` (20261005120000; the cited Director run since 20261008120000). */
   setPriority(input: ChangeTaskPriorityInput): Promise<ChangeTaskPriorityOutcome>;
+  /** The project's priority changes that cite a Director run, newest first, bounded (checkpoint 6.7). Never another project's. */
+  listCitedPriorityChanges(projectId: string): Promise<readonly AgentTaskEvent[]>;
   /** Records the operator's handoff request, through `nexra_agent_task_handoff_request`. Creates no run. */
   handoffRequest(input: HandoffRequestInput): Promise<HandoffRequestOutcome>;
   /** Links the run the run path created, through `nexra_agent_task_handoff_link`. */
@@ -69,6 +71,9 @@ export const unavailableAgentTaskStore: AgentTaskStore = {
   },
   async setPriority() {
     return { status: "task-not-found" };
+  },
+  async listCitedPriorityChanges() {
+    return [];
   },
   async handoffRequest() {
     return { status: "task-not-found" };

@@ -13,7 +13,7 @@ import { getOperator } from "@/lib/auth/session";
  *                                                      → { task, kind, crawls? | domains? }
  *   POST /api/agent-tasks/<id>  { project, action: "status", status }
  *                               { project, action: "owner", owningAgent }
- *                               { project, action: "priority", priority }
+ *                               { project, action: "priority", priority, directorRunId? }
  *                               { project, action: "handoff", crawlId? | competitorDomain? }
  *
  * Operators only, confirmed with the Auth server; writes from this site's
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
         break;
       }
       case "priority": {
-        const result = await service.changePriority({ ...base, priority: parsed.priority });
+        const result = await service.changePriority({ ...base, priority: parsed.priority, directorRunId: parsed.directorRunId });
         switch (result.status) {
           case "unavailable":
             return errorResponse("unavailable", 503);
@@ -140,6 +140,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
             return errorResponse(result.status, 404);
           case "same-priority":
           case "terminal":
+          case "run-not-accepted":
             return json({ error: result.status, task: result.task }, 409);
           case "priority-changed":
             return json({ status: result.status, task: result.task, event: result.event });
