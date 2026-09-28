@@ -48,7 +48,7 @@ export type QueueableTask = {
 export const DRAFT_NOTE = "Writes a draft for your review, publishes nothing.";
 
 export const QUEUED_NOTE =
-  "Queued, not run: nothing has been analysed yet. The scheduled worker picks queued runs up; it appears in Run History below, which lists it and has no Run Now control.";
+  "Queued, not run: nothing has been analysed yet. It appears in Run History below. Run now here, or the scheduled worker picks it up.";
 
 /** Where each task that names a record chosen elsewhere is queued. */
 const ELSEWHERE: Partial<Record<AgentTaskType, string>> = {

@@ -7,7 +7,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/field";
 import { Panel, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { runHistoryEmptyState, runHistoryListUrl } from "@/lib/agent-runs/run-history-view";
+import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
+import { runHistoryEmptyState, runHistoryListUrl, runNowOffered } from "@/lib/agent-runs/run-history-view";
 import { getTaskType } from "@/lib/agent-runs/task-types";
 import { outputProvenance } from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
@@ -308,6 +309,8 @@ export function AgentRunHistory({
                 open={expanded === run.id}
                 onToggle={() => toggle(run.id)}
                 attempts={attempts[run.id]}
+                offersRunNow={runNowOffered(run, presetAgentId)}
+                onRunChanged={() => setRefreshKey((key) => key + 1)}
               />
             ))}
           </ul>
@@ -336,16 +339,31 @@ export function AgentRunHistory({
   );
 }
 
+/** The shared Run Now control for one queued run; its read-back refreshes the list. */
+function RunNowInRow({ run, onRunChanged }: { run: AgentRun; onRunChanged: () => void }) {
+  const { executing, executeNote, runNow } = useRunNow(onRunChanged);
+  return (
+    <div className="mt-2 space-y-1">
+      <RunNowButton run={run} executing={executing} onRunNow={() => void runNow(run)} />
+      <RunNowNote note={executeNote} />
+    </div>
+  );
+}
+
 function RunRow({
   run,
   open,
   onToggle,
   attempts,
+  offersRunNow = false,
+  onRunChanged,
 }: {
   run: AgentRun;
   open: boolean;
   onToggle: () => void;
   attempts: AttemptsLoad | undefined;
+  offersRunNow?: boolean;
+  onRunChanged?: () => void;
 }) {
   const status = STATUS[run.status];
   const task = getTaskType(run.taskType);
@@ -422,6 +440,8 @@ function RunRow({
       {run.status === "queued" && run.nextAttemptAt && (
         <p className="mt-1 text-[11.5px] text-fg-subtle">Automatic retry not before {stamp(run.nextAttemptAt)}.</p>
       )}
+
+      {offersRunNow && <RunNowInRow run={run} onRunChanged={onRunChanged ?? (() => {})} />}
 
       {open && (
         <div id={panelId} className="mt-3 rounded-md border border-border">

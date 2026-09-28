@@ -1033,11 +1033,17 @@ version whose recorded check **needs review** (`GET /api/content-articles`, then
 Tasks whose record is chosen by its own panel (`priority-review`, `section-draft`, `draft-fact-check`,
 `article-check-unit`) say where on the project screen and are not queued here. The task and the record
 start empty ("Choose a task…"); Queue stays disabled until the request is valid. Queue sends one `POST
-/api/agent-runs` (project, agent, task, the chosen record) and executes nothing: "Queued, not run … The
-scheduled worker picks queued runs up; it appears in Run History below, which lists it and has no Run Now
-control"; a duplicate is named as one. Draft-policy tasks carry "Writes a draft for your review, publishes
+/api/agent-runs` (project, agent, task, the chosen record) and executes nothing: "Queued, not run … It
+appears in Run History below. Run now here, or the scheduled worker picks it up."; a duplicate is named as
+one. **Amendment (before merge):** the agent page's Run History offers **Run Now** on each queued run of that
+agent only (`runNowOffered`; never a running, completed, failed or cancelled run, and none on the AI Agents
+list), through the review panels' own control, extracted into `src/components/agent-runs/run-now.tsx`
+(`useRunNow`, `RunNowButton`, `RunNowNote`) and now shared by `queued-review.tsx` and Run History: one
+`POST /api/agent-runs/<id> {action:"execute"}`, the route's operator gate and daily caps (a capped run is
+held, `DAILY_CAP_HELD_MESSAGE`), the run read back and the list refreshed. Draft-policy tasks carry "Writes a draft for your review, publishes
 nothing." Refusals, the daily cap (429, `DAILY_CAP_MESSAGE`) included, use the review controls' wording
-(`queueRefusal`). Tests: `src/lib/agent-runs/queue-control.test.ts` (8); pins updated deliberately —
+(`queueRefusal`). Tests: `src/lib/agent-runs/queue-control.test.ts` (8) and two Run Now tests in
+`run-history-view.test.ts`; pins updated deliberately —
 the agent page's Run History mount (`run-history-view.test.ts`) and its live section
 (`modelled-screens.test.ts`). No schema, route, instruction or run. On `claude/phase6-queue-controls`; not
 merged.

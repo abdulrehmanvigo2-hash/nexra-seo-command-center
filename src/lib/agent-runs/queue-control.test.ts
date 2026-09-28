@@ -153,9 +153,8 @@ test("queueing calls the existing create route only, never an execution, and say
   assert.doesNotMatch(screen, /"execute"|action: "|\/api\/agent-runs\/|\/api\/worker/, "no execute action, run route or worker call");
   assert.match(screen, /This queues a run and executes nothing\./);
   assert.match(QUEUED_NOTE, /Queued, not run/);
-  assert.match(QUEUED_NOTE, /scheduled worker picks queued runs up/);
   assert.match(QUEUED_NOTE, /Run History below/);
-  assert.match(QUEUED_NOTE, /no Run Now control/);
+  assert.match(QUEUED_NOTE, /Run now here, or the scheduled worker picks it up\.$/);
   // The route files it reads exist and answer GET.
   for (const path of ["crawls", "crawls/competitor-overview", "content-articles", "content-article-checks"]) {
     assert.match(read(`app/api/${path}/route.ts`), /export async function GET/, path);

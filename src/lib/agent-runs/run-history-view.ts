@@ -44,3 +44,13 @@ export function runHistoryEmptyState(input: {
     description: `No agent task has been run on ${input.projectName}${input.pickedAgentName ? ` by ${input.pickedAgentName}` : ""}.`,
   };
 }
+
+/**
+ * Run Now on an agent's page (checkpoint 6.6b): only a queued run of that
+ * page's own agent is offered it. The AI Agents list, which shows every
+ * agent's runs, offers none; a running, completed, failed or cancelled run
+ * never does.
+ */
+export function runNowOffered(run: { readonly agentId: string; readonly status: string }, presetAgentId: string | undefined): boolean {
+  return presetAgentId !== undefined && run.agentId === presetAgentId && run.status === "queued";
+}
