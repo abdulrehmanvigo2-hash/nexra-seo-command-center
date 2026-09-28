@@ -166,14 +166,14 @@ Editor (or run with the Supabase CLI against a linked project):
 31. `20261009120000_approval_records.sql` — approval records for C7 (Phase 6,
     checkpoint 6.8) — applied to production and recorded on 28 Sep
 32. `20261010120000_attested_paragraphs.sql` — operator-attested paragraphs
-    (Phase 6, checkpoint 6.8b) — **NOT applied to production**
+    (Phase 6, checkpoint 6.8b) — applied to production and recorded on 28 Sep
 
-The first thirty-one are applied to production and recorded in its migration
-history (32 versions: the articles migration is recorded under
+All thirty-two are applied to production and recorded in its migration
+history (33 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
 `docs/RUNBOOK.md`).
 
-### Operator-attested paragraphs (Phase 6, checkpoint 6.8b) — not applied
+### Operator-attested paragraphs (Phase 6, checkpoint 6.8b)
 
 `20261010120000_attested_paragraphs.sql` lets an article version be stored in
 canonical format `nexra-article-content/2` — format 1 with a final

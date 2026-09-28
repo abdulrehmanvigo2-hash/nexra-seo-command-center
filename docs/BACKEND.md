@@ -1799,7 +1799,7 @@ allowed and ask for explicit confirmation. It is labelled "PROPOSAL ONLY —
 NOT PUBLISHED". The draft proposal section's `slug-taken` message now
 names both a draft's and an article's active proposal.
 
-### Operator-attested paragraphs (Phase 6, checkpoint 6.8b; migration `20261010120000`, not applied)
+### Operator-attested paragraphs (Phase 6, checkpoint 6.8b; migration `20261010120000`, applied and recorded 28 Sep)
 
 The article check can pass only what the project's records hold, so a
 first-hand or opinion passage was always UNVERIFIABLE and never approvable.
@@ -1854,10 +1854,10 @@ metadata, lead, introduction, FAQs or call to action — each as `experience`
   will render the same labelled blocks (`src/lib/content/articles/attestations.ts`);
   the older draft-path dry-run is unchanged. External sources (6.1b option (b))
   are after V1.
-- **Before the migration is applied:** format 1 works unchanged (approval reads
-  select every column and default the new ones; the tick is sent only for an
-  attesting version); saving a version with attestations is refused by the
-  database's content check, so nothing attested can be stored.
+- **Compatibility:** format 1 works unchanged (approval reads select every
+  column; the tick is sent only for an attesting version). Before the
+  migration was applied, saving a version with attestations was refused by the
+  database's content check.
 
 ## Crawl foundation
 
