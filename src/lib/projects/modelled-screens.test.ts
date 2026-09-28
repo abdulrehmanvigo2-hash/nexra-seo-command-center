@@ -71,7 +71,7 @@ const MIXED = [
       "AgentBriefPanel",
       "AgentConfigurationPanel",
     ],
-    live: ["AgentRunHistory", "LiveTasksPanel"],
+    live: ["AgentRunsSection", "LiveTasksPanel"], // Run History and Queue a review (6.6b), in one live section
   },
   {
     screen: "AI Agents",

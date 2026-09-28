@@ -385,6 +385,11 @@ hand-off source; no schema.
 A missing reader, an empty store or a failed read is stated in its block
 and never fails the run; the first tasks' grounding is unchanged.
 
+Since checkpoint 6.6b each agent page's *Queue a review* control queues any
+of the agent's grounded tasks through the same `POST /api/agent-runs`, with
+the record its evidence needs chosen on the page
+(`src/lib/agent-runs/queue-control.ts`); it never executes a run.
+
 Checkpoint 6.6 (the scoped-down V1, decision Q4 option B) adds three more,
 in the same shape:
 

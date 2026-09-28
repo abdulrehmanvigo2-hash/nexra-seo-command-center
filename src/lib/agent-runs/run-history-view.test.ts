@@ -51,11 +51,15 @@ test("the AI Agents empty list keeps its wording", () => {
 });
 
 test("the agent page mounts Run History once, preset to its agent, first on the overview", () => {
+  // Since 6.6b it is mounted through the page's live section, below "Queue a review", on the same project.
   const workspace = read("components/agents/agent-workspace.tsx");
-  assert.equal(workspace.match(/<AgentRunHistory /g)?.length, 1);
-  assert.match(workspace, /<AgentRunHistory projects=\{projects\} presetAgentId=\{detail\.agent\.id\} \/>/);
+  assert.equal(workspace.match(/<AgentRunsSection /g)?.length, 1);
+  assert.match(workspace, /<AgentRunsSection projects=\{projects\} agentId=\{detail\.agent\.id\} \/>/);
   const overview = workspace.slice(workspace.indexOf('{tab === "overview" && ('));
-  assert.ok(overview.indexOf("<AgentRunHistory") < overview.indexOf("<ModelledSection"), "the live section comes first");
+  assert.ok(overview.indexOf("<AgentRunsSection") < overview.indexOf("<ModelledSection"), "the live section comes first");
+  const section = read("components/agents/agent-runs-section.tsx");
+  assert.equal(section.match(/<AgentRunHistory /g)?.length, 1);
+  assert.match(section, /<AgentRunHistory projects=\{projects\} presetAgentId=\{agentId\} projectId=\{projectId\} onProjectChange=\{setProjectId\} refreshToken=\{refreshToken\} \/>/);
   // AI Agents keeps the unpreset list with its agent picker.
   assert.match(read("components/agents/agents-workspace.tsx"), /<AgentRunHistory projects=\{storedProjects\} \/>/);
 });

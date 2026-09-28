@@ -108,18 +108,29 @@ function upstreamRunId(run: AgentRun): string | null {
  * The stored runs of one project, newest first. On AI Agents the operator
  * picks any agent; on an agent's page `presetAgentId` fixes the list to that
  * agent and the agent picker is not shown (checkpoint 6.2). Either way it
- * reads the existing list route and changes nothing.
+ * reads the existing list route and changes nothing. An agent's page may
+ * hold the project outside (checkpoint 6.6b), so its "Queue a review"
+ * control and this list read the same project, and bumps `refreshToken`
+ * after queueing so the new run is listed.
  */
 export function AgentRunHistory({
   projects,
   presetAgentId,
+  projectId: heldProjectId,
+  onProjectChange,
+  refreshToken = 0,
 }: {
   projects: readonly ProjectOption[];
   presetAgentId?: AgentId;
+  projectId?: string;
+  onProjectChange?: (projectId: string) => void;
+  refreshToken?: number;
 }) {
-  const [projectId, setProjectId] = useState<string>(
+  const [ownProjectId, setOwnProjectId] = useState<string>(
     () => projects.find((project) => project.measured)?.id ?? projects[0]?.id ?? "",
   );
+  const projectId = heldProjectId ?? ownProjectId;
+  const setProjectId = (id: string) => (onProjectChange ? onProjectChange(id) : setOwnProjectId(id));
   const [pickedAgentId, setAgentId] = useState<string>("");
   const agentId: string = presetAgentId ?? pickedAgentId;
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -153,7 +164,7 @@ export function AgentRunHistory({
       });
 
     return () => controller.abort();
-  }, [listUrl, projectId, refreshKey]);
+  }, [listUrl, projectId, refreshKey, refreshToken]);
 
   /**
    * The next page, by offset. A run created since the first page shifts the
