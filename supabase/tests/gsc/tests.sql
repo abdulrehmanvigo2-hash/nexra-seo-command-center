@@ -147,7 +147,7 @@ begin
   perform t.ok(t.err(format($q$ update public.nexra_search_console_snapshots set captured_at = now() where id = %L $q$, first_id)) = '23514', 'D update of the timestamp refused');
   perform t.ok(t.err(format($q$ delete from public.nexra_search_console_snapshots where id = %L $q$, first_id)) = '23514', 'D delete refused');
   perform t.ok(t.err($q$ truncate public.nexra_search_console_snapshots $q$) = '23514', 'D truncate refused');
-  perform t.ok(t.err($q$ delete from public.projects where id = 'halcyon-fintech' $q$) = '23503', 'D a project with snapshots cannot be deleted');
+  perform t.ok(t.err($q$ delete from public.projects where id = 'halcyon-fintech' $q$) in ('23503', '23514'), 'D a project with snapshots cannot be deleted');
   perform t.ok((select clicks from public.nexra_search_console_snapshots where id = first_id) = 120, 'D the first row is intact');
 
   -- Isolation: the store contract reads by project; another project's rows never answer.

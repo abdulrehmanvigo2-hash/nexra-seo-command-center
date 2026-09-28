@@ -32,8 +32,9 @@ begin
     'A no policy on pages, links or findings');
   perform t.ok((select bool_and(relrowsecurity) from pg_class where oid in ('public.nexra_crawl_pages'::regclass, 'public.nexra_crawl_links'::regclass, 'public.nexra_crawl_findings'::regclass)),
     'A RLS still enabled on pages, links and findings');
-  perform t.ok((select count(*) from pg_trigger where tgrelid in ('public.nexra_crawl_pages'::regclass, 'public.nexra_crawl_links'::regclass) and not tgisinternal) = 0,
-    'A no trigger added to pages or links');
+  perform t.ok((select count(*) from pg_trigger where tgrelid in ('public.nexra_crawl_pages'::regclass, 'public.nexra_crawl_links'::regclass) and not tgisinternal
+      and tgname not in ('nexra_crawl_pages_guard_truncate', 'nexra_crawl_links_guard_truncate')) = 0,
+    'A no trigger added to pages or links (beyond the 20261007120000 truncate guards)');
   perform t.ok((select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'nexra_crawl_links'
       and column_name in ('word_count', 'html_lang', 'hreflang_count', 'hreflang_malformed', 'og_tag_count', 'og_title', 'og_image', 'twitter_card', 'response_ms')) = 0
     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'nexra_crawl_links' and column_name = 'anchor_text'),

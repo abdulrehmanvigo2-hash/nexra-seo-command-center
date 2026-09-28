@@ -33,8 +33,9 @@ begin
     'A no policy on pages, links or findings');
   perform t.ok((select bool_and(relrowsecurity) from pg_class where oid in ('public.nexra_crawl_pages'::regclass, 'public.nexra_crawl_links'::regclass, 'public.nexra_crawl_findings'::regclass)),
     'A RLS still enabled on pages, links and findings');
-  perform t.ok((select count(*) from pg_trigger where tgrelid in ('public.nexra_crawl_pages'::regclass, 'public.nexra_crawl_links'::regclass) and not tgisinternal) = 0,
-    'A no trigger added to pages or links');
+  perform t.ok((select count(*) from pg_trigger where tgrelid in ('public.nexra_crawl_pages'::regclass, 'public.nexra_crawl_links'::regclass) and not tgisinternal
+      and tgname not in ('nexra_crawl_pages_guard_truncate', 'nexra_crawl_links_guard_truncate')) = 0,
+    'A no trigger added to pages or links (beyond the 20261007120000 truncate guards)');
   select pg_get_constraintdef(oid) into cats from pg_constraint where conrelid = 'public.nexra_crawl_findings'::regclass and conname = 'nexra_crawl_findings_category_valid';
   perform t.ok(cats like '%''images''%' and cats like '%''metadata''%' and cats like '%''schema''%' and cats not like '%''vitals''%',
     'A findings: the category constraint admits images beside the T3 set: ' || coalesce(cats, 'none'));

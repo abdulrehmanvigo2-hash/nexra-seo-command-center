@@ -4,8 +4,10 @@ Professional, agency-grade AI SEO platform. This file defines the operating rule
 project. Read it before writing any code.
 
 **Current stage: Phase 5 (Content Studio, the article positive path and hardening → production
-ready) has started: its design note (checkpoint 5.1) is approved (Q1–Q12), and the observed Content
-Studio (5.2) is on its branch. Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
+ready) has started: its design note (checkpoint 5.1) is approved (Q1–Q12); the observed Content
+Studio (5.2) is merged and deployed; the article positive path (5.3) is recorded live — one
+verification article checked, approved and record-proposed, nothing published; the delete and
+truncate guards (5.4) are on their branch, not applied to production. Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
 data; the Director's learnings loop) is complete (checkpoints 4.1–4.8, PR #39–#43 and the closing
 checkpoint 4.8): the Director and performance-review output bounds (4.2) are verified live; the
 Analytics (4.3), Competitors (4.4), AI Visibility and Outbound Links (4.5) screens over stored data
@@ -37,8 +39,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `aef494196eb834ce3bfc2b69ab475d1765975d2c` (merge of PR #44,
-`claude/phase4-closing`, Phase 4 closing; preceded by PR #43 `ddc6cbb4…` (the Director's five-slot
+GitHub `master`: `f9a32773024783f4d00bc2712a304360313b1d32` (merge of PR #45,
+`claude/phase5-content-studio`, the observed Content Studio; preceded by PR #44 `aef49419…` (Phase 4
+closing), PR #43 `ddc6cbb4…` (the Director's five-slot
 bundle and the bounded-answer fix), PR #42 `41519ffd…` (the AI Visibility and Outbound Links screens), PR #41
 `69379e3d…` (the Competitors screen over stored crawls), PR #40
 `a73cfd21…` (the Analytics screen over stored data), PR #39 `0c64d77d…`
@@ -58,11 +61,12 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_5dsiW7wcfnTztmSUM8UiCLBofcXh`, READY (27 Sep 16:10 UTC), built
-automatically from `master` at `aef49419` (the auto-deploy worked; no redeploy), serving
-`nexra-seo-command-center.vercel.app` (previous: `dpl_2bUN9N9RcjgrNpG1zXcFEeS81VeH` at `ddc6cbb4`,
-an operator-approved manual redeploy); `master` CI run `36332161488` passed. PR #44 (checkpoint 4.8)
-merged as `aef49419…`; PR #43 (checkpoint 4.6) as `ddc6cbb4…` (`master` CI `36330205806`).
+Production deployment: `dpl_7B6vDCeTYHNXrhVgVhu6kdtpnowU`, READY (27 Sep 16:34 UTC), built
+automatically from `master` at `f9a32773` (the auto-deploy worked; no redeploy), serving
+`nexra-seo-command-center.vercel.app` (previous: `dpl_5dsiW7wcfnTztmSUM8UiCLBofcXh` at `aef49419`,
+also automatic); `master` CI run `36333709886` passed. PR #45 (checkpoint 5.2) merged as
+`f9a32773…`; PR #44 (checkpoint 4.8) as `aef49419…` (`master` CI `36332161488`); PR #43
+(checkpoint 4.6) as `ddc6cbb4…` (`master` CI `36330205806`, the manual redeploy `dpl_2bUN9N9R…`).
 
 **Auto-deploy skip (27 Sep):** the push of `ddc6cbb4` to `master` left no Vercel deployment record
 at all — not even the CANCELED record an ignored build leaves (as every branch preview shows) — so
@@ -596,8 +600,58 @@ sidebar note names Content. The 26 modelled files no route imports any more (24 
 `src/components/content`, `ai-visibility/ai-chrome` and `keywords/keyword-chrome`) stay in the
 tree, unimported, for 5.7. **New 404s:** the Command Center's content snapshot (a fixture panel)
 links each fixture page to `/content/<fixture id>`, now not found — like the 2 competitor fixture
-links, left for the dashboard's own phase. No schema, instruction, worker or write-path change. On
-`claude/phase5-content-studio`; not merged.
+links, left for the dashboard's own phase. No schema, instruction, worker or write-path change. PR #45
+merged as `f9a32773…`; deployment `dpl_7B6vDCeT…` READY; `master` CI run `36333709886` green.
+**Browser note (operator, 28 Sep):** the operator used the observed Studio screens throughout 5.3
+(the Articles tab and the article detail as the positive path moved through checked, approved and
+proposed).
+
+**Phase 5 checkpoint 5.3 (the article positive path, decisions Q3–Q5; LIVE RECORD, 28 Sep):** operator
+writes only, each step approved separately; no code. The Version 3 text was drafted read-only by
+Claude (checkpoint 5.3a: every checkable statement quotes a declaration recorded by crawl
+`75d1bfbe…`; labels, headings and the call to action are editorial), validated locally against the
+C1 validator and the unit packer (4 units), and approved by the operator with two tweaks.
+
+- **Version 3 abandoned, unchecked:** Version 3 (`a1cbc273…`, 02:10 UTC) was saved with the old
+  Version 2 excerpt left in by mistake (the outcome claim that had failed before). No check ran on it.
+- **Version 4** (`4df96c9a…`, 02:17 UTC, content SHA-256 `e9db287f…`) is the approved text word for
+  word: slug `nexra-ai-website-lead-follow-up` (not live at the destination), topic decision
+  `different-angle`, no placeholder, one section, no FAQ.
+- **All 4 units passed,** each on the first attempt, `claude-opus-5`, coverage complete:
+  `metadata:1` run `747330f3…` (2 supported, 6 editorial); `lead-introduction:1` run `91e441f0…`
+  (1 supported); `section:what-the-pages-declare:1` run `e5c4efb2…` (5 supported, 1 editorial);
+  `cta:1` run `d26af181…` (1 supported, 1 editorial) — **9 supported, 0 partial, 0 unsupported, 0
+  unverifiable**. The article moved to `checked` at 03:05 UTC; the stored unit hashes match those
+  regenerated from the approved text.
+- **Approved** (C5): approval `5f02d149…` of Version 4 at **03:35 UTC** (4 units, content SHA-256
+  `e9db287f…`); the article is `approved`, `approved_version` 4.
+- **Proposal recorded** (C6): `5f229630…` at **03:38 UTC** to `nexra-agency-website`, slug
+  `nexra-ai-website-lead-follow-up`, Version 4, status `proposed`, preview SHA-256 `bbf3fae3…`.
+  **Nothing was published**: a proposal is a record; no `nexra-ai` write, pull request or deployment
+  exists or was made.
+- **It is a verification article** (a description of the site's own declarations, written so every
+  statement could be checked): the proposal is to be **withdrawn before Phase 6's real
+  publication**, and the article is not content to publish.
+- Decision Q4's lifted constraint covered this one version only; "never approve, propose or
+  publish" applies again to every other version and article. Totals after: 54 runs, 55 attempts
+  (the 4 check runs).
+
+**Phase 5 checkpoint 5.4 (delete and truncate guards, Part D1, decision Q7):** one migration,
+`20261007120000_delete_truncate_guards.sql`, triggers only (no grant, row, function, column or
+existing trigger changes): `projects`, `agent_runs` and `agent_run_attempts` refuse every DELETE and
+TRUNCATE (23514), for every caller, service_role included — the application never deletes any of
+them; `nexra_crawls`, `nexra_crawl_pages` and `nexra_crawl_links` refuse TRUNCATE only, and a crawl
+DELETE stays for housekeeping (it still cascades through pages, links, findings reports, findings
+and triage — the header says so); `nexra_content_drafts` is unchanged (the store's compensating
+delete needs it). Four guard functions (empty `search_path`, not `security definer`, executable by
+no API role). Harness suite `guards` (38 assertions: the triggers, each refusal as owner and as
+service_role, crawl and page DELETE still working with the cascade, the compensating draft delete
+still working, nothing removed by a refused statement). Existing suites adjusted deliberately: six
+project-delete assertions accept 23514 beside 23503 (the guard now answers first), and `signals`
+and `content` exempt the two new truncate triggers from "no trigger on pages or links";
+`task-workflow` runs on its pinned pre-priority schema and is unchanged. `supabase/README.md` lists
+the migration as **not applied**. **Not applied to production** — applying and recording it is a
+separate §6 approval after the merge. On `claude/phase5-delete-guards`; not merged.
 
 **Findings recorded for later phases:**
 
@@ -712,7 +766,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 5 checkpoint 5.2 on `claude/phase5-content-studio` (above); each further
+**Current work:** Phase 5 checkpoint 5.4 on `claude/phase5-delete-guards` (above); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1020,14 +1074,14 @@ overwrite live content.
 - No automatic publishing.
 - No automatic approval.
 - No write path to the `abdulrehmanvigo2-hash/nexra-ai` GitHub repository exists.
-- The current production draft, Version 2, remains **Needs review**.
-- There is no active publication proposal for Version 2, and `nexra_article_publication_proposals`
-  holds no rows.
+- The draft path's production drafts remain unapproved; no draft proposal exists.
+- `nexra_article_publication_proposals` holds one row: the verification proposal `5f229630…`
+  (checkpoint 5.3), to be withdrawn before Phase 6's real publication. It published nothing.
 - The content workflow has no Create PR, Merge, Deploy or Publish control; C6 records proposal
   state only.
-- Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `drafting`: two check units need review
-  (units 0 and 1), two are unchecked, and it is neither checked, approved nor published. Its Version 2 can never
-  be approved (a needs-review result is final for its version), so it cannot receive a C6 proposal.
+- Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `approved` at Version 4 (checkpoint 5.3: all 4
+  units passed, approval `5f02d149…`, proposal `5f229630…`) and **not published**. Versions 2 and 3
+  can never be approved. The approve/propose permission was for Version 4 only.
 - Vercel deploys every push to `master` to production automatically.
 - Any external write requires explicit user approval (§6).
 - Migration `20261006120000_curated_keywords.sql` (checkpoint 3.5) is applied to production and
@@ -1340,7 +1394,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
-| Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) on `claude/phase5-content-studio`, not merged; then 5.3 positive path, 5.4 guards migration, 5.5 health and caps, 5.6 runbook, 5.7 closing |
+| Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) on `claude/phase5-delete-guards`, not merged, not applied; then 5.5 health, caps, abort fix and dynamic project lists, 5.6 runbook, 5.7 closing |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1357,8 +1411,8 @@ Carried forward: the single-project Director `priority-review` has no structural
 `33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 5 checkpoint 5.2
-on `claude/phase5-content-studio` (design note 5.1 approved). Phase 4 is complete (PR #39–#44).
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 5 checkpoint 5.4
+on `claude/phase5-delete-guards` (5.2 merged, 5.3 recorded live). Phase 4 is complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3 and Phase 4 are complete. Phase 2, Project Manager loop closure: the handoff
 outcome read-back, handoffs for five of the six deferred agents (the Writer stays deferred) with the
@@ -1368,8 +1422,8 @@ screen, page detail and derived finding history over this product's own crawls; 
 Intelligence screen over the stored Search Console rows; and the operator's curated keywords
 (the one Phase 3 migration, applied). Phase 4: the Analytics, Competitors, AI Visibility and
 Outbound Links screens over stored data, the Director and performance-review bounds, and the
-Director's five-slot bundle. Not started, each under its own explicit approval: Phase 5 checkpoints
-5.3–5.7, the remaining fixture screens (Command Center, Reports; the 2 fixture links to
+Director's five-slot bundle. Not started, each under its own explicit approval: applying
+`20261007120000` to production, Phase 5 checkpoints 5.5–5.7, the remaining fixture screens (Command Center, Reports; the 2 fixture links to
 `/competitors/<fixture id>` and the content snapshot's `/content/<fixture id>` links stay 404 until
 then), and curated keywords as agent grounding (deferred by Q6).
 
