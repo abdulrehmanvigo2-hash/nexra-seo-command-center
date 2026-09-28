@@ -8,6 +8,14 @@ import {
 } from "@/lib/crawl/grounding";
 import { PROJECT_PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/director-bundle";
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
+import {
+  ARTICLE_REVISION_DRAFT_INSTRUCTIONS,
+  CONTENT_REFRESH_REVIEW_INSTRUCTIONS,
+  FINDING_HISTORY_REVIEW_INSTRUCTIONS,
+  KEYWORD_OPPORTUNITY_REVIEW_INSTRUCTIONS,
+  LEARNING_REVIEW_INSTRUCTIONS,
+  PAGE_QUERY_ALIGNMENT_REVIEW_INSTRUCTIONS,
+} from "@/lib/agent-runs/second-tasks";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
 import { ARTICLE_CHECK_UNIT_INSTRUCTIONS } from "@/lib/content/article-check-prompt";
@@ -742,6 +750,108 @@ const articleCheckUnit: TaskTypeDefinition = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Second grounded tasks, batch 1 (Phase 6, checkpoint 6.5). Each reads
+// records this product already holds through an evidence kind that already
+// exists; `task-grounding.ts` appends the one block each question needs.
+// Read-only (the Writer's is a draft), operator-triggered, never queued
+// automatically, and none is a hand-off source.
+// ---------------------------------------------------------------------------
+
+/**
+ * Keyword & Search Intent: the operator's curated keywords against the
+ * stored Search Console rows (decision Q5). The same single range input as
+ * the search query review; the curated keywords are the run's own
+ * project's, read on the server, never named by a caller.
+ */
+const keywordOpportunityReview: TaskTypeDefinition = {
+  id: "keyword-opportunity-review",
+  label: "Keyword opportunity review",
+  description:
+    "Review the operator's curated keywords against the stored Search Console rows: which are observed, which are not, and which observed queries no curated keyword covers.",
+  agents: ["keyword-intent"],
+  policy: "read-only",
+  evidence: "search-console",
+  instructions: KEYWORD_OPPORTUNITY_REVIEW_INSTRUCTIONS,
+  parseInput: parseRangeInput,
+};
+
+/**
+ * Content Strategist: which existing pages to refresh, over one own-site
+ * crawl and the latest stored query × page pairs listed by page.
+ */
+const contentRefreshReview: TaskTypeDefinition = {
+  id: "content-refresh-review",
+  label: "Content refresh review",
+  description:
+    "Propose which existing pages to refresh, from what one completed crawl's pages declared and the queries Google showed each page for in the stored pairs.",
+  agents: ["content-strategist"],
+  policy: "read-only",
+  evidence: "crawl",
+  instructions: CONTENT_REFRESH_REVIEW_INSTRUCTIONS,
+  parseInput: parseCrawlIdInput,
+};
+
+/**
+ * Writer: a revision draft of one article check unit the Research & Evidence
+ * check left needing review. The same four inputs as the check, all
+ * required; the reader (`@/lib/content/articles/revision-grounding`) refuses
+ * a unit whose recorded result is not needs-review. Draft policy: it writes
+ * text for an operator and changes no saved version.
+ */
+const articleRevisionDraft: TaskTypeDefinition = {
+  id: "article-revision-draft",
+  label: "Article revision draft",
+  description:
+    "Draft a revision of one article check unit that needs review, from its recorded check and the records it was checked against, every revised claim traced to a record.",
+  agents: ["writer"],
+  policy: "draft",
+  evidence: "article-unit",
+  instructions: ARTICLE_REVISION_DRAFT_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    return articleCheckUnit.parseInput(input);
+  },
+};
+
+/** On-Page SEO: whether each page's declarations use the words of the queries it was shown for. */
+const pageQueryAlignmentReview: TaskTypeDefinition = {
+  id: "page-query-alignment-review",
+  label: "Page–query alignment review",
+  description:
+    "Review whether one completed crawl's titles, descriptions and h1s use the words of the queries Google showed each page for in the stored pairs.",
+  agents: ["on-page-seo"],
+  policy: "read-only",
+  evidence: "crawl",
+  instructions: PAGE_QUERY_ALIGNMENT_REVIEW_INSTRUCTIONS,
+  parseInput: parseCrawlIdInput,
+};
+
+/** Technical SEO: how the recorded findings changed across the project's own crawls (derived history, 3.3). */
+const findingHistoryReview: TaskTypeDefinition = {
+  id: "finding-history-review",
+  label: "Finding history review",
+  description:
+    "Review which recorded crawl findings persisted, appeared, changed, were resolved or were not re-checked across this project's own crawls.",
+  agents: ["technical-seo"],
+  policy: "read-only",
+  evidence: "crawl",
+  instructions: FINDING_HISTORY_REVIEW_INSTRUCTIONS,
+  parseInput: parseCrawlIdInput,
+};
+
+/** Analytics & Learning: its own earlier readings against the stored movement between two windows (P4d). */
+const learningReview: TaskTypeDefinition = {
+  id: "learning-review",
+  label: "Learning review",
+  description:
+    "Compare this agent's earlier performance readings with the recorded movement between two stored Search Console windows: borne out, contradicted, or not yet testable.",
+  agents: ["analytics-learning"],
+  policy: "read-only",
+  evidence: "search-console",
+  instructions: LEARNING_REVIEW_INSTRUCTIONS,
+  parseInput: parseRangeInput,
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -761,6 +871,12 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   outboundLinkReview,
   draftFactCheck,
   articleCheckUnit,
+  keywordOpportunityReview,
+  contentRefreshReview,
+  articleRevisionDraft,
+  pageQueryAlignmentReview,
+  findingHistoryReview,
+  learningReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

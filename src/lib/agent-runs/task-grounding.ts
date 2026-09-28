@@ -33,6 +33,15 @@ import { formatKeywordGrounding } from "@/lib/search-console/keywords/grounding"
 import type { KeywordIntelligenceInput } from "@/lib/search-console/keywords/inventory";
 import { formatQueryPageGrounding } from "@/lib/search-console/query-pages/grounding";
 import type { QueryPageInput } from "@/lib/search-console/query-pages/intelligence";
+import type { JsonObject } from "@/types/agent-run";
+import { formatPagePairGrounding, type PagePairInput } from "@/lib/search-console/query-pages/page-pairs";
+import { formatLearningsGrounding, LEARNINGS_SCAN_LIMIT, type LearningsInput } from "@/lib/analytics/learnings-grounding";
+import { LEARNINGS_AGENT_ID } from "@/lib/analytics/learnings";
+import { readArticleRevisionGrounding } from "@/lib/content/articles/revision-grounding";
+import { formatFindingHistoryGrounding, type FindingHistoryInput } from "@/lib/crawl/findings/history-grounding";
+import type { FindingHistoryRead } from "@/lib/crawl/service";
+import { formatCuratedKeywordGrounding, type CuratedKeywordRead } from "@/lib/keywords/grounding";
+import type { ListKeywordsResult } from "@/lib/keywords/service";
 
 /**
  * Which evidence a task is allowed to see, decided by what its task type
@@ -73,6 +82,20 @@ export type SearchConsoleQueryPageReader = (projectId: string) => Promise<QueryP
 
 /** The observed query inventory for one project (M4), or null when this deployment keeps no snapshots. */
 export type SearchConsoleKeywordReader = (projectId: string) => Promise<KeywordIntelligenceInput | null>;
+
+/** The latest stored query × page window for one project, listed by page (6.5), or null when this deployment keeps no pairs. */
+export type PagePairReader = (projectId: string) => Promise<PagePairInput | null>;
+
+/** The project's derived finding history (3.3), through the crawl service. */
+export type FindingHistoryReader = (projectId: string) => Promise<FindingHistoryRead>;
+
+/** The project's curated keywords with what the stored rows say of each (3.5), through the keyword service. */
+export type CuratedKeywordReader = (projectId: string) => Promise<ListKeywordsResult>;
+
+/** The crawl-evidence tasks that also get the fixed rules' findings over the same crawl. */
+const CRAWL_TASKS_WITH_FINDINGS: readonly string[] = ["crawl-review", "on-page-review", "finding-history-review"];
+/** The crawl-evidence tasks that also get the latest stored pairs listed by page (6.5). */
+const CRAWL_TASKS_WITH_PAGE_PAIRS: readonly string[] = ["content-refresh-review", "page-query-alignment-review"];
 
 /** The findings recorded for one of the project's own crawls (T3), read by project and crawl id, never recomputed. */
 export type CrawlFindingsReader = (projectId: string, crawlId: string) => Promise<CrawlFindingsRead>;
@@ -133,6 +156,16 @@ export type TaskGroundingReaders = {
   readonly articleCheck: ArticleCheckGroundingReaders;
   /** `task` tasks: the project's recorded tasks, each open task's history, and its linked run, read by project id. */
   readonly tasks: TaskPlanGroundingReaders;
+  /**
+   * 6.5 `content-refresh-review` and `page-query-alignment-review`, after the
+   * crawl evidence: the latest stored pairs listed by page. Absent or null
+   * is stated as not kept; a failed read is stated, never a refusal.
+   */
+  readonly pagePairs?: PagePairReader;
+  /** 6.5 `finding-history-review`, after the crawl's findings: the derived history. Absent is stated as not kept. */
+  readonly findingHistory?: FindingHistoryReader;
+  /** 6.5 `keyword-opportunity-review`, after the Search Console blocks: the curated keywords. Absent is stated as not kept. */
+  readonly curatedKeywords?: CuratedKeywordReader;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -158,11 +191,30 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         if (!eligible.ok) return { ok: false, reason: eligible.reason };
         const crawlGrounding = formatCrawlGrounding(eligible.crawl, eligible.pages);
 
-        // The two reviews of the project's own pages also get the fixed
-        // rules' findings over the same eligible crawl, appended after the
-        // crawl evidence. The edges come through the one bounded link read;
-        // if that read fails the crawl evidence stands alone and says so.
-        if (task.taskType !== "crawl-review" && task.taskType !== "on-page-review") {
+        // The content refresh and page–query alignment reviews (6.5) get the
+        // latest stored pairs listed by page, each page marked fetched or not
+        // by this crawl. A deployment that keeps none, or a failed read, is
+        // stated in the block and never fails the run.
+        if (CRAWL_TASKS_WITH_PAGE_PAIRS.includes(task.taskType)) {
+          let pairs: PagePairInput;
+          try {
+            pairs = (await readers.pagePairs?.(task.project.id)) ?? { available: false, reason: "not-kept" };
+          } catch {
+            pairs = { available: false, reason: "read-failed" };
+          }
+          const fetchedUrls = eligible.pages.filter((page) => page.fetchState === "fetched").map((page) => page.url);
+          const block = formatPagePairGrounding(pairs, fetchedUrls);
+          return {
+            ok: true,
+            grounding: { text: `${crawlGrounding.text}\n\n${block.text}`, summary: { ...crawlGrounding.summary, pagePairs: block.summary }, source: CRAWL_SOURCE },
+          };
+        }
+
+        // The reviews of the project's own pages also get the fixed rules'
+        // findings over the same eligible crawl, appended after the crawl
+        // evidence. The edges come through the one bounded link read; if that
+        // read fails the crawl evidence stands alone and says so.
+        if (!CRAWL_TASKS_WITH_FINDINGS.includes(task.taskType)) {
           return { ok: true, grounding: { text: crawlGrounding.text, summary: { ...crawlGrounding.summary }, source: CRAWL_SOURCE } };
         }
         let findings;
@@ -174,11 +226,24 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
           findings = unavailableCrawlFindingsGrounding();
         }
 
+        // The finding-history review (6.5) also gets the project's derived
+        // history, last. A failed read is stated, never a refusal.
+        let historyBlock: { text: string; summary: JsonObject } | null = null;
+        if (task.taskType === "finding-history-review") {
+          let history: FindingHistoryInput;
+          try {
+            history = readers.findingHistory ? await readers.findingHistory(task.project.id) : { status: "unavailable" };
+          } catch {
+            history = { status: "read-failed" };
+          }
+          historyBlock = formatFindingHistoryGrounding(history);
+        }
+
         return {
           ok: true,
           grounding: {
-            text: `${crawlGrounding.text}\n\n${findings.text}`,
-            summary: { ...crawlGrounding.summary, findings: findings.summary },
+            text: `${crawlGrounding.text}\n\n${findings.text}${historyBlock === null ? "" : `\n\n${historyBlock.text}`}`,
+            summary: { ...crawlGrounding.summary, findings: findings.summary, ...(historyBlock === null ? {} : { findingHistory: historyBlock.summary }) },
             source: CRAWL_SOURCE,
           },
         };
@@ -200,7 +265,7 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         } catch {
           history = { available: false, reason: "read-failed" };
         }
-        const audience = task.taskType === "performance-review" ? "analytics" : "keyword";
+        const audience = task.taskType === "performance-review" || task.taskType === "learning-review" ? "analytics" : "keyword";
         const historyGrounding = formatSearchConsoleHistory(history, audience);
 
         // Stored query × page pairs (P4c), appended after the history and
@@ -220,7 +285,7 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         // deployment that keeps no snapshots or a failed read adds no block
         // and never fails the run.
         let keywords: KeywordIntelligenceInput = { available: false, reason: "not-kept" };
-        if (task.taskType === "search-query-review") {
+        if (task.taskType === "search-query-review" || task.taskType === "keyword-opportunity-review") {
           try {
             keywords = (await readers.searchConsoleKeywords?.(task.project.id)) ?? { available: false, reason: "not-kept" };
           } catch {
@@ -229,11 +294,40 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
         }
         const keywordGrounding = formatKeywordGrounding(keywords);
 
+        // The second tasks (6.5) append one block last: the keyword
+        // opportunity review the operator's curated keywords, the learning
+        // review the agent's own earlier readings. A missing reader or a
+        // failed read is stated in the block, never a refusal.
+        let extra: { text: string; summary: JsonObject; key: string } | null = null;
+        if (task.taskType === "keyword-opportunity-review") {
+          let curated: CuratedKeywordRead;
+          try {
+            curated = readers.curatedKeywords ? await readers.curatedKeywords(task.project.id) : { status: "unavailable" };
+          } catch {
+            curated = { status: "read-failed" };
+          }
+          extra = { ...formatCuratedKeywordGrounding(curated), key: "curatedKeywords" };
+        } else if (task.taskType === "learning-review") {
+          let learnings: LearningsInput;
+          try {
+            learnings = { status: "listed", runs: await readers.sourceRuns.listRuns({ projectId: task.project.id, agentId: LEARNINGS_AGENT_ID, limit: LEARNINGS_SCAN_LIMIT }) };
+          } catch {
+            learnings = { status: "read-failed" };
+          }
+          extra = { ...formatLearningsGrounding(learnings), key: "learnings" };
+        }
+
         return {
           ok: true,
           grounding: {
-            text: `${result.grounding.text}\n\n${historyGrounding.text}${pairGrounding.text === null ? "" : `\n\n${pairGrounding.text}`}${keywordGrounding.text === null ? "" : `\n\n${keywordGrounding.text}`}`,
-            summary: { ...result.grounding.summary, history: historyGrounding.summary, queryPages: pairGrounding.summary, keywords: keywordGrounding.summary },
+            text: `${result.grounding.text}\n\n${historyGrounding.text}${pairGrounding.text === null ? "" : `\n\n${pairGrounding.text}`}${keywordGrounding.text === null ? "" : `\n\n${keywordGrounding.text}`}${extra === null ? "" : `\n\n${extra.text}`}`,
+            summary: {
+              ...result.grounding.summary,
+              history: historyGrounding.summary,
+              queryPages: pairGrounding.summary,
+              keywords: keywordGrounding.summary,
+              ...(extra === null ? {} : { [extra.key]: extra.summary }),
+            },
             source: result.grounding.source,
           },
         };
@@ -414,6 +508,22 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
           return { ok: false, reason: "version-missing" };
         }
         if (typeof articleVersionId !== "string") return { ok: false, reason: "version-id-missing" };
+
+        // The Writer's revision draft (6.5) reads the same unit by the same
+        // rule, and requires its recorded result to be needs-review; it
+        // quotes that check beside the unit and the re-read records.
+        if (task.taskType === "article-revision-draft") {
+          const revision = await readArticleRevisionGrounding(readers.articleCheck, {
+            projectId: task.project.id,
+            articleId,
+            articleVersion,
+            articleVersionId,
+            unitIndex: task.input.unitIndex,
+          });
+          if (!revision.ok) return { ok: false, reason: revision.reason };
+          return { ok: true, grounding: { text: revision.grounding.text, summary: { ...revision.grounding.summary }, source: revision.grounding.source } };
+        }
+
         const result = await readArticleCheckGrounding(readers.articleCheck, {
           projectId: task.project.id,
           articleId,

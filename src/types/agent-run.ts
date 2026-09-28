@@ -46,7 +46,13 @@ export type AgentTaskType =
   | "section-draft"
   | "outbound-link-review"
   | "draft-fact-check"
-  | "article-check-unit";
+  | "article-check-unit"
+  | "keyword-opportunity-review"
+  | "content-refresh-review"
+  | "article-revision-draft"
+  | "page-query-alignment-review"
+  | "finding-history-review"
+  | "learning-review";
 
 export type JsonValue =
   | string

@@ -245,6 +245,26 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "keyword-opportunity-review":
+      case "content-refresh-review":
+      case "article-revision-draft":
+      case "page-query-alignment-review":
+      case "finding-history-review":
+      case "learning-review": {
+        // The second grounded tasks (checkpoint 6.5): the mock executor reads
+        // no record of any kind, so `grounded: false`, as for every simulated
+        // result; the revision draft drafts nothing.
+        const metadata: JsonObject = {
+          simulated: true,
+          grounded: false,
+          taskType: task.taskType,
+          attempt: task.attempt,
+        };
+        return {
+          summary: `Simulated ${task.taskType.replace(/-/g, " ")} by ${subject}. The mock executor read no record and analysed nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {
