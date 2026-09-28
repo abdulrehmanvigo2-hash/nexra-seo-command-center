@@ -24,5 +24,5 @@ export const BUILD_STATUS = {
   detail: "Technical, Keywords, Content, Analytics, Competitors, AI Visibility and Outbound Links are observed data",
   /** Used where only a tooltip fits, e.g. the collapsed sidebar rail. */
   title:
-    "Technical SEO, Keyword Intelligence, Content Studio, Analytics, Competitor Intelligence, AI Visibility and Outbound Links show observed data only. Other screens are still modelled fixtures; panels backed by live data — stored projects, Search Console, agent runs, tasks — are labelled as such.",
+    "Technical SEO, Keyword Intelligence, Content Studio, Analytics, Competitor Intelligence, AI Visibility and Outbound Links show observed data only. Other screens are still modelled fixtures, each labelled Modelled; panels backed by live data — stored projects, Search Console, agent runs, tasks — are labelled as such.",
 } as const;

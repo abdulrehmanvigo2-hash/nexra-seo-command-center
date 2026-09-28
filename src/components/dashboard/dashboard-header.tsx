@@ -11,6 +11,7 @@ import { DATE_RANGES } from "@/lib/mock/dashboard";
 import { PORTFOLIO_PROJECT_ID } from "@/lib/projects/intake-rules";
 import type { ProjectOption } from "@/lib/projects/selection";
 import type { ProjectId, RangeId } from "@/types/dashboard";
+import { ModelledBadge } from "@/components/ui/modelled-badge";
 
 /**
  * The dashboard's own header: which project is being viewed, over what window,
@@ -93,6 +94,7 @@ export function DashboardHeader({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <ModelledBadge />
           {/*
             The roll-up has no workspace of its own; a single project does, and
             it is the same record the Projects module lists.

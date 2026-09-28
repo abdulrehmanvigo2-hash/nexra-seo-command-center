@@ -41,6 +41,7 @@ import type {
   ProjectListItem,
   ProjectStatus,
 } from "@/types/project";
+import { ModelledSection } from "@/components/ui/modelled-badge";
 
 /**
  * The Projects area: the whole client roster, the portfolio numbers above it,
@@ -274,8 +275,11 @@ export function ProjectsWorkspace({
           )}
         </div>
 
-        <PortfolioSummary metrics={metrics} />
+        <ModelledSection name="Portfolio figures">
+          <PortfolioSummary metrics={metrics} />
+        </ModelledSection>
 
+        <ModelledSection name="Project roster figures">
         <Panel>
           <ProjectsToolbar
             filters={filters}
@@ -351,6 +355,7 @@ export function ProjectsWorkspace({
             </span>
           </PanelFooter>
         </Panel>
+        </ModelledSection>
 
       </div>
 
