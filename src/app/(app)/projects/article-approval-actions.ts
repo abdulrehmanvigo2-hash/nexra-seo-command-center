@@ -20,6 +20,10 @@ import { appRateLimiter } from "@/lib/security/app-rate-limit";
  * Writes are limited per operator: one approval at a time per process, and
  * counted in Postgres on the database deployment.
  *
+ * A version with operator-attested paragraphs (6.8b) also needs the
+ * operator's attestation tick, sent as a fourth argument; it must be exactly
+ * `true`, and anything else is no tick.
+ *
  * Approval only. It proposes nothing and publishes nothing.
  */
 
@@ -31,7 +35,12 @@ export type ApproveArticleVersionActionResult =
 const APPROVALS = { limit: 30, windowSeconds: 10 * 60 } as const;
 const inFlight = new Set<string>();
 
-export async function approveArticleVersion(projectId: unknown, articleId: unknown, articleVersion: unknown): Promise<ApproveArticleVersionActionResult> {
+export async function approveArticleVersion(
+  projectId: unknown,
+  articleId: unknown,
+  articleVersion: unknown,
+  attestationConfirmed?: unknown,
+): Promise<ApproveArticleVersionActionResult> {
   const operator = await getOperator();
   if (!operator) return { ok: false, reason: "unauthorized" };
   if (typeof projectId !== "string" || typeof articleId !== "string" || typeof articleVersion !== "number") {
@@ -47,7 +56,7 @@ export async function approveArticleVersion(projectId: unknown, articleId: unkno
     if (!allowance.allowed) {
       return { ok: false, reason: "rate-limited", retryAfterSeconds: Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000)) };
     }
-    result = await articleApprovalService().approve({ projectId, articleId, articleVersion, operatorId: operator.id });
+    result = await articleApprovalService().approve({ projectId, articleId, articleVersion, operatorId: operator.id, attestationConfirmed: attestationConfirmed === true });
   } catch (error) {
     // The detail stays in the server log; the browser learns only that it failed.
     console.error("approveArticleVersion:", error instanceof Error ? `${error.name}: ${error.message}` : "unknown error");

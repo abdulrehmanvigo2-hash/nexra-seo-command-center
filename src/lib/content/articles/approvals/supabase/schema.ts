@@ -21,6 +21,9 @@ export type ArticleApprovalRow = {
   units_sha256: string;
   approved_by: string;
   approved_at: string;
+  /** Since 20261010120000 (6.8b); absent on a database the migration has not reached. */
+  attested_count?: number;
+  attested_confirmed?: boolean;
 };
 
 type ReadOnly<Row> = { Row: Row; Insert: never; Update: never; Relationships: [] };
@@ -42,6 +45,7 @@ export type ArticleApprovalsDatabase = {
           p_units: unknown;
           p_units_sha256: string;
           p_approved_by: string;
+          p_attestation_confirmed?: boolean;
         };
         Returns: unknown;
       };
@@ -49,7 +53,12 @@ export type ArticleApprovalsDatabase = {
   };
 };
 
-export const APPROVAL_READ_COLUMNS = "id, article_id, article_version, article_version_id, content_sha256, unit_count, units_sha256, approved_by, approved_at";
+/**
+ * Every column: `*` rather than a list, so the same read works before and
+ * after 20261010120000 adds the attestation columns (6.8b); a row without
+ * them reads as count 0 and no tick.
+ */
+export const APPROVAL_READ_COLUMNS = "*";
 
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -86,7 +95,14 @@ export function approvalRowToApproval(row: unknown): ArticleApproval {
     unitsSha256: hash(r.units_sha256, "units_sha256"),
     approvedBy: text(r.approved_by, "approved_by"),
     approvedAt: text(r.approved_at, "approved_at"),
+    attestedCount: r.attested_count === undefined ? 0 : integer(r.attested_count, "attested_count"),
+    attestedConfirmed: r.attested_confirmed === undefined ? false : boolean(r.attested_confirmed, "attested_confirmed"),
   };
+}
+
+function boolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") throw new ArticleRowError(`${field} is not a boolean.`);
+  return value;
 }
 
 /** What the function answers, checked field by field: a shape it did not promise is an error, not a guess. */
@@ -108,6 +124,8 @@ export function approveResultToOutcome(data: unknown): ApproveVersionOutcome {
     case "units-incomplete":
     case "topic-decision":
     case "unresolved-placeholder":
+    case "attestation-unconfirmed":
+    case "too-few-supported":
       return { status: result.outcome };
     default:
       throw new ArticleRowError(`the function answered "${String(result.outcome)}", which this product does not recognise.`);

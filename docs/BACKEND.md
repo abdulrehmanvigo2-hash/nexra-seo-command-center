@@ -1799,6 +1799,66 @@ allowed and ask for explicit confirmation. It is labelled "PROPOSAL ONLY —
 NOT PUBLISHED". The draft proposal section's `slug-taken` message now
 names both a draft's and an article's active proposal.
 
+### Operator-attested paragraphs (Phase 6, checkpoint 6.8b; migration `20261010120000`, not applied)
+
+The article check can pass only what the project's records hold, so a
+first-hand or opinion passage was always UNVERIFIABLE and never approvable.
+An operator may now attest whole H2 or H3 body paragraphs — nothing in the
+metadata, lead, introduction, FAQs or call to action — each as `experience`
+("From our client work — first-hand, not independently verified") or
+`opinion` ("Our view"). The design is the approved 6.1b note.
+
+- **Contract** (`validate.ts`, `canonical.ts`): a top-level `attestations`
+  list of `{locator, basis}`, the locator `<section or subsection id>/<zero-based
+  paragraph>`, each naming an existing body paragraph once (`attestation-target`,
+  `duplicate`, `format`). Attested paragraphs hold at most 40% of the body's
+  sentences and at most half of any H2 section's, its H3s included
+  (`attestation-limit`), and state no number: no digit in any script, `%`,
+  currency symbol or count word except "one" and "first" (`attestation-number`).
+  Canonical `nexra-article-content/2` is format 1 with the list as a final
+  member, written only when the list is non-empty; an article without
+  attestations serialises exactly as before, so every stored version keeps its
+  bytes and hash (pinned against production Version 4 of `c89182f9…`:
+  content `e9db287f…`, its four unit hashes, their digest `e4bfde00…` and the
+  proposal preview `bbf3fae3…`, `src/lib/content/articles/test-support/v4-pin.json`).
+- **Units** (`checks/units.ts`): an attested statement carries
+  `"attested":"<basis>"`; a unit holding one is `nexra-article-check-unit/2`,
+  every other unit stays format 1, byte for byte.
+- **Checker** (`article-check-prompt.ts`): instructions version 2 answer in
+  seven sections, ATTESTED before SUMMARY, with one added rule (`ATTESTED_RULE`):
+  only a marked statement may go under ATTESTED, with its basis; a marked
+  statement that says something checkable about the site is still classified
+  like any other, and one stating a figure, result, name, person or
+  organisation goes under UNVERIFIABLE. Every other sentence is version 1's
+  word for word (tested; version 1 is kept as `…_V1`); the length rule is
+  unchanged; hash-pinned. The parser takes the headings as a parameter (the
+  draft path's five are unchanged) and an earlier six-heading answer still
+  parses. An ATTESTED line on an unmarked statement, or with another or no
+  basis, makes the answer `failed` / `coverage-incomplete`; attested lines
+  never block a pass, and the verdict counts them apart (`counts.attested`,
+  only on units that attest).
+- **Approval** (C5, migration): the approve function counts the version's
+  attestations in SQL, refuses `attestation-unconfirmed` without the
+  operator's tick and `too-few-supported` when the passed units record fewer
+  than three supported statements — both only when something is attested — and
+  stores `attested_count` and `attested_confirmed`. The approval section shows
+  the count and a tick box that Confirm waits for.
+- **Proposal** (C6): an attesting version's preview is `article-proposal-text/2`
+  — an *ATTESTED PARAGRAPHS* block listing each one, in article order, with its
+  label prefixed — before the exact canonical text; the propose function
+  requires the preview format the content implies.
+- **Screens:** the article editor's *Attested paragraphs* (paragraph and
+  basis), the labelled paragraph in the read view, and an Attested column and
+  count on the check units, the Studio's article detail and the approval.
+- **Not here:** the articles have no website renderer until C7a (6.9), which
+  will render the same labelled blocks (`src/lib/content/articles/attestations.ts`);
+  the older draft-path dry-run is unchanged. External sources (6.1b option (b))
+  are after V1.
+- **Before the migration is applied:** format 1 works unchanged (approval reads
+  select every column and default the new ones; the tick is sent only for an
+  attesting version); saving a version with attestations is refused by the
+  database's content check, so nothing attested can be stored.
+
 ## Crawl foundation
 
 An operator asks for a crawl of a stored project; the engine walks that
@@ -2598,7 +2658,7 @@ recorded, and the round trip high → medium on task `30e79092…` is browser
 verified (events seq 15 and 16).
 
 **The learning loop (Phase 6, checkpoint 6.7, decision Q7; migration
-`20261008120000`, not applied).** A priority change may cite one completed
+`20261008120000`, applied and recorded 28 Sep).** A priority change may cite one completed
 SEO Director `project-priority-review` of the same project: `POST
 /api/agent-tasks/[taskId] { project, action: "priority", priority,
 directorRunId? }`; the database accepts only such a run and otherwise answers
@@ -2615,7 +2675,7 @@ review → the Director runs whose bundle read it → the priority changes citin
 each. Nothing is inferred; citing a run queues and changes nothing.
 
 **Approval records (Phase 6, checkpoint 6.8, decision Q1; migration
-`20261009120000`, not applied).** `nexra_approvals` and its two functions (see
+`20261009120000`, applied and recorded 28 Sep).** `nexra_approvals` and its two functions (see
 `supabase/README.md`); `src/lib/approvals` holds the contract (outcomes parsed
 fail-closed, the payload digest `nexra-approval-payload/1` over kind, target
 and payload) and a store over the two functions. Nothing consumes an approval

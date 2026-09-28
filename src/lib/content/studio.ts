@@ -98,6 +98,7 @@ const UNIT_STATUS_LABEL: Record<ArticleCheckUnitStatus | "unchecked", string> = 
 export const unitStatusLabel = (status: ArticleCheckUnitStatus | "unchecked") => UNIT_STATUS_LABEL[status];
 
 const APPROVAL_BLOCK_LABEL: Record<ArticleApprovalBlock, string> = {
+  "too-few-supported": "attested paragraphs need at least three supported statements",
   archived: "the article is archived",
   "not-current": "not the current version",
   "content-unreadable": "the stored text does not verify",
@@ -276,6 +277,8 @@ export type DetailVersion = {
   readonly contentSha256: string;
   readonly verified: boolean;
   readonly topicDecision: string | null;
+  /** Operator-attested paragraphs (6.8b); null when the stored text does not verify. */
+  readonly attestedCount: number | null;
   readonly sectionCount: number | null;
   readonly sources: readonly { readonly draftId: string; readonly version: number; readonly contentSha256: string }[];
 };
@@ -285,9 +288,11 @@ export type DetailUnit = {
   readonly key: string;
   readonly label: string;
   readonly statementCount: number;
+  /** Statements from operator-attested paragraphs (6.8b). */
+  readonly attestedStatementCount: number;
   readonly status: ArticleCheckUnitStatus | "unchecked";
   readonly runId: string | null;
-  readonly counts: { readonly supported: number; readonly partial: number; readonly unsupported: number; readonly unverifiable: number } | null;
+  readonly counts: { readonly supported: number; readonly partial: number; readonly unsupported: number; readonly unverifiable: number; readonly attested: number | null } | null;
 };
 
 export type ArticleDetail = {
@@ -323,6 +328,7 @@ export function presentArticleDetail(history: ArticleHistory): ArticleDetail {
         contentSha256: v.contentSha256,
         verified: v.verified,
         topicDecision: v.content?.topicDecision ?? null,
+        attestedCount: v.content?.attestations.length ?? null,
         sectionCount: v.content?.sections.length ?? null,
         sources: v.sources.map((s) => ({ draftId: s.draftId, version: s.version, contentSha256: s.contentSha256 })),
       })),
@@ -338,9 +344,11 @@ export function presentUnits(checks: ArticleVersionChecks): readonly DetailUnit[
       key: unit.key,
       label: unit.label,
       statementCount: unit.statementCount,
+      attestedStatementCount: unit.attestedStatementCount,
       status: unit.record?.status ?? "unchecked",
       runId: unit.record?.checkedByRunId ?? null,
-      counts: counts === null ? null : { supported: counts.supported, partial: counts.partial, unsupported: counts.unsupported, unverifiable: counts.unverifiable },
+      counts:
+        counts === null ? null : { supported: counts.supported, partial: counts.partial, unsupported: counts.unsupported, unverifiable: counts.unverifiable, attested: counts.attested ?? null },
     };
   });
 }

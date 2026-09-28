@@ -20,6 +20,8 @@ const APPROVAL: ArticleApproval = {
   unitsSha256: "b".repeat(64),
   approvedBy: "00000000-0000-4000-8000-0000000000bb",
   approvedAt: "2026-09-24T12:00:00.000Z",
+  attestedCount: 0,
+  attestedConfirmed: false,
 };
 
 function facts(overrides: Partial<ArticleApprovalFacts> = {}): ArticleApprovalFacts {

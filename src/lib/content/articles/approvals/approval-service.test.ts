@@ -269,3 +269,33 @@ describe("no publication side effects", () => {
     assert.deepEqual(Object.keys(setup.service).sort(), ["approve", "getState"]);
   });
 });
+
+describe("a version with operator-attested paragraphs (6.8b)", () => {
+  const ATTESTED = storedVersion(1, approvableContent("different-angle", (raw) => (raw.attestations = [{ locator: "what-it-does/1", basis: "experience" }])));
+
+  test("without the operator's attestation tick: refused attestation-unconfirmed, nothing sent to the database", async () => {
+    const setup = approvalSetup({ versions: [ATTESTED] });
+    await setup.passAll(ATTESTED);
+    const state = await setup.service.getState(PROJECT_ID, ARTICLE_ID);
+    assert.ok(state.ok && state.state.attestedCount === 1 && state.state.eligibility.status === "eligible", JSON.stringify(state));
+    for (const attestationConfirmed of [undefined, false]) {
+      const result = await setup.service.approve({ projectId: PROJECT_ID, articleId: ARTICLE_ID, articleVersion: 1, operatorId: APPROVER, attestationConfirmed });
+      assert.ok(!result.ok && result.reason === "attestation-unconfirmed", JSON.stringify(result));
+    }
+    assert.equal(setup.approvals.calls.length, 0);
+    assert.equal(setup.approvals.approvals.length, 0);
+  });
+
+  test("with the tick: the tick is sent to the database, which stores it with the count; a format 1 version never sends one", async () => {
+    const setup = approvalSetup({ versions: [ATTESTED] });
+    await setup.passAll(ATTESTED);
+    const result = await setup.service.approve({ projectId: PROJECT_ID, articleId: ARTICLE_ID, articleVersion: 1, operatorId: APPROVER, attestationConfirmed: true });
+    assert.ok(result.ok && result.approved, JSON.stringify(result));
+    assert.equal(setup.approvals.calls[0].attestationConfirmed, true);
+
+    const plain = approvalSetup({ versions: [V1] });
+    await plain.passAll(V1);
+    await plain.service.approve({ projectId: PROJECT_ID, articleId: ARTICLE_ID, articleVersion: 1, operatorId: APPROVER, attestationConfirmed: true });
+    assert.equal("attestationConfirmed" in plain.approvals.calls[0], false);
+  });
+});

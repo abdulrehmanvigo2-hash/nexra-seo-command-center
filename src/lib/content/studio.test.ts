@@ -43,7 +43,7 @@ const V2 = "4f3ed414-ae5d-4bbb-b220-934851f3dfc8";
 const DRAFT_A = "489a191a-6966-4077-8b3d-5ce7fdd4d677";
 const DRAFT_B = "ce474811-ee21-494b-a54a-1f796c345ae0";
 
-const content = { title: "AI Lead Follow-Up Automation for Small Businesses", slug: "ai-lead-follow-up-automation-small-businesses", topicDecision: "different-angle", sections: [{ id: "how-ai-lead-follow-up-works" }] };
+const content = { title: "AI Lead Follow-Up Automation for Small Businesses", slug: "ai-lead-follow-up-automation-small-businesses", topicDecision: "different-angle", sections: [{ id: "how-ai-lead-follow-up-works" }], attestations: [] };
 const version = (n: number, id: string, sha: string) => ({
   id,
   articleId: ARTICLE,

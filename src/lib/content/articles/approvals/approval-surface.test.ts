@@ -113,7 +113,8 @@ describe("the panel section", () => {
     assert.match(SECTION, /Confirm approval of version/);
     const approveCall = SECTION.indexOf("approveArticleVersion(projectId");
     assert.ok(approveCall > SECTION.indexOf("async function approve()"));
-    assert.match(SECTION.slice(SECTION.indexOf("async function approve()"), approveCall), /!eligible\) return;/);
+    // 6.8b: and, for a version with attested paragraphs, only with the operator's tick.
+    assert.match(SECTION.slice(SECTION.indexOf("async function approve()"), approveCall), /!eligible \|\| \(needsTick && !attestationTicked\)\) return;/);
   });
 
   test("shows every blocking reason and the immutable history", () => {

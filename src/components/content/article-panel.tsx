@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
 import { Panel, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import {
+  attestableParagraphChoices,
   contentFromForm,
   emptyForm,
   emptySection,
@@ -24,7 +25,8 @@ import {
   type ArticleForm,
   type SectionForm,
 } from "@/lib/content/articles/editor-form";
-import { SEARCH_INTENTS, TOPIC_DECISIONS, validateArticleContent } from "@/lib/content/articles/validate";
+import { ATTESTATION_LABELS } from "@/lib/content/articles/attestations";
+import { ATTESTATION_BASES, SEARCH_INTENTS, TOPIC_DECISIONS, validateArticleContent } from "@/lib/content/articles/validate";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { ArticleIssue, ArticleSourceReference, ValidatedArticleContent } from "@/types/content-article";
 import type {
@@ -438,7 +440,7 @@ function ArticleContentView({ content }: { content: ValidatedArticleContent }) {
             {section.heading} <span className="text-[11px] font-normal text-fg-subtle">#{section.id}</span>
           </h4>
           {section.paragraphs.map((paragraph, i) => (
-            <p key={`${section.id}-${i}`}>{paragraph}</p>
+            <AttestableParagraph key={`${section.id}-${i}`} content={content} locator={`${section.id}/${i}`} text={paragraph} />
           ))}
           {section.subsections.map((sub) => (
             <div key={sub.id} className="space-y-1 pl-3">
@@ -446,7 +448,7 @@ function ArticleContentView({ content }: { content: ValidatedArticleContent }) {
                 {sub.heading} <span className="text-[11px] font-normal text-fg-subtle">#{sub.id}</span>
               </h5>
               {sub.paragraphs.map((paragraph, i) => (
-                <p key={`${sub.id}-${i}`}>{paragraph}</p>
+                <AttestableParagraph key={`${sub.id}-${i}`} content={content} locator={`${sub.id}/${i}`} text={paragraph} />
               ))}
             </div>
           ))}
@@ -484,6 +486,17 @@ function ArticleContentView({ content }: { content: ValidatedArticleContent }) {
 }
 
 type EditorMode = { readonly kind: "create" } | { readonly kind: "edit"; readonly history: ArticleHistory; readonly from: ArticleVersionView };
+
+/** A body paragraph, with its label when the operator attested it (6.8b) — as a reader would see it. */
+function AttestableParagraph({ content, locator, text }: { content: ValidatedArticleContent; locator: string; text: string }) {
+  const basis = content.attestations.find((a) => a.locator === locator)?.basis;
+  if (basis === undefined) return <p>{text}</p>;
+  return (
+    <p>
+      <Badge tone="neutral">{ATTESTATION_LABELS[basis]}</Badge> {text}
+    </p>
+  );
+}
 
 function initialSources(mode: EditorMode): ArticleSourceReference[] {
   return mode.kind === "edit" ? mode.from.sources.map((s) => ({ draftId: s.draftId, version: s.version, versionId: s.versionId, contentSha256: s.contentSha256 })) : [];
@@ -695,6 +708,36 @@ function ArticleEditor({
         ))}
         <Button variant="ghost" icon="plus" onClick={() => set("internalLinks", [...form.internalLinks, { path: "", anchorText: "", sectionId: "" }])}>
           Add link
+        </Button>
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className="text-xs font-medium text-fg">Attested paragraphs (optional; H2 and H3 body paragraphs only)</legend>
+        <p className="text-[11px] text-fg-subtle">
+          Mark a paragraph you attest yourself — first-hand client work, or your own view. The check does not verify it; readers see its label. No number, %, currency
+          or count word other than &quot;one&quot; or &quot;first&quot;; at most 40% of the body&apos;s sentences and half of any section&apos;s.
+        </p>
+        {form.attestations.map((attestation, index) => (
+          <div key={index} className="grid gap-2 sm:grid-cols-[1fr_14rem_auto]">
+            <Select
+              aria-label={`Attested paragraph ${index + 1}`}
+              value={attestation.locator}
+              onChange={(e) => set("attestations", form.attestations.map((a, i) => (i === index ? { ...a, locator: e.target.value } : a)))}
+              options={[{ value: "", label: "Choose a paragraph…" }, ...attestableParagraphChoices(form).map((choice) => ({ value: choice.locator, label: choice.label }))]}
+            />
+            <Select
+              aria-label={`Attested paragraph ${index + 1} basis`}
+              value={attestation.basis}
+              onChange={(e) => set("attestations", form.attestations.map((a, i) => (i === index ? { ...a, basis: e.target.value } : a)))}
+              options={[{ value: "", label: "Choose a basis…" }, ...ATTESTATION_BASES.map((basis) => ({ value: basis, label: `${basis} — “${ATTESTATION_LABELS[basis]}”` }))]}
+            />
+            <Button variant="ghost" onClick={() => set("attestations", form.attestations.filter((_, i) => i !== index))}>
+              Remove
+            </Button>
+          </div>
+        ))}
+        <Button variant="ghost" icon="plus" onClick={() => set("attestations", [...form.attestations, { locator: "", basis: "" }])}>
+          Attest a paragraph
         </Button>
       </fieldset>
 

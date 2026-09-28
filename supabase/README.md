@@ -162,16 +162,44 @@ Editor (or run with the Supabase CLI against a linked project):
     (checkpoint 5.6; see `docs/RUNBOOK.md` for the method)
 30. `20261008120000_task_priority_director_run.sql` — the learning loop: a
     priority change may cite a completed project Director review (Phase 6,
-    checkpoint 6.7) — **NOT applied to production**
+    checkpoint 6.7) — applied to production and recorded on 28 Sep
 31. `20261009120000_approval_records.sql` — approval records for C7 (Phase 6,
-    checkpoint 6.8) — **NOT applied to production**
+    checkpoint 6.8) — applied to production and recorded on 28 Sep
+32. `20261010120000_attested_paragraphs.sql` — operator-attested paragraphs
+    (Phase 6, checkpoint 6.8b) — **NOT applied to production**
 
-The first twenty-nine are applied to production and recorded in its migration
-history (30 versions: the articles migration is recorded under
+The first thirty-one are applied to production and recorded in its migration
+history (32 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
 `docs/RUNBOOK.md`).
 
-### The learning loop (Phase 6, checkpoint 6.7) — not applied
+### Operator-attested paragraphs (Phase 6, checkpoint 6.8b) — not applied
+
+`20261010120000_attested_paragraphs.sql` lets an article version be stored in
+canonical format `nexra-article-content/2` — format 1 with a final
+`attestations` list of `{locator, basis}` (1–50 entries), written only when
+the list is non-empty — beside format 1, which is unchanged: every stored
+version, unit, approval and proposal keeps its bytes and hashes. An internal,
+immutable `nexra_article_attested_count(text)` (executable by no API role)
+answers 0 for format 1 without the member, the list's length for format 2
+with a valid list, and null otherwise; the content check answers
+`invalid-content` on null. `nexra_article_approvals` gains `attested_count`
+(0–50, default 0) and `attested_confirmed` (default false), with
+`attested_confirmed = (attested_count > 0)`; its insert guard requires the
+count to equal the stored version's. `nexra_article_approve_version` is dropped
+and recreated with a ninth parameter, `p_attestation_confirmed boolean default
+false` (an overload would make every eight-argument call ambiguous): when the
+version attests paragraphs it answers `attestation-unconfirmed` without the
+operator's tick and `too-few-supported` when its passed units record fewer
+than three supported statements, each writing nothing; a format 1 version
+behaves exactly as before. The proposal preview format may be
+`article-proposal-text/1` or `/2`, and the propose function requires the one
+the content implies (`/2` exactly when it attests). service_role executes the
+new approve signature. Harness suites `attested` (51 assertions) and
+`attested-upgrade` (7: a format 1 approved and proposed article keeps every
+byte across the migration); the c5 suite names the nine-argument signature.
+
+### The learning loop (Phase 6, checkpoint 6.7)
 
 `20261008120000_task_priority_director_run.sql` lets a `priority-changed` event
 carry a run id (the existing `run_id` column, a foreign key to `agent_runs`)
@@ -187,7 +215,7 @@ nothing else changes. Harness suite `task-learning` (58 assertions); the
 `task-priority` suite now runs on the schema before this migration, which is
 what it pins; the c5 security definer inventory names the new signature.
 
-### Approval records (Phase 6, checkpoint 6.8) — not applied
+### Approval records (Phase 6, checkpoint 6.8)
 
 `20261009120000_approval_records.sql` adds `nexra_approvals`: one operator
 decision (`approve` or `refuse`) on one exact action — project, kind

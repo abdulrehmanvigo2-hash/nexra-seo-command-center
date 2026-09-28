@@ -9,6 +9,7 @@
  * Nothing here is an approval or a publication.
  */
 
+import type { ArticleAttestationBasis } from "@/types/content-article";
 import type { FactCheckItem } from "@/types/content-draft";
 
 /** The five block kinds, in the order they appear in an article. */
@@ -22,6 +23,8 @@ export type ArticleCheckStatement = {
   readonly field: string;
   /** The statement's text, verbatim: one sentence, heading, question or field value. */
   readonly text: string;
+  /** Present only on a sentence of an operator-attested paragraph (6.8b): its basis. */
+  readonly attested?: ArticleAttestationBasis;
 };
 
 /** A heading shown for orientation only: checked in an earlier part of the same block, never in this one. */
@@ -79,6 +82,8 @@ export type ArticleCheckCounts = {
   readonly unsupported: number;
   readonly unverifiable: number;
   readonly editorial: number;
+  /** Statements the check placed under ATTESTED (6.8b). Absent on results recorded before it. */
+  readonly attested?: number;
 };
 
 /** A completed check's structured result, built by the server from the run's text and evidence summary. */
@@ -106,6 +111,12 @@ export type ArticleCheckUnitVerdict = {
   readonly unsupported: readonly FactCheckItem[];
   readonly unverifiable: readonly FactCheckItem[];
   readonly editorial: readonly FactCheckItem[];
+  /**
+   * Operator-attested statements the check placed under ATTESTED with their
+   * basis as the note (6.8b): first-hand or opinion, not checked against the
+   * records. Absent on results recorded before 6.8b.
+   */
+  readonly attested?: readonly FactCheckItem[];
   /**
    * Notes the check wrote under EDITORIAL as `Observation: …`, about no
    * statement: never a classification, never evidence, never coverage.
@@ -197,6 +208,8 @@ export type ArticleCheckUnitView = {
   readonly label: string;
   readonly sha256: string;
   readonly statementCount: number;
+  /** Its statements from operator-attested paragraphs (6.8b); 0 for a format 1 unit. */
+  readonly attestedStatementCount: number;
   readonly bytes: number;
   /** The stored row for this unit of this version, or null when none was recorded. */
   readonly record: ArticleCheckUnitRecord | null;

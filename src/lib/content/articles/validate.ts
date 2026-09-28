@@ -34,16 +34,31 @@
  * is used only for comparison; the content keeps the author's text.
  *
  * Optional lists (`introduction`, `faqs`, `internalLinks`, a section's
- * `subsections`) may be omitted, which means empty; `null` is refused. Any
+ * `subsections`, `attestations`) may be omitted, which means empty; `null`
+ * is refused.
+ *
+ * ATTESTATIONS (Phase 6, checkpoint 6.8b). The operator may attest H2 and H3
+ * body paragraphs only — never metadata, the title, the excerpt, the lead,
+ * the introduction, a FAQ or the call to action — each named once by
+ * `<section or subsection id>/<paragraph index>` with a basis, `experience`
+ * or `opinion`. An attested paragraph states no number: no digit, no `%`,
+ * no currency symbol and no count word except "one" and "first". Attested
+ * paragraphs hold at most 40% of the body's sentences and at most half of
+ * any one H2 section's (its H3s included). The article's check must still
+ * find at least three supported statements; that is the approval's rule,
+ * since only a check can count them. Any
  * field the contract does not define is refused, which is also what keeps
  * ids, versions, statuses, actors, timestamps and provenance out of content.
  *
  * Pure.
  */
 
+import { sentencesOf } from "@/lib/content/articles/checks/units";
 import { isInternalPathSyntax } from "@/lib/content/articles/internal-links";
 import { validateSlug } from "@/lib/content/publications/proposal-rules";
 import type {
+  ArticleAttestation,
+  ArticleAttestationBasis,
   ArticleContent,
   ArticleFaq,
   ArticleInternalLink,
@@ -82,7 +97,30 @@ export const ARTICLE_LIMITS = {
   anchorText: 200,
   ctaTitle: 200,
   ctaBody: 1000,
+  attestations: 50,
 } as const;
+
+/** Attested paragraphs hold at most this share of the body's sentences (6.8b). */
+export const ATTESTED_BODY_SHARE = 0.4;
+/** …and at most this share of any one H2 section's, its H3s included. */
+export const ATTESTED_SECTION_SHARE = 0.5;
+
+export const ATTESTATION_BASES: readonly ArticleAttestationBasis[] = ["experience", "opinion"];
+
+/** `<section or subsection id>/<zero-based paragraph index>`. */
+const ATTESTATION_LOCATOR = /^([a-z0-9]+(?:-[a-z0-9]+)*)\/(0|[1-9][0-9]?)$/;
+
+/**
+ * What an attested paragraph may not state: a digit in any script, a percent
+ * sign, a currency symbol, or a count word — every cardinal and ordinal up
+ * to the thousands, multiples and fractions — except "one" and "first".
+ */
+const ATTESTED_NUMBER = /[\p{Nd}%\p{Sc}]|\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|twice|thrice|double|triple|quadruple|half|quarter|percent|per\s*cent)\b/iu;
+
+/** Whether an attested paragraph states a number the ban refuses. */
+export function statesAttestedNumber(text: string): boolean {
+  return ATTESTED_NUMBER.test(text);
+}
 
 export const SEARCH_INTENTS: readonly SearchIntent[] = ["informational", "commercial", "transactional", "navigational", "local", "mixed"];
 
@@ -106,11 +144,13 @@ const ARTICLE_KEYS = [
   "ctaTitle",
   "ctaBody",
   "topicDecision",
+  "attestations",
 ] as const;
 const SECTION_KEYS = ["id", "heading", "paragraphs", "subsections"] as const;
 const SUBSECTION_KEYS = ["id", "heading", "paragraphs"] as const;
 const FAQ_KEYS = ["question", "answer"] as const;
 const LINK_KEYS = ["path", "anchorText", "sectionId"] as const;
+const ATTESTATION_KEYS = ["locator", "basis"] as const;
 
 const SECTION_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
@@ -310,6 +350,62 @@ function slug(collector: Collector, value: unknown): string {
   return result.slug;
 }
 
+/** The paragraphs an attestation may name: every H2 and H3 body paragraph, by locator, with its H2. */
+function attestableParagraphs(sections: readonly ArticleSection[]): Map<string, { readonly text: string; readonly section: number }> {
+  const out = new Map<string, { readonly text: string; readonly section: number }>();
+  sections.forEach((s, index) => {
+    s.paragraphs.forEach((text, p) => out.set(`${s.id}/${p}`, { text, section: index }));
+    s.subsections.forEach((sub) => sub.paragraphs.forEach((text, p) => out.set(`${sub.id}/${p}`, { text, section: index })));
+  });
+  return out;
+}
+
+function sectionSentences(section: ArticleSection): number {
+  return [...section.paragraphs, ...section.subsections.flatMap((sub) => sub.paragraphs)].reduce((sum, p) => sum + sentencesOf(p).length, 0);
+}
+
+function attestations(collector: Collector, value: unknown, sections: readonly ArticleSection[]): ArticleAttestation[] {
+  const entries = collector.list(value, ARTICLE_LIMITS.attestations, "attestations", false).map((entry, index): ArticleAttestation => {
+    const path = `attestations[${index}]`;
+    const raw = collector.object(entry, path);
+    if (raw === null) return { locator: "", basis: "experience" };
+    collector.onlyKeys(raw, ATTESTATION_KEYS, path);
+    const locator = raw.locator;
+    if (locator === undefined || locator === null || locator === "") collector.add(join(path, "locator"), "required");
+    else if (typeof locator !== "string") collector.add(join(path, "locator"), "type");
+    else if (!ATTESTATION_LOCATOR.test(locator)) collector.add(join(path, "locator"), "format");
+    const basis = collector.oneOf(raw.basis, ATTESTATION_BASES, join(path, "basis"));
+    return { locator: typeof locator === "string" ? locator : "", basis };
+  });
+  duplicates(collector, entries, (a) => a.locator, (index) => `attestations[${index}].locator`);
+  if (entries.length === 0) return entries;
+
+  const paragraphs = attestableParagraphs(sections);
+  let attested = 0;
+  const bySection = new Map<number, number>();
+  const seen = new Set<string>();
+  entries.forEach((entry, index) => {
+    if (!ATTESTATION_LOCATOR.test(entry.locator)) return;
+    const target = paragraphs.get(entry.locator);
+    if (target === undefined) {
+      collector.add(`attestations[${index}].locator`, "attestation-target");
+      return;
+    }
+    if (statesAttestedNumber(target.text)) collector.add(`attestations[${index}]`, "attestation-number");
+    if (seen.has(entry.locator)) return;
+    seen.add(entry.locator);
+    const n = sentencesOf(target.text).length;
+    attested += n;
+    bySection.set(target.section, (bySection.get(target.section) ?? 0) + n);
+  });
+  const body = sections.reduce((sum, s) => sum + sectionSentences(s), 0);
+  if (body > 0 && attested > ATTESTED_BODY_SHARE * body) collector.add("attestations", "attestation-limit");
+  for (const [index, n] of bySection) {
+    if (n > ATTESTED_SECTION_SHARE * sectionSentences(sections[index])) collector.add(`sections[${index}]`, "attestation-limit");
+  }
+  return entries;
+}
+
 /**
  * Validates article content. Returns a fresh, validated copy — never the
  * caller's object — with every key in contract order and every optional
@@ -357,6 +453,7 @@ export function validateArticleContent(input: unknown): ArticleValidationResult 
     ctaTitle: collector.text(input.ctaTitle, ARTICLE_LIMITS.ctaTitle, "ctaTitle"),
     ctaBody: collector.text(input.ctaBody, ARTICLE_LIMITS.ctaBody, "ctaBody"),
     topicDecision: collector.oneOf(input.topicDecision, TOPIC_DECISIONS, "topicDecision"),
+    attestations: attestations(collector, input.attestations, sections),
   };
 
   if (collector.issues.length > 0) return { ok: false, issues: collector.issues };

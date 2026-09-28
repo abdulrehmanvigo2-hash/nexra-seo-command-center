@@ -43,7 +43,7 @@ function setup(options: { readonly content?: ValidatedArticleContent; readonly a
     approvals:
       options.approval === false
         ? []
-        : [{ id: APPROVAL_ID, articleId: ARTICLE_ID, articleVersion: 2, articleVersionId: VERSION_ID, contentSha256: sha256, unitCount: 4, unitsSha256: "e".repeat(64), approvedBy: APPROVER, approvedAt: APPROVED_AT }],
+        : [{ id: APPROVAL_ID, articleId: ARTICLE_ID, articleVersion: 2, articleVersionId: VERSION_ID, contentSha256: sha256, unitCount: 4, unitsSha256: "e".repeat(64), approvedBy: APPROVER, approvedAt: APPROVED_AT, attestedCount: 0, attestedConfirmed: false }],
   });
   const service = createArticleProposalService(memoryStores(db));
   const record = (overrides: Partial<{ projectId: string; articleId: string; articleVersion: number; destination: string; operatorId: string }> = {}) =>

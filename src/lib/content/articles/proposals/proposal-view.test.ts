@@ -46,7 +46,7 @@ async function stateOf(options: { readonly content?: ValidatedArticleContent; re
   const db = memoryDb({
     articles: [approvedArticle(approved ? options.article : { status: "drafting", approvedVersion: null, approvedBy: null, approvedAt: null, ...options.article })],
     versions: [{ id: VERSION_ID, articleId: ARTICLE_ID, version: 2, origin: "operator", canonicalContent: text, contentSha256: sha256, createdBy: OPERATOR, createdAt: APPROVED_AT }],
-    approvals: approved ? [{ id: APPROVAL_ID, articleId: ARTICLE_ID, articleVersion: 2, articleVersionId: VERSION_ID, contentSha256: sha256, unitCount: 4, unitsSha256: "e".repeat(64), approvedBy: APPROVER, approvedAt: APPROVED_AT }] : [],
+    approvals: approved ? [{ id: APPROVAL_ID, articleId: ARTICLE_ID, articleVersion: 2, articleVersionId: VERSION_ID, contentSha256: sha256, unitCount: 4, unitsSha256: "e".repeat(64), approvedBy: APPROVER, approvedAt: APPROVED_AT, attestedCount: 0, attestedConfirmed: false }] : [],
   });
   const service = createArticleProposalService(memoryStores(db));
   if (options.record) {

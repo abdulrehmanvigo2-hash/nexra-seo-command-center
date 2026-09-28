@@ -11,6 +11,11 @@
  * validator, with a message that says so. Select fields start empty: the
  * search intent and the topic decision are always the operator's choice.
  *
+ * Attested paragraphs (6.8b) are a list of `{locator, basis}` rows, each
+ * naming one H2 or H3 body paragraph from `attestableParagraphChoices`;
+ * none is ever added on the operator's behalf, and an empty list sends no
+ * `attestations` field at all, so the content stays format 1.
+ *
  * Pure.
  */
 
@@ -21,6 +26,7 @@ export type SubsectionForm = { id: string; heading: string; body: string };
 export type SectionForm = { id: string; heading: string; body: string; subsections: SubsectionForm[] };
 export type FaqForm = { question: string; answer: string };
 export type LinkForm = { path: string; anchorText: string; sectionId: string };
+export type AttestationForm = { locator: string; basis: string };
 
 export type ArticleForm = {
   topic: string;
@@ -40,6 +46,7 @@ export type ArticleForm = {
   ctaTitle: string;
   ctaBody: string;
   topicDecision: string;
+  attestations: AttestationForm[];
 };
 
 export function emptySection(): SectionForm {
@@ -65,7 +72,28 @@ export function emptyForm(): ArticleForm {
     ctaTitle: "",
     ctaBody: "",
     topicDecision: "",
+    attestations: [],
   };
+}
+
+/** One paragraph an operator may attest: its locator and how the editor names it. */
+export type AttestableParagraphChoice = { readonly locator: string; readonly label: string };
+
+function preview(text: string): string {
+  const characters = Array.from(text);
+  return characters.length > 60 ? `${characters.slice(0, 60).join("")}…` : text;
+}
+
+/** Every H2 and H3 body paragraph the form holds, by locator, in article order. Only those can be attested. */
+export function attestableParagraphChoices(form: ArticleForm): readonly AttestableParagraphChoice[] {
+  const choices: AttestableParagraphChoice[] = [];
+  for (const section of form.sections) {
+    lines(section.body).forEach((text, p) => choices.push({ locator: `${section.id}/${p}`, label: `${section.heading || section.id} ¶${p + 1}: ${preview(text)}` }));
+    for (const sub of section.subsections) {
+      lines(sub.body).forEach((text, p) => choices.push({ locator: `${sub.id}/${p}`, label: `${sub.heading || sub.id} ¶${p + 1}: ${preview(text)}` }));
+    }
+  }
+  return choices;
 }
 
 /** One entry per non-empty line, each exactly as typed. */
@@ -102,6 +130,7 @@ export function contentFromForm(form: ArticleForm): Record<string, unknown> {
     ctaTitle: form.ctaTitle,
     ctaBody: form.ctaBody,
     topicDecision: chosen(form.topicDecision),
+    ...(form.attestations.length > 0 ? { attestations: form.attestations.map((a) => ({ locator: a.locator, basis: chosen(a.basis) })) } : {}),
   };
 }
 
@@ -129,6 +158,7 @@ export function formFromContent(content: ValidatedArticleContent): ArticleForm {
     ctaTitle: content.ctaTitle,
     ctaBody: content.ctaBody,
     topicDecision: content.topicDecision,
+    attestations: content.attestations.map((a) => ({ locator: a.locator, basis: a.basis })),
   };
 }
 
@@ -155,6 +185,9 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   ctaTitle: "CTA title",
   ctaBody: "CTA body",
   topicDecision: "Topic decision",
+  attestations: "Attested paragraphs",
+  locator: "paragraph",
+  basis: "basis",
   sources: "Sources",
   id: "id",
   heading: "heading",
@@ -201,6 +234,9 @@ const ISSUE_TEXT: Readonly<Record<ArticleIssueCode, string>> = {
   "unknown-section": "names a section id the article does not have",
   "unsupported-field": "is not part of the article contract",
   "unsupported-value": "is not one of the allowed values",
+  "attestation-target": "names no H2 or H3 body paragraph of this article",
+  "attestation-number": "states a number (a digit, %, a currency symbol or a count word other than \"one\" or \"first\"); an attested paragraph may not",
+  "attestation-limit": "attests too much: at most 40% of the body's sentences and half of any one section's",
 };
 
 export function issueMessage(issue: ArticleIssue): string {

@@ -31,6 +31,15 @@
  *     finding for a person to review, not a failure: absence from the
  *     records is not falsehood.
  *
+ * ATTESTED (Phase 6, checkpoint 6.8b). A line under ATTESTED is a
+ * classification only when its statement is one the unit marks as
+ * operator-attested and its note names that statement's basis exactly
+ * (`experience` or `opinion`). An ATTESTED line on an unmarked statement, or
+ * with another basis, is an invalid line, so the answer is
+ * `coverage-incomplete`. An attested statement never counts against a unit,
+ * as an editorial one does not; a marked statement placed under any other
+ * heading is judged as that heading says.
+ *
  * `failed` is never a content verdict. It is recorded only when the check
  * itself did not produce one: the run failed, was cancelled, answered
  * outside the fixed form, or did not classify each statement exactly once.
@@ -42,8 +51,10 @@
  */
 
 import { tagNamesRecord, type FactCheckEvidence, type ParsedFactCheckItem, type ParsedFactCheckOutput } from "@/lib/content/drafts/parse-fact-check-output";
+import type { ArticleAttestationBasis } from "@/types/content-article";
 import type {
   ArticleCheckCounts,
+  ArticleCheckStatement,
   ArticleCheckCoverageDefect,
   ArticleCheckFailureReason,
   ArticleCheckState,
@@ -76,8 +87,14 @@ const MAX_INVALID_LINE_LENGTH = 120;
 /** An unnumbered EDITORIAL line that says, in its own first word, that it is an observation. */
 const OBSERVATION = /^Observation\s*:\s*\S/;
 
-type Group = "supported" | "partial" | "unsupported" | "unverifiable" | "editorial";
-const GROUPS: readonly Group[] = ["supported", "partial", "unsupported", "unverifiable", "editorial"];
+type Group = "supported" | "partial" | "unsupported" | "unverifiable" | "editorial" | "attested";
+const GROUPS: readonly Group[] = ["supported", "partial", "unsupported", "unverifiable", "editorial", "attested"];
+
+/** An ATTESTED line's basis, as its note names it: `experience` or `opinion`, nothing else. */
+function basisOfNote(note: string | null): ArticleAttestationBasis | null {
+  const word = (note ?? "").trim().replace(/[.!]+$/, "").toLowerCase();
+  return word === "experience" || word === "opinion" ? word : null;
+}
 
 export type StatementCoverage = {
   /** Each group's classifications of S1 … Sn, in answer order. */
@@ -98,15 +115,22 @@ export type StatementCoverage = {
  * invalid lines, and whether the classifications cover S1 … Sn exactly
  * once. Nothing is discarded: every line lands in exactly one of the three.
  */
-export function statementCoverage(output: Pick<ParsedFactCheckOutput, Group>, statementCount: number): StatementCoverage {
-  const classified: Record<Group, ParsedFactCheckItem[]> = { supported: [], partial: [], unsupported: [], unverifiable: [], editorial: [] };
+export function statementCoverage(
+  output: Pick<ParsedFactCheckOutput, Exclude<Group, "attested">> & { readonly attested?: readonly ParsedFactCheckItem[] },
+  statementCount: number,
+  /** Each statement's attestation basis, S1 first; undefined where a statement is not attested. */
+  bases: readonly (ArticleAttestationBasis | undefined)[] = [],
+): StatementCoverage {
+  const classified: Record<Group, ParsedFactCheckItem[]> = { supported: [], partial: [], unsupported: [], unverifiable: [], editorial: [], attested: [] };
   const observations: ParsedFactCheckItem[] = [];
   const invalid: string[] = [];
   const seen = new Map<number, number>();
   for (const group of GROUPS) {
-    for (const item of output[group]) {
+    for (const item of output[group] ?? []) {
       const n = statementNumberOf(item.text);
-      if (n !== null && n <= statementCount) {
+      if (group === "attested" && (n === null || n > statementCount || bases[n - 1] === undefined || basisOfNote(item.note) !== bases[n - 1])) {
+        invalid.push(item.text);
+      } else if (n !== null && n <= statementCount) {
         classified[group].push(item);
         seen.set(n, (seen.get(n) ?? 0) + 1);
       } else if (n === null && group === "editorial" && OBSERVATION.test(item.text.trim())) {
@@ -154,13 +178,18 @@ export function buildUnitVerdict(input: {
   readonly output: ParsedFactCheckOutput;
   readonly evidence: FactCheckEvidence;
   readonly statementCount: number;
+  /** The unit's statements, for their attestation bases (6.8b); an unattested unit may omit them. */
+  readonly statements?: readonly Pick<ArticleCheckStatement, "n" | "attested">[];
   readonly checkedByRunId: string;
   readonly checkedAt: string;
   readonly recordedBy: string;
   readonly recordedAt: string;
 }): ArticleCheckUnitResult {
   const { output, evidence } = input;
-  const coverage = statementCoverage(output, input.statementCount);
+  const bases: (ArticleAttestationBasis | undefined)[] = [];
+  for (const statement of input.statements ?? []) bases[statement.n - 1] = statement.attested;
+  const attestedUnit = bases.some((basis) => basis !== undefined);
+  const coverage = statementCoverage(output, input.statementCount, bases);
   if (!coverage.complete) {
     const defect: ArticleCheckCoverageDefect = {
       missingStatements: coverage.missing,
@@ -197,6 +226,8 @@ export function buildUnitVerdict(input: {
   const editorial: FactCheckItem[] = lines.editorial.map((item) => ({ text: item.text, evidence: null, note: item.note }));
   // An observation is never evidence: any tag written on one is not kept.
   const observations: FactCheckItem[] = coverage.observations.map((item) => ({ text: item.text, evidence: null, note: item.note }));
+  // An attested line is the operator's word, never evidence: its note is its basis.
+  const attested: FactCheckItem[] = lines.attested.map((item) => ({ text: item.text, evidence: null, note: basisOfNote(item.note) }));
 
   const counts: ArticleCheckCounts = {
     supported: supported.length,
@@ -204,12 +235,13 @@ export function buildUnitVerdict(input: {
     unsupported: unsupported.length,
     unverifiable: unverifiable.length,
     editorial: editorial.length,
+    ...(attestedUnit ? { attested: attested.length } : {}),
   };
   const verdict: ArticleCheckUnitVerdict = {
     status: deriveUnitStatus({ partial, unsupported, unverifiable, coverageComplete: true }),
     counts,
     statementCount: input.statementCount,
-    classifiedCount: supported.length + partial.length + unsupported.length + unverifiable.length + editorial.length,
+    classifiedCount: supported.length + partial.length + unsupported.length + unverifiable.length + editorial.length + attested.length,
     coverageComplete: true,
     missingStatements: [],
     duplicateStatements: [],
@@ -220,6 +252,7 @@ export function buildUnitVerdict(input: {
     unsupported,
     unverifiable,
     editorial,
+    ...(attestedUnit ? { attested } : {}),
     observations,
     crawlId: evidence.crawlId,
     searchWindow: evidence.searchWindow,
@@ -302,10 +335,12 @@ export function readUnitResult(value: unknown): ArticleCheckUnitResult | null {
   const duplicateStatements = numberList(r.duplicateStatements);
   // Results recorded before observations were kept apart carry none; they read back as recorded.
   const observations = r.observations === undefined ? undefined : items(r.observations);
+  // Results recorded before 6.8b, or of a unit with no attested statement, carry no attested list.
+  const attested = r.attested === undefined ? undefined : items(r.attested);
   if (
     supported === null || partial === null || unsupported === null || unverifiable === null || editorial === null || counts === null ||
     statementCount === null || classifiedCount === null || unnumberedLines === null || missingStatements === null || duplicateStatements === null ||
-    observations === null || typeof r.coverageComplete !== "boolean" || typeof r.summary !== "string" ||
+    observations === null || attested === null || typeof r.coverageComplete !== "boolean" || typeof r.summary !== "string" ||
     typeof r.crawlId !== "string" || typeof r.checkedAt !== "string"
   ) {
     return null;
@@ -317,10 +352,18 @@ export function readUnitResult(value: unknown): ArticleCheckUnitResult | null {
     unverifiable: count(counts.unverifiable),
     editorial: count(counts.editorial),
   };
-  if (c.supported === null || c.partial === null || c.unsupported === null || c.unverifiable === null || c.editorial === null) return null;
+  const attestedCount = counts.attested === undefined ? undefined : count(counts.attested);
+  if (c.supported === null || c.partial === null || c.unsupported === null || c.unverifiable === null || c.editorial === null || attestedCount === null) return null;
   return {
     status: r.status,
-    counts: { supported: c.supported, partial: c.partial, unsupported: c.unsupported, unverifiable: c.unverifiable, editorial: c.editorial },
+    counts: {
+      supported: c.supported,
+      partial: c.partial,
+      unsupported: c.unsupported,
+      unverifiable: c.unverifiable,
+      editorial: c.editorial,
+      ...(attestedCount === undefined ? {} : { attested: attestedCount }),
+    },
     statementCount,
     classifiedCount,
     coverageComplete: r.coverageComplete,
@@ -333,6 +376,7 @@ export function readUnitResult(value: unknown): ArticleCheckUnitResult | null {
     unsupported,
     unverifiable,
     editorial,
+    ...(attested === undefined ? {} : { attested }),
     ...(observations === undefined ? {} : { observations }),
     crawlId: r.crawlId,
     searchWindow: typeof r.searchWindow === "string" ? r.searchWindow : null,

@@ -175,9 +175,9 @@ begin
   perform t.ok(not has_table_privilege('authenticated', 'public.nexra_article_approvals', 'select,insert,update,delete'), 'authenticated: no table access');
   perform t.ok(has_table_privilege('service_role', 'public.nexra_article_approvals', 'select'), 'service_role: select');
   perform t.ok(not has_table_privilege('service_role', 'public.nexra_article_approvals', 'insert,update,delete,truncate'), 'service_role: no direct write');
-  perform t.ok(has_function_privilege('service_role', 'public.nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid)', 'execute'), 'service_role: execute approve');
-  perform t.ok(not has_function_privilege('anon', 'public.nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid)', 'execute'), 'anon: no execute');
-  perform t.ok(not has_function_privilege('authenticated', 'public.nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid)', 'execute'), 'authenticated: no execute');
+  perform t.ok(has_function_privilege('service_role', 'public.nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid,boolean)', 'execute'), 'service_role: execute approve');
+  perform t.ok(not has_function_privilege('anon', 'public.nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid,boolean)', 'execute'), 'anon: no execute');
+  perform t.ok(not has_function_privilege('authenticated', 'public.nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid,boolean)', 'execute'), 'authenticated: no execute');
   perform t.ok(not has_table_privilege('service_role', 'public.nexra_articles', 'update,insert,delete'), 'service_role still cannot write articles directly');
   -- The authorized security definer article functions: C2 create/save, C4 record,
   -- C5 approve, and (since 20260925120000) C6 propose/withdraw. Any other is refused.
@@ -190,7 +190,7 @@ begin
              'nexra_agent_task_handoff_link(text,uuid,uuid,uuid)','nexra_agent_task_handoff_request(text,uuid,uuid)',
              'nexra_agent_task_set_owner(text,uuid,text,uuid)','nexra_agent_task_set_priority(text,uuid,text,uuid,uuid)','nexra_agent_task_set_status(text,uuid,text,uuid)',
              'nexra_approval_consume(text,uuid,text,uuid,text,uuid)','nexra_approval_record(text,text,uuid,text,text,uuid,integer)',
-             'nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid)',
+             'nexra_article_approve_version(text,uuid,smallint,uuid,text,jsonb,text,uuid,boolean)',
              'nexra_article_check_unit_record(text,uuid,smallint,uuid,smallint,text,text,smallint,smallint,smallint,text,text,jsonb,uuid,uuid)',
              'nexra_article_create(text,uuid,text,text,jsonb,uuid)',
              'nexra_article_publication_propose(text,uuid,smallint,uuid,text,uuid,text,text,text,text,uuid)',

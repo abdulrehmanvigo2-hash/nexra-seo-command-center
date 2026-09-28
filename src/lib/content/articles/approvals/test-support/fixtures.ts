@@ -113,6 +113,8 @@ export function memoryApprovalStore(checks: MemoryCheckStore): MemoryApprovalSto
         unitsSha256: digest,
         approvedBy: input.approvedBy,
         approvedAt,
+        attestedCount: 0,
+        attestedConfirmed: false,
       };
       approvals.push(approval);
       const next: Article = { ...parent, status: "approved", approvedVersion: input.articleVersion, approvedBy: input.approvedBy, approvedAt, updatedAt: approvedAt };

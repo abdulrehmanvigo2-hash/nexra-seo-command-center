@@ -63,6 +63,21 @@ export type ArticleInternalLink = {
   readonly sectionId: string;
 };
 
+/**
+ * Why the operator attests a paragraph (Phase 6, checkpoint 6.8b): first-hand
+ * client work, or the agency's own view. Neither is a checkable fact.
+ */
+export type ArticleAttestationBasis = "experience" | "opinion";
+
+/**
+ * One operator-attested paragraph: an H2 or H3 body paragraph named by its
+ * section or subsection id and its zero-based position, `<id>/<n>`.
+ */
+export type ArticleAttestation = {
+  readonly locator: string;
+  readonly basis: ArticleAttestationBasis;
+};
+
 /** The article's editorial content, and nothing else. */
 export type ArticleContent = {
   readonly topic: string;
@@ -88,6 +103,12 @@ export type ArticleContent = {
   readonly ctaTitle: string;
   readonly ctaBody: string;
   readonly topicDecision: ArticleTopicDecision;
+  /**
+   * The body paragraphs the operator attests (6.8b), in the author's order.
+   * Empty when there are none — and then the canonical text is
+   * `nexra-article-content/1`, byte for byte as before.
+   */
+  readonly attestations: readonly ArticleAttestation[];
 };
 
 declare const validatedArticle: unique symbol;
@@ -129,7 +150,13 @@ export type ArticleIssueCode =
   /** A field the contract does not define. */
   | "unsupported-field"
   /** A value outside a fixed set. */
-  | "unsupported-value";
+  | "unsupported-value"
+  /** An attestation that names no H2 or H3 body paragraph of this article. */
+  | "attestation-target"
+  /** An attested paragraph that states a number: a digit, %, a currency symbol or a count word other than "one" or "first". */
+  | "attestation-number"
+  /** Attested paragraphs over 40% of the body's sentences, or over half of one section's. */
+  | "attestation-limit";
 
 export type ArticleIssue = {
   /** Where the problem is, e.g. `sections[1].subsections[0].heading`. */
