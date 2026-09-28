@@ -1799,6 +1799,19 @@ allowed and ask for explicit confirmation. It is labelled "PROPOSAL ONLY —
 NOT PUBLISHED". The draft proposal section's `slug-taken` message now
 names both a draft's and an article's active proposal.
 
+### The full article renderer (Phase 6, checkpoint 6.9b)
+
+`src/lib/content/articles/website/` renders an approved article version (format 1 or 2) and its C5 approval into
+the three files one nexra-ai pull request carries (`docs/website-renderer-6.9.md`, decisions D1–D7):
+- the new `app/blog/<slug>/page.tsx`;
+- `lib/blog.ts` with one record appended;
+- the live article with one link in its revive section.
+
+Its template is `nexra-ai-blog-tsx/2`, pinned at `1a688bd`, with the modified files pinned by SHA-256. Output is
+deterministic and hashed. Content enters only as escaped string literals. Anything incomplete or invalid is
+refused with a typed code and no partial output. A new article's keywords may not repeat the live article's.
+Nothing is written anywhere; 6.11 is the write.
+
 ### Operator-attested paragraphs (Phase 6, checkpoint 6.8b; migration `20261010120000`, applied and recorded 28 Sep)
 
 The article check can pass only what the project's records hold, so a
