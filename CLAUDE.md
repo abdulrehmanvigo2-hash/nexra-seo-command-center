@@ -8,7 +8,8 @@ project. Read it before writing any code.
 follow-up (the agent header's figures labelled Modelled, the fake sync button removed) are merged,
 deployed and browser checked; the Command Center over stored data (6.3), Reports on read (6.4), the second
 grounded tasks, batch 1 (6.5), and the scoped V1 (6.6) are merged and deployed (browser confirmed); the queue
-controls on agent pages (6.6b) are on their branch. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
+controls on agent pages (6.6b) are merged, and the nine second tasks were run live once each through them
+(eight completed; the Writer's correctly refused to queue). Phase 5 (Content Studio, the article positive path and hardening → production ready) is
 complete (checkpoints 5.1–5.7, PR #45–#49; see the *PRODUCTION READY* block in §14): the observed
 Content Studio (5.2) is merged and deployed; the article positive path (5.3) is recorded live — one
 verification article checked, approved and record-proposed, nothing published; the delete and
@@ -47,8 +48,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `04be98aee04104c178ee0579b9c0c260baac748b` (merge of PR #55,
-`claude/phase6-scoped-v1`, the scoped-down V1; preceded by PR #54 `1b2c2cbd…` (second grounded tasks,
+GitHub `master`: `6764326210b3dbf9946f79ac6f62bc5c635a4431` (merge of PR #56,
+`claude/phase6-queue-controls`, the queue controls on agent pages; preceded by PR #55 `04be98ae…` (the
+scoped-down V1), PR #54 `1b2c2cbd…` (second grounded tasks,
 batch 1), PR #53 `a2e3cdc1…` (Reports on read), PR #52 `c8ac155c…` (the Command Center over stored
 data), PR #51 `17ee0a64…`
 (the 6.2 follow-up), PR #50 `b2b7da00…` (the per-agent
@@ -77,6 +79,10 @@ crawl-review bound), PR #29
 PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs reconciliation), PR #22 `2e8116ce…` (intake bound), PR #21
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
+
+Production deployment for `67643262` (PR #56, 28 Sep): **not read** — the Vercel API refuses this session
+(403); `master` CI run `36407164456` passed at `67643262`. The operator's live runs from the agent pages'
+*Queue a review* and Run Now (28 Sep 10:39–11:02 UTC, 6.6b below) show the build serving it.
 
 Production deployment for `04be98ae` (PR #55, 28 Sep ~09:42 UTC): **confirmed by the operator in the
 browser** — Reports on read, the Command Center tiles and no "Run agent sync" on `/agents` are live on
@@ -1045,8 +1051,39 @@ nothing." Refusals, the daily cap (429, `DAILY_CAP_MESSAGE`) included, use the r
 (`queueRefusal`). Tests: `src/lib/agent-runs/queue-control.test.ts` (8) and two Run Now tests in
 `run-history-view.test.ts`; pins updated deliberately —
 the agent page's Run History mount (`run-history-view.test.ts`) and its live section
-(`modelled-screens.test.ts`). No schema, route, instruction or run. On `claude/phase6-queue-controls`; not
-merged.
+(`modelled-screens.test.ts`). No schema, route, instruction or run. PR #56 merged as `67643262…`; `master` CI
+`36407164456` green; deployment id not read (Vercel 403).
+
+**Phase 6 checkpoint 6.6b live verification (28 Sep, operator-run once each from the agent pages' *Queue a
+review* and Run Now, no retry; verified read-only):** eight runs, all on project `nexra-agency`, all
+**completed, 1 attempt (1 attempt row), `claude-opus-5`, executor `ai`, grounded**; crawl tasks over crawl
+`75d1bfbe…`, Search Console tasks over `30d`.
+
+| Run | Task (agent) | Characters | Structure | Evidence recorded |
+|---|---|---|---|---|
+| `855262b5…` | `finding-history-review` (Technical SEO) | 1,008 | held: COVERAGE, 3 findings, NEXT | `crawl` + `findings` (rule v3, 5) + `findingHistory` (3 compared, 1 under other rules, 3 not recorded) |
+| `b91d9a29…` | `page-query-alignment-review` (On-Page SEO) | 1,074 | held | `crawl` + `pagePairs` (10 pairs, 3 pages, window ending 24 Sep) |
+| `522e8074…` | `internal-link-review` (Authority & Backlink) | 1,089 | one stray "Note:" paragraph (partial crawl, no backlinks) | `crawl-links` (46 edges) + `internalLinks` (5 pages, 31 internal edges, 1 with no inbound) |
+| `cabd78b0…` | `schema-entity-review` (AI Visibility) | 1,192 | one stray "Note:" paragraph (types only; the apex homepage) | `crawl` (5 pages) |
+| `a7471250…` | `keyword-opportunity-review` (Keyword & Search Intent) | 969 | held | `search-console` + history (insufficient) + query pages + keywords (9) + `curatedKeywords` (2 read, 1 observed, 0 withheld) |
+| `c1c624ec…` | `learning-review` (Analytics & Learning) | 951 | one stray unlabelled paragraph ("Previous-window … not established") between the one finding and LEARNING | `search-console` (analytics) + history (insufficient) + query pages + `learnings` (2: `17623686…`, `7711726c…`) |
+| `951edae8…` | `content-refresh-review` (Content Strategist) | 1,085 | held | `crawl` + `pagePairs` (10 pairs, 3 pages) |
+| `8ca9c9f8…` | `competitor-page-gap-review` (Market & Competitor Intelligence) | **1,247** | one stray "Note:" paragraph (competitor readings not established) | `competitor-comparison` (5 + 5 pages; competitor crawl `f4f5fda7…`, 2vautomation.ai) |
+
+- **Length:** seven of eight under the 1,200 soft target; `8ca9c9f8…` 47 over; all far under the worker's
+  2,000 ceiling (range 951–1,247).
+- **Structure:** four held their fixed order exactly; four added one paragraph outside it, each stating
+  what the evidence lacks — the 4.6 extra-paragraph pattern returning despite the `NO_OTHER_PARAGRAPH`
+  sentence. Not fixed; recorded for a later checkpoint (no instruction change here).
+- **Content:** the claims stay inside the scoped V1 — "no inbound link from the fetched pages", never
+  orphaned; type names only; "not observed in stored rows … unknown, not zero"; "overlap to review, not
+  cannibalisation"; no ranking, traffic or backlink claim.
+- **Writer `article-revision-draft`:** correctly refused at queue time — the article's current Version 4
+  has no unit whose recorded check needs review (all 4 passed), so the chooser offers none and Queue stays
+  disabled; no run was created.
+- **Totals after:** 62 runs, 63 attempts (from 54 and 55; these eight are the only runs on 28 Sep after
+  the 5.3 check runs). All eight 6.5/6.6 second tasks that
+  can be queued today have one completed live run; the Writer's waits for a needs-review unit.
 
 **Findings recorded for later phases:**
 
@@ -1161,7 +1198,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 checkpoint 6.6b on `claude/phase6-queue-controls` (above); each further
+**Current work:** Phase 6 checkpoint 6.6b merged (PR #56) and verified live (above); next 6.7; each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1810,7 +1847,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) on `claude/phase6-queue-controls`, not merged; then 6.7–6.12 in order, the one external write (6.11) last |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); then 6.7–6.12 in order, the one external write (6.11) last |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1855,8 +1892,8 @@ production-ready criterion from the audit (§J), with its evidence:
 Next step: the Phase 6 design checkpoint (6.1), under its own explicit approval.
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.6b
-on `claude/phase6-queue-controls` (6.2 through 6.6 merged, PR #50–#55). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6, next checkpoint 6.7
+(6.2 through 6.6b merged, PR #50–#56). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
 complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3, Phase 4 and Phase 5 are complete. Phase 2, Project Manager loop closure: the handoff
