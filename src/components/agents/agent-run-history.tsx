@@ -7,11 +7,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/field";
 import { Panel, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { runHistoryEmptyState, runHistoryListUrl } from "@/lib/agent-runs/run-history-view";
 import { getTaskType } from "@/lib/agent-runs/task-types";
 import { outputProvenance } from "@/lib/crawl/review-request";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import { AGENT_NAMES, AGENT_REGISTRY } from "@/lib/mock/agents/registry";
 import type { ProjectOption } from "@/lib/projects/selection";
+import type { AgentId } from "@/types/seo";
 import type {
   AgentRun,
   AgentRunAttempt,
@@ -102,22 +104,31 @@ function upstreamRunId(run: AgentRun): string | null {
   return typeof run.input.sourceRunId === "string" ? run.input.sourceRunId : null;
 }
 
-export function AgentRunHistory({ projects }: { projects: readonly ProjectOption[] }) {
+/**
+ * The stored runs of one project, newest first. On AI Agents the operator
+ * picks any agent; on an agent's page `presetAgentId` fixes the list to that
+ * agent and the agent picker is not shown (checkpoint 6.2). Either way it
+ * reads the existing list route and changes nothing.
+ */
+export function AgentRunHistory({
+  projects,
+  presetAgentId,
+}: {
+  projects: readonly ProjectOption[];
+  presetAgentId?: AgentId;
+}) {
   const [projectId, setProjectId] = useState<string>(
     () => projects.find((project) => project.measured)?.id ?? projects[0]?.id ?? "",
   );
-  const [agentId, setAgentId] = useState<string>("");
+  const [pickedAgentId, setAgentId] = useState<string>("");
+  const agentId: string = presetAgentId ?? pickedAgentId;
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [refreshKey, setRefreshKey] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [attempts, setAttempts] = useState<Record<string, AttemptsLoad>>({});
 
   const listUrl = useCallback(
-    (offset: number) => {
-      const params = new URLSearchParams({ project: projectId, limit: String(LIST_LIMIT), offset: String(offset) });
-      if (agentId) params.set("agent", agentId);
-      return `/api/agent-runs?${params.toString()}`;
-    },
+    (offset: number) => runHistoryListUrl({ projectId, agentId, limit: LIST_LIMIT, offset }),
     [projectId, agentId],
   );
 
@@ -198,7 +209,11 @@ export function AgentRunHistory({ projects }: { projects: readonly ProjectOption
       <PanelHeader
         eyebrow="Agent runtime"
         title="Run History"
-        description="Tasks the agents have been asked to run on a project, how each ended, and every attempt behind it."
+        description={
+          presetAgentId
+            ? `Tasks ${AGENT_NAMES[presetAgentId]} has been asked to run on a project, how each ended, and every attempt behind it.`
+            : "Tasks the agents have been asked to run on a project, how each ended, and every attempt behind it."
+        }
         actions={
           <>
             <Badge tone="accent" title="Read from this product's stored agent runs and attempts. Not fixture data.">
@@ -221,18 +236,25 @@ export function AgentRunHistory({ projects }: { projects: readonly ProjectOption
             options={projects.map((project) => ({ value: project.id, label: project.name }))}
           />
         </label>
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11.5px] text-fg-subtle sm:max-w-64">
-          Agent
-          <Select
-            size="sm"
-            value={agentId}
-            onChange={(event) => setAgentId(event.target.value)}
-            options={[
-              { value: "", label: "All agents" },
-              ...AGENT_REGISTRY.map((agent) => ({ value: agent.id, label: agent.name })),
-            ]}
-          />
-        </label>
+        {presetAgentId ? (
+          <p className="flex min-w-0 flex-col gap-1 text-[11.5px] text-fg-subtle">
+            Agent
+            <span className="text-[12.5px] font-medium text-fg">{AGENT_NAMES[presetAgentId]}</span>
+          </p>
+        ) : (
+          <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11.5px] text-fg-subtle sm:max-w-64">
+            Agent
+            <Select
+              size="sm"
+              value={pickedAgentId}
+              onChange={(event) => setAgentId(event.target.value)}
+              options={[
+                { value: "", label: "All agents" },
+                ...AGENT_REGISTRY.map((agent) => ({ value: agent.id, label: agent.name })),
+              ]}
+            />
+          </label>
+        )}
       </div>
 
       {!projectId ? (
@@ -259,8 +281,11 @@ export function AgentRunHistory({ projects }: { projects: readonly ProjectOption
       ) : load.runs.length === 0 ? (
         <EmptyState
           icon="inbox"
-          title="No runs yet"
-          description={`No agent task has been run on ${projectName}${agentId ? ` by ${AGENT_NAMES[agentId as keyof typeof AGENT_NAMES]}` : ""}.`}
+          {...runHistoryEmptyState({
+            projectName,
+            presetAgentName: presetAgentId ? AGENT_NAMES[presetAgentId] : null,
+            pickedAgentName: pickedAgentId ? AGENT_NAMES[pickedAgentId as keyof typeof AGENT_NAMES] : null,
+          })}
         />
       ) : (
         <>

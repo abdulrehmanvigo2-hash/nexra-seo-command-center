@@ -12,6 +12,8 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { getAgentDetail } from "@/lib/mock/agents";
 import type { ProjectOption } from "@/lib/projects/selection";
 import { LiveTasksPanel } from "@/components/agent-tasks/live-tasks-panel";
+import { AgentRunHistory } from "@/components/agents/agent-run-history";
+import { ModelledSection } from "@/components/ui/modelled-badge";
 import { AgentAssignments } from "@/components/agents/agent-assignments";
 import { AgentBlockers } from "@/components/agents/agent-blockers";
 import { AgentBriefPanel } from "@/components/agents/agent-brief";
@@ -158,6 +160,14 @@ export function AgentWorkspace({
       >
         {tab === "overview" && (
           <>
+            {/*
+              Live (checkpoint 6.2): this agent's stored runs, read from the
+              existing list route preset to the agent. Every other section on
+              this page is fixture data and carries its own Modelled label.
+            */}
+            <AgentRunHistory projects={projects} presetAgentId={detail.agent.id} />
+
+            <ModelledSection name="Operating state">
             <section className="space-y-3">
               <SectionHeader
                 as="h3"
@@ -192,71 +202,86 @@ export function AgentWorkspace({
                 </div>
               </Panel>
             </section>
+            </ModelledSection>
 
-            <AgentPerformancePanel
-              performance={detail.performance}
-              rangeCaption={detail.rangeCaption}
-              outputLabel={detail.agent.outputLabel}
-            />
+            <ModelledSection name="Performance">
+              <AgentPerformancePanel
+                performance={detail.performance}
+                rangeCaption={detail.rangeCaption}
+                outputLabel={detail.agent.outputLabel}
+              />
+            </ModelledSection>
 
             <div className="grid gap-4 xl:grid-cols-2">
-              <AgentAssignments
-                assignments={detail.assignments}
-                agentName={configuration.displayName}
-                responsibility={detail.agent.responsibility}
-              />
-              <AgentTasks
-                tasks={detail.tasks}
-                statuses={taskStatuses}
-                onStatusChange={changeTaskStatus}
-                referenceIso={detail.generatedAt}
-                hideAgent
-                preview
-                onViewAll={() => setTab("tasks")}
-                title="Assigned Tasks"
-                description={`What ${configuration.displayName} is working on across its projects.`}
-              />
+              <ModelledSection name="Projects">
+                <AgentAssignments
+                  assignments={detail.assignments}
+                  agentName={configuration.displayName}
+                  responsibility={detail.agent.responsibility}
+                />
+              </ModelledSection>
+              <ModelledSection name="Assigned tasks">
+                <AgentTasks
+                  tasks={detail.tasks}
+                  statuses={taskStatuses}
+                  onStatusChange={changeTaskStatus}
+                  referenceIso={detail.generatedAt}
+                  hideAgent
+                  preview
+                  onViewAll={() => setTab("tasks")}
+                  title="Assigned Tasks"
+                  description={`What ${configuration.displayName} is working on across its projects.`}
+                />
+              </ModelledSection>
             </div>
 
             <div className="grid gap-4 xl:grid-cols-2">
-              <AgentBlockers
-                blockers={detail.blockers}
-                resolutions={resolutions}
-                onResolve={resolveBlocker}
-                referenceIso={detail.generatedAt}
-                preview
-                onViewAll={() => setTab("blockers")}
-                title="Blockers"
-                description={`What is stopping ${configuration.displayName} from moving work forward.`}
-              />
-              <AgentHandoffs
-                handoffs={handoffs}
-                statuses={handoffStatuses}
-                onStatusChange={changeHandoffStatus}
-                referenceIso={detail.generatedAt}
-                preview
-                onViewAll={() => setTab("handoffs")}
-                title="Handoffs"
-                description="Work arriving from the previous stage and leaving for the next."
-              />
+              <ModelledSection name="Blockers">
+                <AgentBlockers
+                  blockers={detail.blockers}
+                  resolutions={resolutions}
+                  onResolve={resolveBlocker}
+                  referenceIso={detail.generatedAt}
+                  preview
+                  onViewAll={() => setTab("blockers")}
+                  title="Blockers"
+                  description={`What is stopping ${configuration.displayName} from moving work forward.`}
+                />
+              </ModelledSection>
+              <ModelledSection name="Handoffs">
+                <AgentHandoffs
+                  handoffs={handoffs}
+                  statuses={handoffStatuses}
+                  onStatusChange={changeHandoffStatus}
+                  referenceIso={detail.generatedAt}
+                  preview
+                  onViewAll={() => setTab("handoffs")}
+                  title="Handoffs"
+                  description="Work arriving from the previous stage and leaving for the next."
+                />
+              </ModelledSection>
             </div>
           </>
         )}
 
         {tab === "performance" && (
-          <AgentPerformancePanel
-            performance={detail.performance}
-            rangeCaption={detail.rangeCaption}
-            outputLabel={detail.agent.outputLabel}
-          />
+          <ModelledSection name="Performance">
+            <AgentPerformancePanel
+              performance={detail.performance}
+              rangeCaption={detail.rangeCaption}
+              outputLabel={detail.agent.outputLabel}
+            />
+          </ModelledSection>
         )}
 
         {tab === "projects" && (
-          <AgentAssignments
-            assignments={detail.assignments}
-            agentName={configuration.displayName}
-            responsibility={detail.agent.responsibility}
-          />
+          <ModelledSection name="Projects">
+            <AgentAssignments
+              assignments={detail.assignments}
+              agentName={configuration.displayName}
+              responsibility={detail.agent.responsibility}
+            />
+          </ModelledSection>
         )}
 
         {/*
@@ -267,71 +292,84 @@ export function AgentWorkspace({
         */}
         {tab === "tasks" && agentId === "project-manager" && <LiveTasksPanel projects={projects} />}
         {tab === "tasks" && (
-          <AgentTasks
-            tasks={detail.tasks}
-            statuses={taskStatuses}
-            onStatusChange={changeTaskStatus}
-            referenceIso={detail.generatedAt}
-            hideAgent
-            title="Assigned Tasks"
-            description={`Modelled: every fixture task ${configuration.displayName} owns, across the modelled projects. Not the live tasks above.`}
-          />
+          <ModelledSection name="Assigned tasks">
+            <AgentTasks
+              tasks={detail.tasks}
+              statuses={taskStatuses}
+              onStatusChange={changeTaskStatus}
+              referenceIso={detail.generatedAt}
+              hideAgent
+              title="Assigned Tasks"
+              description={`Modelled: every fixture task ${configuration.displayName} owns, across the modelled projects. Not the live tasks above.`}
+            />
+          </ModelledSection>
         )}
 
         {tab === "outputs" && (
-          <AgentOutputs
-            outputs={detail.outputs}
-            referenceIso={detail.generatedAt}
-            totalVolume={detail.listItem.completedOutputs}
-            outputLabel={detail.agent.outputLabel}
-          />
+          <ModelledSection name="Outputs">
+            <AgentOutputs
+              outputs={detail.outputs}
+              referenceIso={detail.generatedAt}
+              totalVolume={detail.listItem.completedOutputs}
+              outputLabel={detail.agent.outputLabel}
+            />
+          </ModelledSection>
         )}
 
         {tab === "handoffs" && (
           <div className="grid gap-4 xl:grid-cols-2">
-            <AgentHandoffs
-              handoffs={detail.incoming}
-              statuses={handoffStatuses}
-              onStatusChange={changeHandoffStatus}
-              referenceIso={detail.generatedAt}
-              title="Incoming"
-              description={`Work arriving for ${configuration.displayName} from the previous stage.`}
-            />
-            <AgentHandoffs
-              handoffs={detail.outgoing}
-              statuses={handoffStatuses}
-              onStatusChange={changeHandoffStatus}
-              referenceIso={detail.generatedAt}
-              title="Outgoing"
-              description="Finished work leaving for the next stage of the pipeline."
-            />
+            <ModelledSection name="Incoming handoffs">
+              <AgentHandoffs
+                handoffs={detail.incoming}
+                statuses={handoffStatuses}
+                onStatusChange={changeHandoffStatus}
+                referenceIso={detail.generatedAt}
+                title="Incoming"
+                description={`Work arriving for ${configuration.displayName} from the previous stage.`}
+              />
+            </ModelledSection>
+            <ModelledSection name="Outgoing handoffs">
+              <AgentHandoffs
+                handoffs={detail.outgoing}
+                statuses={handoffStatuses}
+                onStatusChange={changeHandoffStatus}
+                referenceIso={detail.generatedAt}
+                title="Outgoing"
+                description="Finished work leaving for the next stage of the pipeline."
+              />
+            </ModelledSection>
           </div>
         )}
 
         {tab === "blockers" && (
-          <AgentBlockers
-            blockers={detail.blockers}
-            resolutions={resolutions}
-            onResolve={resolveBlocker}
-            referenceIso={detail.generatedAt}
-            title="Blockers & Reviews"
-            description={`Everything stopping ${configuration.displayName}, worst first.`}
-          />
+          <ModelledSection name="Blockers">
+            <AgentBlockers
+              blockers={detail.blockers}
+              resolutions={resolutions}
+              onResolve={resolveBlocker}
+              referenceIso={detail.generatedAt}
+              title="Blockers & Reviews"
+              description={`Everything stopping ${configuration.displayName}, worst first.`}
+            />
+          </ModelledSection>
         )}
 
         {tab === "activity" && (
-          <ActivityFeed
-            events={detail.activity}
-            referenceIso={detail.generatedAt}
-            eyebrow="Audit trail"
-            title="Recent Activity"
-            description={`What ${configuration.displayName} has done across its projects, newest first.`}
-            footnote="Modelled activity records — not produced by the agent runtime. Executed runs are listed under AI Agents → Run History."
-          />
+          <ModelledSection name="Recent activity">
+            <ActivityFeed
+              events={detail.activity}
+              referenceIso={detail.generatedAt}
+              eyebrow="Audit trail"
+              title="Recent Activity"
+              description={`What ${configuration.displayName} has done across its projects, newest first.`}
+              footnote="Modelled activity records — not produced by the agent runtime. Executed runs are listed under AI Agents → Run History."
+            />
+          </ModelledSection>
         )}
 
         {tab === "collaboration" && (
           <>
+            <ModelledSection name="Pipeline neighbours">
             <Panel>
               <PanelHeader
                 eyebrow="Pipeline neighbours"
@@ -351,20 +389,29 @@ export function AgentWorkspace({
                 />
               </PanelBody>
             </Panel>
+            </ModelledSection>
 
-            <CollaborationMatrix rows={[detail.collaboration]} />
+            <ModelledSection name="Collaboration">
+              <CollaborationMatrix rows={[detail.collaboration]} />
+            </ModelledSection>
           </>
         )}
 
-        {tab === "brief" && <AgentBriefPanel agent={detail.agent} />}
+        {tab === "brief" && (
+          <ModelledSection name="Brief">
+            <AgentBriefPanel agent={detail.agent} />
+          </ModelledSection>
+        )}
 
         {tab === "settings" && (
-          <AgentConfigurationPanel
-            configuration={configuration}
-            onSave={saveConfiguration}
-            savedAt={savedAt}
-            agentName={detail.agent.name}
-          />
+          <ModelledSection name="Agent settings">
+            <AgentConfigurationPanel
+              configuration={configuration}
+              onSave={saveConfiguration}
+              savedAt={savedAt}
+              agentName={detail.agent.name}
+            />
+          </ModelledSection>
         )}
       </div>
     </div>
