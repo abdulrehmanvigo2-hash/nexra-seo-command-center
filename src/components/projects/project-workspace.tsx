@@ -14,6 +14,7 @@ import { PerformanceChart } from "@/components/dashboard/performance-chart";
 import { TechnicalSnapshot } from "@/components/dashboard/technical-snapshot";
 import { SectionHeader } from "@/components/ui/section-header";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
+import { ModelledSection } from "@/components/ui/modelled-badge";
 import { CURRENT_USER } from "@/lib/mock/workspace";
 import { CrawlPanel } from "@/components/crawl/crawl-panel";
 import { ProjectCompetitors, type PendingCompetitor } from "@/components/projects/project-competitors";
@@ -203,6 +204,7 @@ export function ProjectWorkspace({
       >
         {tab === "overview" && (
           <>
+            <ModelledSection name="Project health">
             <section className="space-y-3">
               <SectionHeader
                 as="h3"
@@ -211,93 +213,124 @@ export function ProjectWorkspace({
               />
               <ScoreStrip scores={detail.health} loading={false} />
             </section>
+            </ModelledSection>
 
-            <ProjectMetrics metrics={detail.metrics} />
+            <ModelledSection name="Metrics">
+              <ProjectMetrics metrics={detail.metrics} />
+            </ModelledSection>
 
-            <ProjectAiStrip projectId={detail.project.id} />
+            <ModelledSection name="AI visibility">
+              <ProjectAiStrip projectId={detail.project.id} />
+            </ModelledSection>
 
-            <ProjectAuthorityStrip projectId={detail.project.id} />
+            <ModelledSection name="Authority">
+              <ProjectAuthorityStrip projectId={detail.project.id} />
+            </ModelledSection>
 
-            <ProjectAnalyticsStrip projectId={detail.project.id} />
+            <ModelledSection name="Analytics">
+              <ProjectAnalyticsStrip projectId={detail.project.id} />
+            </ModelledSection>
 
-            <ProjectReportingStrip projectId={detail.project.id} />
+            <ModelledSection name="Reporting">
+              <ProjectReportingStrip projectId={detail.project.id} />
+            </ModelledSection>
 
             <div className="grid gap-4 xl:grid-cols-3">
               <div className="xl:col-span-2">
-                <ProjectIssues
-                  issues={detail.issues}
-                  statuses={issueStatuses}
-                  onStatusChange={changeIssueStatus}
-                  preview
-                  onViewAll={() => setTab("issues")}
-                />
+                <ModelledSection name="Issues">
+                  <ProjectIssues
+                    issues={detail.issues}
+                    statuses={issueStatuses}
+                    onStatusChange={changeIssueStatus}
+                    preview
+                    onViewAll={() => setTab("issues")}
+                  />
+                </ModelledSection>
               </div>
-              <ProjectTeamPreview
-                team={detail.team}
-                referenceIso={detail.generatedAt}
-                onViewAll={() => setTab("team")}
-              />
+              <ModelledSection name="Agent team">
+                <ProjectTeamPreview
+                  team={detail.team}
+                  referenceIso={detail.generatedAt}
+                  onViewAll={() => setTab("team")}
+                />
+              </ModelledSection>
             </div>
 
-            <ProjectTasks
-              tasks={detail.tasks}
-              statuses={taskStatuses}
-              onStatusChange={changeTaskStatus}
-              preview
-              onViewAll={() => setTab("tasks")}
-            />
+            <ModelledSection name="Tasks">
+              <ProjectTasks
+                tasks={detail.tasks}
+                statuses={taskStatuses}
+                onStatusChange={changeTaskStatus}
+                preview
+                onViewAll={() => setTab("tasks")}
+              />
+            </ModelledSection>
           </>
         )}
 
         {tab === "performance" && (
           <>
-            <ProjectMetrics metrics={detail.metrics} />
-            <PerformanceChart
-              trend={detail.trend}
-              range={rangeId}
-              onRangeChange={setRangeId}
-              loading={false}
-            />
+            <ModelledSection name="Metrics">
+              <ProjectMetrics metrics={detail.metrics} />
+            </ModelledSection>
+            <ModelledSection name="Performance trend">
+              <PerformanceChart
+                trend={detail.trend}
+                range={rangeId}
+                onRangeChange={setRangeId}
+                loading={false}
+              />
+            </ModelledSection>
           </>
         )}
 
         {tab === "issues" && (
-          <ProjectIssues
-            issues={detail.issues}
-            statuses={issueStatuses}
-            onStatusChange={changeIssueStatus}
-          />
+          <ModelledSection name="Issues">
+            <ProjectIssues
+              issues={detail.issues}
+              statuses={issueStatuses}
+              onStatusChange={changeIssueStatus}
+            />
+          </ModelledSection>
         )}
 
         {tab === "tasks" && (
-          <ProjectTasks
-            tasks={detail.tasks}
-            statuses={taskStatuses}
-            onStatusChange={changeTaskStatus}
-          />
+          <ModelledSection name="Tasks">
+            <ProjectTasks
+              tasks={detail.tasks}
+              statuses={taskStatuses}
+              onStatusChange={changeTaskStatus}
+            />
+          </ModelledSection>
         )}
 
         {tab === "keywords" && (
-          <KeywordSnapshot
-            snapshot={detail.keywords}
-            projectId={detail.project.id}
-          />
+          <ModelledSection name="Keywords">
+            <KeywordSnapshot
+              snapshot={detail.keywords}
+              projectId={detail.project.id}
+            />
+          </ModelledSection>
         )}
 
         {tab === "content" && (
-          <ContentSnapshot
-            snapshot={detail.content}
-            projectId={detail.project.id}
-          />
+          <ModelledSection name="Content">
+            <ContentSnapshot
+              snapshot={detail.content}
+              projectId={detail.project.id}
+            />
+          </ModelledSection>
         )}
 
         {tab === "technical" && (
           <div className="space-y-5">
-            <TechnicalSnapshot
-              snapshot={detail.technical}
-              referenceIso={detail.generatedAt}
-              projectId={detail.project.id}
-            />
+            <ModelledSection name="Technical snapshot">
+              <TechnicalSnapshot
+                snapshot={detail.technical}
+                referenceIso={detail.generatedAt}
+                projectId={detail.project.id}
+              />
+            </ModelledSection>
             {/*
               The crawler sits below the snapshot and is labelled as observed
               data, because the snapshot above it is modelled. Mapping one onto
@@ -308,40 +341,48 @@ export function ProjectWorkspace({
         )}
 
         {tab === "competitors" && (
-          <ProjectCompetitors
-            competitors={competitors}
-            pending={addedCompetitors}
-            onAdd={addCompetitor}
-            onRemove={removeCompetitor}
-            projectId={detail.project.id}
-            projectName={settings.name}
-          />
+          <ModelledSection name="Competitors">
+            <ProjectCompetitors
+              competitors={competitors}
+              pending={addedCompetitors}
+              onAdd={addCompetitor}
+              onRemove={removeCompetitor}
+              projectId={detail.project.id}
+              projectName={settings.name}
+            />
+          </ModelledSection>
         )}
 
         {tab === "team" && (
-          <AgentOperations
-            agents={detail.team}
-            referenceIso={detail.generatedAt}
-            eyebrow="Assigned agents"
-            title="Project Agent Team"
-            description={`The specialists staffed on ${settings.name}, their current task, and where the pipeline is waiting on a decision.`}
-          />
+          <ModelledSection name="Agent team">
+            <AgentOperations
+              agents={detail.team}
+              referenceIso={detail.generatedAt}
+              eyebrow="Assigned agents"
+              title="Project Agent Team"
+              description={`The specialists staffed on ${settings.name}, their current task, and where the pipeline is waiting on a decision.`}
+            />
+          </ModelledSection>
         )}
 
         {tab === "notes" && (
-          <ProjectNotes
-            notes={notes}
-            onAdd={addNote}
-            referenceIso={detail.generatedAt}
-          />
+          <ModelledSection name="Notes">
+            <ProjectNotes
+              notes={notes}
+              onAdd={addNote}
+              referenceIso={detail.generatedAt}
+            />
+          </ModelledSection>
         )}
 
         {tab === "settings" && (
-          <ProjectSettingsPanel
-            settings={settings}
-            onSave={saveSettings}
-            savedAt={savedAt}
-          />
+          <ModelledSection name="Project settings">
+            <ProjectSettingsPanel
+              settings={settings}
+              onSave={saveSettings}
+              savedAt={savedAt}
+            />
+          </ModelledSection>
         )}
       </div>
     </div>

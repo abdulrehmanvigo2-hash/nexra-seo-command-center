@@ -13,7 +13,6 @@ import { DATE_RANGES } from "@/lib/mock/dashboard";
 import { PROJECT_GOAL_META, PROJECT_TYPE_META } from "@/lib/mock/projects";
 import type { RangeId } from "@/types/dashboard";
 import type { Project, ProjectSettings } from "@/types/project";
-import { ModelledBadge } from "@/components/ui/modelled-badge";
 
 /**
  * The project workspace header: who the client is, what state the engagement
@@ -100,7 +99,6 @@ export function ProjectDetailHeader({
                 {settings.name}
               </h2>
               <ProjectStatusBadge status={settings.status} />
-              <ModelledBadge />
             </div>
 
             <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-fg-muted">

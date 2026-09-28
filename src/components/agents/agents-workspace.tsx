@@ -53,7 +53,7 @@ import type {
   HandoffStatus,
 } from "@/types/agent";
 import type { ProjectOption } from "@/lib/projects/selection";
-import { ModelledBadge } from "@/components/ui/modelled-badge";
+import { ModelledSection } from "@/components/ui/modelled-badge";
 
 /**
  * The AI Agents area: the team, what it is working on, and what is stopping it.
@@ -159,7 +159,6 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
         description="The twelve specialist agents behind every project: what each is working on, how loaded it is, and where the pipeline is waiting."
         actions={
           <>
-            <ModelledBadge />
             <span className="hidden items-center gap-1.5 text-[11.5px] text-fg-subtle sm:inline-flex">
               <Icon name="alert" className="h-3.5 w-3.5" />
               {attention} needing attention
@@ -196,8 +195,11 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
         )}
       </div>
 
-      <TeamHealthSummary health={health} referenceIso={AGENTS_AS_OF} />
+      <ModelledSection name="Team health">
+        <TeamHealthSummary health={health} referenceIso={AGENTS_AS_OF} />
+      </ModelledSection>
 
+      <ModelledSection name="Agent roster figures">
       <Panel>
         <AgentsToolbar
           filters={filters}
@@ -258,13 +260,17 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
           </span>
         </PanelFooter>
       </Panel>
+      </ModelledSection>
 
-      <OrchestrationPipeline
-        workflows={workflows}
-        referenceIso={AGENTS_AS_OF}
-      />
+      <ModelledSection name="Orchestration pipeline">
+        <OrchestrationPipeline
+          workflows={workflows}
+          referenceIso={AGENTS_AS_OF}
+        />
+      </ModelledSection>
 
       <div className="grid gap-4 xl:grid-cols-2">
+        <ModelledSection name="Agent tasks">
         <AgentTasks
           tasks={tasks}
           statuses={taskStatuses}
@@ -273,6 +279,8 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
           }
           referenceIso={AGENTS_AS_OF}
         />
+        </ModelledSection>
+        <ModelledSection name="Blockers">
         <AgentBlockers
           blockers={blockers}
           resolutions={resolutions}
@@ -281,8 +289,10 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
           }
           referenceIso={AGENTS_AS_OF}
         />
+        </ModelledSection>
       </div>
 
+      <ModelledSection name="Handoffs">
       <AgentHandoffs
         handoffs={handoffs}
         statuses={handoffStatuses}
@@ -291,11 +301,15 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
         }
         referenceIso={AGENTS_AS_OF}
       />
+      </ModelledSection>
 
-      <CollaborationMatrix rows={collaboration} />
+      <ModelledSection name="Collaboration">
+        <CollaborationMatrix rows={collaboration} />
+      </ModelledSection>
 
       <AgentRunHistory projects={storedProjects} />
 
+      <ModelledSection name="Recent activity">
       <ActivityFeed
         events={activity}
         referenceIso={AGENTS_AS_OF}
@@ -304,6 +318,7 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
         description="What the twelve agents have done across every project, newest first."
         footnote="Modelled activity records — not produced by the agent runtime. Executed runs are listed in Run History."
       />
+      </ModelledSection>
     </div>
   );
 }

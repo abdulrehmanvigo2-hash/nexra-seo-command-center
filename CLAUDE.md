@@ -742,14 +742,32 @@ no behaviour change on a live surface.
   `recommendations-view`, `sorting`, `technical-strip`, `workflow-board`),
   `src/components/ai-visibility/ai-chrome` and `src/components/keywords/keyword-chrome`. The
   `src/lib/mock` modules stay: the fixture screens use them.
-- **Modelled labels (audit §J: no fixture figures without an explicit modelled label):** one shared
-  badge, `src/components/ui/modelled-badge.tsx` ("Modelled", with a hover explanation), added to the
-  header of each screen still drawn from fixtures that had no explicit on-screen label — Command
-  Center (`dashboard-header`), Projects (`projects-workspace`), a project (`project-detail-header`),
-  AI Agents (`agents-workspace`), Reports (`reports-workspace`) and a report (`report-preview`).
+- **Modelled labels (audit §J: no fixture figures without an explicit modelled label, and no live
+  panel read as modelled):** one shared badge, `src/components/ui/modelled-badge.tsx` ("Modelled",
+  with a hover explanation), used two ways. **Fully fixture screens** carry it in their header:
+  Command Center (`dashboard-header`), Reports (`reports-workspace`) and a report
+  (`report-preview`). **Mixed screens** carry no header badge; each fixture section is wrapped in
+  `ModelledSection` (the badge and the section's name above it), and each live section stays
+  unwrapped with its own observed label:
+  - Projects (`projects-workspace`): Modelled — *Portfolio figures*, *Project roster figures*; no
+    live section (the roster's names are stored projects, its figures fixtures, as its footer says).
+  - A project with fixture data (`project-workspace`): Modelled — *Project health*, *Metrics*, *AI
+    visibility*, *Authority*, *Analytics*, *Reporting*, *Issues*, *Agent team*, *Tasks* (overview);
+    *Metrics*, *Performance trend*; *Issues*; *Tasks*; *Keywords*; *Content*; *Technical snapshot*;
+    *Competitors*; *Agent team*; *Notes*; *Project settings* (the other tabs); live — *Site crawl*
+    (`CrawlPanel`, "Observed data"). A stored project with no fixture data shows the unmeasured
+    page, which holds live panels only (intake and task-plan reviews, Search Console, crawls, the
+    evidence pack, content plan, articles, the Director) and no fixture figure; it is unchanged.
+  - AI Agents (`agents-workspace`): Modelled — *Team health*, *Agent roster figures*,
+    *Orchestration pipeline*, *Agent tasks*, *Blockers*, *Handoffs*, *Collaboration*, *Recent
+    activity*; live — *Run History* (`AgentRunHistory`), which gains an "Observed" badge beside its
+    "Agent runtime" eyebrow.
   Already labelled, unchanged: an agent's page ("Modelled operating data" in its header). Not
   labelled, because it shows no fixture figure: Settings (browser preferences only, which it says).
-  No other change to those screens. Test `src/lib/projects/modelled-screens.test.ts`.
+  No other change to those screens. Test `src/lib/projects/modelled-screens.test.ts` (fully fixture
+  screens: header badge once; mixed screens: no header badge, every fixture section wrapped, every
+  Modelled section a listed one, live sections unwrapped and observed-labelled; observed screens:
+  none).
 - **Remaining 404s, left for Phase 6:** the Command Center's content snapshot links to
   `/content/<fixture id>` and the 2 fixture links to `/competitors/<fixture id>` (Projects'
   competitor table, the Command Center snapshot) — all inside the fixture screens.
@@ -1520,7 +1538,7 @@ production-ready criterion from the audit (§J), with its evidence:
 
 | Criterion | Evidence |
 |---|---|
-| Screens read observed data, or say they are modelled | Phase 3: Technical SEO with page detail and finding history, Keyword Intelligence with curated keywords (PR #34–#38); Phase 4: Analytics, Competitor Intelligence, AI Visibility, Outbound Links (PR #40–#42, #44); Phase 5: Content Studio (PR #45). The screens still on fixtures — Command Center, Projects, a project, AI Agents, Reports, a report — carry the Modelled badge, an agent's page its "Modelled operating data" line (5.7) |
+| Screens read observed data, or say they are modelled | Phase 3: Technical SEO with page detail and finding history, Keyword Intelligence with curated keywords (PR #34–#38); Phase 4: Analytics, Competitor Intelligence, AI Visibility, Outbound Links (PR #40–#42, #44); Phase 5: Content Studio (PR #45). The fully fixture screens — Command Center, Reports, a report — carry the Modelled badge in their header; the mixed screens — Projects, a project, AI Agents — on each fixture section, their live panels (crawls, Run History) labelled observed; an agent's page its "Modelled operating data" line (5.7) |
 | Content Studio live | 5.2: Articles, Drafts and Pipeline and the article detail over stored records (PR #45), used by the operator through 5.3 |
 | Article positive path | 5.3: article `c89182f9…` Version 4 (content SHA-256 `e9db287f…`): 4 of 4 check units passed (9 supported statements), approved (`5f02d149…`), proposal `5f229630…` recorded — **nothing published** |
 | Browser verifications recorded | 1.5 (M3 findings, M4 query inventory, M5 Director panel), 2.2 (handoff outcome), 2.3b (priority change), 3.3 and 3.6 (Technical, Keywords, curated keywords), 4.3 (Analytics), 4.4 (Competitors), 4.5 (AI Visibility, Outbound Links), 5.3 (Content Studio in use), 5.5 (`/api/health`) — each in §0 |

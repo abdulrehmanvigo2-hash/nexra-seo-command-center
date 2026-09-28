@@ -200,9 +200,14 @@ export function AgentRunHistory({ projects }: { projects: readonly ProjectOption
         title="Run History"
         description="Tasks the agents have been asked to run on a project, how each ended, and every attempt behind it."
         actions={
-          <Button icon="refresh" onClick={() => setRefreshKey((key) => key + 1)} disabled={!projectId}>
-            Refresh
-          </Button>
+          <>
+            <Badge tone="accent" title="Read from this product's stored agent runs and attempts. Not fixture data.">
+              Observed
+            </Badge>
+            <Button icon="refresh" onClick={() => setRefreshKey((key) => key + 1)} disabled={!projectId}>
+              Refresh
+            </Button>
+          </>
         }
       />
 
