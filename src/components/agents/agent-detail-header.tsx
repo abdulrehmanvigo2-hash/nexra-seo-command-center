@@ -148,7 +148,7 @@ export function AgentDetailHeader({
         />
         {queued
           ? "Sync queued. This orchestration pass is simulated — it starts no agent runs, and the figures below are unchanged."
-          : "Modelled operating data. Nothing on this page starts an agent run; executed runs are listed under AI Agents → Run History."}
+          : "Nothing on this page starts an agent run. Run History lists this agent's stored runs; every section labelled Modelled is fixture data."}
       </p>
     </Panel>
   );

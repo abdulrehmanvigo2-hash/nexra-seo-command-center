@@ -54,6 +54,25 @@ const MIXED = [
     live: ["CrawlPanel"],
   },
   {
+    screen: "an agent's page",
+    path: "components/agents/agent-workspace.tsx",
+    modelled: [
+      "section", // Operating state
+      "AgentPerformancePanel",
+      "AgentAssignments",
+      "AgentTasks",
+      "AgentBlockers",
+      "AgentHandoffs",
+      "AgentOutputs",
+      "ActivityFeed",
+      "Panel", // Pipeline neighbours
+      "CollaborationMatrix",
+      "AgentBriefPanel",
+      "AgentConfigurationPanel",
+    ],
+    live: ["AgentRunHistory", "LiveTasksPanel"],
+  },
+  {
     screen: "AI Agents",
     path: "components/agents/agents-workspace.tsx",
     modelled: [
@@ -98,6 +117,7 @@ test("a fully fixture screen renders the Modelled badge in its header, once", ()
 test("a mixed screen has no header badge", () => {
   for (const { path } of MIXED) assert.doesNotMatch(read(path), /<ModelledBadge \/>/, path);
   assert.doesNotMatch(read("components/projects/project-detail-header.tsx"), /ModelledBadge/);
+  assert.doesNotMatch(read("components/agents/agent-detail-header.tsx"), /ModelledBadge|Modelled operating data/);
 });
 
 test("a mixed screen labels each fixture section, and nothing else", () => {
@@ -120,6 +140,7 @@ test("a mixed screen's live sections are not labelled Modelled and keep their ob
   }
   assert.match(read("components/crawl/crawl-panel.tsx"), /eyebrow="Observed data"/);
   assert.match(read("components/agents/agent-run-history.tsx"), />\s*Observed\s*</);
+  assert.match(read("components/agent-tasks/live-tasks-panel.tsx"), /eyebrow="Live · persisted"/);
 });
 
 test("observed screens carry no Modelled label", () => {

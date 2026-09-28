@@ -250,14 +250,15 @@ describe("the live tasks panel", () => {
     const workspace = await read("../../components/agents/agent-workspace.tsx");
     assert.equal((workspace.match(/<LiveTasksPanel projects=\{projects\} \/>/g) ?? []).length, 1);
     assert.match(workspace, /\{tab === "tasks" && agentId === "project-manager" && <LiveTasksPanel projects=\{projects\} \/>\}/);
-    assert.ok(workspace.indexOf("<LiveTasksPanel") < workspace.indexOf('{tab === "tasks" && (\n          <AgentTasks'), "above the modelled board on the Tasks tab");
+    assert.ok(workspace.indexOf("<LiveTasksPanel") < workspace.indexOf('{tab === "tasks" && (\n          <ModelledSection name="Assigned tasks">\n            <AgentTasks'), "above the modelled board on the Tasks tab");
     assert.match(workspace, /description=\{`Modelled: every fixture task/);
     assert.match(workspace, /Modelled operating data|getAgentDetail/);
     const page = await read("../../app/(app)/agents/[agentId]/page.tsx");
     assert.match(page, /projectOptionsFrom\(await projectRepository\.listProjects\(\)\)/);
     assert.match(page, /<AgentWorkspace agentId=\{agentId\} projects=\{projects\} \/>/);
     const header = await read("../../components/agents/agent-detail-header.tsx");
-    assert.match(header, /Modelled operating data\. Nothing on this page starts an agent run/);
+    // Checkpoint 6.2: the page carries a live Run History, so the header no longer calls the whole page modelled.
+    assert.match(header, /Nothing on this page starts an agent run\. Run History lists this agent's stored runs; every section labelled Modelled is fixture data\./);
   });
 
   test("no task is ever created outside the operator's control: the runtime, the keyword module and the Director bundle never write one", async () => {
