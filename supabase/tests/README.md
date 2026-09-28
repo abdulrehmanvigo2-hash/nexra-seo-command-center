@@ -69,6 +69,7 @@ assertions (`EXPECTED` in `run.sh`); change that number when you add or remove a
 | `triage-races` | as `triage`, scenarios in `run.sh` | two operators on one key (R1: the second waits and answers the first's status as previous, one row, the later decision wins), the first rolling back (R2: the second's decision stands), different keys without waiting (R3) |
 | `tasks` | `c4/setup.sql`, `gsc/setup.sql`, `tasks/setup.sql`, `tasks/tests.sql` | 80 assertions (Project Manager task core): schema, security, the create function's outcomes and refusals, source binding to a Director run or a stored query, no update path, project isolation |
 | `task-workflow` | as `tasks`, `task-workflow/tests.sql` | 150 assertions (Project Manager task workflow): the events table and its guards, the transition map, the four functions' outcomes, the `handoff-active` refusal, link checks, project isolation |
+| `claim-races` | `c4/setup.sql`, scenarios in `run.sh` | run claims (checkpoint 5.6): two workers claiming one queued run by id (R1: the second waits on the row lock and answers `not-queued`; the run is `running` with one attempt), the first claim rolling back (R2: the second claims), two queue claims taking different runs without waiting (R3, `skip locked`) |
 
 `c4/setup.sql` is also the shared base for the draft, C5 and C6 suites (projects, the `t.ok()`
 assertion helper). Draft fixtures are fact-checked and approved the way the application does
