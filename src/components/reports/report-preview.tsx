@@ -26,6 +26,7 @@ import {
   StatusBadge,
 } from "@/components/reports/reports-chrome";
 import type { ReportFigure, ReportSection } from "@/types/reports";
+import { ModelledBadge } from "@/components/ui/modelled-badge";
 
 /**
  * One report, as the client would read it.
@@ -57,6 +58,7 @@ export function ReportPreview({ reportId }: { reportId: string }) {
         description={detail.subtitle}
         actions={
           <>
+            <ModelledBadge />
             <Link
               href="/reports"
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface-raised px-3 text-[12px] font-medium text-fg-muted transition-colors hover:bg-surface-hover"

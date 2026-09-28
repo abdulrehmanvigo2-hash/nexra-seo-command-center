@@ -48,6 +48,7 @@ import {
   type CoverageSort,
   type ReportSort,
 } from "@/components/reports/sorting";
+import { ModelledBadge } from "@/components/ui/modelled-badge";
 
 /**
  * The Reports workspace.
@@ -268,6 +269,7 @@ export function ReportsWorkspace() {
         description={`Client-ready reporting for ${scopeName} — what is due, how complete it is, what each figure was quoted from, and the file to send.`}
         actions={
           <>
+            <ModelledBadge />
             <span className="hidden items-center gap-1.5 text-[11.5px] text-fg-subtle lg:inline-flex">
               <Icon name="clock" className="h-3.5 w-3.5" />
               Updated {formatFullDate(REPORTS_AS_OF)},{" "}

@@ -53,6 +53,7 @@ import type {
   HandoffStatus,
 } from "@/types/agent";
 import type { ProjectOption } from "@/lib/projects/selection";
+import { ModelledBadge } from "@/components/ui/modelled-badge";
 
 /**
  * The AI Agents area: the team, what it is working on, and what is stopping it.
@@ -158,6 +159,7 @@ export function AgentsWorkspace({ projects: storedProjects }: { projects: readon
         description="The twelve specialist agents behind every project: what each is working on, how loaded it is, and where the pipeline is waiting."
         actions={
           <>
+            <ModelledBadge />
             <span className="hidden items-center gap-1.5 text-[11.5px] text-fg-subtle sm:inline-flex">
               <Icon name="alert" className="h-3.5 w-3.5" />
               {attention} needing attention

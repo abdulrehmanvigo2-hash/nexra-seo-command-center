@@ -41,6 +41,7 @@ import type {
   ProjectListItem,
   ProjectStatus,
 } from "@/types/project";
+import { ModelledBadge } from "@/components/ui/modelled-badge";
 
 /**
  * The Projects area: the whole client roster, the portfolio numbers above it,
@@ -237,6 +238,7 @@ export function ProjectsWorkspace({
           description="Every client project in the workspace, with the health, delivery state, and assigned agents behind each one."
           actions={
             <>
+              <ModelledBadge />
               <span className="hidden items-center gap-1.5 text-[11.5px] text-fg-subtle sm:inline-flex">
                 <Icon name="alert" className="h-3.5 w-3.5" />
                 {attention} needing attention
