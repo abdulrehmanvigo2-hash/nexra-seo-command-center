@@ -7,7 +7,7 @@ project. Read it before writing any code.
 (6.1) and the attestation design (6.1b) are approved; the per-agent run history (6.2) and its
 follow-up (the agent header's figures labelled Modelled, the fake sync button removed) are merged,
 deployed and browser checked; the Command Center over stored data (6.3) is merged and deployed; Reports on
-read (6.4) and the second grounded tasks, batch 1 (6.5), are on their branches. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
+read (6.4), the second grounded tasks, batch 1 (6.5), and the scoped V1 (6.6) are on their branches. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
 complete (checkpoints 5.1–5.7, PR #45–#49; see the *PRODUCTION READY* block in §14): the observed
 Content Studio (5.2) is merged and deployed; the article positive path (5.3) is recorded live — one
 verification article checked, approved and record-proposed, nothing published; the delete and
@@ -983,6 +983,31 @@ deliberate pin updates — the task count (18 → 24) and the non-read-only list
 runtime's one reader) and the M4 wiring regex. `docs/BACKEND.md` gains *Second grounded tasks*. No
 schema, no run. On `claude/phase6-second-tasks`; not merged.
 
+**Phase 6 checkpoint 6.6 (the scoped-down V1, decision Q4 option B):** §13 gains *Scoped V1* — for
+Market & Competitor Intelligence, AI Visibility and Authority & Backlink, what V1 reads, its two
+tasks and what it never claims. Their second tasks, in the 6.5 shape (hash-pinned, full caps under
+2,000), each over an evidence kind that already exists:
+
+- **Market — `competitor-page-gap-review`** (competitor domain, parsed as the comparison;
+  `competitor-comparison`): which kinds of page, topic or schema type the competitor's fetched pages
+  declare that the project's do not — declarations only, a partial sample on each side, never copied,
+  never a measurement. Instructions only. Hash `9a7b1449…`.
+- **AI Visibility — `schema-entity-review`** (crawl id; `crawl`, no findings block): the JSON-LD types
+  each page declares, parse failures, and whether title and h1 name the same entity — type names
+  only, never a property, rich-result eligibility or a citation. Instructions only. Hash `10ef1d3a…`.
+- **Authority — `internal-link-review`** (crawl id; `crawl-links`): the outbound record, then an
+  *Internal link structure* block from the same edges, read once (`readLinkGrounding` gains an
+  `internal` option that also reads the crawl's pages, bounded at 500): each fetched page's inbound
+  internal edges from the other fetched pages, source paths and anchors as recorded, fewest first —
+  "no inbound link from the fetched pages", never "orphaned"
+  (`src/lib/authority/internal-link-grounding.ts`). Hash `d65b6abc…`.
+
+Every one of the twelve agents now holds two or more grounded tasks (tested). The outbound review's
+grounding is unchanged. Tests: `src/lib/agent-runs/scoped-v1.test.ts` (9); pins updated deliberately —
+the task count (24 → 27) and the Authority agent's task set (outbound and internal). No schema, no
+run, no screen control (queued through `POST /api/agent-runs`, as 6.5). On
+`claude/phase6-scoped-v1`; not merged.
+
 **Findings recorded for later phases:**
 
 - **Carried forward to Phase 4 (resolved by checkpoint 4.2, verified live on run `aecfca87…`):** the single-project Director `priority-review` run `33ac8a25…`
@@ -1096,7 +1121,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 checkpoint 6.5 on `claude/phase6-second-tasks`, stacked on 6.4's `claude/phase6-reports` (above); each further
+**Current work:** Phase 6 checkpoint 6.6 on `claude/phase6-scoped-v1`, stacked on 6.5 (`claude/phase6-second-tasks`) and 6.4 (`claude/phase6-reports`) (above); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1669,6 +1694,20 @@ Agent profiles, statuses and activity feeds come from the fixture registry
 grounded in stored projects, crawls, Search Console or earlier runs, plus the Writer's
 `section-draft` task. The full task-type list is in `docs/BACKEND.md` (*Agent runtime*).
 
+### Scoped V1 (decision Q4, option B)
+
+Three agents' full responsibilities (the table above) need data this product does not hold and will not
+buy for V1 (no SERP, citation, backlink or paid provider). Their V1 is scoped to stored records; the
+table states the direction, this states what V1 does:
+
+| Agent | V1 reads | V1 tasks | V1 never claims |
+|---|---|---|---|
+| Market & Competitor Intelligence | This product's crawls of the project's site and of competitors the project recorded — page declarations (title, h1, description, canonical, schema types) | `competitor-comparison-review`, `competitor-page-gap-review` | rankings, traffic, share of voice, SERP positions, backlinks or any measurement of a competitor |
+| AI Visibility / AEO / GEO | The project's own crawls — each page's declared answer-readiness fields and JSON-LD types | `answer-readiness-review`, `schema-entity-review` | citations, mention share, a visibility score, AI-bot access, rich-result eligibility or a schema property the crawl did not record |
+| Authority & Backlink | The project's own crawls' recorded link edges — outbound hosts and rel values, internal edges and anchor text | `outbound-link-review`, `internal-link-review` | backlinks, referring domains, an authority score, PageRank or toxicity |
+
+Anything beyond this is after V1 and needs a §4 / §6 decision (a new external integration).
+
 ### Long-Term Agent Workflow
 
 ```
@@ -1730,7 +1769,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read) on `claude/phase6-reports` and 6.5 (second grounded tasks, batch 1) on `claude/phase6-second-tasks`, not merged; then 6.6–6.12 in order, the one external write (6.11) last |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read) on `claude/phase6-reports` 6.5 (second grounded tasks, batch 1) on `claude/phase6-second-tasks` and 6.6 (the scoped V1: §13 definitions and three second tasks) on `claude/phase6-scoped-v1`, not merged; then 6.7–6.12 in order, the one external write (6.11) last |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1775,8 +1814,8 @@ production-ready criterion from the audit (§J), with its evidence:
 Next step: the Phase 6 design checkpoint (6.1), under its own explicit approval.
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.5
-on `claude/phase6-second-tasks`, stacked on 6.4 (6.2, its follow-up and 6.3 merged, PR #50–#52). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.6
+on `claude/phase6-scoped-v1`, stacked on 6.5 and 6.4 (6.2, its follow-up and 6.3 merged, PR #50–#52). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
 complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3, Phase 4 and Phase 5 are complete. Phase 2, Project Manager loop closure: the handoff
@@ -1789,7 +1828,7 @@ Intelligence screen over the stored Search Console rows; and the operator's cura
 Outbound Links screens over stored data, the Director and performance-review bounds, and the
 Director's five-slot bundle. Phase 5: the Content Studio, the article positive path and the hardening
 (guards, health, caps, the abort fix, the runbook). Not started, each under its own explicit
-approval: Phase 6 checkpoints 6.6–6.12.
+approval: Phase 6 checkpoints 6.7–6.12.
 
 ## 15. Definition of Done
 

@@ -365,11 +365,11 @@ describe("the task type — outbound-link-review", () => {
     assert.equal(definition?.evidence, "crawl-links");
     assert.equal(definition?.label, "Outbound link review");
     assert.equal(definition?.instructions, OUTBOUND_LINK_REVIEW_INSTRUCTIONS);
-    assert.equal(TASK_TYPES.length, 24);
-    assert.equal(TASK_TYPES.filter((task) => task.evidence === "crawl-links").length, 1);
-    // The Authority agent has this one task and no other agent has it.
+    assert.equal(TASK_TYPES.length, 27);
+    // Since 6.6 the internal-link review reads the same edges; the Authority agent has those two tasks and no other agent has either.
+    assert.deepEqual(TASK_TYPES.filter((task) => task.evidence === "crawl-links").map((task) => task.id), ["outbound-link-review", "internal-link-review"]);
     for (const task of TASK_TYPES) {
-      if (task.id === "outbound-link-review") continue;
+      if (task.id === "outbound-link-review" || task.id === "internal-link-review") continue;
       assert.ok(!task.agents.includes("authority-backlink") || task.id === "project-review", task.id);
     }
   });

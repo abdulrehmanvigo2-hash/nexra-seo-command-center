@@ -250,8 +250,11 @@ export const mockAgentExecutor: AgentExecutor = {
       case "article-revision-draft":
       case "page-query-alignment-review":
       case "finding-history-review":
-      case "learning-review": {
-        // The second grounded tasks (checkpoint 6.5): the mock executor reads
+      case "learning-review":
+      case "competitor-page-gap-review":
+      case "schema-entity-review":
+      case "internal-link-review": {
+        // The second grounded tasks (checkpoints 6.5 and 6.6): the mock executor reads
         // no record of any kind, so `grounded: false`, as for every simulated
         // result; the revision draft drafts nothing.
         const metadata: JsonObject = {

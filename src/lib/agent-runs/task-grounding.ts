@@ -431,6 +431,9 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
           crawlId,
           projectId: task.project.id,
           projectDomain: task.project.domain,
+          // The internal-link review (6.6) also gets the internal structure
+          // block, from the same edges, read once.
+          internal: task.taskType === "internal-link-review",
         });
         if (!result.ok) return { ok: false, reason: result.reason };
 

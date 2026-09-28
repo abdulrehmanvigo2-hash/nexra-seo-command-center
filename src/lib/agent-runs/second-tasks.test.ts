@@ -60,7 +60,7 @@ const HASHES: Record<(typeof SECOND)[number]["id"], string> = {
 
 describe("the registry: six second tasks, one agent each, over existing evidence kinds", () => {
   test("each is registered for its one agent, with its policy, evidence kind and instructions", () => {
-    assert.equal(TASK_TYPES.length, 24);
+    assert.equal(TASK_TYPES.length, 27);
     for (const task of SECOND) {
       const definition = getTaskType(task.id);
       assert.ok(definition, task.id);
