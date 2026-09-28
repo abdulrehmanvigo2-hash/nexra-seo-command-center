@@ -1148,6 +1148,10 @@ NOT applied to production):**
 - **Tests:** `src/lib/agent-tasks/learning-chain.test.ts` (7) and `src/lib/approvals/approvals.test.ts` (7);
   pins updated deliberately — the priority parse (`directorRunId`), `run-not-accepted`, the row controls' fetch
   count (3 → 4) and the priority POST and message; `npm test` 2,537.
+- **Before the migrations are applied** (the app is deployed first): an uncited priority change works
+  unchanged — the store names `p_run_id` only when a run is cited, so the four-parameter function is still
+  found; citing a Director run fails (the route answers 500 `failed`) and writes nothing; the cited-priority read
+  and the Learnings chain show no citations; nothing reads `nexra_approvals`.
 - **Deviation:** the approval decision time is `clock_timestamp()`, not the transaction's `now()`, so two
   decisions recorded in one transaction are still ordered (found by the harness).
 - No production apply, no run, no claim-gate change.

@@ -114,7 +114,10 @@ export function createSupabaseAgentTaskStore(client: SupabaseClient<AgentTasksDa
         p_task_id: input.taskId,
         p_priority: input.priority,
         p_operator: input.operatorId,
-        p_run_id: input.directorRunId ?? null,
+        // Named only when a run is cited: a database without 20261008120000
+        // has the four-parameter function, which a call naming p_run_id would
+        // not find, so an uncited change works before and after the migration.
+        ...(input.directorRunId ? { p_run_id: input.directorRunId } : {}),
       });
       if (error) throw new AgentTaskStoreError("set task priority", error);
       return priorityResultToOutcome(data);

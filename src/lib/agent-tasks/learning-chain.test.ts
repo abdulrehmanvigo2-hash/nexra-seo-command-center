@@ -114,7 +114,7 @@ describe("the surface", () => {
 
   test("the store, service and routes: the run passed through, run-not-accepted a 409, the cited-priority read bounded and project-scoped", async () => {
     const store = await read("./supabase/store.ts");
-    assert.match(store, /p_run_id: input\.directorRunId \?\? null,/);
+    assert.match(store, /\.\.\.\(input\.directorRunId \? \{ p_run_id: input\.directorRunId \} : \{\}\),/, "p_run_id is named only when a run is cited, so an uncited change works before the migration");
     assert.match(store, /\.eq\("project_id", projectId\)\s*\.eq\("event_type", "priority-changed"\)\s*\.not\("run_id", "is", null\)\s*\.order\("seq", \{ ascending: false \}\)\s*\.limit\(CITED_PRIORITY_READ_LIMIT\)/);
     const service = await read("./service.ts");
     assert.match(service, /event\.projectId === projectId && event\.runId !== null/, "belt and braces: another project's row is dropped");
