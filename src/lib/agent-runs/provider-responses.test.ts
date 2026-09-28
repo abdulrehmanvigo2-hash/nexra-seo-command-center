@@ -92,15 +92,14 @@ describe("transport failures", () => {
   });
 
   /**
-   * QUESTION (checkpoint 1.3 finding, behaviour documented, not changed): the
-   * provider's comment says an abort is treated as transient, but the SDK
-   * reports a caller's abort as an `APIUserAbortError` — an `APIError` with
-   * no status — which `classify` answers as `rejected`. The worker races its
-   * own timeout and lease loss ahead of this answer, so the code that reaches
-   * a run today is `timeout` or nothing; the classification only matters for
-   * an abort raised by something else.
+   * Checkpoint 1.3 recorded a question here: the SDK reports a caller's abort
+   * as an `APIUserAbortError` — an `APIError` with no status — which
+   * `classify` answered as `rejected`, against its own comment. Checkpoint 5.5
+   * (decision Q11) fixed it: an abort is now `unavailable`, transient, so a
+   * retry decides. This test was updated deliberately with that fix. The
+   * worker still races its own timeout and lease loss ahead of this answer.
    */
-  test("an aborted request is currently classified `rejected` (see the note above)", async () => {
+  test("an aborted request is classified `unavailable`, not `rejected` (5.5 fix)", async () => {
     const controller = new AbortController();
     const t = transport(
       () =>
@@ -110,7 +109,7 @@ describe("transport failures", () => {
     );
     const pending = kindOf(provider(t.fetch), controller.signal);
     controller.abort();
-    assert.equal((await pending).kind, "rejected");
+    assert.equal((await pending).kind, "unavailable");
     // The SDK notices the abort before or during the one request; never after a second.
     assert.ok(t.calls() <= 1);
   });

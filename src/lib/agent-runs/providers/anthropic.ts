@@ -87,6 +87,11 @@ export function createAnthropicProvider(options: {
 }
 
 function classify(error: unknown): "unavailable" | "rejected" {
+  // A caller's abort (checkpoint 5.5, decision Q11). The SDK reports it as an
+  // `APIError` with no status, which the rule below would answer `rejected`;
+  // an abort says nothing about the request, so it is transient. Checked
+  // first, before the status rule can see it.
+  if (error instanceof Anthropic.APIUserAbortError) return "unavailable";
   if (error instanceof Anthropic.APIConnectionError) return "unavailable";
   if (error instanceof Anthropic.RateLimitError) return "unavailable";
   if (error instanceof Anthropic.InternalServerError) return "unavailable";

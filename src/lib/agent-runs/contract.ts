@@ -152,6 +152,13 @@ export type AgentRunStore = {
   ): Promise<AgentRun | null>;
   /** Newest first, by project, agent, or both. */
   listRuns(filter: RunListFilter): Promise<readonly AgentRun[]>;
+  /**
+   * Queued runs that are due now and have attempts left, in the order the
+   * queue claim takes them (due time, then id), at most `limit`. Read-only:
+   * it claims nothing. The worker reads it only when daily caps are in force,
+   * so that a capped project's run can be passed over without being claimed.
+   */
+  listDue?(limit: number): Promise<readonly AgentRun[]>;
   /** Cancel and retry. Never `running`, `completed`, or `failed`: those go through a lease. */
   transition(id: string, from: AgentRunStatus, patch: RunPatch): Promise<TransitionOutcome>;
   /** Starts the next attempt of a queued run. */

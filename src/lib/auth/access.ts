@@ -25,6 +25,13 @@ const SELF_AUTHORIZING_PREFIX = "/auth/";
  */
 const WORKER_PREFIX = "/api/worker/";
 
+/**
+ * The public health check (checkpoint 5.5, decision Q8): exactly this path,
+ * read only. It answers whether the app and its database respond, and nothing
+ * else — no data, no id, no configuration name.
+ */
+export const HEALTH_PATH = "/api/health";
+
 /** Data endpoints: a signed-out caller gets 401, not a sign-in page. */
 const API_PREFIX = "/api/";
 
@@ -109,6 +116,8 @@ export function decideAccess(request: {
     }
     return { kind: "allow", private: false };
   }
+
+  if (pathname === HEALTH_PATH && read) return { kind: "allow", private: true };
 
   if (pathname.startsWith(SELF_AUTHORIZING_PREFIX) || pathname.startsWith(WORKER_PREFIX)) {
     return { kind: "allow", private: true };

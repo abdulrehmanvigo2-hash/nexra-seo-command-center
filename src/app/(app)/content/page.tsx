@@ -6,6 +6,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { projectRepository } from "@/lib/projects/repository";
 import { projectOptionsFrom } from "@/lib/projects/selection";
 
+/**
+ * Rendered per request (checkpoint 5.5): the stored project list is read on
+ * every visit, so a project added after a deploy appears without a rebuild.
+ */
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Content Studio",
   description: "The stored articles and drafts of a project, with their check units, fact-checks, approvals and publication proposals. Observed data only.",

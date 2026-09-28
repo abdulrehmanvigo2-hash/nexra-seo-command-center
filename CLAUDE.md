@@ -7,7 +7,8 @@ project. Read it before writing any code.
 ready) has started: its design note (checkpoint 5.1) is approved (Q1–Q12); the observed Content
 Studio (5.2) is merged and deployed; the article positive path (5.3) is recorded live — one
 verification article checked, approved and record-proposed, nothing published; the delete and
-truncate guards (5.4) are on their branch, not applied to production. Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
+truncate guards (5.4) are merged and deployed, their migration not yet applied to production; health,
+daily caps, the abort fix and dynamic screens (5.5) are on their branch. Phase 4 (Analytics, Competitors, AI Visibility and Outbound Links over stored
 data; the Director's learnings loop) is complete (checkpoints 4.1–4.8, PR #39–#43 and the closing
 checkpoint 4.8): the Director and performance-review output bounds (4.2) are verified live; the
 Analytics (4.3), Competitors (4.4), AI Visibility and Outbound Links (4.5) screens over stored data
@@ -39,8 +40,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `f9a32773024783f4d00bc2712a304360313b1d32` (merge of PR #45,
-`claude/phase5-content-studio`, the observed Content Studio; preceded by PR #44 `aef49419…` (Phase 4
+GitHub `master`: `7bd748f71981b0052f2b39b19988553f6e91b158` (merge of PR #46,
+`claude/phase5-delete-guards`, the delete and truncate guards; preceded by PR #45 `f9a32773…` (the
+observed Content Studio), PR #44 `aef49419…` (Phase 4
 closing), PR #43 `ddc6cbb4…` (the Director's five-slot
 bundle and the bounded-answer fix), PR #42 `41519ffd…` (the AI Visibility and Outbound Links screens), PR #41
 `69379e3d…` (the Competitors screen over stored crawls), PR #40
@@ -61,11 +63,11 @@ PR #24 `3a316124…` (security and worker tests), PR #23 `97aa0018…` (docs rec
 `073bf85e…` (handoff-run restore) and PR #20 `47fae75d…` (task workflow, `bdd541c`); the C6 merge,
 PR #3, is `f28cd35e…`; the C5 merge, PR #2, is `304ac146…`).
 
-Production deployment: `dpl_7B6vDCeTYHNXrhVgVhu6kdtpnowU`, READY (27 Sep 16:34 UTC), built
-automatically from `master` at `f9a32773` (the auto-deploy worked; no redeploy), serving
-`nexra-seo-command-center.vercel.app` (previous: `dpl_5dsiW7wcfnTztmSUM8UiCLBofcXh` at `aef49419`,
-also automatic); `master` CI run `36333709886` passed. PR #45 (checkpoint 5.2) merged as
-`f9a32773…`; PR #44 (checkpoint 4.8) as `aef49419…` (`master` CI `36332161488`); PR #43
+Production deployment: `dpl_AjWaHbgurMKwMdPWGuap8FKndmHW`, READY (28 Sep 03:53 UTC), built
+automatically from `master` at `7bd748f7` (the auto-deploy worked; no redeploy), serving
+`nexra-seo-command-center.vercel.app` (previous: `dpl_7B6vDCeTYHNXrhVgVhu6kdtpnowU` at `f9a32773`,
+also automatic); `master` CI run `36375497802` passed. PR #46 (checkpoint 5.4) merged as
+`7bd748f7…`; PR #45 (checkpoint 5.2) as `f9a32773…` (`master` CI `36333709886`); PR #44 (checkpoint 4.8) as `aef49419…` (`master` CI `36332161488`); PR #43
 (checkpoint 4.6) as `ddc6cbb4…` (`master` CI `36330205806`, the manual redeploy `dpl_2bUN9N9R…`).
 
 **Auto-deploy skip (27 Sep):** the push of `ddc6cbb4` to `master` left no Vercel deployment record
@@ -650,8 +652,43 @@ still working, nothing removed by a refused statement). Existing suites adjusted
 project-delete assertions accept 23514 beside 23503 (the guard now answers first), and `signals`
 and `content` exempt the two new truncate triggers from "no trigger on pages or links";
 `task-workflow` runs on its pinned pre-priority schema and is unchanged. `supabase/README.md` lists
-the migration as **not applied**. **Not applied to production** — applying and recording it is a
-separate §6 approval after the merge. On `claude/phase5-delete-guards`; not merged.
+the migration as **not applied**. PR #46 merged as `7bd748f7…`; deployment `dpl_AjWaHbgu…` READY;
+`master` CI run `36375497802` green. **Migration status (read-only check, 28 Sep): NOT applied to
+production** — no history row for `20261007120000`, none of the nine guard triggers and none of the
+four guard functions exist there. No apply has been approved or run; applying and recording it stays
+a separate §6 approval.
+
+**Phase 5 checkpoint 5.5 (health, daily caps, abort fix, dynamic screens; Parts D2, D3, D6 and the
+5.2 note; decisions Q8, Q9, Q11):** no schema.
+
+- **Health (Q8):** `GET /api/health` (`src/lib/health/health.ts`, `src/app/api/health/route.ts`) —
+  public for GET and HEAD at exactly that path (`HEALTH_PATH` in `src/lib/auth/access.ts`; a write or
+  any other path is still refused); 200 `{ status: "ok", time, database: "reachable" }`, or 503
+  `{ status: "degraded", time, database: "unreachable" }` when the database errs or takes over 2 s
+  (the probe reads at most one project id and discards it); `not-configured` (200) on a deployment
+  that keeps no database. The body is exactly those three fields — no data, id, count, error text or
+  configuration name. Never cached; a light per-instance cap of 120 a minute (429 with Retry-After).
+- **Daily caps (Q9):** `src/lib/agent-runs/daily-caps.ts` — 40 a project and 100 in all per UTC day,
+  counted twice: runs created and attempts started, through the existing `rate_limit_consume` (keys
+  `<project>|all:<YYYY-MM-DD>`, a one-day window; no schema). At creation the service answers
+  `daily-cap` → HTTP 429 with Retry-After (until midnight UTC) and nothing is queued; a duplicate
+  costs nothing. Before an attempt the worker counts it; a capped run is **never claimed**, stays
+  queued with nothing changed, and runs after midnight UTC: the queue reads the due runs
+  (`listDue`, the claim's own rule and order, read-only) and passes over a capped project's runs; a
+  global cap stops the batch (`stoppedBy: "daily-cap"`, `heldByCap` in the job answer); Run Now on a
+  capped run answers 429 `daily-cap` and claims nothing. Counts can only overstate use (a project hit
+  when the global count then refuses, or an attempt another worker took first, is not returned). The
+  review controls say so in words (`DAILY_CAP_MESSAGE`, `DAILY_CAP_HELD_MESSAGE`).
+- **Abort fix (Q11):** `classify` (`providers/anthropic.ts`) answers the SDK's `APIUserAbortError`
+  `unavailable` (transient) before the status rule; the 1.3 test that pinned `rejected` is updated
+  deliberately.
+- **Dynamic screens (the 5.2 note):** the 11 list pages that read the stored project list — `/`,
+  `/projects`, `/agents`, `/settings`, `/keywords`, `/technical`, `/competitors`, `/ai-visibility`,
+  `/backlinks`, `/analytics`, `/content` — are `force-dynamic`, so the build marks each `ƒ` and a
+  project added after a deploy appears without a rebuild. The detail pages keep their existing
+  rendering (the project page is revalidated on its own writes).
+
+On `claude/phase5-health-caps`; not merged.
 
 **Findings recorded for later phases:**
 
@@ -766,7 +803,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 5 checkpoint 5.4 on `claude/phase5-delete-guards` (above); each further
+**Current work:** Phase 5 checkpoint 5.5 on `claude/phase5-health-caps` (above); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1394,7 +1431,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 (c) | Tasks as grounding (evidence kind `task`) and the Project Manager task plan review (checkpoint 2.4) | Complete: PR #32 (`2305b605`), deployed; no migration; production verified (run `567a3f11…`, 435 characters) |
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
-| Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) on `claude/phase5-delete-guards`, not merged, not applied; then 5.5 health, caps, abort fix and dynamic project lists, 5.6 runbook, 5.7 closing |
+| Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, **migration not applied**; 5.5 (health, daily caps, abort fix, dynamic screens) on `claude/phase5-health-caps`, not merged; then 5.6 runbook, 5.7 closing |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -1411,8 +1448,8 @@ Carried forward: the single-project Director `priority-review` has no structural
 `33ac8a25…` failed `rejected-output`) → Phase 4. Next step: the Phase 4 design checkpoint (4.1).
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 5 checkpoint 5.4
-on `claude/phase5-delete-guards` (5.2 merged, 5.3 recorded live). Phase 4 is complete (PR #39–#44).
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 5 checkpoint 5.5
+on `claude/phase5-health-caps` (5.2 and 5.4 merged, 5.3 recorded live). Phase 4 is complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3 and Phase 4 are complete. Phase 2, Project Manager loop closure: the handoff
 outcome read-back, handoffs for five of the six deferred agents (the Writer stays deferred) with the
@@ -1423,7 +1460,7 @@ Intelligence screen over the stored Search Console rows; and the operator's cura
 (the one Phase 3 migration, applied). Phase 4: the Analytics, Competitors, AI Visibility and
 Outbound Links screens over stored data, the Director and performance-review bounds, and the
 Director's five-slot bundle. Not started, each under its own explicit approval: applying
-`20261007120000` to production, Phase 5 checkpoints 5.5–5.7, the remaining fixture screens (Command Center, Reports; the 2 fixture links to
+`20261007120000` to production, Phase 5 checkpoints 5.6–5.7, the remaining fixture screens (Command Center, Reports; the 2 fixture links to
 `/competitors/<fixture id>` and the content snapshot's `/content/<fixture id>` links stay 404 until
 then), and curated keywords as agent grounding (deferred by Q6).
 

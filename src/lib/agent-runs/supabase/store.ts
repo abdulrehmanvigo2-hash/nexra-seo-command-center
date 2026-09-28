@@ -1,5 +1,6 @@
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type { AgentRunStore } from "@/lib/agent-runs/contract";
+import type { AgentRun } from "@/types/agent-run";
 import {
   AGENT_RUN_ATTEMPT_READ_COLUMNS,
   AGENT_RUN_READ_COLUMNS,
@@ -101,6 +102,27 @@ export function createSupabaseAgentRunStore(
         .range(filter.offset ?? 0, (filter.offset ?? 0) + filter.limit - 1);
       if (error) throw new AgentRunStoreError("list runs", error);
       return data.map(agentRunRowToRun);
+    },
+
+    async listDue(limit) {
+      // The claim's own rule (queued, attempts left, due by now) and order
+      // (due time, then id). PostgREST cannot order by coalesce or compare two
+      // columns, so a bounded read of the oldest queued runs is filtered and
+      // sorted here.
+      const { data, error } = await table()
+        .select(AGENT_RUN_READ_COLUMNS)
+        .eq("status", "queued")
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(Math.max(limit, 1) * 4);
+      if (error) throw new AgentRunStoreError("list due runs", error);
+      const nowMs = Date.now();
+      const due = (run: AgentRun) => Date.parse(run.nextAttemptAt ?? run.createdAt);
+      return data
+        .map(agentRunRowToRun)
+        .filter((run) => run.attemptCount < run.maxAttempts && due(run) <= nowMs)
+        .sort((a, b) => due(a) - due(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .slice(0, limit);
     },
 
     async transition(id, from, patch) {

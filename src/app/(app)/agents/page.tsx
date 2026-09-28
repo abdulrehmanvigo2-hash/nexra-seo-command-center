@@ -3,6 +3,12 @@ import { AgentsWorkspace } from "@/components/agents/agents-workspace";
 import { projectRepository } from "@/lib/projects/repository";
 import { projectOptionsFrom } from "@/lib/projects/selection";
 
+/**
+ * Rendered per request (checkpoint 5.5): the stored project list is read on
+ * every visit, so a project added after a deploy appears without a rebuild.
+ */
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "AI Agents",
   description:
