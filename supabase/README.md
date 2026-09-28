@@ -158,13 +158,13 @@ Editor (or run with the Supabase CLI against a linked project):
 28. `20261006120000_curated_keywords.sql` — curated keywords (Phase 3,
     checkpoint 3.5)
 29. `20261007120000_delete_truncate_guards.sql` — delete and truncate guards
-    (Phase 5, checkpoint 5.4) — **NOT APPLIED to production yet**; applying it
-    is a separate, explicitly approved step
+    (Phase 5, checkpoint 5.4) — applied to production and recorded on 28 Sep
+    (checkpoint 5.6; see `docs/RUNBOOK.md` for the method)
 
-The first twenty-eight are applied to production and recorded in its migration
-history (29 versions: the articles migration is recorded under
-`20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0).
-The twenty-ninth is in the repository only until its own approval.
+All twenty-nine are applied to production and recorded in its migration
+history (30 versions: the articles migration is recorded under
+`20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
+`docs/RUNBOOK.md`).
 
 ### Delete and truncate guards (Phase 5, checkpoint 5.4)
 

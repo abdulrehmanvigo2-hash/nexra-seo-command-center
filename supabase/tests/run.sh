@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority keywords keywords-races guards
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority keywords keywords-races guards claim-races
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -504,7 +504,32 @@ suite_guards() {
   run_sql_suite guards "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/findings/setup.sql" "$HERE/guards/tests.sql"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority keywords keywords-races guards)
+# Run claims (checkpoint 5.6): agent_run_claim locks the run row, so two workers never both claim one run.
+suite_claim_races() {
+  fresh_db
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" >/dev/null
+  local r1=c1000000-0000-4000-8000-000000000001 r2=c1000000-0000-4000-8000-000000000002 r3=c1000000-0000-4000-8000-000000000003 r4=c1000000-0000-4000-8000-000000000004 state
+  q "insert into agent_runs (id, project_id, agent_id, task_type, input_hash, status, created_by, created_at) values
+    ('$r1','halcyon-fintech','technical-seo','crawl-review',repeat('a',64),'queued','00000000-0000-4000-8000-0000000000aa',now() - interval '4 minutes'),
+    ('$r2','halcyon-fintech','technical-seo','crawl-review',repeat('b',64),'queued','00000000-0000-4000-8000-0000000000aa',now() - interval '3 minutes'),
+    ('$r3','halcyon-fintech','technical-seo','crawl-review',repeat('c',64),'queued','00000000-0000-4000-8000-0000000000aa',now() - interval '2 minutes'),
+    ('$r4','halcyon-fintech','technical-seo','crawl-review',repeat('d',64),'queued','00000000-0000-4000-8000-0000000000aa',now() - interval '1 minute')" >/dev/null
+  claim() { printf "select public.agent_run_claim(%s, 'mock', '%s', 120)->>'outcome'" "$1" "$2"; }
+  runstate() { q "select r.status || '/' || r.attempt_count || '/' || (select count(*) from agent_run_attempts a where a.run_id = r.id) from agent_runs r where r.id = '$1'"; }
+  race "$(claim "'$r1'" w1)" "$(claim "'$r1'" w2)"
+  state="$(runstate "$r1")"
+  check "claim race R1 two workers, one run by id: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, status/attempt_count/attempts $state" \
+    "$([ "$R1" = claimed ] && [ "$R2" = not-queued ] && [ "$WAIT_MS" -ge 1200 ] && [ "$state" = running/1/1 ]; echo $?)"
+  race "$(claim "'$r2'" w1)" "$(claim "'$r2'" w2)" rollback
+  state="$(runstate "$r2")"
+  check "claim race R2 first claim rolls back: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, status/attempt_count/attempts $state" \
+    "$([ "$R1" = claimed ] && [ "$R2" = claimed ] && [ "$WAIT_MS" -ge 1200 ] && [ "$state" = running/1/1 ]; echo $?)"
+  race "select public.agent_run_claim(null, 'mock', 'w1', 120)->'run'->>'id'" "select public.agent_run_claim(null, 'mock', 'w2', 120)->'run'->>'id'"
+  check "claim race R3 two queue claims take different runs, no wait: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, $(runstate "$r3") $(runstate "$r4")" \
+    "$([ "$R1" = "$r3" ] && [ "$R2" = "$r4" ] && [ "$WAIT_MS" -lt 1000 ] && [ "$(runstate "$r3")" = running/1/1 ] && [ "$(runstate "$r4")" = running/1/1 ]; echo $?)"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority keywords keywords-races guards claim-races)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -520,7 +545,7 @@ for s in "${SUITES[@]}"; do
     triage) suite_triage ;; triage-races) suite_triage_races ;;
     tasks) suite_tasks ;; task-workflow) suite_task_workflow ;; task-priority) suite_task_priority ;;
     keywords) suite_keywords ;; keywords-races) suite_keywords_races ;;
-    guards) suite_guards ;;
+    guards) suite_guards ;; claim-races) suite_claim_races ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done
