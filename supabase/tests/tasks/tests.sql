@@ -120,7 +120,7 @@ begin
   perform t.ok(t.err($q$update public.nexra_agent_tasks set project_id = 'verdant-home'$q$) = '23514', 'D a task never moves to another project (23514)');
   perform t.ok(t.err($q$delete from public.nexra_agent_tasks$q$) = '23514', 'D a task is never deleted (23514)');
   perform t.ok(t.err($q$truncate public.nexra_agent_tasks$q$) in ('23514', '0A000'), 'D a task is never truncated (23514, or 0A000 once 20261004120000 references it from the events table)');
-  perform t.ok(t.err($q$delete from public.projects where id = 'halcyon-fintech'$q$) = '23503', 'D a project with tasks is not deleted (23503)');
+  perform t.ok(t.err($q$delete from public.projects where id = 'halcyon-fintech'$q$) in ('23503', '23514'), 'D a project with tasks is not deleted (23503)');
   perform t.ok((select count(*) from nexra_agent_tasks) = 5, 'D five tasks remain');
   perform t.ok((select count(*) from nexra_agent_tasks where project_id = 'verdant-home') = 1 and (select count(*) from nexra_agent_tasks where project_id = 'halcyon-fintech') = 4, 'D each task belongs to the project it was recorded for');
   perform t.ok((select array_agg(id order by created_at desc, id desc) from nexra_agent_tasks where project_id = 'halcyon-fintech') is not null, 'D the read order the index serves is defined');

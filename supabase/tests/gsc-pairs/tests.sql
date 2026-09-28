@@ -138,7 +138,7 @@ begin
   perform t.ok(t.err($q$ update public.nexra_search_console_query_pages set clicks = 0 where query = 'q1' $q$) = '23514', 'D update refused by the guard');
   perform t.ok(t.err($q$ delete from public.nexra_search_console_query_pages where query = 'q1' $q$) = '23514', 'D delete refused by the guard');
   perform t.ok(t.err($q$ truncate public.nexra_search_console_query_pages $q$) = '23514', 'D truncate refused by the guard');
-  perform t.ok(t.err($q$ delete from public.projects where id = 'halcyon-fintech' $q$) = '23503', 'D a project with rows cannot be deleted (restrict)');
+  perform t.ok(t.err($q$ delete from public.projects where id = 'halcyon-fintech' $q$) in ('23503', '23514'), 'D a project with rows cannot be deleted (restrict)');
   perform t.ok((select count(*) from public.nexra_search_console_query_pages where query = 'q1' and end_date = t.win_end() and clicks in (12, 3)) = 2, 'D rows unchanged after the refusals');
 
   -- Isolation: one project's rows never carry another's id, and the snapshot table is untouched.

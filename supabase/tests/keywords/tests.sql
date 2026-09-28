@@ -175,7 +175,7 @@ begin
   perform t.ok(t.err(format($q$insert into nexra_keyword_events (keyword_id, project_id, event_type, from_status, actor) values (%L, 'halcyon-fintech', 'created', 'tracked', t.kop())$q$, kw)) = '23514', 'E an event with fields its type does not carry is refused (23514)');
   perform t.ok(t.err(format($q$insert into nexra_keyword_events (keyword_id, project_id, event_type, from_status, to_status, actor) values (%L, 'halcyon-fintech', 'status-changed', 'paused', 'paused', t.kop())$q$, kw)) = '23514', 'E a status event that changes nothing is refused (23514)');
   perform t.ok(t.err(format($q$insert into nexra_keyword_events (keyword_id, project_id, event_type, from_value, to_value, actor) values (%L, 'halcyon-fintech', 'note-changed', 'a', 'a', t.kop())$q$, kw)) = '23514', 'E a value event that changes nothing is refused (23514)');
-  perform t.ok(t.err($q$delete from projects where id = 'halcyon-fintech'$q$) = '23503', 'E a project with curated keywords is not deleted (23503)');
+  perform t.ok(t.err($q$delete from projects where id = 'halcyon-fintech'$q$) in ('23503', '23514'), 'E a project with curated keywords is not deleted (23503)');
   perform t.ok((select count(*) from t.snaps_before) = (select count(*) from nexra_search_console_snapshots)
     and not exists (select 1 from t.snaps_before b join nexra_search_console_snapshots s using (id) where s.queries is distinct from b.queries), 'E the stored Search Console rows are untouched');
   perform t.ok((select count(*) from nexra_agent_tasks) = 0, 'E no task was created by curating');

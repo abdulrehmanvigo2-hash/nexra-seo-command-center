@@ -122,7 +122,7 @@ begin
   perform t.ok(t.tstate(format($q$update nexra_crawl_finding_triage set status = 'open' where id = %L$q$, v_id)) = 'none', 'D the owner may still change the decision itself');
   perform t.ok(t.tstate($q$delete from nexra_crawl_finding_triage$q$) = '23514', 'D direct DELETE refused (23514)');
   perform t.ok(t.tstate($q$truncate nexra_crawl_finding_triage$q$) = '23514', 'D TRUNCATE refused (23514)');
-  perform t.ok(t.tstate($q$delete from projects where id = 'halcyon-fintech'$q$) = '23503', 'D the project cannot be deleted under its decisions (23503)');
+  perform t.ok(t.tstate($q$delete from projects where id = 'halcyon-fintech'$q$) in ('23503', '23514'), 'D the project cannot be deleted under its decisions (23503)');
   perform t.ok(t.tstate($q$insert into nexra_crawl_finding_triage (project_id, finding_key, rule, finding_id, report_id, crawl_id, status, set_by) values ('halcyon-fintech', 'h1-missing:0000000000000009', 'h1-missing', '00000000-0000-4000-8000-000000000000', '00000000-0000-4000-8000-000000000000', 'c0000000-0000-4000-8000-000000000001', 'open', t.op())$q$) = '23503', 'D a privileged insert naming no recorded finding is refused (23503)');
   perform t.ok(t.tstate(format($q$insert into nexra_crawl_finding_triage (project_id, finding_key, rule, finding_id, report_id, crawl_id, status, set_by) select 'halcyon-fintech', finding_key, rule, id, report_id, crawl_id, 'open', t.op() from nexra_crawl_findings where id = %L$q$, other)) = '23514', 'D a privileged insert binding another project''s finding to this project is refused (23514)');
 

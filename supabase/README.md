@@ -157,10 +157,34 @@ Editor (or run with the Supabase CLI against a linked project):
     checkpoint 2.3b)
 28. `20261006120000_curated_keywords.sql` — curated keywords (Phase 3,
     checkpoint 3.5)
+29. `20261007120000_delete_truncate_guards.sql` — delete and truncate guards
+    (Phase 5, checkpoint 5.4) — **NOT APPLIED to production yet**; applying it
+    is a separate, explicitly approved step
 
-All twenty-eight are applied to production and recorded in its migration
+The first twenty-eight are applied to production and recorded in its migration
 history (29 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0).
+The twenty-ninth is in the repository only until its own approval.
+
+### Delete and truncate guards (Phase 5, checkpoint 5.4)
+
+`20261007120000_delete_truncate_guards.sql` adds trigger guards only — no
+grant, row, function, column or existing trigger changes:
+
+- `projects`, `agent_runs`, `agent_run_attempts`: every DELETE and TRUNCATE is
+  refused with check_violation (23514), for every caller, service_role
+  included. A project delete now fails at the guard before any foreign key
+  is consulted (23514, where it used to be 23503 under child rows). The
+  application never deletes any of the three.
+- `nexra_crawls`, `nexra_crawl_pages`, `nexra_crawl_links`: TRUNCATE is refused
+  (23514); DELETE stays for housekeeping. Deleting a crawl still removes its
+  pages and links, and also its findings reports, findings and triage
+  decisions (their own guards let the cascade through): a crawl delete erases
+  that crawl's whole record.
+- `nexra_content_drafts`: unchanged; the draft store's compensating delete of
+  a parent with no version 1 needs it.
+
+Harness suite `guards` (38 assertions).
 
 After each, run `NOTIFY pgrst, 'reload schema';` on its own so the API sees the
 new tables and functions.
