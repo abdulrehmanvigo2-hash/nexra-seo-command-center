@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAiExecutor } from "@/lib/agent-runs/ai-executor";
+import { DAILY_CAPS, DAY_SECONDS, createDailyCaps, type DailyCaps } from "@/lib/agent-runs/daily-caps";
 import { crawlService } from "@/lib/crawl";
 import { unavailableAgentRunStore, type AgentRunStore } from "@/lib/agent-runs/contract";
 import type { AgentExecutor } from "@/lib/agent-runs/executor";
@@ -245,6 +246,20 @@ function configuredService(): AgentRunService {
     executor,
     projects: projectRepository,
     timeoutMs,
+    caps: store.storesRuns ? dailyCaps() : undefined,
+  });
+}
+
+/**
+ * The daily spend caps (checkpoint 5.5, decision Q9): runs created and
+ * attempts started, each capped per project and across all projects per UTC
+ * day, counted through the shared `rate_limit_consume` (no schema).
+ */
+function dailyCaps(): DailyCaps {
+  const perDay = (name: string, limit: number) => appRateLimiter(`agent-runs.daily-${name}`, { limit, windowSeconds: DAY_SECONDS });
+  return createDailyCaps({
+    create: { project: perDay("create-project", DAILY_CAPS.perProject), global: perDay("create-global", DAILY_CAPS.global) },
+    execute: { project: perDay("execute-project", DAILY_CAPS.perProject), global: perDay("execute-global", DAILY_CAPS.global) },
   });
 }
 

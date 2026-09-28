@@ -17,6 +17,7 @@
  * of ids that names each review lives in `CRAWL_REVIEWS` and nowhere else.
  */
 
+import { DAILY_CAP_HELD_MESSAGE, DAILY_CAP_MESSAGE } from "@/lib/agent-runs/daily-caps";
 import { DIRECTOR_SOURCE_SLOTS, summarisedSources, type DirectorSource } from "@/lib/agent-runs/director-bundle";
 import {
   describeUpstreamEvidence,
@@ -1142,6 +1143,7 @@ export function queueRefusal(
     return "The project or agent named in the request does not exist on this server.";
   }
   if (error === "unavailable") return "Agent runs are not stored on this deployment, so nothing can be queued.";
+  if (error === "daily-cap") return DAILY_CAP_MESSAGE;
   if (error === "invalid") {
     const message = (body as { message?: unknown }).message;
     return typeof message === "string" ? message : "The request was refused as invalid.";
@@ -1341,6 +1343,9 @@ export function executeOutcome(httpStatus: number, body: unknown): ExecuteOutcom
   }
   if (error === "unavailable") {
     return { kind: "refused", message: "Agent runs are not stored on this deployment." };
+  }
+  if (error === "daily-cap") {
+    return { kind: "refused", message: DAILY_CAP_HELD_MESSAGE };
   }
   if (httpStatus === 401) {
     return { kind: "refused", message: "Your session has ended. Reload the page to sign in again." };

@@ -8,6 +8,7 @@ import {
   limitResponse,
   logFailure,
   readJsonBody,
+  heldByCapResponse,
 } from "@/lib/agent-runs/http";
 import { getOperator } from "@/lib/auth/session";
 
@@ -87,7 +88,8 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/age
         executing.add(operator.id);
         try {
           const result = await service.executeRun(runId);
-          return result.ok ? json({ run: result.run }) : failureResponse(result);
+          if (result.ok) return json({ run: result.run });
+          return result.reason === "daily-cap" ? heldByCapResponse(result) : failureResponse(result);
         } finally {
           executing.delete(operator.id);
         }

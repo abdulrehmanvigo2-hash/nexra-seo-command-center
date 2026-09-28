@@ -1,3 +1,4 @@
+import type { DailyCapScope, DailyCaps } from "@/lib/agent-runs/daily-caps";
 import { createHash } from "node:crypto";
 import { mayRunAutomatically } from "@/lib/agent-runs/action-policy";
 import type {
@@ -56,6 +57,8 @@ export type AgentRunServiceDependencies = {
   readonly leaseSeconds?: number;
   readonly heartbeatMs?: number;
   readonly workerId?: string;
+  /** Daily spend caps (checkpoint 5.5); none in a test that does not ask for them. */
+  readonly caps?: DailyCaps;
 };
 
 export type AgentRunFailure =
@@ -72,6 +75,11 @@ export type AgentRunFailure =
    */
   | { readonly ok: false; readonly reason: "approval-required" }
   | { readonly ok: false; readonly reason: "not-found" }
+  /**
+   * The daily cap is reached (checkpoint 5.5): at creation nothing was
+   * queued; at execution the run was not started and is still queued.
+   */
+  | { readonly ok: false; readonly reason: "daily-cap"; readonly scope: DailyCapScope; readonly retryAfterMs: number }
   /** The run is not in a state that allows this; `status` is its current state. */
   | {
       readonly ok: false;
@@ -212,6 +220,8 @@ function executionResult(outcome: WorkerOutcome): AgentRunResult {
     case "not-found":
     case "empty":
       return NOT_FOUND;
+    case "daily-cap":
+      return { ok: false, reason: "daily-cap", scope: outcome.scope, retryAfterMs: outcome.retryAfterMs };
   }
 }
 
@@ -227,6 +237,7 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
     leaseSeconds: dependencies.leaseSeconds,
     heartbeatMs: dependencies.heartbeatMs,
     timeoutMs: dependencies.timeoutMs,
+    caps: dependencies.caps,
   });
 
   /** Re-reads a run that moved under us, to report where it went. */
@@ -285,6 +296,13 @@ export function createAgentRunService(dependencies: AgentRunServiceDependencies)
 
       const existing = await store.findActiveDuplicate(identity);
       if (existing) return { ok: true, run: existing, duplicate: true };
+
+      // Counted only when a new run would be queued: a duplicate, or any
+      // refusal above, costs nothing.
+      if (dependencies.caps) {
+        const decision = await dependencies.caps.consume("create", projectId);
+        if (!decision.allowed) return { ok: false, reason: "daily-cap", scope: decision.scope, retryAfterMs: decision.retryAfterMs };
+      }
 
       const inserted = await store.insert({
         ...identity,

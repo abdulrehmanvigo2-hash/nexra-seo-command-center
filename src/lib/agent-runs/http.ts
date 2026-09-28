@@ -1,6 +1,7 @@
 import "server-only";
 
 import { NextResponse, type NextRequest } from "next/server";
+import { DAILY_CAP_HELD_MESSAGE, DAILY_CAP_MESSAGE } from "@/lib/agent-runs/daily-caps";
 import type { AgentRunFailure } from "@/lib/agent-runs/service";
 import { AgentRunRowError } from "@/lib/agent-runs/supabase/schema";
 import { AgentRunStoreError } from "@/lib/agent-runs/supabase/store";
@@ -88,6 +89,7 @@ const FAILURE_STATUS: Readonly<Record<AgentRunFailure["reason"], number>> = {
   "not-found": 404,
   conflict: 409,
   unavailable: 503,
+  "daily-cap": 429,
 };
 
 export function failureResponse(failure: AgentRunFailure): NextResponse {
@@ -102,8 +104,22 @@ export function failureResponse(failure: AgentRunFailure): NextResponse {
               message:
                 "This task needs a person to approve each action, and Nexra has no approval workflow yet, so it cannot be queued or run.",
             }
-          : { error: failure.reason };
-  return json(body, FAILURE_STATUS[failure.reason]);
+          : failure.reason === "daily-cap"
+            ? { error: failure.reason, scope: failure.scope, message: DAILY_CAP_MESSAGE }
+            : { error: failure.reason };
+  const response = json(body, FAILURE_STATUS[failure.reason]);
+  if (failure.reason === "daily-cap") response.headers.set("Retry-After", String(Math.max(1, Math.ceil(failure.retryAfterMs / 1_000))));
+  return response;
+}
+
+/**
+ * A daily-cap answer to an execute request: the run was not started and is
+ * still queued. Same status and header as a refused creation, its own words.
+ */
+export function heldByCapResponse(failure: Extract<AgentRunFailure, { reason: "daily-cap" }>): NextResponse {
+  const response = json({ error: failure.reason, scope: failure.scope, message: DAILY_CAP_HELD_MESSAGE }, 429);
+  response.headers.set("Retry-After", String(Math.max(1, Math.ceil(failure.retryAfterMs / 1_000))));
+  return response;
 }
 
 export function logFailure(route: string, error: unknown): void {

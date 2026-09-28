@@ -13,6 +13,7 @@ import {
   type ExecutionOutput,
   type ExecutionTask,
 } from "@/lib/agent-runs/executor";
+import type { DailyCapScope, DailyCaps } from "@/lib/agent-runs/daily-caps";
 import { AGENT_RUN_ERROR_MESSAGES } from "@/lib/agent-runs/lifecycle";
 import { checkStorableJson, looksLikeSecret } from "@/lib/agent-runs/safety";
 import { getTaskType } from "@/lib/agent-runs/task-types";
@@ -73,6 +74,13 @@ export type AgentRunWorkerDependencies = {
   readonly heartbeatMs?: number;
   /** How long one attempt may take before it fails with `timeout`. */
   readonly timeoutMs?: number;
+  /**
+   * Daily spend caps (checkpoint 5.5). When given, an attempt is counted
+   * before its run is claimed, and a run whose project or the whole
+   * deployment is at its daily cap is not claimed: it stays queued, and
+   * nothing about it changes.
+   */
+  readonly caps?: DailyCaps;
 };
 
 export type WorkerOutcome =
@@ -90,7 +98,9 @@ export type WorkerOutcome =
   | { readonly status: "empty" }
   | { readonly status: "not-found" }
   | { readonly status: "not-queued"; readonly run: AgentRun }
-  | { readonly status: "exhausted"; readonly run: AgentRun };
+  | { readonly status: "exhausted"; readonly run: AgentRun }
+  /** The daily cap is reached: the run was not claimed and is still queued. */
+  | { readonly status: "daily-cap"; readonly run: AgentRun; readonly scope: DailyCapScope; readonly retryAfterMs: number };
 
 export type QueueBatch = {
   /** Runs this batch claimed, in order, with how each attempt ended. */
@@ -100,8 +110,10 @@ export type QueueBatch = {
     readonly status: AgentRun["status"];
     readonly recorded: boolean;
   }[];
-  /** Why the batch stopped claiming: nothing due, the batch size, or the time budget. */
-  readonly stoppedBy: "empty" | "batch-limit" | "time-budget";
+  /** Why the batch stopped claiming: nothing due, the batch size, the time budget, or the global daily cap. */
+  readonly stoppedBy: "empty" | "batch-limit" | "time-budget" | "daily-cap";
+  /** Due runs passed over because their project's (or the global) daily cap is reached; each is still queued. */
+  readonly heldByCap?: readonly { readonly runId: string; readonly projectId: string; readonly scope: DailyCapScope }[];
 };
 
 export type AgentRunWorker = {
@@ -124,6 +136,8 @@ export const DEFAULT_RECOVERY_LIMIT = 25;
 export const MAX_RECOVERY_LIMIT = 100;
 export const DEFAULT_RETRY_SCHEDULE_LIMIT = 25;
 export const MAX_QUEUE_BATCH = 10;
+/** How many due runs a capped batch reads to choose from. */
+export const DUE_READ_LIMIT = 25;
 const MAX_LEASE_SECONDS = 900;
 const MAX_SUMMARY_LENGTH = 2_000;
 
@@ -235,7 +249,7 @@ const TIMED_OUT = Symbol("timed out");
 const LEASE_LOST = Symbol("lease lost");
 
 export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): AgentRunWorker {
-  const { store, executor, projects } = dependencies;
+  const { store, executor, projects, caps } = dependencies;
   const workerId = dependencies.workerId ?? createWorkerId();
   const leaseSeconds = dependencies.leaseSeconds ?? DEFAULT_LEASE_SECONDS;
   const heartbeatMs = dependencies.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
@@ -390,10 +404,51 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
     return { status: "executed", run: finished.run ?? run, attemptNumber: lease.attemptNumber, recorded: false };
   }
 
+  /**
+   * With caps: counts the attempt, then claims this exact run; a capped run
+   * is left queued and reported. A run that is not queued is passed to the
+   * claim unchanged, which answers for it; nothing is counted for it.
+   */
+  async function executeCapped(run: AgentRun): Promise<WorkerOutcome> {
+    if (!caps || run.status !== "queued" || run.attemptCount >= run.maxAttempts) return execute(run.id);
+    const decision = await caps.consume("execute", run.projectId);
+    if (!decision.allowed) {
+      logEvent("warn", "agent_run.daily_cap", { runId: run.id, projectId: run.projectId, reason: `daily-cap-${decision.scope}` });
+      return { status: "daily-cap", run, scope: decision.scope, retryAfterMs: decision.retryAfterMs };
+    }
+    return execute(run.id);
+  }
+
+  /** The next due run the caps allow, or why there is none; held runs are collected. */
+  async function executeNextCapped(held: { runId: string; projectId: string; scope: DailyCapScope }[], tried: Set<string>): Promise<WorkerOutcome> {
+    const listDue = store.listDue;
+    if (!caps || !listDue) return execute(null);
+    const due = await listDue.call(store, DUE_READ_LIMIT);
+    for (const run of due) {
+      if (tried.has(run.id)) continue;
+      tried.add(run.id);
+      const outcome = await executeCapped(run);
+      if (outcome.status === "daily-cap") {
+        held.push({ runId: run.id, projectId: run.projectId, scope: outcome.scope });
+        // The global cap holds every project alike: stop looking.
+        if (outcome.scope === "global") return outcome;
+        continue;
+      }
+      // Another worker took it, or it ran out of attempts, meanwhile: try the next.
+      if (outcome.status === "not-queued" || outcome.status === "exhausted" || outcome.status === "not-found") continue;
+      return outcome;
+    }
+    return { status: "empty" };
+  }
+
   return {
     id: workerId,
-    executeRun: (runId) => execute(runId),
-    executeNext: () => execute(null),
+    async executeRun(runId) {
+      if (!caps) return execute(runId);
+      const run = await store.getById(runId);
+      return run ? executeCapped(run) : { status: "not-found" };
+    },
+    executeNext: () => executeNextCapped([], new Set()),
 
     async processQueue({ maxRuns, budgetMs }) {
       if (!Number.isInteger(maxRuns) || maxRuns < 1 || maxRuns > MAX_QUEUE_BATCH) {
@@ -404,6 +459,8 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
       }
       const startedAt = performance.now();
       const executed: QueueBatch["executed"][number][] = [];
+      const held: { runId: string; projectId: string; scope: DailyCapScope }[] = [];
+      const tried = new Set<string>();
       let stoppedBy: QueueBatch["stoppedBy"] = "batch-limit";
 
       while (executed.length < maxRuns) {
@@ -412,9 +469,9 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
           stoppedBy = "time-budget";
           break;
         }
-        const outcome = await execute(null);
+        const outcome = await executeNextCapped(held, tried);
         if (outcome.status !== "executed") {
-          stoppedBy = "empty";
+          stoppedBy = outcome.status === "daily-cap" ? "daily-cap" : "empty";
           break;
         }
         executed.push({
@@ -424,7 +481,7 @@ export function createAgentRunWorker(dependencies: AgentRunWorkerDependencies): 
           recorded: outcome.recorded,
         });
       }
-      return { executed, stoppedBy };
+      return caps ? { executed, stoppedBy, heldByCap: held } : { executed, stoppedBy };
     },
 
     async recoverExpired(limit = DEFAULT_RECOVERY_LIMIT) {

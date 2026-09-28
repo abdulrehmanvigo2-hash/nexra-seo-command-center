@@ -1055,6 +1055,22 @@ simulated or model-generated, fixed error message, next retry time, and
 expandable attempts. 25 runs per page with "Load older runs"
 (`GET /api/agent-runs?…&offset=n`, offset ≤ 1,000).
 
+### Daily caps, the health check and the abort classification (Phase 5, checkpoint 5.5)
+
+- **Daily caps** (`src/lib/agent-runs/daily-caps.ts`): 40 a project and 100 in all per UTC day,
+  counted for runs created and, separately, for attempts started, through `rate_limit_consume`
+  (keys `agent-runs.daily-<kind>-<scope>:<project|all>:<YYYY-MM-DD>`, a one-day window; no schema).
+  A refused creation is HTTP 429 `daily-cap` with Retry-After and queues nothing. A capped run is
+  never claimed: the queue reads the due runs (`listDue`) and passes it over, a global cap stops the
+  batch (`stoppedBy: "daily-cap"`, `heldByCap`), and Run Now answers 429 `daily-cap`; the run stays
+  queued and runs after midnight UTC.
+- **Health** (`GET /api/health`, public for GET/HEAD): 200 `{ status: "ok", time, database }` or 503
+  `{ status: "degraded", time, database: "unreachable" }`; the database probe reads at most one
+  project id with a 2 s timeout and discards it. No data, ids or configuration names; not cached;
+  120 a minute per instance.
+- **Abort classification:** a caller's abort (`APIUserAbortError`) is `unavailable`, not
+  `rejected`.
+
 ## Content drafts
 
 The first durable content-production record: one Writer section draft,
