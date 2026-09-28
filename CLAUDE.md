@@ -1074,7 +1074,7 @@ review* and Run Now, no retry; verified read-only):** eight runs, all on project
   2,000 ceiling (range 951–1,247).
 - **Structure:** four held their fixed order exactly; four added one paragraph outside it, each stating
   what the evidence lacks — the 4.6 extra-paragraph pattern returning despite the `NO_OTHER_PARAGRAPH`
-  sentence. Not fixed; recorded for a later checkpoint (no instruction change here).
+  sentence. Addressed by checkpoint 6.6c (below).
 - **Content:** the claims stay inside the scoped V1 — "no inbound link from the fetched pages", never
   orphaned; type names only; "not observed in stored rows … unknown, not zero"; "overlap to review, not
   cannibalisation"; no ranking, traffic or backlink claim.
@@ -1084,6 +1084,22 @@ review* and Run Now, no retry; verified read-only):** eight runs, all on project
 - **Totals after:** 62 runs, 63 attempts (from 54 and 55; these eight are the only runs on 28 Sep after
   the 5.3 check runs). All eight 6.5/6.6 second tasks that
   can be queued today have one completed live run; the Writer's waits for a needs-review unit.
+
+**Phase 6 checkpoint 6.6c (the LIMITS line):** the four stray paragraphs above each said what the evidence
+did not cover, so the fixed order of all nine second tasks (6.5 and 6.6, `src/lib/agent-runs/second-tasks.ts`)
+now holds a line for it: `LIMITS_LINE` — "LIMITS: one line, under 20 words, naming what the supplied evidence
+does not cover." — placed just before each closing line (NEXT, or LEARNING for `learning-review`), and each
+fixed-order sentence names it ("…, then the findings, then one LIMITS line, then one NEXT line."). The 4.6
+"add no other paragraph" sentence and every other sentence are kept word for word: the tests take the LIMITS
+line and its place in the order out and match the 6.5 and 6.6 hashes. New hashes: keyword-opportunity
+`653f59b8…`, content-refresh `b027d90d…`, article-revision-draft `0dd3eeea…`, page-query-alignment
+`7cf11088…`, finding-history `24911c5a…`, learning `ac7cc936…`, competitor-page-gap `b87fc8e1…`,
+schema-entity `bbecdbc5…`, internal-link `e8536140…`. Full-caps answers (eight-letter words at every cap,
+LIMITS included) stay under the worker's 2,000 ceiling: 1,978 (COVERAGE reviews and the revision draft),
+1,972 (scoped), 1,879 (learning — its OBSERVED cites both window dates, not a URL; modelled with a URL, as the
+6.5 test did, it would be 2,031). The margins are thin (22–28 characters). The instruction-length guard in
+`second-tasks.test.ts` moves from 2,600 to 2,700 deliberately (the keyword text is 2,606). No other
+instruction, no schema, no screen, no run.
 
 **Findings recorded for later phases:**
 
@@ -1198,7 +1214,7 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 checkpoint 6.6b merged (PR #56) and verified live (above); next 6.7; each further
+**Current work:** Phase 6 checkpoint 6.6c on `claude/kind-cannon-7b7swp` (above, not merged); next 6.7; each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1847,7 +1863,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); then 6.7–6.12 in order, the one external write (6.11) last |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) on `claude/kind-cannon-7b7swp`, not merged; then 6.7–6.12 in order, the one external write (6.11) last |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:

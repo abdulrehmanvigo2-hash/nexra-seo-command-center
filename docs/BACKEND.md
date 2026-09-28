@@ -369,7 +369,10 @@ Six agents gain a second grounded task, each over an evidence kind that
 already exists, with one block appended for its question
 (`src/lib/agent-runs/task-grounding.ts`); instructions in
 `src/lib/agent-runs/second-tasks.ts`, in the 2.3d structural shape with the
-4.6 extra-paragraph sentence and an under-1,200-character last rule,
+4.6 extra-paragraph sentence and an under-1,200-character last rule (since
+checkpoint 6.6c the fixed order of all nine also holds one `LIMITS` line —
+under 20 words, naming what the supplied evidence does not cover — just
+before the closing line),
 hash-pinned. Operator-triggered through `POST /api/agent-runs`; none is a
 hand-off source; no schema.
 
