@@ -31,7 +31,7 @@ import type { AsyncRateLimiter } from "@/lib/security/shared-rate-limit";
 import { getSearchConsoleReport, searchConsoleProvider } from "@/lib/search-console";
 import { readSearchConsoleHistory } from "@/lib/search-console/history";
 import { readKeywordIntelligence } from "@/lib/search-console/keywords";
-import { readSearchConsoleQueryPages } from "@/lib/search-console/query-pages";
+import { readLatestPagePairs, readSearchConsoleQueryPages } from "@/lib/search-console/query-pages";
 import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supabase/server";
 
 /**
@@ -223,6 +223,18 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
             getRun: (runId: string) => store.getById(runId),
           };
         })(),
+        // The second grounded tasks (checkpoint 6.5), each read through the
+        // service that already owns the records. The content refresh and
+        // page–query alignment reviews read the latest stored pairs listed
+        // by page, through the one bounded pair read.
+        pagePairs: (projectId) => readLatestPagePairs(projectId),
+        // The finding-history review reads the history the Issues tab shows,
+        // derived on read by the crawl service; nothing is stored.
+        findingHistory: (projectId) => crawlService().getFindingHistory(projectId),
+        // The keyword opportunity review reads the project's curated keywords
+        // (decision Q5), through the keyword service. Imported on use: the
+        // keyword module reaches the task service, which reaches this one.
+        curatedKeywords: async (projectId) => (await import("@/lib/keywords")).keywordService().listKeywords(projectId, null),
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

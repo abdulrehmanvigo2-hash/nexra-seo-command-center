@@ -309,7 +309,7 @@ migration, no worker, cron, credential or environment change.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Seventeen task types exist, sixteen read-only and one `draft`: `project-review` (any agent),
+project. Twenty-four task types exist, twenty-two read-only and two `draft` (the six added in checkpoint 6.5 are listed under *Second grounded tasks* below): `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -362,6 +362,28 @@ queued → running → completed
              └──→ cancelled
 queued → cancelled
 ```
+
+### Second grounded tasks (checkpoint 6.5)
+
+Six agents gain a second grounded task, each over an evidence kind that
+already exists, with one block appended for its question
+(`src/lib/agent-runs/task-grounding.ts`); instructions in
+`src/lib/agent-runs/second-tasks.ts`, in the 2.3d structural shape with the
+4.6 extra-paragraph sentence and an under-1,200-character last rule,
+hash-pinned. Operator-triggered through `POST /api/agent-runs`; none is a
+hand-off source; no schema.
+
+| Task | Agent | Evidence | Appended block |
+|---|---|---|---|
+| `keyword-opportunity-review` (range) | Keyword & Search Intent | `search-console` + the M4 inventory | the curated keywords (decision Q5), through the keyword service: status, group, target page, and the stored rows' reading of each exact query ("not observed in stored rows", never zero); archived left out, credential-like text withheld (`src/lib/keywords/grounding.ts`) |
+| `content-refresh-review` (crawl id) | Content Strategist | `crawl` | the latest stored query × page window listed by page, each page marked fetched or not by the crawl (`src/lib/search-console/query-pages/page-pairs.ts`, read by `readLatestPagePairs`) |
+| `article-revision-draft` (the check's four unit inputs; policy `draft`) | Writer | `article-unit` | replaces the check block: the unit, its recorded needs-review check (partial, unsupported, unverifiable items with the check's notes) and the evidence pack; refused `unit-not-checked` / `unit-not-needs-review` before any provider call (`src/lib/content/articles/revision-grounding.ts`); writes nothing to the article |
+| `page-query-alignment-review` (crawl id) | On-Page SEO | `crawl` | the same page pairs block |
+| `finding-history-review` (crawl id) | Technical SEO | `crawl` + the computed findings | the derived finding history (3.3) through the crawl service (`src/lib/crawl/findings/history-grounding.ts`) |
+| `learning-review` (range) | Analytics & Learning | `search-console` (analytics audience, with the P4d history) | the agent's own earlier `performance-review` readings (the Learnings tab's rule), at most three, quoted as a model's reading (`src/lib/analytics/learnings-grounding.ts`) |
+
+A missing reader, an empty store or a failed read is stated in its block
+and never fails the run; the first tasks' grounding is unchanged.
 
 ### Attempt history
 

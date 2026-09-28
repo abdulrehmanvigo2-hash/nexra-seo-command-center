@@ -430,9 +430,9 @@ describe("the task type", () => {
     const others: AgentId[] = ["seo-director", "project-manager", "market-intelligence", "keyword-intent", "content-strategist", "research-evidence", "on-page-seo", "technical-seo", "ai-visibility", "authority-backlink", "analytics-learning"];
     for (const agent of others) assert.equal(agentMayRun(definition!, agent), false, agent);
     assert.equal(agentMayRun(definition!, "writer"), true);
-    assert.equal(TASK_TYPES.length, 18);
+    assert.equal(TASK_TYPES.length, 24);
     // Every other task is still read-only.
-    assert.deepEqual(TASK_TYPES.filter((task) => task.policy !== "read-only").map((task) => task.id), ["section-draft"]);
+    assert.deepEqual(TASK_TYPES.filter((task) => task.policy !== "read-only").map((task) => task.id), ["section-draft", "article-revision-draft"]);
   });
 
   test("accepts one plan run id as a uuid, lowercased, with a required zero-based section index, and refuses everything else", () => {

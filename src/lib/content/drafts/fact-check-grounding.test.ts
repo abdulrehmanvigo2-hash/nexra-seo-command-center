@@ -401,11 +401,11 @@ describe("the task type — draft-fact-check", () => {
     const others: AgentId[] = ["seo-director", "project-manager", "market-intelligence", "keyword-intent", "content-strategist", "writer", "on-page-seo", "technical-seo", "ai-visibility", "authority-backlink", "analytics-learning"];
     for (const agent of others) assert.equal(agentMayRun(definition!, agent), false, agent);
     assert.equal(agentMayRun(definition!, "research-evidence"), true);
-    assert.equal(TASK_TYPES.length, 18);
+    assert.equal(TASK_TYPES.length, 24);
     assert.equal(TASK_TYPES.filter((task) => task.evidence === "draft-version").length, 1);
     assert.equal(isUpstreamTaskType("draft-fact-check"), false);
     // Still the only non-read-only task is the Writer's draft.
-    assert.deepEqual(TASK_TYPES.filter((task) => task.policy !== "read-only").map((task) => task.id), ["section-draft"]);
+    assert.deepEqual(TASK_TYPES.filter((task) => task.policy !== "read-only").map((task) => task.id), ["section-draft", "article-revision-draft"]);
   });
 
   test("accepts one draft id and one version number, lowercased, and refuses everything else", () => {

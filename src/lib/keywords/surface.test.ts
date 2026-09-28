@@ -82,13 +82,25 @@ describe("the detail page, replaced in place (Q2)", () => {
   });
 });
 
-describe("curated keywords are not agent grounding (Q6)", () => {
-  test("nothing under the agent runtime or the task grounding reads the keyword store or table", () => {
+describe("curated keywords ground one agent task only (Q5 of the 6.1 note, lifting 3.5's Q6)", () => {
+  test("the runtime reads them through the keyword service for the keyword opportunity review, and nothing else reads the store or table", () => {
     const files = [...filesUnder("src/lib/agent-runs"), ...filesUnder("src/lib/agent-tasks")].filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
     assert.ok(files.length > 10);
     for (const file of files) {
       const source = readFileSync(file, "utf8");
-      assert.doesNotMatch(source, /@\/lib\/keywords|nexra_keywords|keywordService\(/, file);
+      assert.doesNotMatch(source, /nexra_keywords/, file);
+      if (file.endsWith("agent-runs/index.ts")) {
+        // The one reader: the keyword service's list, imported on use.
+        assert.equal(source.match(/keywordService\(/g)?.length, 1, file);
+        assert.match(source, /curatedKeywords: async \(projectId\) => \(await import\("@\/lib\/keywords"\)\)\.keywordService\(\)\.listKeywords\(projectId, null\)/);
+      } else if (file.endsWith("agent-runs/task-grounding.ts")) {
+        // Types and the pure formatter only, read for one task type.
+        assert.doesNotMatch(source, /keywordService\(|from "@\/lib\/keywords"/, file);
+        assert.match(source, /if \(task\.taskType === "keyword-opportunity-review"\) \{\s+let curated: CuratedKeywordRead;/);
+        assert.equal(source.match(/readers\.curatedKeywords/g)?.length, 2, "read once, guarded once");
+      } else {
+        assert.doesNotMatch(source, /@\/lib\/keywords|keywordService\(/, file);
+      }
     }
   });
 });

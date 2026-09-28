@@ -168,7 +168,8 @@ describe("the observed query inventory section", () => {
 describe("the agent wiring", () => {
   test("the inventory reader is wired last, read for the Keyword & Search Intent review only, and the instructions name the block as derived", () => {
     assert.match(RUNTIME, /searchConsoleKeywords: \(projectId\) => readKeywordIntelligence\(projectId\)/);
-    assert.match(GROUNDING, /if \(task\.taskType === "search-query-review"\) \{\s+try \{\s+keywords = \(await readers\.searchConsoleKeywords\?\.\(task\.project\.id\)\)/);
+    // Since 6.5 the keyword opportunity review (the same agent) reads it too; the performance and learning reviews never do.
+    assert.match(GROUNDING, /if \(task\.taskType === "search-query-review" \|\| task\.taskType === "keyword-opportunity-review"\) \{\s+try \{\s+keywords = \(await readers\.searchConsoleKeywords\?\.\(task\.project\.id\)\)/);
     assert.match(GROUNDING, /keywords: keywordGrounding\.summary/);
     assert.ok(GROUNDING.indexOf("formatQueryPageGrounding(queryPages, audience)") < GROUNDING.indexOf("formatKeywordGrounding(keywords)"), "after the pairs");
     assert.match(INSTRUCTIONS, /Where an OBSERVED QUERY INVENTORY block follows/);

@@ -4,6 +4,7 @@ import { selectProjectDataSource } from "@/lib/projects/data-source";
 import { searchConsoleProperties } from "@/lib/search-console";
 import { QUERY_PAGE_LIST_LIMIT, QUERY_PAGE_RANGE_ID, unavailableSearchConsoleQueryPageStore, type SearchConsoleQueryPageStore } from "@/lib/search-console/query-pages/contract";
 import { buildQueryPageIntelligence, type QueryPageIntelligence } from "@/lib/search-console/query-pages/intelligence";
+import { latestPagePairs, type PagePairInput } from "@/lib/search-console/query-pages/page-pairs";
 import type { SearchConsoleQueryPagesDatabase } from "@/lib/search-console/query-pages/supabase/schema";
 import { createSupabaseSearchConsoleQueryPageStore } from "@/lib/search-console/query-pages/supabase/store";
 import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supabase/server";
@@ -44,4 +45,18 @@ export async function readSearchConsoleQueryPages(projectId: string): Promise<Qu
   const rows = await pairs.listQueryPages(projectId, QUERY_PAGE_RANGE_ID, QUERY_PAGE_LIST_LIMIT);
   // An unmapped project has no current property: every stored row is under another name.
   return buildQueryPageIntelligence(rows, property ?? "", QUERY_PAGE_LIST_LIMIT);
+}
+
+/**
+ * The latest stored window of the project's current property, its rows
+ * listed as stored (checkpoint 6.5: the page-level pairs two crawl reviews
+ * read). The same one bounded read and property rule as the reader above;
+ * null when this deployment keeps no query × page rows.
+ */
+export async function readLatestPagePairs(projectId: string): Promise<PagePairInput | null> {
+  const pairs = searchConsoleQueryPageStore();
+  if (!pairs.storesQueryPages) return null;
+  const property = searchConsoleProperties().get(projectId);
+  const rows = await pairs.listQueryPages(projectId, QUERY_PAGE_RANGE_ID, QUERY_PAGE_LIST_LIMIT);
+  return latestPagePairs(rows, property ?? "", QUERY_PAGE_LIST_LIMIT);
 }
