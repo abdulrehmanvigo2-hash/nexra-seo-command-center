@@ -309,7 +309,7 @@ migration, no worker, cron, credential or environment change.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Twenty-four task types exist, twenty-two read-only and two `draft` (the six added in checkpoint 6.5 are listed under *Second grounded tasks* below): `project-review` (any agent),
+project. Twenty-seven task types exist, twenty-five read-only and two `draft` (the nine added in checkpoints 6.5 and 6.6 are listed under *Second grounded tasks* below): `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -384,6 +384,15 @@ hand-off source; no schema.
 
 A missing reader, an empty store or a failed read is stated in its block
 and never fails the run; the first tasks' grounding is unchanged.
+
+Checkpoint 6.6 (the scoped-down V1, decision Q4 option B) adds three more,
+in the same shape:
+
+| Task | Agent | Evidence | Appended block |
+|---|---|---|---|
+| `competitor-page-gap-review` (competitor domain) | Market & Competitor Intelligence | `competitor-comparison` | none: instructions only (declarations the competitor's fetched pages make that the project's do not) |
+| `schema-entity-review` (crawl id) | AI Visibility | `crawl` | none: the crawl evidence alone (declared JSON-LD types, parse failures, title and h1) |
+| `internal-link-review` (crawl id) | Authority & Backlink | `crawl-links` | *Internal link structure*, from the same edges read once: each fetched page's inbound internal edges from the other fetched pages, source paths and anchors, fewest first (`src/lib/authority/internal-link-grounding.ts`; `readLinkGrounding({ internal: true })` also reads the crawl's pages, bounded at 500) |
 
 ### Attempt history
 

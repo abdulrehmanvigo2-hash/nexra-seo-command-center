@@ -25,6 +25,8 @@
  * states "none recorded" and the task says so.
  */
 
+import { formatInternalLinkGrounding } from "@/lib/authority/internal-link-grounding";
+import type { JsonObject } from "@/types/agent-run";
 import type { GroundingSource } from "@/lib/agent-runs/ai-executor";
 import { isProjectSiteCrawl } from "@/lib/crawl/competitor-target";
 import { byteLength, type CrawlGroundingReader, type CrawlGroundingRefusal } from "@/lib/crawl/grounding";
@@ -66,6 +68,8 @@ export type LinkGrounding = {
     readonly truncated: boolean;
     /** Size of the evidence actually produced, in UTF-8 bytes. */
     readonly bytes: number;
+    /** The internal-link review only (6.6): the internal structure block's counts. */
+    readonly internalLinks?: JsonObject;
   };
   readonly source: GroundingSource;
 };
@@ -104,10 +108,12 @@ const NOT_ESTABLISHED = "not established";
  */
 export async function readLinkGrounding(
   readers: LinkGroundingReaders,
-  request: { readonly crawlId: string; readonly projectId: string; readonly projectDomain: string },
+  request: { readonly crawlId: string; readonly projectId: string; readonly projectDomain: string; readonly internal?: boolean },
 ): Promise<LinkGroundingResult> {
-  // One page is enough: the counts come from the crawl record, not its pages.
-  const detail = await readers.crawls.getCrawl(request.crawlId, 1);
+  // One page is enough for the outbound record: its counts come from the
+  // crawl record. The internal-link review (6.6) also needs which pages were
+  // fetched, so it reads them, bounded.
+  const detail = await readers.crawls.getCrawl(request.crawlId, request.internal ? INTERNAL_PAGE_LIMIT : 1);
   if (detail === null) return { ok: false, reason: "crawl-not-found" };
   if (detail.crawl.projectId !== request.projectId) return { ok: false, reason: "crawl-not-in-project" };
   if (!isProjectSiteCrawl(detail.crawl, request.projectDomain)) return { ok: false, reason: "crawl-not-project-site" };
@@ -115,8 +121,17 @@ export async function readLinkGrounding(
   if (!REVIEWABLE_STATUSES.includes(detail.crawl.status)) return { ok: false, reason: "crawl-not-reviewable" };
 
   const links = await readers.links.listLinks(detail.crawl.id, MAX_LINK_ROWS);
-  return { ok: true, grounding: formatLinkGrounding(detail.crawl, links) };
+  const grounding = formatLinkGrounding(detail.crawl, links);
+  if (!request.internal) return { ok: true, grounding };
+
+  // The internal structure, from the same edges, appended after the outbound record.
+  const internal = formatInternalLinkGrounding(detail.crawl, detail.pages, links, links.length >= MAX_LINK_ROWS);
+  const text = `${grounding.text}\n\n${internal.text}`;
+  return { ok: true, grounding: { ...grounding, text, summary: { ...grounding.summary, internalLinks: internal.summary, bytes: byteLength(text) } } };
 }
+
+/** How many of the crawl's pages the internal-link review reads to know which were fetched (the overview's bound). */
+export const INTERNAL_PAGE_LIMIT = 500;
 
 /** One external host and what the crawl recorded pointing at it. */
 export type OutboundHost = {

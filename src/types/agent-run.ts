@@ -52,7 +52,10 @@ export type AgentTaskType =
   | "article-revision-draft"
   | "page-query-alignment-review"
   | "finding-history-review"
-  | "learning-review";
+  | "learning-review"
+  | "competitor-page-gap-review"
+  | "schema-entity-review"
+  | "internal-link-review";
 
 export type JsonValue =
   | string

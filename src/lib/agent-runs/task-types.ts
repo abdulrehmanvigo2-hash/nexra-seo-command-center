@@ -10,11 +10,14 @@ import { PROJECT_PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/director-
 import { PRIORITY_REVIEW_INSTRUCTIONS } from "@/lib/agent-runs/run-grounding";
 import {
   ARTICLE_REVISION_DRAFT_INSTRUCTIONS,
+  COMPETITOR_PAGE_GAP_REVIEW_INSTRUCTIONS,
   CONTENT_REFRESH_REVIEW_INSTRUCTIONS,
   FINDING_HISTORY_REVIEW_INSTRUCTIONS,
+  INTERNAL_LINK_REVIEW_INSTRUCTIONS,
   KEYWORD_OPPORTUNITY_REVIEW_INSTRUCTIONS,
   LEARNING_REVIEW_INSTRUCTIONS,
   PAGE_QUERY_ALIGNMENT_REVIEW_INSTRUCTIONS,
+  SCHEMA_ENTITY_REVIEW_INSTRUCTIONS,
 } from "@/lib/agent-runs/second-tasks";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
@@ -852,6 +855,53 @@ const learningReview: TaskTypeDefinition = {
   parseInput: parseRangeInput,
 };
 
+// ---------------------------------------------------------------------------
+// Second grounded tasks, batch 2 (checkpoint 6.6, decision Q4 option B — the
+// scoped-down V1): Market compares crawled declarations, AI Visibility reads
+// declared content, Authority reads link structure. Stored records only.
+// ---------------------------------------------------------------------------
+
+/** Market & Competitor Intelligence: what the competitor's fetched pages declare that the project's do not. */
+const competitorPageGapReview: TaskTypeDefinition = {
+  id: "competitor-page-gap-review",
+  label: "Competitor page gap review",
+  description:
+    "Report which kinds of page, topic or structured data one recorded competitor's crawled pages declare that the project's crawled pages do not, as page declarations only.",
+  agents: ["market-intelligence"],
+  policy: "read-only",
+  evidence: "competitor-comparison",
+  instructions: COMPETITOR_PAGE_GAP_REVIEW_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    return competitorComparisonReview.parseInput(input);
+  },
+};
+
+/** AI Visibility: the structured-data types and entities one crawl's pages declare. */
+const schemaEntityReview: TaskTypeDefinition = {
+  id: "schema-entity-review",
+  label: "Schema and entity review",
+  description:
+    "Review the structured-data types each of one completed crawl's pages declares, any parse failure, and whether its title and h1 name the same entity.",
+  agents: ["ai-visibility"],
+  policy: "read-only",
+  evidence: "crawl",
+  instructions: SCHEMA_ENTITY_REVIEW_INSTRUCTIONS,
+  parseInput: parseCrawlIdInput,
+};
+
+/** Authority & Backlink: the internal link structure one own-site crawl recorded, never backlinks. */
+const internalLinkReview: TaskTypeDefinition = {
+  id: "internal-link-review",
+  label: "Internal link review",
+  description:
+    "Review the internal links one completed crawl recorded between the project's own pages: which receive few or none, and the anchor text pointing at them.",
+  agents: ["authority-backlink"],
+  policy: "read-only",
+  evidence: "crawl-links",
+  instructions: INTERNAL_LINK_REVIEW_INSTRUCTIONS,
+  parseInput: parseCrawlIdInput,
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -877,6 +927,9 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   pageQueryAlignmentReview,
   findingHistoryReview,
   learningReview,
+  competitorPageGapReview,
+  schemaEntityReview,
+  internalLinkReview,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {
