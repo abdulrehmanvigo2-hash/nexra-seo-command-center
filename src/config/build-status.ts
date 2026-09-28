@@ -8,8 +8,9 @@
  * Search Console snapshots and its agent's runs, since 4.4 Competitor
  * Intelligence reads recorded crawls, since 4.5 AI Visibility and
  * Outbound Links read the latest own-site crawl, and since 5.2 Content Studio
- * reads stored articles and drafts, and since 6.3 the Command Center reads one
- * stored project's own records; other live panels (stored projects, Search Console,
+ * reads stored articles and drafts, since 6.3 the Command Center reads one
+ * stored project's own records, and since 6.4 Reports generates a project's
+ * report on read from them; other live panels (stored projects, Search Console,
  * agent runs, tasks) carry their own label. The wording is defined once here,
  * so it cannot drift into claiming that nothing is live, or that everything is.
  *
@@ -22,8 +23,8 @@ export const BUILD_STATUS = {
   /** Short label beside the status dot. */
   label: "Partly modelled",
   /** One line under the label. */
-  detail: "Command Center, Technical, Keywords, Content, Analytics, Competitors, AI Visibility and Outbound Links are observed data",
+  detail: "Command Center, Technical, Keywords, Content, Analytics, Competitors, AI Visibility, Outbound Links and Reports are observed data",
   /** Used where only a tooltip fits, e.g. the collapsed sidebar rail. */
   title:
-    "Command Center, Technical SEO, Keyword Intelligence, Content Studio, Analytics, Competitor Intelligence, AI Visibility and Outbound Links show observed data only. Other screens are still modelled fixtures, each labelled Modelled; panels backed by live data — stored projects, Search Console, agent runs, tasks — are labelled as such.",
+    "Command Center, Technical SEO, Keyword Intelligence, Content Studio, Analytics, Competitor Intelligence, AI Visibility, Outbound Links and Reports show observed data only. Other screens are still modelled fixtures, each labelled Modelled; panels backed by live data — stored projects, Search Console, agent runs, tasks — are labelled as such.",
 } as const;

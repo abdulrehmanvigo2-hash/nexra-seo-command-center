@@ -15,10 +15,12 @@ import { test } from "node:test";
 
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
-const FULLY_MODELLED = [
-  "components/reports/reports-workspace.tsx", // Reports
-  "components/reports/report-preview.tsx", // a report
-];
+/**
+ * No screen is wholly fixture data any more: the Command Center became
+ * observed in 6.3 and Reports in 6.4. The rule stays for any screen that
+ * returns to this list.
+ */
+const FULLY_MODELLED: string[] = [];
 
 /** Each mixed screen: its file, the fixture sections (by the component each wraps) and the live sections. */
 const MIXED = [
@@ -90,6 +92,7 @@ const MIXED = [
 
 const OBSERVED = [
   "components/dashboard/observed-command-center.tsx", // Command Center, observed since checkpoint 6.3
+  "components/reports/observed-report.tsx", // Reports, generated on read since checkpoint 6.4
   "components/technical/technical-seo.tsx",
   "components/content/observed-content.tsx",
   "components/competitors/observed-competitors.tsx",
@@ -135,6 +138,17 @@ test("an agent page's header labels its fixture figures as one Modelled block an
   // No control that does nothing: the simulated sync button and its state are gone.
   assert.doesNotMatch(header, /Run agent sync|Sync queued|onRunSync|<Button/);
   assert.doesNotMatch(read("components/agents/agent-workspace.tsx"), /syncQueued|runSync|onRunSync/);
+});
+
+test("no route renders a wholly fixture screen", () => {
+  assert.match(read("app/(app)/page.tsx"), /<ObservedCommandCenter /);
+  assert.match(read("app/(app)/reports/page.tsx"), /<ObservedReport /);
+});
+
+test("the AI Agents list has no simulated sync control and no unlabelled fixture count in its header", () => {
+  const list = read("components/agents/agents-workspace.tsx");
+  assert.doesNotMatch(list, /Run agent sync|Sync queued|runSync|setSynced/);
+  assert.doesNotMatch(list, /needing attention/);
 });
 
 test("a mixed screen labels each fixture section, and nothing else", () => {
