@@ -1799,6 +1799,19 @@ allowed and ask for explicit confirmation. It is labelled "PROPOSAL ONLY —
 NOT PUBLISHED". The draft proposal section's `slug-taken` message now
 names both a draft's and an article's active proposal.
 
+### The verification proposal withdrawn (Phase 6, checkpoint 6.10a)
+
+On 29 Sep the article publication proposal `5f229630…` was withdrawn. It was the checkpoint 5.3 verification
+record for article `c89182f9…` Version 4. The withdrawal went through `nexra_article_publication_withdraw`, the
+function the `withdrawArticleProposal` Server Action reaches, and the function answered `withdrawn` at
+01:46:07 UTC.
+
+- The row stays, with its status `withdrawn` and its time.
+- The article, its versions, its approval `5f02d149…` and its check units are unchanged; Version 4 still hashes
+  to `e9db287f…`.
+- No active proposal remains.
+- Nothing was ever published.
+
 ### The full article renderer (Phase 6, checkpoint 6.9b)
 
 `src/lib/content/articles/website/` renders an approved article version (format 1 or 2) and its C5 approval into
