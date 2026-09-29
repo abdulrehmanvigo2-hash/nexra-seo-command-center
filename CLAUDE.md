@@ -50,8 +50,9 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `8980b3b02e231046fb14c10fcd9cdf11ed55cba3` (merge of PR #59,
-`claude/kind-cannon-7b7swp`, operator-attested paragraphs; preceded by PR #58 `4a8b5562…` (the learning loop and
+GitHub `master`: `0381f1bbf2957dce7e7d26ded12583b8250b153d` (merge of PR #62,
+`claude/kind-cannon-7b7swp`, the full article renderer; preceded by PR #61 `33ae4007…` (the nexra-ai re-audit and
+decisions), PR #60 `0c373216…` (the 6.8b migration record), PR #59 `8980b3b0…` (operator-attested paragraphs), PR #58 `4a8b5562…` (the learning loop and
 approval records), PR #57 `f039a89b…` (the
 verification record and the LIMITS line), PR #56 `67643262…` (the
 queue controls on agent pages), PR #55 `04be98ae…` (the
@@ -1282,6 +1283,24 @@ and tests only, in `src/lib/content/articles/website/`. No schema, no screen, no
 - **Tests:** `src/lib/content/articles/website/article-website.test.ts` (17); `npm test` 2,580. The V4 pin test is
   unchanged and passing.
 
+**Phase 6 checkpoint 6.10a (the verification proposal withdrawn; LIVE RECORD, 29 Sep, separately approved):**
+production data only, through the product's own withdraw path — no code, no schema.
+
+- **Preflight (read-only):** proposal `5f229630…` was `proposed` for article `c89182f9…` Version 4, slug
+  `nexra-ai-website-lead-follow-up`, approval `5f02d149…`, not withdrawn. Version 4 was `e9db287f…` (stored and
+  recomputed). Counts: 1 article, 4 versions, 1 approval, 1 proposal (1 active), 6 check units, 0 draft proposals.
+- **Withdrawn:** `nexra_article_publication_withdraw` — the function the app's `withdrawArticleProposal` Server
+  Action reaches through its store — called as `service_role`, attributed to the operator who recorded the
+  proposal. It answered `withdrawn`; nothing was written by hand.
+- **Verified (read-only):**
+  - The proposal is `withdrawn` at **01:46:07 UTC**, its preview hash (`bbf3fae3…`) kept.
+  - The row was never deleted.
+  - 0 active proposals.
+  - Version 4 is still `e9db287f…`; the article is still `approved` at Version 4.
+  - The article row, approval `5f02d149…`, every version and every check unit fingerprint exactly as before.
+  - Counts are unchanged; only the proposal's status changed.
+- Nothing was published, before or after. No run, migration or nexra-ai write.
+
 **Findings recorded for later phases:**
 
 - **Carried forward to Phase 4 (resolved by checkpoint 4.2, verified live on run `aecfca87…`):** the single-project Director `priority-review` run `33ac8a25…`
@@ -1395,8 +1414,8 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 checkpoint 6.9b (the full article renderer) on `claude/kind-cannon-7b7swp`; 6.9 merged
-(PR #61); next 6.10; each further
+**Current work:** Phase 6 checkpoint 6.10a (the verification proposal withdrawn, 29 Sep) recorded on
+`claude/kind-cannon-7b7swp`; 6.9b merged (PR #62); next the rest of 6.10; each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1705,8 +1724,9 @@ overwrite live content.
 - No automatic approval.
 - No write path to the `abdulrehmanvigo2-hash/nexra-ai` GitHub repository exists.
 - The draft path's production drafts remain unapproved; no draft proposal exists.
-- `nexra_article_publication_proposals` holds one row: the verification proposal `5f229630…`
-  (checkpoint 5.3), to be withdrawn before Phase 6's real publication. It published nothing.
+- `nexra_article_publication_proposals` holds one row, the verification proposal `5f229630…`
+  (checkpoint 5.3). It was **withdrawn on 29 Sep** (checkpoint 6.10a), so there is no active proposal. It
+  published nothing.
 - The content workflow has no Create PR, Merge, Deploy or Publish control; C6 records proposal
   state only.
 - Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `approved` at Version 4 (checkpoint 5.3: all 4
@@ -2049,7 +2069,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) merged (PR #57, `f039a89b`); 6.7 (the learning loop) and 6.8 (approval records) merged (PR #58, `4a8b5562`), migrations `20261008120000` and `20261009120000` applied and recorded, the first cited priority change recorded (task `30e79092…` seq 21, Director run `288639f4…`); 6.8b (operator-attested paragraphs) merged (PR #59, `8980b3b0`), migration `20261010120000` applied and recorded; 6.9 (the `nexra-ai` re-audit at `1a688bd` and the renderer decisions D1–D11) merged (PR #61, `33ae4007`); 6.9b (the full article renderer, build-proven against `1a688bd`) on its branch; then 6.10–6.12 in order, the one external write (6.11, one PR of three files) last |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) merged (PR #57, `f039a89b`); 6.7 (the learning loop) and 6.8 (approval records) merged (PR #58, `4a8b5562`), migrations `20261008120000` and `20261009120000` applied and recorded, the first cited priority change recorded (task `30e79092…` seq 21, Director run `288639f4…`); 6.8b (operator-attested paragraphs) merged (PR #59, `8980b3b0`), migration `20261010120000` applied and recorded; 6.9 (the `nexra-ai` re-audit at `1a688bd` and the renderer decisions D1–D11) merged (PR #61, `33ae4007`); 6.9b (the full article renderer, build-proven against `1a688bd`) merged (PR #62, `0381f1bb`); 6.10a (the verification proposal `5f229630…` withdrawn, 29 Sep); then the rest of 6.10, 6.11 and 6.12 in order, the one external write (6.11, one PR of three files) last |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -2085,7 +2105,7 @@ production-ready criterion from the audit (§J), with its evidence:
 **Carried to Phase 6:**
 
 - Withdraw the verification proposal `5f229630…` before any real publication (the article is a
-  verification article, not content to publish).
+  verification article, not content to publish) — **done 29 Sep, checkpoint 6.10a**.
 - Command Center and Reports realification (and the fixture links that 404 inside them).
 - An approval workflow for real publication; publishing itself stays out of scope until approved.
 - The external-provider decision (any new integration is §4 / §6).
@@ -2094,7 +2114,7 @@ production-ready criterion from the audit (§J), with its evidence:
 Next step: the Phase 6 design checkpoint (6.1), under its own explicit approval.
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.9b
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.10 (6.10a done)
 (6.2 through 6.8b merged, PR #50–#59; the 6.7, 6.8 and 6.8b migrations applied). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
 complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
