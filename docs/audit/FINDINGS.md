@@ -112,7 +112,7 @@ Each part appends its findings under its heading; A0 holds what the planning pas
 
 ## A1 — Security (30 Sep 2026, at `3a3f5c6`)
 
-Checklist result: 26 PASS, 2 FAIL (items 8 → A0-03, 21 → A1-01), 2 OPERATOR (items 14, 30 → A1-07). The evidence
+Checklist result: 27 PASS, 2 FAIL (items 8 → A0-03, 21 → A1-01), 1 OPERATOR (item 14 → A1-07); item 30 was run by the operator on 30 Sep (A1-08). The evidence
 that produced the PASS marks, in brief:
 
 - **Gate (items 1, 2, 5, 22):** `src/lib/auth/access.ts` — only `/login`, `GET|HEAD /api/health`, `/auth/*` and
@@ -249,7 +249,24 @@ that produced the PASS marks, in brief:
 - Impact: unverified assumptions in the runbook until run.
 - Suggested fix: run the three checks and note the results in this file.
 - Effort: S
-- Status: open
+- Status: open — (b) done, see A1-08; (a) and (c) still open
+
+### A1-08 — Supabase Auth: public sign-up was enabled; turned off by the operator on 30 Sep
+- Severity: low (closed)
+- Evidence: operator's reading of Supabase → Authentication on 30 Sep 2026: "Allow new users to sign up" was **ON**
+  and was turned **OFF** the same day; "Allow anonymous sign-ins" **OFF**; "Confirm email" **ON**; exactly one user
+  exists (the operator), which the read-only A1 query also showed (1 `auth.users` row, confirmed, provider `email`).
+- Impact while it was on: anyone who knew the Supabase project URL and the publishable key could create an account.
+  Such an account got nothing: `getOperator()` (`src/lib/auth/session.ts`) asks the Auth server for the user and
+  passes it through `operatorFromUser` (`src/lib/auth/access.ts`), which admits only a user whose
+  `email_confirmed_at` is set **and** whose email is on `NEXRA_OPERATOR_EMAILS`; the proxy's claims check
+  (`operatorFromClaims`) applies the same list. Every page, API route and Server Action runs one of these two, so an
+  unlisted account is redirected to `/login` or answered 401 exactly like a signed-out visitor, and RLS holds no
+  policies keyed on `auth.uid()`. The only cost was an unwanted row in `auth.users` and a confirmation email per
+  attempt. The key itself is not published by this application (A1-05).
+- Suggested fix: none further; the setting is now off, and `NEXRA_OPERATOR_EMAILS` stays the gate.
+- Effort: S
+- Status: fixed by the operator (30 Sep, Supabase dashboard)
 
 ## A2 — Database
 

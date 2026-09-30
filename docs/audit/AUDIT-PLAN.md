@@ -171,7 +171,7 @@ Pass/fail rule for every item: **PASS** when the check holds exactly as stated; 
 evidence; **N/A** must say why. A check that cannot be run from the session (the Vercel API refuses it; the
 production host is proxied off) is recorded as *not checkable here* with what the operator should run instead.
 
-### A1 Security (30 items) — run 30 Sep 2026 at `3a3f5c6`: 26 PASS, 2 FAIL, 2 OPERATOR
+### A1 Security (30 items) — run 30 Sep 2026 at `3a3f5c6`: 27 PASS, 2 FAIL, 1 OPERATOR
 
 Method: code read of the gate, every route and Server Action; a local `next start` of the production build with no
 environment (sign-in unconfigured) probed with curl; one read-only production query; `npm audit`; a scan of both
@@ -207,7 +207,7 @@ under A1-05, A1-04, A1-03, A1-01, A1-02 and item 5.
 **Secrets**
 12. `npm run secret-scan` clean on the tree; the 24 allowlist entries are each a synthetic fixture (read each). **[PASS]**
 13. No `NEXT_PUBLIC_` variable carries a secret; the five refusal checks have tests. **[PASS]**
-14. Vercel environment variables target Production only (operator check in the dashboard — not checkable here). **[OPERATOR — A1-07]**
+14. Vercel environment variables target Production only (operator check in the dashboard — not checkable here). **[PASS — run by the operator 30 Sep: sign-up was ON and is now OFF, anonymous OFF, confirm email ON, 1 user; A1-08]**
 15. `.gitignore` excludes `.env*` except `.env.example`; `git log -p` finds no secret ever committed (scan history **[PASS; A1-04 recorded]**
     with the secret scanner over `git log -p`).
 
