@@ -39,7 +39,7 @@ Each part appends its findings under its heading; A0 holds what the planning pas
 - Suggested fix: decision needed — record them as retired (docs) and, under §6, a migration that revokes
   `service_role`'s writes and EXECUTE on them, then drops them after an export; or keep and document.
 - Effort: M
-- Status: superseded by A2-03 (provenance, last write and a recommendation)
+- Status: closed — F6: the five tables and four functions dropped by migration `20261013120000_retire_legacy_crawl_subsystem.sql` (PR #83, `5eaaf0b`), applied and recorded 30 Sep, after backup run `36740624220`
 
 ### A0-03 — `anon` and `authenticated` hold TRUNCATE, TRIGGER and REFERENCES on the legacy `crawl_links` table
 - Severity: low
@@ -52,7 +52,7 @@ Each part appends its findings under its heading; A0 holds what the planning pas
 - Suggested fix: a migration `revoke all on table public.crawl_links from anon, authenticated` (or its drop under
   A0-02).
 - Effort: S
-- Status: open
+- Status: closed — F6: `crawl_links` dropped (30 Sep, migration `20261013120000`); `anon` and `authenticated` now hold no table privilege in `public`
 
 ### A0-04 — Trigger functions are executable by `anon` and `authenticated` through PUBLIC's default EXECUTE
 - Severity: info
@@ -352,7 +352,7 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
   outside the repository), revokes every grant, and drops the five tables and four functions; or **keep and
   document** them in `docs/BACKEND.md` and the runbook. Either way A0-03's revoke comes first.
 - Effort: M
-- Status: open (decision needed; on 30 Sep the operator had not yet answered whether another tool used these tables)
+- Status: closed — operator decision 30 Sep: retire. Backed up by run `36740624220` (artifact `nexra-backup-36740624220`, kept until 30 Oct; the only copy of the 135 rows), re-verified unused, then dropped by migration `20261013120000` (PR #83), applied and recorded 30 Sep
 
 ### A2-04 — 20 foreign keys have no covering index
 - Severity: info

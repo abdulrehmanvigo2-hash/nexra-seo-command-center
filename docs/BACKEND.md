@@ -2099,6 +2099,14 @@ No migration, query or grant in this repository names the unprefixed tables.
 The Supabase client is typed by the `nexra_` keys, so reaching the other
 subsystem is a compile error rather than a convention.
 
+**Retired (30 Sep 2026, fix F6).** After the audit (A0-02, A2-03) found that
+subsystem unused since 19 Sep, the operator decided to back it up and drop it:
+migration `20261013120000_retire_legacy_crawl_subsystem.sql` — the one
+migration here that names the unprefixed tables — dropped `crawls`,
+`crawl_pages`, `crawl_urls`, `crawl_page_signals`, `crawl_links` and their four
+functions. Their 135 rows are kept only in backup artifact
+`nexra-backup-36740624220` (until 30 Oct 2026). The `nexra_` prefix stays.
+
 ### The two objects both subsystems reach
 
 Isolation runs one way only. Nothing here reaches into that subsystem, but two
