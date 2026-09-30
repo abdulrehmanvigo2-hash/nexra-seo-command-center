@@ -171,7 +171,7 @@ Pass/fail rule for every item: **PASS** when the check holds exactly as stated; 
 evidence; **N/A** must say why. A check that cannot be run from the session (the Vercel API refuses it; the
 production host is proxied off) is recorded as *not checkable here* with what the operator should run instead.
 
-### A1 Security (30 items) — run 30 Sep 2026 at `3a3f5c6`: 27 PASS, 2 FAIL, 1 OPERATOR
+### A1 Security (30 items) — run 30 Sep 2026 at `3a3f5c6`: 27 PASS, 2 FAIL, 1 OPERATOR (item 14 corrected in A2: the operator's Auth result belongs to item 30)
 
 Method: code read of the gate, every route and Server Action; a local `next start` of the production build with no
 environment (sign-in unconfigured) probed with curl; one read-only production query; `npm audit`; a scan of both
@@ -207,7 +207,7 @@ under A1-05, A1-04, A1-03, A1-01, A1-02 and item 5.
 **Secrets**
 12. `npm run secret-scan` clean on the tree; the 24 allowlist entries are each a synthetic fixture (read each). **[PASS]**
 13. No `NEXT_PUBLIC_` variable carries a secret; the five refusal checks have tests. **[PASS]**
-14. Vercel environment variables target Production only (operator check in the dashboard — not checkable here). **[PASS — run by the operator 30 Sep: sign-up was ON and is now OFF, anonymous OFF, confirm email ON, 1 user; A1-08]**
+14. Vercel environment variables target Production only (operator check in the dashboard — not checkable here). **[OPERATOR — A1-07 (a)]**
 15. `.gitignore` excludes `.env*` except `.env.example`; `git log -p` finds no secret ever committed (scan history **[PASS; A1-04 recorded]**
     with the secret scanner over `git log -p`).
 
@@ -236,44 +236,49 @@ under A1-05, A1-04, A1-03, A1-01, A1-02 and item 5.
 28. The C6 slug lock triggers are enabled and READ COMMITTED is the default (re-run the D3 preflight). **[PASS]**
 29. `service_role` UPDATE on `nexra_content_publication_proposals` is the withdraw path's only use **[PASS]**
     (`publications/supabase/store.ts:112`) and the update guard limits it to status/withdrawn fields.
-30. Supabase Auth settings: email confirmation required, no sign-up open to the public (operator check; not **[OPERATOR — A1-07]**
+30. Supabase Auth settings: email confirmation required, no sign-up open to the public (operator check; not **[PASS — run by the operator 30 Sep: sign-up was ON and is now OFF, anonymous OFF, confirm email ON, 1 user; A1-08]**
     checkable here).
 
-### A2 Database (22 items)
+### A2 Database (22 items) — run 30 Sep 2026 at `961104f`: 17 PASS, 1 FAIL, 1 OPERATOR, 3 DONE (record-only items)
 
-1. Migration history vs repository, row by row: version, name, statement count, hash — the A0 query; record every
+Method: a reference database built on a disposable PostgreSQL 16 from the 33 repository migrations, then every
+function, table, constraint, index, trigger, grant and RLS flag hashed on both sides (CRLF normalised) and compared;
+read-only production queries for history, legacy objects, integrity, statistics, storage, realtime and extensions;
+the Supabase security and performance advisors. Findings: `FINDINGS.md` A2-01…A2-11.
+
+1. Migration history vs repository, row by row: version, name, statement count, hash — the A0 query; record every **[DONE — A2-01 (every difference classified)]**
    difference (A0-01) and classify each as *renumbered*, *unrecorded* or *text absent*.
-2. For each renumbered pair, confirm the production schema equals what the repository file would create (compare
+2. For each renumbered pair, confirm the production schema equals what the repository file would create (compare **[PASS — A2-01: identical for every pair (5 object kinds hash-identical; 3 functions differ in formatting only)]**
    `pg_get_functiondef` / `\d` against the file, ignoring CRLF) — the answer to "is only the version different?".
-3. `20260920120100_grant_crawls_to_service_role.sql`: confirm its grants exist in production though no row records it.
-4. The two rows without text (`20260923180000`, `20260924120000`): confirm they were recorded with `migration repair`
+3. `20260920120100_grant_crawls_to_service_role.sql`: confirm its grants exist in production though no row records it. **[PASS — the grants exist; the row is missing (A2-01)]**
+4. The two rows without text (`20260923180000`, `20260924120000`): confirm they were recorded with `migration repair` **[PASS — objects present and identical to the files]**
    and that their objects exist.
-5. Legacy tables `crawls`, `crawl_pages`, `crawl_urls`, `crawl_page_signals`, `crawl_links` (A0-02): what created
+5. Legacy tables `crawls`, `crawl_pages`, `crawl_urls`, `crawl_page_signals`, `crawl_links` (A0-02): what created **[DONE — A2-03 (recommendation: retire, after the operator confirms no other system owns them)]**
    them, what reads them (nothing in the repo), whether their rows matter, and a decision (keep as legacy / archive
    and drop under §6).
-6. Legacy functions `crawl_pages_claim`, `crawl_pages_count_change`, `crawl_pages_recover_expired`,
+6. Legacy functions `crawl_pages_claim`, `crawl_pages_count_change`, `crawl_pages_recover_expired`, **[DONE — A2-03 (3 are security definer, 1 is not; executable by service_role; referenced by nothing)]**
    `crawls_guard_update`: `security definer`, executable by `service_role`, referenced by nothing in the repo.
-7. CRLF function bodies (A0-05): the 32 functions; confirm each behaves as its repository text (the harness runs the
+7. CRLF function bodies (A0-05): the 32 functions; confirm each behaves as its repository text (the harness runs the **[PASS — every function compared with CRLF normalised; only the 3 formatting-only differences (A2-01)]**
    repository text, so any divergence would be in production only) — sample-verify by normalising line endings and
    diffing `prosrc` against the file's function body for each.
-8. Every guard trigger enabled (92, 0 disabled — re-check at audit time); every append-only table refuses UPDATE,
+8. Every guard trigger enabled (92, 0 disabled — re-check at audit time); every append-only table refuses UPDATE, **[PASS — 92 triggers, 0 disabled; no probe (no data write approved)]**
    DELETE and TRUNCATE in an always-rolled-back probe as `service_role` **only if a data write is approved for the
    probe; otherwise read `tgenabled` only**.
-9. Row counts and fingerprints of the article, version, unit, approval and proposal tables equal the 6.12a values.
-10. The C2 mismatch decision (Q10) still documented; the runbook's "one mismatch" sentence corrected to the A0-01 list.
-11. `rate_limit_windows`: rows are only the expected keys (daily caps, sign-in, app limits); no stale windows.
-12. Indexes: every FK and every filter the routes use has an index (read `pg_indexes`; compare to the query shapes in
+9. Row counts and fingerprints of the article, version, unit, approval and proposal tables equal the 6.12a values. **[PASS — all five fingerprints equal the 6.12a values]**
+10. The C2 mismatch decision (Q10) still documented; the runbook's "one mismatch" sentence corrected to the A0-01 list. **[FAIL — docs: the runbook names one mismatch; A0-01 lists eight (A2-01 gives the verdict)]**
+11. `rate_limit_windows`: rows are only the expected keys (daily caps, sign-in, app limits); no stale windows. **[PASS; A2-08 recorded (5 windows older than 2 days)]**
+12. Indexes: every FK and every filter the routes use has an index (read `pg_indexes`; compare to the query shapes in **[PASS with A2-04 (20 foreign keys without a covering index, all on small tables)]**
     the stores).
-13. `pg_stat_user_tables` dead tuples / bloat on the append-only tables — info only.
-14. Supabase advisors (`get_advisors` security and performance) — record every item.
-15. Backups: PITR/daily backup setting for project `nmseedcgtxelufewvbvr` (operator check).
-16. The `set_updated_at` and `rls_auto_enable` functions: platform-provided, not in the repo; record.
-17. `service_role` SELECT missing on `crawl_links` and the grant asymmetry on the legacy tables — part of A0-02.
-18. Extensions installed vs used (`list_extensions`).
-19. Storage buckets: `storage.buckets` has 5 triggers — confirm no bucket exists and storage is unused.
-20. Realtime: `realtime.subscription` — confirm no publication includes an application table.
-21. The `nexra_content_publication_proposals` UPDATE grant and its guard (A1-29).
-22. Migration files never edited after apply: `git log --follow` on each applied file shows one commit (or docs-only
+13. `pg_stat_user_tables` dead tuples / bloat on the append-only tables — info only. **[PASS — dead tuples ≤ 38 on any table; autovacuum runs on the active ones]**
+14. Supabase advisors (`get_advisors` security and performance) — record every item. **[DONE — A2-06, A2-11, A2-04 (the advisor items)]**
+15. Backups: PITR/daily backup setting for project `nmseedcgtxelufewvbvr` (operator check). **[OPERATOR — A2-05]**
+16. The `set_updated_at` and `rls_auto_enable` functions: platform-provided, not in the repo; record. **[PASS — `set_updated_at` is the repository's (20260913120000); `rls_auto_enable` is the platform's (A2-11)]**
+17. `service_role` SELECT missing on `crawl_links` and the grant asymmetry on the legacy tables — part of A0-02. **[DONE — part of A2-02 / A2-03]**
+18. Extensions installed vs used (`list_extensions`). **[PASS — pg_stat_statements, pgcrypto, plpgsql, supabase_vault, uuid-ossp; nothing unused by the platform]**
+19. Storage buckets: `storage.buckets` has 5 triggers — confirm no bucket exists and storage is unused. **[PASS — 0 buckets, 0 objects]**
+20. Realtime: `realtime.subscription` — confirm no publication includes an application table. **[PASS — no publication holds a table]**
+21. The `nexra_content_publication_proposals` UPDATE grant and its guard (A1-29). **[PASS (A1-29)]**
+22. Migration files never edited after apply: `git log --follow` on each applied file shows one commit (or docs-only **[PASS — three files carry two commits each, all before their apply; the applied schema equals the current files (A2-01)]**
     header changes never applied — record any).
 
 ### A3 Agents (18 items)

@@ -112,7 +112,7 @@ Each part appends its findings under its heading; A0 holds what the planning pas
 
 ## A1 — Security (30 Sep 2026, at `3a3f5c6`)
 
-Checklist result: 27 PASS, 2 FAIL (items 8 → A0-03, 21 → A1-01), 1 OPERATOR (item 14 → A1-07); item 30 was run by the operator on 30 Sep (A1-08). The evidence
+Checklist result: 27 PASS, 2 FAIL (items 8 → A0-03, 21 → A1-01), 1 OPERATOR (item 14 → A1-07 (a)); item 30 was run by the operator on 30 Sep (A1-08). (PR #69 tagged item 14 with item 30's result by mistake; corrected in the A2 checkpoint.) The evidence
 that produced the PASS marks, in brief:
 
 - **Gate (items 1, 2, 5, 22):** `src/lib/auth/access.ts` — only `/login`, `GET|HEAD /api/health`, `/auth/*` and
@@ -268,9 +268,190 @@ that produced the PASS marks, in brief:
 - Effort: S
 - Status: fixed by the operator (30 Sep, Supabase dashboard)
 
-## A2 — Database
+## A2 — Database (30 Sep 2026, at `961104f`)
 
-_(pending)_
+Checklist result: 17 PASS, 1 FAIL (item 10, docs → A0-01 / A2-01), 1 OPERATOR (item 15 → A2-05), 3 record-only
+items done (A2-01, A2-03). Nothing high or above. The comparison method: the 33 repository migrations applied to a
+disposable PostgreSQL 16, then on both sides `md5` of every function's `pg_get_functiondef` (CRLF removed), every
+table's ordered column list, constraint set, index set, trigger set, grants and RLS flag — 253 rows locally, the
+same 253 on production once the five legacy tables, their four functions and the platform's `rls_auto_enable` are
+set aside. Result: **columns, constraints, indexes, triggers and RLS identical in aggregate (26 tables each);
+functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both examined below.
+
+### A2-01 — Verdict on the migration-history differences (A0-01): the schema is the repository's; only the record is wrong
+- Severity: low (A0-01 reduced from medium: the drift is in the history table, not in the schema)
+- Evidence, per version:
+  - `20260919120000 create_crawls`, `20260920120000 create_crawl_pages`, `20260921120000 create_crawl_page_signals`
+    (production only): their statements create only the legacy objects `crawls`, `crawl_urls`, `crawl_pages`,
+    `crawl_page_signals`, their indexes, triggers and functions — **not this repository's schema** (A2-03). No
+    recorded statement creates `crawl_links`; it was made outside any recorded migration.
+  - `20260920120000_create_crawls.sql` and `20260920120100_grant_crawls_to_service_role.sql` (repository only, no
+    row): every object they create exists in production and hashes identically (`nexra_crawls`,
+    `nexra_crawl_pages`, `nexra_crawl_links`: columns, constraints, indexes, triggers, RLS), and the grants file's
+    effect is present (`service_role` SELECT/INSERT/UPDATE/DELETE on the three; nothing for `anon` /
+    `authenticated`). Verdict: **identical, unrecorded**.
+  - `20260922111302` ↔ `20260922120000_create_content_drafts`, `20260922111312` ↔ `…120100_grant…`, `20260922133139`
+    ↔ `…130000_content_draft_save_version`, `20260922133152` ↔ `…130100_…guard_delete`, `20260922172606` ↔
+    `…140000_create_content_publication_proposals`: every table, constraint, index, trigger and grant identical; the
+    functions `nexra_content_drafts_guard_update`, `nexra_content_draft_versions_guard_update` and
+    `nexra_content_draft_save_version` differ from the files **in whitespace, line breaks and comments only** —
+    the same conditions, statements, error texts and `search_path` (read side by side). Verdict: **identical
+    (renumbered; three functions applied from an earlier formatting of the same text)**.
+  - `20260923043554` ↔ `20260923120000_create_articles`: every article object hash-identical. Verdict: **identical
+    (renumbered, the documented Q10 pair)**.
+  - `20260923180000`, `20260924120000` (rows without text): the check-unit and approval objects exist and are
+    hash-identical to the files. Verdict: **identical (recorded by `migration repair`, text absent)**.
+  - `20260925120000` → `20261011120000`: version numbers match; the six single-statement rows hash exactly to their
+    files; the schema hashes match.
+  - Repository files edited after creation: `20260920120000` and `20260920120100` (both rewritten on 20 Sep to move
+    off the legacy names, by the commit whose header records the collision) and `20260923180000` (two commits on
+    23 Sep) — in every case the applied schema equals the current file.
+- Impact: none on behaviour; `supabase migration list` / `db push` stay unusable as a check, and the runbook's
+  "one mismatch" sentence understates the record.
+- Suggested fix: docs — replace the runbook's Q10 note with this list; optionally, under §6, `migration repair`
+  to insert rows for `20260920120000` and `20260920120100` and to mark the five `202609221…` and the `20260923043554`
+  rows as the repository's versions (never re-executing anything). The legacy rows belong with A2-03's decision.
+- Effort: S (docs) / M (repair)
+- Status: open
+
+### A2-02 — `service_role` holds REFERENCES, TRIGGER and TRUNCATE on seven tables beyond what any migration grants
+- Severity: low
+- Evidence: production vs the repository build, grants kind: `agent_runs`, `projects`, `nexra_crawls`,
+  `nexra_crawl_pages`, `nexra_crawl_links`, `nexra_content_drafts`, `nexra_content_draft_versions` carry
+  `service_role=DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE`; the migrations grant only
+  SELECT/INSERT/UPDATE/DELETE there. The 19 later tables match the migrations exactly. Cause: Supabase's default
+  privileges grant ALL to `service_role` on a new table; the early migrations never revoked the surplus.
+- Impact: the server's key can TRUNCATE the two draft tables (the 5.4 guards cover the other five) and can create
+  triggers on all seven — a schema-changing capability the application never needs. Bounded by `service_role`
+  being server-only (A1-05).
+- Suggested fix: one migration revoking REFERENCES, TRIGGER and TRUNCATE from `service_role` on the seven tables.
+- Effort: S
+- Status: open
+
+### A2-03 — The legacy crawl subsystem (A0-02): provenance, use, last write, recommendation
+- Severity: medium (unchanged from A0-02; a decision is needed)
+- Evidence: created by the production-only history rows of 19–21 Sep (`create_crawls`, `create_crawl_pages`,
+  `create_crawl_page_signals`; `crawl_links` by no recorded row). The repository's own `20260920120000` header,
+  rewritten on 20 Sep, calls them "a separate, live crawl subsystem with its own data, triggers and dependent tables
+  … not ours and not described anywhere in this repository". Last write: `crawls.updated_at` 2026-09-19 15:27 UTC,
+  `crawls.finished_at` 15:28, `crawl_pages.fetched_at` 15:28, `crawl_page_signals.parsed_at` 15:28 — nothing since.
+  Referenced by: no file in `src`, `scripts` or `supabase`; no cron (`vercel.json` names only the worker routes);
+  only their own five triggers (`set_updated_at` ×3, `crawls_guard_update`, `crawl_pages_maintain_counts`). Functions:
+  `crawl_pages_claim`, `crawl_pages_recover_expired` (security definer, EXECUTE `service_role`),
+  `crawl_pages_count_change` (security definer trigger function, `postgres` only), `crawls_guard_update` (plain) —
+  A0-02's "four security definer" is three. Advisors: two unused indexes (`crawl_page_signals_parsed`,
+  `crawl_links_crawl_to_idx`). Grants: `anon`/`authenticated` on `crawl_links` (A0-03); `service_role` ALL on the
+  other four.
+- Impact: 135 rows of another system's data and four callable functions live in the production database with no
+  owner in this repository; any restore, audit or `db push` has to know about them.
+- Suggested fix: decision — **retire**, once the operator confirms no other system reads them (the last write was
+  the day before the repository disowned them): one §6 migration that exports the rows (a `copy` to a file kept
+  outside the repository), revokes every grant, and drops the five tables and four functions; or **keep and
+  document** them in `docs/BACKEND.md` and the runbook. Either way A0-03's revoke comes first.
+- Effort: M
+- Status: open (decision needed)
+
+### A2-04 — 20 foreign keys have no covering index
+- Severity: info
+- Evidence: the performance advisor's `unindexed_foreign_keys` (20) and the same query run directly: the
+  `project_id` / `run_id` / `version` / `approval_id` keys on `nexra_agent_task_events`, `nexra_article_approvals`,
+  `nexra_article_check_units`, `nexra_article_publication_proposals` (4), `nexra_article_version_sources` (3),
+  `nexra_content_drafts`, `nexra_content_publication_proposals` (3), `nexra_crawl_finding_triage` (3),
+  `nexra_crawl_findings`, `nexra_keyword_events`. The main run and content tables hold 2–6 indexes each; every
+  reference in the schema is a foreign key, so orphan rows are impossible and the consistency checks hold: each
+  article's `current_version` equals its highest version and its `approved_version`, one approval each, the current
+  version's units complete and all passed (4 of 4, 7 of 7), one active proposal; every run's `attempt_count` equals
+  its attempt rows (82 / 83), no run left `running` or `retrying`, no attempt unfinished.
+- Impact: none at today's sizes (the largest of these tables holds 23 rows); a cascade or lookup on a large table
+  would scan.
+- Suggested fix: add the indexes in one migration when a table approaches thousands of rows; not before.
+- Effort: S
+- Status: accepted (no fix)
+
+### A2-05 — Backups and point-in-time recovery: not visible from the session
+- Severity: low (unknown; could be higher)
+- Evidence: `get_project` reports only `ACTIVE_HEALTHY`, PostgreSQL 17.6.1, region `ap-southeast-1`, created 13 Sep;
+  no backup or PITR field is exposed. On Supabase's Free plan there are **no** automatic backups; Pro keeps daily
+  backups (7 days) and PITR is an add-on.
+- Impact: if the project is on the Free plan, the only copy of every run, article, approval and proposal is the
+  live database.
+- Suggested fix: the operator reads Supabase → Database → Backups and records the plan and retention here; if
+  none, decide on Pro or a scheduled `pg_dump` kept outside Supabase, and run one restore drill (A6-14).
+- Effort: S (check) / M (backups)
+- Status: open (operator)
+
+### A2-06 — Auth: leaked-password protection is disabled
+- Severity: low
+- Evidence: security advisor `auth_leaked_password_protection` (WARN).
+- Impact: an operator could set a password known from a breach; with one operator and no public sign-up
+  (A1-08), the exposure is that one account.
+- Suggested fix: the operator enables it in Supabase → Authentication → Password settings.
+- Effort: S
+- Status: open (operator)
+
+### A2-07 — Task-event sequence gaps 17–18 are undocumented
+- Severity: info
+- Evidence: `nexra_agent_task_events` holds seq 1–21 with 12, 13, 14, 17, 18 absent; CLAUDE.md documents 12–14
+  (the 2.3b rolled-back probe) but not 17–18, which the 6.7 apply's always-rolled-back probes consumed on 28 Sep
+  (two `priority-changed` inserts, one accepted, one refused).
+- Impact: none; history is ordered by `seq` and never assumed contiguous. A reader of the docs would not expect
+  the second gap.
+- Suggested fix: one sentence in CLAUDE.md §0 (the 6.7 record).
+- Effort: S
+- Status: open
+
+### A2-08 — Five rate-limit windows older than two days remain
+- Severity: info
+- Evidence: `rate_limit_windows`: 26 rows, 5 with `window_start` before 28 Sep (oldest 27 Sep 10:30 UTC);
+  `pg_stat_user_tables` shows 384 deletes, so cleanup runs but does not remove every expired window.
+- Impact: none (the daily keys are read by date; stale rows are ignored).
+- Suggested fix: none required; A3 may note the cleanup rule.
+- Effort: S
+- Status: accepted (no fix)
+
+### A2-09 — The scheduled capture is running daily; A0's row counts are already stale
+- Severity: info
+- Evidence: `nexra_search_console_snapshots` holds 6 rows for `nexra-agency` (windows ending 21–26 Sep, captured
+  25–30 Sep at 06:19–06:20 UTC, all `connected`, `source: scheduled`); `nexra_search_console_query_pages` 55 rows in
+  5 windows (10, 10, 10, 12, 13). A0 recorded 5 and 42 on the morning of 30 Sep, before the 05:30 UTC job ran.
+- Impact: none; evidence for A6-5 that both cron jobs run. The 7-day P4d comparison first qualifies when a window
+  ending 28 Sep is stored (captured 2 Oct), as the 4.1 note predicted.
+- Suggested fix: none.
+- Effort: S
+- Status: accepted (no fix)
+
+### A2-10 — The 37 `security definer` functions, checked one by one
+- Severity: info
+- Evidence: all 37 owned by `postgres`; 36 with `search_path = ""`, the platform's `rls_auto_enable` with
+  `pg_catalog`; EXECUTE: 31 application functions `service_role` (and the owner) only; the two `security definer`
+  trigger functions (`agent_runs_close_cancelled_attempt`, legacy `crawl_pages_count_change`) owner only; the two
+  legacy claim/recover functions `service_role`; `rls_auto_enable` PUBLIC (A2-11). 12 of the 37 carry CRLF bodies
+  (A0-05) — every one hash-identical to the repository once normalised.
+- Impact: none.
+- Suggested fix: none.
+- Effort: S
+- Status: accepted (no fix)
+
+### A2-11 — The platform's `rls_auto_enable` is executable by `anon` and `authenticated` through the REST `rpc` path
+- Severity: low
+- Evidence: security advisor `anon_security_definer_function_executable` and
+  `authenticated_security_definer_function_executable` (both WARN) on `public.rls_auto_enable()`; the function is
+  a `security definer` event-trigger function (`RETURNS event_trigger`) with no ACL (PUBLIC default). PostgREST
+  exposes it at `/rest/v1/rpc/rls_auto_enable`.
+- Impact: a call fails (an event-trigger function cannot be invoked directly), so no action results; the surface is
+  still needless and the advisor will keep flagging it.
+- Suggested fix: `revoke execute on function public.rls_auto_enable() from public, anon, authenticated;` in a
+  migration (the event trigger keeps working under its owner).
+- Effort: S
+- Status: open
+
+## Post-V1 backlog additions (from the audit)
+
+- **Client access needs roles and per-project scoping.** Today any email on `NEXRA_OPERATOR_EMAILS` gets full
+  control of every project, every run and every write (`operatorFromUser` is the whole authorisation model; RLS
+  holds no policies and `service_role` bypasses it). Before any client or second operator is given a login: a role
+  table, project membership, RLS policies keyed on `auth.uid()` for the read paths, and the write functions
+  checking membership. Recorded in A1/A2; a design note is the first step.
 
 ## A3 — Agents
 
