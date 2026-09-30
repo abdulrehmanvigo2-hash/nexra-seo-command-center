@@ -170,11 +170,33 @@ Editor (or run with the Supabase CLI against a linked project):
 33. `20261011120000_live_slugs_after_pin.sql` — live slugs published after the
     template pin (Phase 6, checkpoint 6.12a, D10) — applied to production and
     recorded on 30 Sep
+34. `20261012120000_revoke_surplus_grants.sql` — the surplus grants revoked
+    (fix F5, audit A2-02, A2-11) — **not applied**
 
-All thirty-three are applied to production and recorded in its migration
+The first thirty-three are applied to production and recorded in its migration
 history (34 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
-`docs/RUNBOOK.md`).
+`docs/RUNBOOK.md`). The thirty-fourth waits for its own approval (§6).
+
+### The surplus grants revoked (fix F5, audit A2-02, A2-11)
+
+`20261012120000_revoke_surplus_grants.sql` changes privileges only. It revokes
+REFERENCES, TRIGGER and TRUNCATE from `service_role` on the seven tables whose
+early migrations never revoked Supabase's default ALL — `projects`,
+`agent_runs`, `nexra_crawls`, `nexra_crawl_pages`, `nexra_crawl_links`,
+`nexra_content_drafts`, `nexra_content_draft_versions` — leaving exactly the
+SELECT, INSERT, UPDATE and DELETE those migrations grant; and, only where the
+platform's `public.rls_auto_enable()` exists (Supabase, not a plain Postgres),
+revokes its EXECUTE from PUBLIC, `anon` and `authenticated` (its event trigger
+keeps running). The legacy unprefixed crawl tables (A0-03) are left for fix F6.
+Harness suites `grants` (23 assertions: exact privileges, no API role holding
+TRUNCATE, TRIGGER or REFERENCES on any public table, the application's writes as
+`service_role`, TRUNCATE / CREATE TRIGGER / a foreign key refused 42501, an
+idempotent re-run) and `grants-upgrade` (11: production's state rebuilt — ALL
+on the seven, a platform-shaped `rls_auto_enable` behind a live event trigger —
+then every row of every public table and every other ACL, RLS flag, policy,
+trigger and function unchanged across the migration, the event trigger still
+firing, and the application's writes still working).
 
 ### Live slugs published after the template pin (Phase 6, checkpoint 6.12a)
 

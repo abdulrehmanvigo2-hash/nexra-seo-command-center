@@ -22,12 +22,21 @@ export const OPERATOR_EMAILS_VARIABLE = "NEXRA_OPERATOR_EMAILS";
  * `httpOnly`, unlike the Supabase default: that default exists so a browser
  * Supabase client can read the session, and this application has none, so no
  * script on the page — including an injected one — needs to see the token.
+ *
+ * `secure` in a production build (fix F5, audit A1-02), so the browser never
+ * sends the session over plain http. Not under `next dev`, which serves
+ * http://localhost.
  */
-export const SESSION_COOKIE_OPTIONS = {
-  path: "/",
-  sameSite: "lax",
-  httpOnly: true,
-} as const;
+export function sessionCookieOptions(env: { readonly NODE_ENV?: string | undefined }) {
+  return {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+  } as const;
+}
+
+export const SESSION_COOKIE_OPTIONS = sessionCookieOptions(process.env);
 
 export type AuthConfig = {
   readonly url: string;
