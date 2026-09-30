@@ -3,7 +3,8 @@
 Professional, agency-grade AI SEO platform. This file defines the operating rules for the
 project. Read it before writing any code.
 
-**Current stage: PRODUCTION READY; Phase 6 (→ the full 12-agent V1) has started.** Its design note
+**Current stage: FULL V1 (30 Sep 2026; Phase 6 closing, checkpoint 6.12b — see the *FULL V1* block in §14); the
+post-V1 backlog and a full audit are next, each under its own explicit approval.** Phase 6's design note
 (6.1) and the attestation design (6.1b) are approved; the per-agent run history (6.2) and its
 follow-up (the agent header's figures labelled Modelled, the fake sync button removed) are merged,
 deployed and browser checked; the Command Center over stored data (6.3), Reports on read (6.4), the second
@@ -1431,6 +1432,25 @@ is added to a short explicit list of slugs published after the pin, each with it
     before.
 - No probe was run (no data write was allowed).
 
+**Phase 6 checkpoint 6.12b (Phase 6 closing — FULL V1, 30 Sep):** cleanup and docs; no schema, no behaviour change.
+
+- **Orphan cleanup:** the 19 fixture files 6.3 and 6.4 left unimported were deleted. They were found by the 3.6 /
+  4.8 / 5.7 method: an import-graph scan from every `src/app` entry and the proxy, to a fixed point, then a grep of
+  `src`, `scripts` and `.github`. No route, test or script referenced them; every remaining reference came from
+  another file in the same set.
+  - 9 under `src/components/dashboard`: `ai-visibility-snapshot`, `alerts-panel`, `analytics-summary`,
+    `authority-snapshot`, `command-center`, `competitor-snapshot`, `dashboard-header`, `priority-actions`,
+    `reporting-summary`.
+  - 10 under `src/components/reports`: `export-panel`, `filters`, `overview-view`, `report-preview`,
+    `reports-chrome`, `reports-toolbar`, `reports-workspace`, `sorting`, `tables`, `template-views`.
+- **Kept, still imported:** the dashboard panels `activity-feed` (the agent screens), `agent-operations`,
+  `content-snapshot`, `keyword-snapshot`, `metric-cards`, `performance-chart` and `technical-snapshot` (the project
+  workspace).
+- **Kept, not from 6.3 / 6.4:** two other unimported files, `keywords/pagination` and
+  `projects/unmeasured-selection-notice`; they are listed for the audit (§14).
+- **Docs:** the *FULL V1* block, the post-V1 backlog and the audit preparation in §14; *Full V1* in
+  `docs/BACKEND.md`.
+
 **Findings recorded for later phases:**
 
 - **Carried forward to Phase 4 (resolved by checkpoint 4.2, verified live on run `aecfca87…`):** the single-project Director `priority-review` run `33ac8a25…`
@@ -1544,9 +1564,8 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** the 6.12a apply record on `claude/festive-dirac-ib7i3e` (6.12a merged as PR #65, `7a718f7c…`;
-migration `20261011120000` applied and recorded 30 Sep); 6.11 recorded (nexra-ai PR #9 merged as `9a69c8c`, live 30
-Sep); next the 6.12 closing; each further
+**Current work:** Phase 6 closing, checkpoint 6.12b (FULL V1), on `claude/festive-dirac-ib7i3e`, a draft PR; the
+6.12a apply record merged (PR #66, `be3ca1d6…`); next the full audit and the post-V1 backlog (§14); each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -2207,7 +2226,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) merged (PR #57, `f039a89b`); 6.7 (the learning loop) and 6.8 (approval records) merged (PR #58, `4a8b5562`), migrations `20261008120000` and `20261009120000` applied and recorded, the first cited priority change recorded (task `30e79092…` seq 21, Director run `288639f4…`); 6.8b (operator-attested paragraphs) merged (PR #59, `8980b3b0`), migration `20261010120000` applied and recorded; 6.9 (the `nexra-ai` re-audit at `1a688bd` and the renderer decisions D1–D11) merged (PR #61, `33ae4007`); 6.9b (the full article renderer, build-proven against `1a688bd`) merged (PR #62, `0381f1bb`); 6.10a (the verification proposal `5f229630…` withdrawn, 29 Sep); 6.10b (article `1003104c…` V6 checked — 7 of 7 units, 20 check runs — approved and proposed as `ea85edb0…`, 30 Sep; the lean V1 decision defers C7b and the product's C7 publisher); 6.11 (the one external write: nexra-ai PR #9, merge `9a69c8c`, live 30 Sep); 6.12a (D10 live-slug record, PR #65, `7a718f7c`; migration `20261011120000` applied and recorded 30 Sep); then the 6.12 closing |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) merged (PR #57, `f039a89b`); 6.7 (the learning loop) and 6.8 (approval records) merged (PR #58, `4a8b5562`), migrations `20261008120000` and `20261009120000` applied and recorded, the first cited priority change recorded (task `30e79092…` seq 21, Director run `288639f4…`); 6.8b (operator-attested paragraphs) merged (PR #59, `8980b3b0`), migration `20261010120000` applied and recorded; 6.9 (the `nexra-ai` re-audit at `1a688bd` and the renderer decisions D1–D11) merged (PR #61, `33ae4007`); 6.9b (the full article renderer, build-proven against `1a688bd`) merged (PR #62, `0381f1bb`); 6.10a (the verification proposal `5f229630…` withdrawn, 29 Sep); 6.10b (article `1003104c…` V6 checked — 7 of 7 units, 20 check runs — approved and proposed as `ea85edb0…`, 30 Sep; the lean V1 decision defers C7b and the product's C7 publisher); 6.11 (the one external write: nexra-ai PR #9, merge `9a69c8c`, live 30 Sep); 6.12a (D10 live-slug record, PR #65, `7a718f7c`; migration `20261011120000` applied and recorded 30 Sep, PR #66); 6.12b closing (orphan cleanup, docs) — **Complete: FULL V1** |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -2251,9 +2270,58 @@ production-ready criterion from the audit (§J), with its evidence:
 
 Next step: the Phase 6 design checkpoint (6.1), under its own explicit approval.
 
+**FULL V1 (30 Sep 2026, Phase 6 closing, checkpoint 6.12b).** The twelve-agent V1 of the 6.1 design note, scoped by
+decision Q4 option B (§13 *Scoped V1*), is built, deployed and in use, and its first article is live.
+
+| Phase 6 step | What | Evidence |
+|---|---|---|
+| 6.1, 6.1b | Design notes (Q1–Q8; attestation) | approved 28 Sep |
+| 6.2 (+ follow-up) | Per-agent run history; agent header figures labelled Modelled | PR #50, #51 |
+| 6.3, 6.4 | Command Center over stored data; Reports generated on read | PR #52, #53 — no screen is wholly fixture now |
+| 6.5, 6.6, 6.6b, 6.6c | Second grounded tasks (every agent holds two or more); scoped V1; queue controls and Run Now on agent pages; the LIMITS line | PR #54–#57; eight second-task runs completed live (28 Sep) |
+| 6.7, 6.8 | The recorded learning loop; approval records (C7) | PR #58; migrations `20261008120000`, `20261009120000` applied; first cited priority change (task `30e79092…` seq 21) |
+| 6.8b | Operator-attested paragraphs | PR #59; migration `20261010120000` applied |
+| 6.9, 6.9b | nexra-ai re-audit (D1–D11); the full article renderer | PR #61, #62 (build-proven at `1a688bd`) |
+| 6.10a, 6.10b | Verification proposal withdrawn; the real article checked (7 of 7 units), approved and proposed | PR #63, #64; proposal `ea85edb0…` |
+| 6.11 | **First live article:** `/blog/ai-dead-lead-reactivation` | nexra-ai PR #9, merge `9a69c8c`, live 30 Sep 2026 (operator browser check; indexing requested) |
+| 6.12a | The live slug recorded (D10) | PR #65, #66; migration `20261011120000` applied |
+| 6.12b | Closing: 19 orphan fixture files removed, docs | this checkpoint |
+
+Migrations applied in Phase 6: `20261008120000`, `20261009120000`, `20261010120000`, `20261011120000` (all recorded;
+34 history versions). Publishing stays operator-driven: the product has no Create PR, Merge, Deploy or Publish
+control, and the one V1 write was made from a Claude Code session under the lean V1 decision (6.10b).
+
+**Post-V1 backlog** (each needs its own design or approval; none is started):
+
+- **Designed publishing route:** the published-state table (C7b), the product's C7 publication approval consuming a
+  6.8 approval, and a GitHub publisher with a fine-grained, expiring token scoped to `nexra-ai` (§6).
+- **Check-result carry-forward:** reuse a passed unit result on a later version whose unit hash is identical.
+- **Checker instructions v3:** a title, meta description or excerpt that describes the article itself is EDITORIAL;
+  addresses the checker-variance finding (6.10b: default sampling, identical unit text judged differently).
+- **Checker external sources (option 1 / 6.1b option b):** let evidence beyond the site's own records support a
+  statement, so the four "meta description" sentences of `ai-dead-lead-reactivation` can read naturally again.
+- **Renderer:** rich blocks and H3 anchors; review the "Our view" label's visibility on the live page.
+- **Website:** service pages (the planned nexra-ai PR 3); a Search Console follow-up on the new article's indexing
+  and first impressions.
+
+**Full audit — what it should cover:**
+
+- **Security:** operator gate on every page and data route, `service_role` grants, RLS with no policies,
+  `security definer` inventory, secrets and the secret scan, the public health endpoint.
+- **Database:** migration history against the files (including the C2 mismatch and the CRLF body left by the C6
+  SQL-editor paste in the replaced live-slug function), guards and triggers enabled, row counts.
+- **Agents:** all 27 task types — grounding, output bounds against live answer lengths, the daily caps, the worker
+  and lease behaviour.
+- **Screens:** every screen observed or labelled Modelled; remaining fixture data (`src/lib/mock`, the project and
+  agent screens); no dead control or broken link; the two unimported files kept in 6.12b.
+- **Content path:** C1–C6 end to end, the renderer against the live nexra-ai `main`, and the D2/D10 live-slug lists
+  against the site.
+- **Operations:** the runbook, deployment confirmation (the Vercel API refused this session in Phase 6), rollback,
+  CI gates, and the docs against production.
+
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.12a in a draft PR (6.10a, 6.10b and 6.11 done)
-(6.2 through 6.8b merged, PR #50–#59; the 6.7, 6.8 and 6.8b migrations applied). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: FULL V1 — Phase 6 is complete (PR #50–#66
+and the 6.12b closing; the 6.7, 6.8, 6.8b and 6.12a migrations applied; the first article live 30 Sep). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
 complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
 Phase 1, Phase 2, Phase 3, Phase 4 and Phase 5 are complete. Phase 2, Project Manager loop closure: the handoff
@@ -2265,8 +2333,8 @@ Intelligence screen over the stored Search Console rows; and the operator's cura
 (the one Phase 3 migration, applied). Phase 4: the Analytics, Competitors, AI Visibility and
 Outbound Links screens over stored data, the Director and performance-review bounds, and the
 Director's five-slot bundle. Phase 5: the Content Studio, the article positive path and the hardening
-(guards, health, caps, the abort fix, the runbook). Not started, each under its own explicit
-approval: the 6.12a migration's application and the Phase 6 closing (6.12).
+(guards, health, caps, the abort fix, the runbook). Phase 6: the full twelve-agent V1 (the *FULL V1* block). Not
+started, each under its own explicit approval: the full audit and the post-V1 backlog.
 
 ## 15. Definition of Done
 

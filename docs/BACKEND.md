@@ -1802,6 +1802,26 @@ allowed and ask for explicit confirmation. It is labelled "PROPOSAL ONLY —
 NOT PUBLISHED". The draft proposal section's `slug-taken` message now
 names both a draft's and an article's active proposal.
 
+### Full V1 (Phase 6 closing, checkpoint 6.12b, 30 Sep 2026)
+
+Phase 6 (6.1–6.12) is complete, and the product is at its full twelve-agent V1, scoped by decision Q4 option B.
+
+- **Screens:** the Command Center and Reports read stored records (6.3, 6.4). No screen is wholly fixture; the
+  remaining fixture sections on the project and agent screens are labelled Modelled.
+- **Agents:** every agent page shows its runs and queues its grounded tasks (6.2, 6.6b). Every agent holds two or
+  more grounded tasks (6.5, 6.6).
+- **Recorded learning loop:** a priority change may cite a Director run (6.7).
+- **Approvals and attestation:** approval records for C7 (6.8); operator-attested paragraphs (6.8b).
+- **Renderer:** the full article renderer (6.9b).
+- **First live article:** `/blog/ai-dead-lead-reactivation`, from article `1003104c…` V6, published through nexra-ai
+  PR #9 (merge `9a69c8c`, 30 Sep 2026). Its slug is recorded as live (6.12a).
+- **Migrations applied in Phase 6:** `20261008120000`, `20261009120000`, `20261010120000`, `20261011120000`.
+- **6.12b cleanup:** 19 fixture components left unimported by 6.3 and 6.4 were deleted (import-graph scan and grep):
+  9 under `src/components/dashboard`, 10 under `src/components/reports`.
+
+Publishing stays operator-driven; the designed route (published-state table, C7 approval, GitHub publisher) and the
+other post-V1 items are listed in CLAUDE.md §14 (*Post-V1 backlog*), with the full audit's scope.
+
 ### The verification proposal withdrawn (Phase 6, checkpoint 6.10a)
 
 On 29 Sep the article publication proposal `5f229630…` was withdrawn. It was the checkpoint 5.3 verification
