@@ -224,3 +224,141 @@ and has attempts left, then marks it running and inserts the attempt in the same
 second worker claiming the same run waits on the lock and answers `not-queued` (HTTP 409). The
 queue form takes the next due run with `for update skip locked`, so two workers take different
 runs without waiting. Harness suite `claim-races` (R1–R3) proves both.
+
+---
+
+## 6. Backups and restore
+
+The Supabase project is on the Free plan, which keeps **no backups and no point-in-time
+recovery** (audit A2-05, A6-01). The product's own nightly backup is the only copy of the
+database outside Supabase.
+
+### 6.1 What is backed up, when, where
+
+| | |
+|---|---|
+| Job | `.github/workflows/backup.yml`, "Nightly backup" — daily at 03:17 UTC, and by hand (Run workflow) |
+| Reads | production through the Supabase session pooler, read-only: `pg_dump` in a read-only snapshot, the rest `SELECT`s |
+| Holds | the `public` and `supabase_migrations` schemas (every table, row, function, trigger, index, grant and the migration history), plus `auth-users.csv` with each user's id, email, created, confirmed and last-sign-in time — **no password hash, token or session** |
+| Leaves out | Supabase's own schemas (`auth`, `storage`, `realtime`, `extensions`, …), which a new project recreates |
+| Checks before storing | `public.projects` holds at least one row, and the dump lists the projects, runs and migration-history tables; any failure fails the job |
+| Encryption | [age](https://age-encryption.org), to the operator's public key; the private key is never in GitHub, Vercel, Supabase or a Claude session |
+| Stored | as a GitHub Actions artifact of this private repository, one per run, kept **30 days** (`nexra-backup-<run id>`, containing `nexra-backup-<UTC>.tar.age`) |
+| Code | `scripts/backup/backup.sh` (dump, verify, encrypt), `scripts/backup/restore-drill.sh` (6.4), `scripts/backup/test-local.sh` (the whole cycle against a local database) |
+
+Inside the encrypted file: `db.dump` (`pg_dump` custom format), `auth-users.csv`, and
+`manifest.txt` (the time, the server and `pg_dump` versions, each table's row count and each
+file's SHA-256).
+
+**Why an artifact, not a backups repository.** The repository is private, and the file is
+encrypted before upload. Artifacts need no extra credential, while a second repository would
+need a write token in Actions and would keep every backup in its history forever. Thirty
+files fit easily in the Free plan's Actions storage: a local test file was under 0.5 MB, and the
+first production run shows the real size. The operator keeps one download a month offline
+(6.3), which covers longer than 30 days.
+
+### 6.2 One-time setup (operator)
+
+Nothing below is ever pasted into a chat or a Claude session.
+
+1. **Make the key pair** on your own machine: install age (`sudo apt install age`, or
+   `brew install age`), then run `age-keygen -o nexra-backup.key`. The file holds the private
+   key, and the command prints `Public key: age1…`.
+   - Keep `nexra-backup.key` in two places: your password manager and an offline copy.
+   - **Without it no backup can be opened.** If it is ever exposed, make a new pair and replace
+     the public key.
+2. **Create the environment.** GitHub → repository **Settings → Environments → New
+   environment**, named `backup`. Under *Deployment branches and tags*, choose **Selected
+   branches** and add `master`, so only `master`'s workflow can read the secret.
+3. **Add the secret.** In the `backup` environment: **Add environment secret**
+   `BACKUP_DATABASE_URL`, with the Supabase **session pooler** connection string (Dashboard →
+   **Connect** → *Session pooler*, port 5432, `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`),
+   the database password filled in.
+   - GitHub's runners have no IPv6, so the direct connection does not work from them.
+   - It is the `postgres` database password: keep it in this environment only.
+4. **Add the variable.** In the `backup` environment: **Add environment variable**
+   `BACKUP_AGE_RECIPIENT`, set to the `age1…` public key. It is not a secret.
+5. **Set up failure mail.** A failed run fails loudly in two ways:
+   - **An issue.** The workflow opens an issue titled "Nightly backup failed …" with a link to
+     the run, and GitHub emails the repository owner about new issues. Keep **Watching** the
+     repository, and keep email on under **Settings → Notifications**.
+   - **GitHub's own mail.** Under **Settings → Notifications → Actions**, turn on notifications
+     for failed workflows, by email. GitHub sends scheduled-run failures to the account that
+     last changed the schedule, and a manual run's failure to whoever started it.
+6. **Merge, then run once by hand.** Actions → **Nightly backup** → **Run workflow** on
+   `master`. That is the first read of production, so it needs its own approval. Check it turns
+   green, with an artifact of about a megabyte. Then do the drill in 6.4.
+
+If the database password is reset in Supabase, update `BACKUP_DATABASE_URL` the same day, or
+every run fails.
+
+### 6.3 Routine
+
+- **Daily:** nothing, unless a "Nightly backup failed" issue or mail arrives. Then open the run,
+  read the failing step (the script says what failed and never prints the URL), fix the cause,
+  run it by hand, and close the issue.
+- **Monthly:** download the newest artifact and keep it offline next to the key. Run the drill
+  (6.4) on it, and note the date and result in CLAUDE.md §0.
+
+### 6.4 Restore drill (local, throwaway)
+
+Proves a backup opens and restores, without touching any hosted database.
+
+1. **Download.** Actions → **Nightly backup** → a green run → **Artifacts** → download and
+   unzip. You get `nexra-backup-<UTC>.tar.age`.
+2. **Install PostgreSQL 17 server binaries** (the drill refuses an older major than the
+   backup's server). On Ubuntu or WSL:
+   `sudo apt install postgresql-common && sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh && sudo apt install postgresql-17`.
+3. **Run the drill:**
+   `bash scripts/backup/restore-drill.sh nexra-backup-<UTC>.tar.age /path/to/nexra-backup.key`
+   (`PG_BIN=/usr/lib/postgresql/17/bin` if several versions are installed). It:
+   1. decrypts into a temporary directory and checks every file against the manifest's SHA-256;
+   2. starts a throwaway cluster on a Unix socket with TCP off;
+   3. creates every role the dump names, without login;
+   4. restores in one transaction, creating the triggers after the data, so no guard fires;
+   5. compares every table's row count with the manifest;
+   6. deletes everything.
+
+   `restore-drill: OK — N tables restored, every row count equals the manifest` is a pass. Set
+   `NEXRA_DRILL_KEEP=1` to keep the cluster for inspection.
+
+`bash scripts/backup/test-local.sh` runs the whole cycle without production: it builds a
+database from the migrations, backs it up, runs the drill, and tries the refusals (wrong key,
+tampered file, missing settings, too few projects, an unreachable database with a password in
+its URL).
+
+### 6.5 Restoring production after a loss
+
+**Every step is a production change needing the operator's approval (CLAUDE.md §6).** The rule:
+restore into a **new** Supabase project, never over the damaged one.
+
+1. **Create the project.** A new Supabase project, Postgres 17, same region. Note its database
+   password and session pooler string, and keep the damaged project untouched.
+2. **Open the backup:** `age -d -i nexra-backup.key nexra-backup-<UTC>.tar.age | tar -xf -`,
+   then `sed -n '/^--- sha256$/,$p' manifest.txt | tail -n +2 | sha256sum -c` (both files OK).
+3. **Build the restore list.** Leave out what a new project already has: the `public` schema
+   entry, and the platform's `rls_auto_enable` function.
+   - `pg_restore --list db.dump | grep -vE ' (SCHEMA|COMMENT) - (SCHEMA )?public ' | grep -v rls_auto_enable > restore.list`
+   - If the new project already has a `supabase_migrations` schema, also remove the line
+     `SCHEMA - supabase_migrations`.
+4. **Restore, with every grant kept and ownership given to `postgres`:**
+   `pg_restore --dbname "$NEW_SESSION_POOLER_URL" --no-owner --single-transaction --exit-on-error --use-list restore.list db.dump`.
+   Any error rolls the whole restore back. Fix the list and repeat.
+5. **Reload PostgREST:** `psql "$NEW_SESSION_POOLER_URL" -c "notify pgrst, 'reload schema'"`.
+6. **Verify.** Compare the new database's row counts with `manifest.txt`. Check the §1.3 facts:
+   `security definer` functions with an empty `search_path`, the grants, RLS on, triggers
+   enabled.
+7. **Recreate the operator.**
+   - Authentication → invite each email in `auth-users.csv`. Set sign-up off and email
+     confirmation on, as on the old project (A1-08).
+   - The new user ids differ from the old ones. Stored `created_by` values keep the old ids,
+     which reference no table.
+8. **Point the app at the new project.** In Vercel, change `SUPABASE_URL`,
+   `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SERVICE_ROLE_KEY`, then redeploy. Check
+   `/api/health`, and update `BACKUP_DATABASE_URL` (6.2).
+9. **Record it in CLAUDE.md §0.** Write down which backup was restored, when, and what was
+   lost: everything after the backup's time.
+
+**Recovering a few rows** (a mistaken write, not a lost database): restore the newest backup
+with the drill and `NEXRA_DRILL_KEEP=1`, read the rows there, and apply the correction to
+production as its own approved change.
