@@ -38,7 +38,7 @@ trap cleanup EXIT
 # 1. Decrypt and unpack.
 age -d -i "$IDENTITY" "$BACKUP" | tar -C "$FILES" -xf - || fail "could not decrypt or unpack the backup"
 for f in manifest.txt db.dump auth-users.csv; do [ -f "$FILES/$f" ] || fail "the backup has no $f"; done
-head -1 "$FILES/manifest.txt" | grep -qx "nexra-backup/1" || fail "unknown manifest format"
+[ "$(head -1 "$FILES/manifest.txt")" = "nexra-backup/1" ] || fail "unknown manifest format"
 (cd "$FILES" && sed -n '/^--- sha256$/,$p' manifest.txt | tail -n +2 | sha256sum -c --quiet) || fail "a file does not match its manifest hash"
 
 SERVER_NUM="$(awk '$1 == "server_version_num" { print $2 }' "$FILES/manifest.txt")"

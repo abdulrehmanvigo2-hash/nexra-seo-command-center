@@ -7,9 +7,13 @@
 # except counts.
 #
 # Environment:
-#   BACKUP_DATABASE_URL   libpq connection string (the Supabase session pooler). Secret.
+#   BACKUP_DATABASE_URL   the Supabase session pooler connection string. Secret. It must
+#                         name a *.pooler.supabase.com host, port 5432 and the user
+#                         postgres.<ref>; it is split by scripts/backup/conn.sh (the password
+#                         ends at the LAST "@") and never handed to libpq as a URL.
 #   BACKUP_AGE_RECIPIENT  the operator's age public key ("age1…"). Not secret; the matching
 #                         private key never leaves the operator.
+#   Both are trimmed of surrounding whitespace, carriage returns and newlines.
 #   BACKUP_OUT_DIR        where the encrypted file is written (default: ./backup-out).
 #   BACKUP_MIN_PROJECTS   refuse to finish if public.projects holds fewer rows (default 1).
 #
@@ -26,11 +30,19 @@ set -euo pipefail
 umask 077
 
 fail() { echo "backup: $*" >&2; exit 1; }
+# shellcheck source=scripts/backup/conn.sh
+source "$(dirname "$0")/conn.sh"
 
-[ -n "${BACKUP_DATABASE_URL:-}" ] || fail "BACKUP_DATABASE_URL is not set"
-[ -n "${BACKUP_AGE_RECIPIENT:-}" ] || fail "BACKUP_AGE_RECIPIENT is not set"
-case "$BACKUP_AGE_RECIPIENT" in age1*) ;; *) fail "BACKUP_AGE_RECIPIENT is not an age public key (age1…)";; esac
-for tool in pg_dump pg_restore psql age tar sha256sum; do
+BACKUP_DATABASE_URL="$(backup_trim "${BACKUP_DATABASE_URL:-}")"
+BACKUP_AGE_RECIPIENT="$(backup_trim "${BACKUP_AGE_RECIPIENT:-}")"
+[ -n "$BACKUP_DATABASE_URL" ] || fail "BACKUP_DATABASE_URL is not set"
+[ -n "$BACKUP_AGE_RECIPIENT" ] || fail "BACKUP_AGE_RECIPIENT is not set"
+[[ "$BACKUP_AGE_RECIPIENT" =~ ^age1[02-9ac-hj-np-z]{58}$ ]] \
+  || fail "BACKUP_AGE_RECIPIENT is not one age public key (age1 and 58 more characters, on one line)"
+# Checked before anything connects; the message names the rule, never the value.
+backup_check_url "$BACKUP_DATABASE_URL" || fail "BACKUP_DATABASE_URL is not usable: $BK_ERROR"
+unset BACKUP_DATABASE_URL
+for tool in pg_dump pg_restore psql age tar sha256sum awk; do
   command -v "$tool" >/dev/null || fail "$tool is not installed"
 done
 
@@ -40,10 +52,18 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/nexra-backup.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$OUT_DIR" "$WORK/bundle"
+backup_connect_env "$WORK"
 
-# One helper for every read: the URL is passed as an argument, never echoed. psql and
-# pg_dump error messages name the host and user, never the password.
-q() { psql "$BACKUP_DATABASE_URL" -X -q -A -t -v ON_ERROR_STOP=1 -c "$1"; }
+# Every database command runs through db: libpq reads the split settings and the password
+# file, and its error text is redacted (the password and any piece of it of four characters
+# or more) before it reaches the log.
+db() {
+  local rc=0
+  "$@" 2> "$WORK/stderr" || rc=$?
+  backup_redact < "$WORK/stderr" >&2
+  return "$rc"
+}
+q() { db psql -X -q -A -t -v ON_ERROR_STOP=1 -c "$1"; }
 
 # 1. The client must be at least the server's major version, or pg_dump refuses anyway.
 SERVER_NUM="$(q "show server_version_num")" || fail "could not connect to the database"
@@ -63,19 +83,21 @@ PROJECTS="$(printf '%s\n' "$COUNTS" | awk '$1 == "public.projects" { print $2 }'
 
 # 3. The dump: two schemas, schema and data, owners and grants kept. Supabase's own schemas
 # (auth, storage, realtime, extensions…) are the platform's and a new project recreates them.
-pg_dump "$BACKUP_DATABASE_URL" --format=custom --compress=9 \
+db pg_dump --format=custom --compress=9 \
   --schema=public --schema=supabase_migrations --no-subscriptions --no-publications \
   --file="$WORK/bundle/db.dump" || fail "pg_dump failed"
 
 # 4. The operator list, safe columns only (no password hash, token or session).
-psql "$BACKUP_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -c \
+db psql -X -q -v ON_ERROR_STOP=1 -c \
   "\\copy (select id, email, created_at, email_confirmed_at, last_sign_in_at from auth.users order by created_at, id) to '$WORK/bundle/auth-users.csv' with (format csv, header)" \
   || fail "could not read the auth user list"
 
 # 5. Verify before encrypting: the archive lists, and holds the tables that matter.
 LISTING="$(pg_restore --list "$WORK/bundle/db.dump")" || fail "pg_restore cannot read the dump"
 for needed in "TABLE DATA public projects" "TABLE DATA public agent_runs" "TABLE DATA supabase_migrations schema_migrations"; do
-  printf '%s\n' "$LISTING" | grep -q "$needed" || fail "the dump has no '$needed' entry"
+  # A here-string, not a pipe: grep -q stops at its first match, and under pipefail the
+  # writer's SIGPIPE would fail the check at random.
+  grep -qF -- "$needed" <<< "$LISTING" || fail "the dump has no '$needed' entry"
 done
 
 # 6. Manifest.
@@ -98,6 +120,6 @@ tar -C "$WORK/bundle" -cf - manifest.txt db.dump auth-users.csv | age -r "$BACKU
   || fail "encryption failed"
 [ "$(head -c 21 "$OUT")" = "age-encryption.org/v1" ] || fail "the output is not an age file"
 
-TABLES="$(printf '%s\n' "$COUNTS" | grep -c .)"
+TABLES="$(grep -c . <<< "$COUNTS")"
 ROWS="$(printf '%s\n' "$COUNTS" | awk '{ s += $2 } END { print s }')"
 echo "backup: wrote $(basename "$OUT") ($(stat -c %s "$OUT") bytes); $TABLES tables, $ROWS rows, $PROJECTS projects; server $SERVER_NUM"

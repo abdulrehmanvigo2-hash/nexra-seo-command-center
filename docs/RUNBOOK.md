@@ -276,8 +276,15 @@ Nothing below is ever pasted into a chat or a Claude session.
    the database password filled in.
    - GitHub's runners have no IPv6, so the direct connection does not work from them.
    - It is the `postgres` database password: keep it in this environment only.
+   - Replace the whole `[YOUR-PASSWORD]` placeholder, brackets included. A password of letters
+     and digits needs no encoding; otherwise write `@` as `%40`, `#` as `%23`, `/` as `%2F`,
+     `:` as `%3A` and `%` as `%25` (an unencoded `@`, `#`, `/` or `:` is also accepted).
+   - The job refuses, before connecting, any string whose host is not `*.pooler.supabase.com`,
+     whose port is not 5432 or whose user is not `postgres.<ref>`. Its message names the rule,
+     never the value.
 4. **Add the variable.** In the `backup` environment: **Add environment variable**
-   `BACKUP_AGE_RECIPIENT`, set to the `age1…` public key. It is not a secret.
+   `BACKUP_AGE_RECIPIENT`, set to the `age1…` public key, on one line. It is not a secret.
+   Surrounding spaces, carriage returns and newlines in either value are trimmed.
 5. **Set up failure mail.** A failed run fails loudly in two ways:
    - **An issue.** The workflow opens an issue titled "Nightly backup failed …" with a link to
      the run, and GitHub emails the repository owner about new issues. Keep **Watching** the
@@ -287,10 +294,22 @@ Nothing below is ever pasted into a chat or a Claude session.
      last changed the schedule, and a manual run's failure to whoever started it.
 6. **Merge, then run once by hand.** Actions → **Nightly backup** → **Run workflow** on
    `master`. That is the first read of production, so it needs its own approval. Check it turns
-   green, with an artifact of about a megabyte. Then do the drill in 6.4.
+   green, with one artifact (the local test's was under 0.5 MB). Then do the drill in 6.4.
 
 If the database password is reset in Supabase, update `BACKUP_DATABASE_URL` the same day, or
 every run fails.
+
+**How the job handles the string** (`scripts/backup/conn.sh`): it splits it itself (the
+password runs from the first `:` after the user to the **last** `@`, and `%XX` escapes are
+decoded) and gives libpq separate settings, with the password in a 0600 file, never a URL. The
+workflow first masks the password, as written and decoded, and every prefix and suffix of four
+characters or more; every database error line is also redacted the same way before it is logged.
+
+**Run history:**
+
+| Date (UTC) | Run | Result |
+|---|---|---|
+| 30 Sep 2026 11:14 | [36707286151](https://github.com/abdulrehmanvigo2-hash/nexra-seo-command-center/actions/runs/36707286151), manual, `bffaaed` | **Failed** in about 28 s at the first connection, before reading anything: the secret held the *direct* connection host with an unencoded `@` in the password, so libpq read part of the password as the host and printed it. No dump or artifact; issue #75 opened. The run's logs were deleted the same day (approved); the password is to be reset, and the parsing, checks, masking and redaction above were added. |
 
 ### 6.3 Routine
 

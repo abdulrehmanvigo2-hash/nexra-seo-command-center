@@ -1570,10 +1570,14 @@ Actions job, `.github/workflows/backup.yml`, reads production read-only through 
 `public` and `supabase_migrations` schemas plus a safe auth-user list (id, email, dates; no hash or token), verifies
 the dump, encrypts it with age to the operator's public key and stores it as a 30-day artifact. A failure fails the
 run and opens an issue. The procedure, the restore drill and a restore into a new project are in `docs/RUNBOOK.md` §6;
-the cycle is tested locally (`scripts/backup/test-local.sh`, 16 checks). It is a draft PR on
-`claude/festive-dirac-ib7i3e`. **Not yet active:** it needs the operator's `backup` environment (secret
-`BACKUP_DATABASE_URL`, variable `BACKUP_AGE_RECIPIENT`), a merge, a first manual run and a drill, each under its own
-approval. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+the cycle is tested locally (`scripts/backup/test-local.sh`, 16 checks). Merged as PR #74 (`bffaaed6…`); the operator created the
+`backup` environment. The first manual run (30 Sep, run `36707286151`) **failed** at the first connection: the
+secret held the direct host with an unencoded `@` in the password, and libpq printed part of the password in its
+error. Its logs were deleted (approved), and fix F1b (`scripts/backup/conn.sh`) splits the URL at the last `@`,
+refuses a host that is not `*.pooler.supabase.com`, a port other than 5432 or a user other than `postgres.<ref>`,
+never hands libpq a URL, masks the password and its fragments and redacts database errors; it also removes a
+random SIGPIPE failure in the dump check (runbook §6.2). **Still to do:** the operator resets the password and
+re-enters both values, then a second manual run and a drill, each under its own approval. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22

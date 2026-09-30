@@ -53,9 +53,11 @@ jobs:
           BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
           BACKUP_OUT_DIR: backup-out
         run: |
-          # Mask the password on its own too, in case a tool ever prints part of the URL.
-          password="$(printf '%s' "$BACKUP_DATABASE_URL" | sed -nE 's#^[a-z]+://[^:/@]+:([^@]+)@.*#\1#p')"
-          if [ -n "$password" ]; then echo "::add-mask::$password"; fi
+          # Mask the password on its own too — as written and decoded, and every prefix and
+          # suffix of four characters or more — from the first ":" after the user to the LAST
+          # "@", so no fragment of it can show in a later log line. backup.sh also redacts
+          # database error text and never hands libpq a URL.
+          bash scripts/backup/conn.sh --mask
           bash scripts/backup/backup.sh | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Store the encrypted file (30 days)
