@@ -316,30 +316,36 @@ queries on runs, attempts, rate-limit windows, tasks, task events and snapshots.
 17. `approval-required` policy exists in the contract but no task uses it — record as latent (6.1 finding). **[DONE — A3-11]**
 18. The 1,200-character soft target overshoot (4.8): current numbers from production; still under 2,000. **[PASS — 29 of 71 completed answers over 1,200, none over 2,000 (A3-10)]**
 
-### A4 Screens (16 items)
+### A4 Screens (16 items) — run 30 Sep 2026 at `95bf284`: 12 PASS, 2 FAIL, 2 DONE (record-only items)
 
-1. Every sidebar destination resolves to a real route (13 entries incl. Settings); no dead link in the shell.
-2. Observed screens (Command Center, Keywords, Content, Technical, Competitors, AI Visibility, Outbound Links,
+Method: a local production build signed in as a test operator against a throwaway stand-in for Supabase (three
+passes: fixture roster with no database, one stored project with no records, every read failing), Playwright at 375
+and 1,280 px on all 21 pages, a click test with every write aborted in the browser, and a code read of every write
+control. Production is left to the operator (read-only prompt: `A4-PRODUCTION-PROMPT.md`). Findings: `FINDINGS.md`
+A4-01…A4-09.
+
+1. Every sidebar destination resolves to a real route (13 entries incl. Settings); no dead link in the shell. **[PASS — all 12 sidebar destinations and every page loaded locally (200, or the in-shell "not found" for unknown ids)]**
+2. Observed screens (Command Center, Keywords, Content, Technical, Competitors, AI Visibility, Outbound Links, **[PASS — `modelled-screens.test.ts` green (`npm test` 2,593 of 2,593)]**
    Analytics, Reports): import no fixture module (`modelled-screens.test.ts` + a grep for `@/lib/mock` in each screen's
    component tree).
-3. Mixed screens (Projects, a project, AI Agents, an agent): every fixture section wrapped in `ModelledSection`; live
+3. Mixed screens (Projects, a project, AI Agents, an agent): every fixture section wrapped in `ModelledSection`; live **[PASS — the test; the one control outside a Modelled section is A4-04]**
    sections labelled observed (the test).
-4. Remaining fixture data: list `src/lib/mock/*` modules and which screens still import each; note the two
+4. Remaining fixture data: list `src/lib/mock/*` modules and which screens still import each; note the two **[DONE — module importer counts in FINDINGS A4; both 6.12b files still unimported]**
    unimported components kept in 6.12b (`keywords/pagination`, `projects/unmeasured-selection-notice`).
-5. No control that does nothing: grep every `onClick`/`action` for a handler that only sets local notice state.
-6. Empty, loading, error and not-connected states on every observed screen (read each component's branches).
-7. Remaining 404 links: none expected after 6.3 (grep hrefs to `/content/`, `/competitors/`, `/keywords/clusters`).
-8. `/dev/*` routes (A0-06): keep, gate by `NODE_ENV`, or remove — decision.
-9. Responsive check at phone/tablet/desktop widths on the observed screens (operator, browser; not checkable here).
-10. Print view of Reports hides the chrome (`print:hidden`) — read `app-shell.tsx`.
-11. Every screen's project selector defaults to `?project=` then the first stored project; a project with no records
+5. No control that does nothing: grep every `onClick`/`action` for a handler that only sets local notice state. **[FAIL — A4-04 (Run SEO Analysis, header search, workspace switcher, notifications text)]**
+6. Empty, loading, error and not-connected states on every observed screen (read each component's branches). **[PASS — empty (pass B), read-failure (pass C) and not-kept (pass A) states seen on every observed screen; A4-07]**
+7. Remaining 404 links: none expected after 6.3 (grep hrefs to `/content/`, `/competitors/`, `/keywords/clusters`). **[FAIL — A4-06 (two fixture links inside the fixture project workspace)]**
+8. `/dev/*` routes (A0-06): keep, gate by `NODE_ENV`, or remove — decision. **[DONE — A4-08 (decision)]**
+9. Responsive check at phone/tablet/desktop widths on the observed screens (operator, browser; not checkable here). **[PASS locally — 21 pages at 375 and 1,280 px, no horizontal overflow; production: operator, `A4-PRODUCTION-PROMPT.md`]**
+10. Print view of Reports hides the chrome (`print:hidden`) — read `app-shell.tsx`. **[PASS — sidebar, drawer and header wrapper `print:hidden`; Reports controls hidden in print]**
+11. Every screen's project selector defaults to `?project=` then the first stored project; a project with no records **[PASS — `?project=` read on all nine observed screens, else the first stored project; seen in passes A and B]**
     shows honest empty states, never zeros.
-12. Labels: "not rank", "not a trend", "declared, as crawled", "a proposal is a record of intent" present where
+12. Labels: "not rank", "not a trend", "declared, as crawled", "a proposal is a record of intent" present where **[PASS — each label present; A4-05 (page subtitles contradict them)]**
     CLAUDE.md says (grep).
-13. The Settings screen holds browser preferences only and says so.
-14. Accessibility basics: form labels, button names, focus order on the review controls (spot check).
-15. Build output: the 11 list pages `force-dynamic` (`ƒ` in `next build`), detail pages as documented.
-16. `build-status.ts` sidebar note names every observed screen and no more.
+13. The Settings screen holds browser preferences only and says so. **[PASS — preferences in this browser only, stated on the screen]**
+14. Accessibility basics: form labels, button names, focus order on the review controls (spot check). **[PASS — 0 unnamed buttons, 0 unlabelled inputs, focus visible on every sampled stop; confirm steps in A4-01…A4-03]**
+15. Build output: the 11 list pages `force-dynamic` (`ƒ` in `next build`), detail pages as documented. **[PASS — the 11 list pages `ƒ`; detail pages `ƒ` with the stored roster (A4-09)]**
+16. `build-status.ts` sidebar note names every observed screen and no more. **[PASS — names the nine observed screens and no more]**
 
 ### A5 Content path (16 items)
 

@@ -668,9 +668,206 @@ UTC** each day, so the job fires about 50 minutes after its schedule (Hobby timi
 - Effort: S
 - Status: accepted (latent)
 
-## A4 — Screens
+## A4 — Screens (30 Sep 2026, at `95bf284`)
 
-_(pending)_
+Checklist result: 12 PASS, 2 FAIL (items 5 → A4-04, 7 → A4-06), 2 record-only items done (4, 8). Highest severity:
+**medium** (A4-01). Production is checked separately by the operator, read-only, with the prompt in
+`docs/audit/A4-PRODUCTION-PROMPT.md` (item 9).
+
+**Method (local only; production was not touched).** A production build (`next build`, then `next start`) was
+signed in as a local test operator through a throwaway stand-in for Supabase Auth and the data API, kept in the
+session's scratchpad and never committed. Three passes:
+
+- **A: fixture roster, no database.** The screens' "not kept" states.
+- **B: one stored project with no other records.** Empty states.
+- **C: every data read failing.** Error states.
+
+Playwright (Chromium) loaded each of the 21 pages at **375 px and 1,280 px**. It recorded:
+
+- the HTTP status, page errors, console errors and failed requests;
+- horizontal overflow of the document, and any element wider than the viewport outside a scroll container;
+- text still reading "Loading" after load plus 4 s;
+- unnamed buttons and unlabelled inputs;
+- 16 keyboard tab stops inside the main content (after the skip link), each checked for a visible outline or ring.
+
+A second script clicked every write-looking control once on a fresh load. **Every non-GET request was aborted in
+the browser and recorded**, so nothing was written even locally. A code read then traced every write control to its
+endpoint or Server Action and its confirmation step.
+
+**Per page (local).** Unknown ids were used for the five detail pages, so they show the in-shell "not found" screen:
+
+| Page | Renders | Empty / error / not-kept states | Console | 375 / 1,280 overflow | Focus visible |
+|---|---|---|---|---|---|
+| `/` Command Center | yes | all three, per tile, never a zero | failed loads only in A and C | none | yes |
+| `/projects` | yes | fixture roster (Modelled) | none | none | yes |
+| `/projects/[id]`, stored project with no fixture | yes | live panels, empty and failed reads stated | C only | none | yes |
+| `/projects/[id]`, fixture id | yes | Modelled sections, crawl panel live | none | none | yes |
+| `/agents` | yes | Modelled sections; Run History states | A and C | none | yes |
+| `/agents/[agentId]` | yes | as above, plus Queue a review | A and C | none | yes |
+| `/keywords` | yes | all three | A and C | none | yes |
+| `/keywords/[keywordId]` | yes; unknown id → not found | not kept, read failure | 404 document | none | yes |
+| `/content` | yes | all three | A and C | none | yes |
+| `/content/[articleId]` | yes; unknown id → not found | **read failure → generic error boundary (A4-07)** | 404 / 500 document | none | yes |
+| `/technical` | yes | all three | A and C | none | yes |
+| `/technical/pages/[pageId]` | yes; unknown id → not found | **read failure → generic error boundary (A4-07)** | 404 / 500 document | none | yes |
+| `/competitors` | yes | all three | none | none | yes |
+| `/competitors/[host]` | yes; unrecorded host → not found | — | 404 document | none | yes |
+| `/ai-visibility` | yes | all three | A and C | none | yes |
+| `/backlinks` (Outbound Links) | yes | all three | A and C | none | yes |
+| `/analytics` | yes | all three ("a read failure, not an empty window") | C | none | yes |
+| `/reports` | yes | Observed / Not recorded / Not read / Not kept per section | A and C | none | yes |
+| `/settings` | yes | browser preferences only, says so | none | none | yes |
+| `/dev/data`, `/dev/ui` | yes (A4-08) | demo | none | none | yes |
+| `/login` | signed in → `/` | — | — | none | yes |
+
+The console errors are the browser's own "Failed to load resource" lines for the 404, 500 and 503 answers each pass
+provoked. No page threw a script error. No page left "Loading" on screen. No button was unnamed and no visible input
+lacked a label. Long real-world text (titles, URLs, many rows) was not loaded locally, so overflow with production
+data is left to the operator's read-only pass.
+
+### A4-01 — Paid agent runs are queued, and run, on one click; no screen can cancel a queued run
+- Severity: **medium**
+- Evidence: every review control is the shared queued-review button (`agent-runs/queued-review.tsx:231`, POST
+  `/api/agent-runs` at `:121`), with no confirmation step. That includes "Analyze with … Agent", "Run project
+  Director review", "Hand off to SEO Director", "Run fact-check with Research & Evidence Agent" and "Check this unit".
+  They appear on the project screen, `/keywords`, `/analytics`, `/ai-visibility`, `/backlinks` and `/competitors`.
+  The agent page's **Queue** is gated only by two selects.
+  - Each click creates a run row that cannot be deleted (5.4) and counts toward the daily cap.
+  - The scheduled worker executes it, a paid model call, at the next morning job with no further action.
+  - **No UI control calls the API's `cancel` action** (grep: none in `src/components`).
+  - **Run Now** (`agent-runs/run-now.tsx:73`, POST `{action:"execute"}`) makes the model call immediately, also
+    without a confirmation.
+  - The labels say "Analyze…" and "Run…", which read as immediate, although the control only queues; the grey summary
+    beneath says so.
+- Impact: a stray click spends model tokens and leaves a permanent run record. Spend is bounded by the daily caps
+  (40 a project, 100 in all) and one run's size (A3-02).
+- Suggested fix: a one-line confirmation on Queue and Run Now naming the task and that it will call the model; a
+  Cancel control on queued runs (the API action exists); labels that say "Queue …".
+- Effort: S–M
+- Status: open
+
+### A4-02 — Crawls start on the first click
+- Severity: low
+- Evidence: **Run Crawl** (`crawl/crawl-panel.tsx:240`, POST `/api/crawls` at `:140`) and **Crawl competitor site**
+  (`crawl/competitor-crawls-panel.tsx:251`, POST at `:192`) have no confirmation step. The local click test recorded
+  the POST on the first click.
+- Impact: an outbound fetch of the project's site, or of a third party's site, within the crawl budgets and the host
+  allow-list, and a durable crawl record.
+- Suggested fix: the same one-line confirmation, naming the host and the page budget.
+- Effort: S
+- Status: open
+
+### A4-03 — Check results are recorded on the first click, and they are final
+- Severity: low
+- Evidence: "Record result on this unit" / "Record as failed" / "Record as checking"
+  (`content/article-check-section.tsx:365`) and "Record result on version N" (`content/draft-panel.tsx:649`) have no
+  confirmation step. A passed or needs-review unit is final for that version and can move the article to `checked`.
+  "Save as draft" (`draft-panel.tsx:146`) also saves on the first click; that one is harmless.
+- Impact: a mis-click fixes a verdict for that version; a new version is the only way back.
+- Suggested fix: an inline confirm naming the outcome ("Record passed for unit 3 of version 6?").
+- Effort: S
+- Status: open
+
+Every other write already confirms first. That covers creating a project, the task controls, keyword Track, article
+and draft approval, both proposal flows, triage and the keyword curation forms. Article approval adds the
+attestation tick, and the article proposal adds a modal plus a server confirmation token.
+
+### A4-04 — Controls that do nothing, outside any Modelled section
+- Severity: low
+- Evidence:
+  - **Run SEO Analysis** (`projects/project-detail-header.tsx:120`, a primary button) only shows "Analysis simulated —
+    no agent run was started" for 4 s (`project-workspace.tsx:144`). It sits in the project header, above every
+    Modelled section. It is reachable in production: stored projects with fixture ids (for example `halcyon-fintech`)
+    open the fixture workspace. The crawl panel's description cites it even on the stored-project screen, where it
+    does not exist (`crawl-panel.tsx:238`).
+  - The header's **search** field cancels its own submit (`layout/header.tsx:219`) and searches nothing. Its
+    placeholder is "Search projects, keywords, reports".
+  - The header's **workspace switcher** changes only its label, and shows fixture plans and counts ("Agency · 12
+    projects") from `src/lib/mock/workspace.ts`.
+  - The **notifications** panel says alerts "will appear here once agents are live". Agent runs are live
+    today.
+  - These last three are on every page.
+  - The session-only controls inside Modelled sections are labelled and are not counted here: project settings,
+    notes, competitors, issue and task statuses, and the agent-page blockers and settings.
+- Impact: §12 says "no control that does nothing". These four suggest capabilities the product does not have.
+- Suggested fix: remove Run SEO Analysis (the crawl and the reviews are the real actions) and the search field, or
+  mark them Modelled. Drop the workspace switcher or show only the one real workspace. Reword the notifications text.
+- Effort: S
+- Status: open
+
+### A4-05 — Page subtitles promise features the observed screens hide or never claim
+- Severity: low
+- Evidence: the header subtitle of each screen comes from `src/config/navigation.ts`, written for the modelled
+  screens:
+  - Technical SEO: "Crawlability, indexation, Core Web Vitals, schema, and overall site health". Vitals and a health
+    score are hidden (Q1); indexation is "declared by the page — not whether Google indexed it".
+  - Competitor Intelligence: "Competitive landscape, SERP overlap, positioning, and share of voice". §13 *Scoped V1*
+    says it never claims SERP positions or share of voice.
+  - Keyword Intelligence: "Keyword discovery, clustering, and search-intent classification". The screen shows stored
+    queries, lexical hints and "a shared word, not a topic".
+  - Analytics: "Performance, trends, and attribution across every active project". It shows one project, the latest
+    window only, "not a trend", and hides Attribution.
+  - Reports: "Client-ready reporting, scheduled deliveries, and exports". There is no schedule, no send and no export
+    beyond Print.
+  - Command Center: "…SEO health…". There is no health score.
+- Impact: the one line under each title contradicts the screen's own honest labels.
+- Suggested fix: rewrite the six descriptions to what each screen reads. AI Visibility and Outbound Links already
+  were.
+- Effort: S
+- Status: open
+
+### A4-06 — Two fixture links still lead to "not found" inside the fixture project workspace
+- Severity: low
+- Evidence: `dashboard/content-snapshot.tsx:164` links each fixture page to `/content/<fixture id>` (article detail
+  needs a uuid). `projects/project-competitors.tsx:191` links to `/competitors/<competitorId>` (the route is keyed by
+  host). Both are mounted by `projects/project-workspace.tsx` (`:318`, `:345`). 6.3 removed the same links from the
+  Command Center only.
+- Impact: dead links on the fixture workspace, which production shows for the stored projects that carry fixture ids.
+- Suggested fix: drop the links (render the names as text), as 6.3 did.
+- Effort: S
+- Status: open
+
+### A4-07 — Two detail pages crash into the generic error screen when their read fails
+- Severity: low
+- Evidence: pass C (every read failing) — `/content/[articleId]` and `/technical/pages/[pageId]` answer HTTP 500 with
+  "This screen failed to load". Every other screen states the failure in place ("The crawl records could not be read
+  just now…"), as does the keyword detail ("The keyword's records could not be read just now. Reload in a moment.").
+- Impact: honest, but inconsistent; the operator loses the shell's context for a transient read failure.
+- Suggested fix: catch the store read in the two pages and render the in-place failure state.
+- Effort: S
+- Status: open
+
+### A4-08 — `/dev/data` and `/dev/ui` ship in the production build
+- Severity: info (A0-06; decision)
+- Evidence: both build as static pages (`○`) and render behind the operator gate, with demo controls ("Simulate
+  loading", "Add project", button variants). They are in no navigation.
+- Impact: none beyond a signed-in operator finding demo pages.
+- Suggested fix: decision — keep for development only (return not found unless `NODE_ENV` is `development`) or
+  delete.
+- Effort: S
+- Status: open (decision)
+
+### A4-09 — Changing the project data source needs a rebuild
+- Severity: info
+- Evidence: built with the fixture roster, `/projects/[projectId]` and `/agents/[agentId]` prerender (`●`); built
+  with the stored roster, they render on demand (`ƒ`). The local harness first ran a fixture build against the stored
+  roster. It served a cached 404 for a stored project, and every background revalidation failed with
+  `DYNAMIC_SERVER_USAGE`. Rebuilt with the stored roster, the page rendered at once. Production builds with the stored
+  roster, so it is not affected.
+- Impact: none in production; a trap for anyone switching `PROJECTS_DATA_SOURCE` without a rebuild.
+- Suggested fix: one line in the runbook.
+- Effort: S
+- Status: open
+
+**Remaining fixture data (item 4).** Importers outside `src/lib/mock`, by module:
+
+- `agents` 31, `projects` 13, `dashboard` 9, `seo` 7;
+- `competitors`, `reports`, `technical` and `workspace` 2 each;
+- `ai-visibility`, `analytics`, `backlinks` and `keywords` 1 each;
+- `content` none directly (other fixture modules use it).
+
+The two unimported components kept in 6.12b, `keywords/pagination` and `projects/unmeasured-selection-notice`, are
+still unimported.
 
 ## A5 — Content path
 
