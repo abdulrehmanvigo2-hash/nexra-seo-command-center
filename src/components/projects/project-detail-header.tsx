@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icons";
-import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import {
   ProjectMonogram,
@@ -28,8 +27,6 @@ export function ProjectDetailHeader({
   range,
   onRangeChange,
   generatedAt,
-  analysisQueued,
-  onRunAnalysis,
 }: {
   project: Project;
   settings: ProjectSettings;
@@ -37,8 +34,6 @@ export function ProjectDetailHeader({
   onRangeChange: (range: RangeId) => void;
   /** ISO instant the fixtures represent. */
   generatedAt: string;
-  analysisQueued: boolean;
-  onRunAnalysis: () => void;
 }) {
   const facts: readonly { icon: IconName; label: string; value: string }[] = [
     { icon: "briefcase", label: "Client", value: settings.client },
@@ -116,11 +111,6 @@ export function ProjectDetailHeader({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button variant="primary" icon="bolt" onClick={onRunAnalysis}>
-            Run SEO Analysis
-          </Button>
-        </div>
       </div>
 
       <dl className="grid gap-x-6 gap-y-3 border-t border-border px-4 py-3.5 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
@@ -158,25 +148,14 @@ export function ProjectDetailHeader({
           />
         </div>
 
-        <p
-          aria-live="polite"
-          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-fg-subtle"
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-fg-subtle"
         >
-          {analysisQueued ? (
-            <span className="inline-flex items-center gap-1.5 text-positive">
-              <Icon name="check" className="h-3.5 w-3.5" />
-              Analysis simulated — no agent run was started
-            </span>
-          ) : (
-            <>
-              <Icon name="clock" className="h-3.5 w-3.5" />
-              <span>
-                Updated {formatRelative(project.updatedAt, generatedAt)}
-              </span>
-              <span aria-hidden="true">·</span>
-              <span>Mock data</span>
-            </>
-          )}
+          <Icon name="clock" className="h-3.5 w-3.5" />
+          <span>
+            Updated {formatRelative(project.updatedAt, generatedAt)}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>Mock data</span>
         </p>
       </div>
     </section>

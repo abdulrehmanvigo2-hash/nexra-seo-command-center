@@ -89,7 +89,6 @@ export function ProjectWorkspace({
     detail ? settingsOf(detail.project) : null,
   );
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [analysisQueued, setAnalysisQueued] = useState(false);
 
   const [issueStatuses, setIssueStatuses] = useState<
     Record<string, ProjectIssueStatus>
@@ -141,11 +140,6 @@ export function ProjectWorkspace({
     schedule(() => setSavedAt(null), 5_000);
   };
 
-  const runAnalysis = () => {
-    setAnalysisQueued(true);
-    schedule(() => setAnalysisQueued(false), 4_000);
-  };
-
   const addNote = (body: string) =>
     setAddedNotes((current) => [
       {
@@ -183,8 +177,6 @@ export function ProjectWorkspace({
         range={rangeId}
         onRangeChange={setRangeId}
         generatedAt={detail.generatedAt}
-        analysisQueued={analysisQueued}
-        onRunAnalysis={runAnalysis}
       />
 
       <TabList

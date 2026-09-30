@@ -76,6 +76,7 @@ export const PARTIAL_COPY: Readonly<Record<SearchConsolePartial, string>> = {
   "comparison-beyond-retention":
     "No comparison: the previous window reaches past the 16 months Search Console keeps.",
   "comparison-unavailable": "No comparison: the previous window could not be read.",
+  "comparison-no-data": "No comparison: Google has no data for the previous window yet.",
   "queries-unavailable": "Top queries could not be read.",
   "pages-unavailable": "Top pages could not be read.",
 };

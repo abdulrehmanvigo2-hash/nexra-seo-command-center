@@ -36,7 +36,7 @@ export const NAV_ITEMS = [
     icon: "command-center",
     group: "Overview",
     description:
-      "Cross-project overview of SEO health, active priorities, and live agent activity.",
+      "One stored project's latest Search Console window, crawl findings, open tasks, recent agent runs and content.",
     phase: 2,
   },
   {
@@ -63,7 +63,7 @@ export const NAV_ITEMS = [
     icon: "keywords",
     group: "Optimization",
     description:
-      "Keyword discovery, clustering, and search-intent classification.",
+      "The project's stored Search Console queries, with lexical intent hints, shared-word groups and curated keywords.",
     phase: 5,
   },
   {
@@ -72,7 +72,7 @@ export const NAV_ITEMS = [
     icon: "content",
     group: "Optimization",
     description:
-      "Briefs, drafts, and the full content production pipeline end to end.",
+      "The project's stored articles and drafts: versions, checks, approvals and proposals.",
     phase: 6,
   },
   {
@@ -81,7 +81,7 @@ export const NAV_ITEMS = [
     icon: "technical",
     group: "Optimization",
     description:
-      "Crawlability, indexation, Core Web Vitals, schema, and overall site health.",
+      "The project's latest own-site crawl: pages, recorded findings, declared indexing, schema and internal links.",
     phase: 8,
   },
   {
@@ -90,7 +90,7 @@ export const NAV_ITEMS = [
     icon: "competitors",
     group: "Optimization",
     description:
-      "Competitive landscape, SERP overlap, positioning, and share of voice.",
+      "What recorded competitors' pages declared, as crawled, beside the project's own. No rankings or SERP data.",
     phase: 7,
   },
   {
@@ -118,7 +118,7 @@ export const NAV_ITEMS = [
     icon: "analytics",
     group: "Measurement",
     description:
-      "Performance, trends, and attribution across every active project.",
+      "One project's latest stored Search Console window, its stored pages and the Analytics agent's readings.",
     phase: 11,
   },
   {
@@ -127,7 +127,7 @@ export const NAV_ITEMS = [
     icon: "reports",
     group: "Measurement",
     description:
-      "Client-ready reporting, scheduled deliveries, and exports.",
+      "A project report generated from its stored records each time it opens. Printable; nothing is scheduled or sent.",
     phase: 12,
   },
   {

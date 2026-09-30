@@ -160,12 +160,7 @@ export function ContentSnapshot({
             pages.map((page) => (
               <TableRow key={page.id}>
                 <TableCell header className="max-w-[320px]">
-                  <Link
-                    href={`/content/${page.id}`}
-                    className="block truncate transition-colors hover:text-accent"
-                  >
-                    {page.title}
-                  </Link>
+                  <span className="block truncate">{page.title}</span>
                   <span className="mt-0.5 block truncate font-mono text-[11px] font-normal text-fg-subtle">
                     {page.url}
                   </span>

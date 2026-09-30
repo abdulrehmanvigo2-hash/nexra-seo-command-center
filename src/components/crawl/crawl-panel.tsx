@@ -32,10 +32,7 @@ import type { Crawl, CrawlPage } from "@/types/crawl";
 /**
  * The operator control for the real crawler.
  *
- * This is the only thing in the product that fetches a client's website. It
- * is deliberately not the "Run SEO Analysis" button beside it: that one is a
- * mock interaction over fixture data, and quietly wiring a live crawler to it
- * would make a real outbound request look like the demo it has always been.
+ * This is the only thing in the product that fetches a client's website.
  *
  * Everything it can do is bounded by the server. The body carries a project
  * id and nothing else, so the site crawled comes from that project's stored
@@ -239,7 +236,7 @@ export function CrawlPanel({
       <PanelHeader
         eyebrow="Observed data"
         title="Site crawl"
-        description={`Fetches ${domain} directly, within the server's page, depth and time budgets. Separate from Run SEO Analysis, which reports modelled figures.`}
+        description={`Fetches ${domain} directly, within the server's page, depth and time budgets.`}
         actions={
           <Button
             variant="primary"

@@ -86,7 +86,7 @@ Each part appends its findings under its heading; A0 holds what the planning pas
   but they are surfaces outside the documented product and not covered by the Modelled-label rule.
 - Suggested fix: decision — remove them, or return `notFound()` unless `NODE_ENV === "development"`.
 - Effort: S
-- Status: open
+- Status: fixed — F7: `/dev/data` and `/dev/ui` removed from the build
 
 ### A0-07 — The renderer's `/2` template pins are stale against nexra-ai `main`
 - Severity: info
@@ -315,7 +315,7 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
   to insert rows for `20260920120000` and `20260920120100` and to mark the five `202609221…` and the `20260923043554`
   rows as the repository's versions (never re-executing anything). The legacy rows belong with A2-03's decision.
 - Effort: S (docs) / M (repair)
-- Status: open
+- Status: fixed (docs) — F7: `docs/RUNBOOK.md` §1.5 lists all eight differences; no repair (never re-executing anything; a repair stays a §6 decision)
 
 ### A2-02 — `service_role` holds REFERENCES, TRIGGER and TRUNCATE on seven tables beyond what any migration grants
 - Severity: low
@@ -459,6 +459,16 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
   checking membership. Recorded in A1/A2; a design note is the first step.
 - **Verdict variance beyond the article checker (A3-03).** The draft fact-check is judged under the same default
   sampling; carry-forward and instructions v3 should cover it too.
+- **Publishing Level 2 (operator decision, 30 Sep, after F7).** Replace the lean V1 route (a pull request opened from
+  a Claude Code session, merged by the operator) with: an approved article's proposal sends an email to the operator
+  (or a named assistant); one click approves the exact version and payload, consuming a 6.8 approval record; the
+  product then publishes automatically through the designed C7 route (C7b published-state table, a GitHub publisher
+  with a fine-grained, expiring token scoped to `nexra-ai`). Needs a **reviewer role** — someone who may approve a
+  publication without full operator control — so it depends on the roles and per-project scoping item above. A §4 /
+  §6 decision (email delivery, a new credential, an external write) and its own design note first.
+- **Branch protection on `master` (enforced).** Today it is configured but not enforced on the current GitHub plan;
+  merge discipline rests on the operator's approval and green CI. Enforce required checks (the five CI jobs) and a
+  pull request for every change to `master` once the plan allows it, or record why not.
 
 ## A3 — Agents (30 Sep 2026, at `8451980`)
 
@@ -797,7 +807,7 @@ attestation tick, and the article proposal adds a modal plus a server confirmati
 - Suggested fix: remove Run SEO Analysis (the crawl and the reviews are the real actions) and the search field, or
   mark them Modelled. Drop the workspace switcher or show only the one real workspace. Reword the notifications text.
 - Effort: S
-- Status: open
+- Status: fixed — F7: Run SEO Analysis and its simulated notice removed (and the crawl panel's reference to it); the header search field and the fixture workspace switcher removed; the notifications panel says the product sends no alerts and links to Run History
 
 ### A4-05 — Page subtitles promise features the observed screens hide or never claim
 - Severity: low
@@ -818,7 +828,7 @@ attestation tick, and the article proposal adds a modal plus a server confirmati
 - Suggested fix: rewrite the six descriptions to what each screen reads. AI Visibility and Outbound Links already
   were.
 - Effort: S
-- Status: open
+- Status: fixed — F7: the Command Center, Keyword Intelligence, Content Studio, Technical SEO, Competitor Intelligence, Analytics and Reports subtitles name only what each screen reads
 
 ### A4-06 — Two fixture links still lead to "not found" inside the fixture project workspace
 - Severity: low
@@ -829,7 +839,7 @@ attestation tick, and the article proposal adds a modal plus a server confirmati
 - Impact: dead links on the fixture workspace, which production shows for the stored projects that carry fixture ids.
 - Suggested fix: drop the links (render the names as text), as 6.3 did.
 - Effort: S
-- Status: open
+- Status: fixed — F7: both fixture names render as text
 
 ### A4-07 — Two detail pages crash into the generic error screen when their read fails
 - Severity: low
@@ -839,7 +849,7 @@ attestation tick, and the article proposal adds a modal plus a server confirmati
 - Impact: honest, but inconsistent; the operator loses the shell's context for a transient read failure.
 - Suggested fix: catch the store read in the two pages and render the in-place failure state.
 - Effort: S
-- Status: open
+- Status: fixed — F7: both pages catch a failed read and state it in place, keeping the shell
 
 ### A4-08 — `/dev/data` and `/dev/ui` ship in the production build
 - Severity: info (A0-06; decision)
@@ -849,7 +859,7 @@ attestation tick, and the article proposal adds a modal plus a server confirmati
 - Suggested fix: decision — keep for development only (return not found unless `NODE_ENV` is `development`) or
   delete.
 - Effort: S
-- Status: open (decision)
+- Status: fixed — F7 (with A0-06): the two routes removed
 
 ### A4-09 — Changing the project data source needs a rebuild
 - Severity: info
@@ -899,7 +909,7 @@ and A4-12, plus the switcher note under A4-04.
 - Suggested fix: break long URLs at `/` (or allow `overflow-wrap: anywhere` only for URL values); widen the
   "Opens on" select or let its text truncate with an ellipsis.
 - Effort: S
-- Status: open
+- Status: fixed — F7: URL facts on the page detail break only after `/`, `?`, `&` or `=`; the "Opens on" select is wider and ends an overlong name with an ellipsis
 
 ### A4-12 — "The previous window could not be read" on the Search Console comparison
 - Severity: info (to investigate in A6)
@@ -1198,7 +1208,7 @@ configured but not enforced on the current plan, and merge discipline is documen
 - Suggested fix: a separate state, `comparison-no-data` ("No data in the previous window"), with its own grounding
   line (a hash-pin update), and the window named in the failure log.
 - Effort: S
-- Status: open
+- Status: fixed — F7: a separate `comparison-no-data` state ("Google has no data for the previous window yet"), with its own grounding line; "could not be read" only for a failed request, whose log line now names the window and dimensions
 
 ### A6-05 — README.md is stale and partly false
 - Severity: low

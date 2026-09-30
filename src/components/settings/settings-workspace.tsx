@@ -146,10 +146,14 @@ export function SettingsWorkspace({
                 description="The project the dashboard is scoped to on arrival. All Projects is the cross-client roll-up."
                 footnote={"Currently opening on " + projectName + "."}
                 render={({ controlId, describedBy }) => (
-                  <span className="block w-full sm:w-56">
+                  <span className="block w-full sm:w-72">
                     <Select
                       id={controlId}
                       aria-describedby={describedBy}
+                      className="truncate"
+                      title={
+                        options.find((project) => project.id === preferences.commandCenterProject)?.name
+                      }
                       value={preferences.commandCenterProject}
                       onChange={(event) =>
                         setPreference(
