@@ -1593,7 +1593,12 @@ A2-02, A2-11), a draft PR: security headers on every route (the no-nonce CSP wit
 `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS; no `X-Powered-By`), `Secure` session
 cookies in a production build, and migration `20261012120000_revoke_surplus_grants.sql` (REFERENCES, TRIGGER and
 TRUNCATE revoked from `service_role` on the seven early tables; EXECUTE on the platform's `rls_auto_enable` revoked
-from PUBLIC, `anon` and `authenticated`), **not applied**. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+from PUBLIC, `anon` and `authenticated`); merged as PR #81 (`75e51b8`), and the migration **applied to production and
+recorded on 30 Sep** (preflight read-only, the batch tested locally first, one hash-checked transaction, SHA-256
+`7e1fe3bb…fafef6`; verified read-only: 35 history rows, the seven tables `service_role=arwdm`, `rls_auto_enable`
+owner-only with `ensure_rls` enabled, every row count, other ACL, function and trigger and the V4 / V6 hashes
+unchanged; no probe run). Noted, not in scope: PostgreSQL 17's MAINTAIN still held by `service_role` on those tables.
+Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -1909,6 +1914,8 @@ overwrite live content.
 - Article `1003104c-6b25-456f-9304-eefa2ba88e7d` is `approved` at Version 6 (`5ae7594d…`, all 7 units passed,
   approval `98195295…` with the attestation ticked) and **published** on 30 Sep (6.11: nexra-ai PR #9, merge
   `9a69c8c`, `/blog/ai-dead-lead-reactivation`); its proposal `ea85edb0…` stays as the record of that intent.
+- Migration `20261012120000_revoke_surplus_grants.sql` (F5) is applied to production and recorded (30 Sep):
+  `service_role` holds only SELECT, INSERT, UPDATE, DELETE (and PostgreSQL 17's MAINTAIN) on the seven early tables.
 - Migration `20261011120000_live_slugs_after_pin.sql` (6.12a) is applied to production and recorded (30 Sep):
   `ai-dead-lead-reactivation` is a live slug owned by article `1003104c…`; any other article naming it is refused.
 - The content workflow has no Create PR, Merge, Deploy or Publish control; C6 records proposal

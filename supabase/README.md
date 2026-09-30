@@ -171,12 +171,12 @@ Editor (or run with the Supabase CLI against a linked project):
     template pin (Phase 6, checkpoint 6.12a, D10) — applied to production and
     recorded on 30 Sep
 34. `20261012120000_revoke_surplus_grants.sql` — the surplus grants revoked
-    (fix F5, audit A2-02, A2-11) — **not applied**
+    (fix F5, audit A2-02, A2-11) — applied to production and recorded on 30 Sep
 
-The first thirty-three are applied to production and recorded in its migration
-history (34 versions: the articles migration is recorded under
+All thirty-four are applied to production and recorded in its migration
+history (35 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
-`docs/RUNBOOK.md`). The thirty-fourth waits for its own approval (§6).
+`docs/RUNBOOK.md`).
 
 ### The surplus grants revoked (fix F5, audit A2-02, A2-11)
 
@@ -197,6 +197,20 @@ on the seven, a platform-shaped `rls_auto_enable` behind a live event trigger �
 then every row of every public table and every other ACL, RLS flag, policy,
 trigger and function unchanged across the migration, the event trigger still
 firing, and the application's writes still working).
+**Applied to production and recorded (30 Sep, separately approved).** Read-only
+preflight (PostgreSQL 17.6, READ COMMITTED, the version absent, latest
+`20261011120000`, 34 history rows; the seven tables `service_role=arwdDxtm`;
+`rls_auto_enable` with no ACL, executable by `anon` and `authenticated`); the
+exact batch tested first on a disposable local cluster (a tampered hash failed
+closed with no history row); then one transaction that inserted the history row
+and executed the recorded text only after checking its SHA-256 equals the file's
+(`7e1fe3bb…fafef6`). Verified read-only: 35 history rows; the seven tables
+`service_role=arwdm`, SELECT/INSERT/UPDATE/DELETE intact, no TRUNCATE, TRIGGER
+or REFERENCES; `rls_auto_enable` `{postgres=X/postgres}`, still security definer,
+its event trigger `ensure_rls` enabled; every other table ACL, function and
+trigger fingerprint, every row count and the V4 / V6 hashes unchanged. No probe
+was run (no data write was allowed). PostgreSQL 17's MAINTAIN (`m`) remains on
+the seven tables; it was not in scope (audit follow-up).
 
 ### Live slugs published after the template pin (Phase 6, checkpoint 6.12a)
 
