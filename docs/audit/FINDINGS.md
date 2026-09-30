@@ -671,8 +671,8 @@ UTC** each day, so the job fires about 50 minutes after its schedule (Hobby timi
 ## A4 — Screens (30 Sep 2026, at `95bf284`)
 
 Checklist result: 12 PASS, 2 FAIL (items 5 → A4-04, 7 → A4-06), 2 record-only items done (4, 8). Highest severity:
-**medium** (A4-01). Production is checked separately by the operator, read-only, with the prompt in
-`docs/audit/A4-PRODUCTION-PROMPT.md` (item 9).
+**medium** (A4-01). Production was checked by the operator, read-only, with the prompt in
+`docs/audit/A4-PRODUCTION-PROMPT.md` (item 9; results below, A4-10…A4-12).
 
 **Method (local only; production was not touched).** A production build (`next build`, then `next start`) was
 signed in as a local test operator through a throwaway stand-in for Supabase Auth and the data API, kept in the
@@ -783,7 +783,8 @@ attestation tick, and the article proposal adds a modal plus a server confirmati
   - The header's **search** field cancels its own submit (`layout/header.tsx:219`) and searches nothing. Its
     placeholder is "Search projects, keywords, reports".
   - The header's **workspace switcher** changes only its label, and shows fixture plans and counts ("Agency · 12
-    projects") from `src/lib/mock/workspace.ts`.
+    projects") from `src/lib/mock/workspace.ts`. Production (operator's walkthrough, 30 Sep): it reads "Nexra
+    Agency" on every page, including the fixture project `halcyon-fintech`, where it reads as that project's owner.
   - The **notifications** panel says alerts "will appear here once agents are live". Agent runs are live
     today.
   - These last three are on every page.
@@ -858,6 +859,59 @@ attestation tick, and the article proposal adds a modal plus a server confirmati
 - Suggested fix: one line in the runbook.
 - Effort: S
 - Status: open
+
+**Production pass (operator, 30 Sep, read-only).** Cowork (Claude in Chrome) opened the 26 URLs of
+`A4-PRODUCTION-PROMPT.md` at 1,094 px, typing addresses only and clicking nothing. Every page was shown or loading; none
+redirected to `/login`, showed "not found", crashed or scrolled sideways, and `/api/health` answered 200 in 1.4 s. The
+375 px production pass was skipped; the local passes cover narrow widths. Results that need a record: A4-10, A4-11
+and A4-12, plus the switcher note under A4-04.
+
+| # | Page | Walkthrough result |
+|---|---|---|
+| 1–13 | Command Center, Projects, both project pages, AI Agents, two agent pages, Keywords (two tabs), a curated keyword, Content, both articles | shown, 17–36 s |
+| 14–15 | Technical (Overview, Issues) | shown, 49 s and 58 s |
+| 16, 18, 20–24 | Technical Pages tab, Competitors, AI Visibility, Outbound Links, Analytics (two tabs), Reports | skeletons only after 75–145 s |
+| 17, 19 | Technical page detail, competitor detail | shown, 6 s and 10 s |
+| 25 | Settings | shown, 36–113 s |
+| 26 | `/api/health` | 200, 1.4 s |
+
+### A4-10 — The automated walkthrough saw slow or unfinished loads that a normal tab does not
+- Severity: low
+- Evidence: in the walkthrough, 7 pages stayed on skeletons after 75–145 s and the others took 17–58 s (table
+  above). The operator then opened `/reports` in a normal foreground Chrome tab at about 09:25 UTC: fully loaded in
+  about 2 s. Supabase edge logs for 08:40–09:25 UTC show every database request answered 200, with no errors. Most
+  likely cause: the walkthrough ran in a background tab that Chrome throttles, and it opened 26 pages in quick
+  succession; not reproduced by hand.
+- Impact: none established; a real slow load would hide every observed screen behind skeletons.
+- Suggested fix: in A6, a simple manual timing check of 3–4 pages (Command Center, Technical Pages tab, Reports,
+  Analytics), cold and warm, in a foreground tab, with the browser's network panel.
+- Effort: S
+- Status: open (A6 check)
+
+### A4-11 — Two small layout breaks in production
+- Severity: low
+- Evidence (operator's walkthrough): on `/technical/pages/771a12e3…` the "Final URL" value wraps in the middle of a
+  word; on `/settings` the text of the "Opens on" dropdown is cut off. Neither scrolls the page sideways.
+- Impact: cosmetic; a URL broken mid-word is harder to read and copy.
+- Suggested fix: break long URLs at `/` (or allow `overflow-wrap: anywhere` only for URL values); widen the
+  "Opens on" select or let its text truncate with an ellipsis.
+- Effort: S
+- Status: open
+
+### A4-12 — "The previous window could not be read" on the Search Console comparison
+- Severity: info (to investigate in A6)
+- Evidence: `/projects/nexra-agency` and `/keywords` show "No comparison: the previous window could not be read." in
+  the Search Console section, while the current window reads normally.
+- Code: the live report (`src/lib/search-console/provider.ts:284`) sets `comparison-unavailable` in two different
+  cases: the earlier window's request failed, **or** it succeeded and returned no data (`previous.value === null`).
+  Both show the same words (`present.ts:78`). Nexra Agency's property is young, so the likeliest cause is an earlier
+  30-day window with no data, which the text calls a failed read. Not yet confirmed.
+- Impact: the period comparison is missing on the project's two main Search Console surfaces, and, if the cause is
+  an empty earlier window, the page states a read failure that did not happen (the no-zero rule's mirror image).
+- Suggested fix: in A6, confirm which case it is from the server logs (without starting a run); if it is the empty
+  window, give it its own state and wording ("No data in the previous window").
+- Effort: S
+- Status: open (A6)
 
 **Remaining fixture data (item 4).** Importers outside `src/lib/mock`, by module:
 

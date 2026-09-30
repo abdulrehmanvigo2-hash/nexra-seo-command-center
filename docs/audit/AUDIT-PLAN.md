@@ -322,7 +322,7 @@ Method: a local production build signed in as a test operator against a throwawa
 passes: fixture roster with no database, one stored project with no records, every read failing), Playwright at 375
 and 1,280 px on all 21 pages, a click test with every write aborted in the browser, and a code read of every write
 control. Production is left to the operator (read-only prompt: `A4-PRODUCTION-PROMPT.md`). Findings: `FINDINGS.md`
-A4-01…A4-09.
+A4-01…A4-12.
 
 1. Every sidebar destination resolves to a real route (13 entries incl. Settings); no dead link in the shell. **[PASS — all 12 sidebar destinations and every page loaded locally (200, or the in-shell "not found" for unknown ids)]**
 2. Observed screens (Command Center, Keywords, Content, Technical, Competitors, AI Visibility, Outbound Links, **[PASS — `modelled-screens.test.ts` green (`npm test` 2,593 of 2,593)]**
@@ -336,7 +336,7 @@ A4-01…A4-09.
 6. Empty, loading, error and not-connected states on every observed screen (read each component's branches). **[PASS — empty (pass B), read-failure (pass C) and not-kept (pass A) states seen on every observed screen; A4-07]**
 7. Remaining 404 links: none expected after 6.3 (grep hrefs to `/content/`, `/competitors/`, `/keywords/clusters`). **[FAIL — A4-06 (two fixture links inside the fixture project workspace)]**
 8. `/dev/*` routes (A0-06): keep, gate by `NODE_ENV`, or remove — decision. **[DONE — A4-08 (decision)]**
-9. Responsive check at phone/tablet/desktop widths on the observed screens (operator, browser; not checkable here). **[PASS locally — 21 pages at 375 and 1,280 px, no horizontal overflow; production: operator, `A4-PRODUCTION-PROMPT.md`]**
+9. Responsive check at phone/tablet/desktop widths on the observed screens (operator, browser; not checkable here). **[PASS locally — 21 pages at 375 and 1,280 px, no horizontal overflow; production (operator, 30 Sep, 1,094 px): no sideways scroll, two small layout breaks (A4-11), slow automated loads not reproduced by hand (A4-10); the 375 px production pass skipped (covered locally)]**
 10. Print view of Reports hides the chrome (`print:hidden`) — read `app-shell.tsx`. **[PASS — sidebar, drawer and header wrapper `print:hidden`; Reports controls hidden in print]**
 11. Every screen's project selector defaults to `?project=` then the first stored project; a project with no records **[PASS — `?project=` read on all nine observed screens, else the first stored project; seen in passes A and B]**
     shows honest empty states, never zeros.
