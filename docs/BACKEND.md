@@ -1716,7 +1716,10 @@ Decisions. **D1** — the slug is the approved canonical content's own
 `nexra_article_publication_live_slugs`) and kept equal to
 `destinations.ts` and the template by a drift test
 (`article-proposal-migration.test.ts`). Newer live slugs are not
-discovered; a proposal is never permission to overwrite live content.
+discovered; a proposal is never permission to overwrite live content. Since
+checkpoint 6.12a (D10) a slug published after the pin is listed explicitly,
+bound to the article it came from (`proposals/live-slugs.ts`, migration
+`20261011120000`, below).
 **D3** — one active proposal per destination and slug across the draft
 and article proposal tables (below).
 
@@ -1811,6 +1814,46 @@ function the `withdrawArticleProposal` Server Action reaches, and the function a
   to `e9db287f…`.
 - No active proposal remains.
 - Nothing was ever published.
+
+### Live slugs published after the pin (Phase 6, checkpoint 6.12a; migration `20261011120000`, not applied)
+
+Decision D10: once the 6.11 pull request merged, `ai-dead-lead-reactivation` is a live slug at
+`nexra-agency-website`. The pinned templates (`/1` at `a4a5722`, `/2` at `1a688bd`) and their hashes are unchanged.
+
+- **The list:** `LIVE_SLUGS_AFTER_PIN` in `src/lib/content/articles/proposals/live-slugs.ts` — one entry,
+  `ai-dead-lead-reactivation`, from article `1003104c-6b25-456f-9304-eefa2ba88e7d`, source nexra-ai pull request #9,
+  merge `9a69c8c09aff7df7ce3d676700114d6efe91d4f9`, published 2026-09-30. `liveSlugsFor` answers the pinned
+  template's slugs, then these; `liveSlugArticle` names the owning article.
+- **The rule (`liveSlugOutcome`):** a pinned slug keeps D2 (different-angle refused `slug-live-collision`,
+  update-existing allowed with the warning); a slug published after the pin never refuses its owning article and
+  refuses every other article, whatever its topic decision. Eligibility, the preview and the test memory database
+  all use it. The owner's preview still reads "WARNINGS None.", so the stored preview of `ea85edb0…` (`47178c61…`)
+  keeps its bytes.
+- **SQL:** migration `20261011120000_live_slugs_after_pin.sql` restates the list
+  (`nexra_article_publication_live_slugs`, the new `nexra_article_publication_live_slug_article`) and replaces
+  `nexra_article_publication_propose` with the same rule (its body otherwise 20261010120000's word for word, tested).
+  No table, row, trigger or grant changes.
+- **Proposal `ea85edb0…`** stays active as the record of the published intent; the owning article gains no block (its
+  eligibility still reads only `proposal-exists`, as before).
+- **Not changed:** the 6.9b renderer's `slug-live` check reads the `/2` template's pinned `liveSlugs`; the draft
+  path has no live-slug check (a draft naming the slug is refused `slug-taken` while `ea85edb0…` is active).
+- **Tests:** `proposals/live-slugs.test.ts` (13, including the SQL drift checks) and the SQL suites `live-slugs` and
+  `live-slugs-upgrade`.
+
+### The article published (Phase 6, checkpoint 6.11, 30 Sep)
+
+The one external write of V1, under the lean V1 decision: nexra-ai pull request #9, rendered from the stored,
+approved version 6 of article `1003104c…` (approval `98195295…`, proposal `ea85edb0…`), opened from a Claude Code
+session and merged by the operator.
+
+- **Commits:** `5309f9b` (the three rendered files) and `57becf2` (`lib/blog.ts` re-rendered with published
+  2026-09-30, the merge date; the page and the live article byte-identical); merge commit
+  `9a69c8c09aff7df7ce3d676700114d6efe91d4f9`, whose tree equals the PR head's.
+- **Files on nexra-ai `main`:** `app/blog/ai-dead-lead-reactivation/page.tsx` `7e1e1e3c…`, `lib/blog.ts`
+  `d6f1c74c…`, `app/blog/ai-lead-follow-up-automation/page.tsx` `e5f173dd…`.
+- **Live 30 Sep:** the operator confirmed `https://www.nexraagency.com/blog/ai-dead-lead-reactivation` in the browser
+  (30 September 2026, 4 min read) and requested indexing in Search Console. The session's proxy refuses the site,
+  so no live read was made from Claude Code.
 
 ### The real article checked, approved and proposed (Phase 6, checkpoint 6.10b)
 

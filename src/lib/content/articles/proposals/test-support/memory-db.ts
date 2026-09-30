@@ -2,7 +2,7 @@ import type { ArticleApprovalStore } from "@/lib/content/articles/approvals/cont
 import { readCanonicalArticle } from "@/lib/content/articles/canonical";
 import type { ArticleCheckStore, StoredArticleVersion } from "@/lib/content/articles/checks/contract";
 import type { ArticleProposalStore, ProposeArticleInput, ProposeArticleOutcome, WithdrawArticleInput, WithdrawArticleOutcome } from "@/lib/content/articles/proposals/contract";
-import { liveSlugsFor } from "@/lib/content/articles/proposals/eligibility";
+import { liveSlugOutcome } from "@/lib/content/articles/proposals/live-slugs";
 import { utf8Sha256 } from "@/lib/content/publications/content-hash";
 import { findDestination } from "@/lib/content/publications/destinations";
 import type { ArticleApproval } from "@/types/content-article-approval";
@@ -97,7 +97,7 @@ function propose(db: MemoryDb, input: ProposeArticleInput): ProposeArticleOutcom
   }
   if (version.canonicalContent.toLowerCase().includes("[needs evidence")) return { status: "unresolved-placeholder" };
   if (input.previewFormat !== "article-proposal-text/1" || !/^[0-9a-f]{64}$/.test(input.previewSha256)) return { status: "invalid-preview" };
-  if (liveSlugsFor(input.destination).includes(input.slug) && content.topicDecision !== "update-existing") return { status: "slug-live-collision" };
+  if (liveSlugOutcome(input.destination, input.slug, input.articleId, content.topicDecision) === "collision") return { status: "slug-live-collision" };
 
   const active = db.proposals.find((p) => p.articleId === input.articleId && p.status === "proposed");
   if (active !== undefined) {
