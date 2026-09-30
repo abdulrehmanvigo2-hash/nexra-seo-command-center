@@ -11,7 +11,9 @@ grounded tasks, batch 1 (6.5), and the scoped V1 (6.6) are merged and deployed (
 controls on agent pages (6.6b) are merged, and the nine second tasks were run live once each through them
 (eight completed; the Writer's correctly refused to queue); the LIMITS line (6.6c) is merged; the learning loop
 (6.7) and approval records (6.8) are merged and their two migrations applied and recorded; operator-attested
-paragraphs (6.8b) are merged and its migration applied and recorded. Phase 5 (Content Studio, the article positive path and hardening → production ready) is
+paragraphs (6.8b) are merged and its migration applied and recorded; the full article renderer (6.9b) is merged;
+the real article `ai-dead-lead-reactivation` is checked, approved and proposed (6.10b), nothing published, and V1
+publishing takes the lean route (6.10b decision). Phase 5 (Content Studio, the article positive path and hardening → production ready) is
 complete (checkpoints 5.1–5.7, PR #45–#49; see the *PRODUCTION READY* block in §14): the observed
 Content Studio (5.2) is merged and deployed; the article positive path (5.3) is recorded live — one
 verification article checked, approved and record-proposed, nothing published; the delete and
@@ -50,8 +52,8 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `0381f1bbf2957dce7e7d26ded12583b8250b153d` (merge of PR #62,
-`claude/kind-cannon-7b7swp`, the full article renderer; preceded by PR #61 `33ae4007…` (the nexra-ai re-audit and
+GitHub `master`: `e62807631f6635c2a0235816632b293373316d29` (merge of PR #63,
+`claude/kind-cannon-7b7swp`, the 6.10a record; preceded by PR #62 `0381f1bb…` (the full article renderer), PR #61 `33ae4007…` (the nexra-ai re-audit and
 decisions), PR #60 `0c373216…` (the 6.8b migration record), PR #59 `8980b3b0…` (operator-attested paragraphs), PR #58 `4a8b5562…` (the learning loop and
 approval records), PR #57 `f039a89b…` (the
 verification record and the LIMITS line), PR #56 `67643262…` (the
@@ -855,9 +857,11 @@ read; 6.5 second grounded tasks (Keyword, Content, Writer, On-Page, Technical, A
 read-only re-audit of `nexra-ai` and the renderer mapping, `docs/website-renderer-6.9.md`, with the operator's
 decisions D1–D11); 6.9b the full article renderer (the template re-pinned at `nexra-ai` `1a688bd`, every
 field, H3s, FAQs, links, attested labels, refusing anything incomplete, plus the renderer for the cross-link
-edit in the live article); 6.10 C7b (the published-state table; the operator withdraws `5f229630…` and takes
-the real article through C4 → C5 → C6); 6.11 C7c — **the one external write**, last (one pull request of three
-files, the operator's merge, the live check); 6.12 closing. Each under its own explicit approval.
+edit in the live article); 6.10 (the operator withdraws `5f229630…` (6.10a) and takes the real article through
+C4 → C5 → C6 (6.10b); the published-state table (C7b) is deferred by the lean V1 decision, 6.10b); 6.11 C7c — **the
+one external write**, last (one pull request of three files, opened from a Claude Code session under the lean V1
+decision, the operator's merge, the live check); 6.12 closing (with the D10 live-slug follow-up). Each under its
+own explicit approval.
 
 **Phase 6 checkpoint 6.2 (per-agent run history, Part C, decision Q8):** every agent page
 (`/agents/[agentId]`) shows the agent's stored runs first on its Overview: the existing Run History
@@ -1301,6 +1305,55 @@ production data only, through the product's own withdraw path — no code, no sc
   - Counts are unchanged; only the proposal's status changed.
 - Nothing was published, before or after. No run, migration or nexra-ai write.
 
+**Phase 6 checkpoint 6.10b (the real article written, checked, approved and proposed; LIVE RECORD, 29–30 Sep,
+each step separately approved):** production data only, every write by the operator in the browser through the
+product's own screens — no code, no schema, no SQL by hand.
+
+- **Scope (decision, 29 Sep):** option 2 of the blocker report — the checker's only evidence is the newest own-site
+  crawl's declarations (`75d1bfbe…`: 5 pages' titles, descriptions, h1s, schema) and Search Console, so a general
+  explanation is UNVERIFIABLE. The explanatory paragraphs are **attested, basis `opinion` only** ("Our view"); the
+  `experience` basis stays forbidden (the operator has no first-hand case). Outline: 3 H2s, 4 FAQs, the CTA
+  (7 check units). Run budget approved: 21 check runs.
+- **Article `1003104c-6b25-456f-9304-eefa2ba88e7d`** (slug `ai-dead-lead-reactivation`, topic decision
+  `different-angle`, plan run `7a7330f7…`, 2 source draft versions). Text drafted locally by Claude, checked
+  locally before every save (validation, the D7 overlap check, 7 units, the attestation limits, the 6.9b renderer
+  dry-run), then entered by the operator. Six versions:
+  - V1 `cc15d108…` — section 3 entered as an H3 inside section 2 by mistake; never checked.
+  - V2 `c4d21c11…` — units 0–1 passed (`76e73d9a`, `8335c373`); unit 2 needs-review (`b188da36`): the link
+    sentence named a page the crawl did not fetch.
+  - V3 `31d9cecd…` — units 0–1 passed (`52661bec`, `934ab5b6`); unit 2 PARTIAL, not recorded (`ab20d395`): "As our
+    homepage puts it" was read as page text, not the meta description.
+  - V4 `cb7b49ff…` — unit 0 two UNVERIFIABLE, not recorded (`2bfc4d36`): the meta description and excerpt read as
+    capability claims.
+  - V5 `15d904ef…` — units 0–4 passed (`861ec511`, `d58b7b98`, `d9d3b975`, `3c90b408`, `1a784eb0`); unit 5 PARTIAL,
+    not recorded (`439edd69`): an FAQ answer matched the contact page's title.
+  - **V6 `5ae7594d2f323759bf1795c2cc0b1867efb326041673a14e2aea1478ded985c6`** (row `a84cf5c8…`) — **all 7 units
+    passed**: `72297f95`, `f918fe76`, `8ccc4d4b`, `7a1d2d28`, `47264fe3`, `ca014ff2`, `4953b752` (4 supported —
+    the four quoted meta descriptions — 7 attested, 36 editorial). The article moved to `checked`.
+- **20 of the 21 approved check runs used**, all `claude-opus-5`, 1 attempt each. Totals after: 82 runs.
+- **Approved (C5):** approval `98195295…` of V6 at **03:13 UTC 30 Sep**, attestation ticked (3 paragraphs,
+  `attested_confirmed`); the article is `approved`, `approved_version` 6.
+- **Proposed (C6):** `ea85edb0-b5d4-4f0d-b2a2-471c55a288ec` at **03:21 UTC 30 Sep** to `nexra-agency-website`, slug
+  `ai-dead-lead-reactivation`, V6, approval `98195295…`, preview `article-proposal-text/2` `47178c61…`, status
+  `proposed` — the one active proposal. **Nothing is published**; no nexra-ai write exists.
+- **Renderer dry-run** on the stored V6 (placeholder approval in memory, the real files at `1a688bd`): no refusal;
+  691 words, "4 min read", 3 "Our view" labels, both links placed.
+- **Finding — checker variance:** the checker runs with the API's default sampling (no temperature, top_p or seed
+  set; `providers/anthropic.ts`), so identical unit text (metadata `25e52823…`, identical evidence) passed on V2 and
+  V3 and was refused on V4. Wording the rules can read two ways ("can re-engage", a page name, a page-title echo)
+  fails some of the time. Two fixes, **after V1**, each its own checkpoint:
+  - **carry a passed result forward** to a later version whose unit hash is identical (results bind to one version
+    today, so every revision re-checks unchanged units);
+  - **checker instructions v3:** one sentence making a title, meta description or excerpt that describes the
+    article's own content EDITORIAL (new hash, hash-pinned tests).
+- **Decision — lean V1 (operator, 30 Sep):** the 6.11 pull request is rendered from the stored, approved V6 and
+  opened from a Claude Code session with the operator's explicit approval; the operator merges. The designed route
+  — the published-state table (C7b), the product's C7 publication approval (consuming a 6.8 approval, choosing
+  `published`, D3) and a GitHub publisher with a fine-grained token — is **deferred to the first post-V1 phase**.
+  For V1 the `published` date is chosen by the operator at 6.11, and the record of approval → pull request → merge
+  lives in the pull request and this file. The C6 proposal (intent, slug reserved) and the D10 live-slug follow-up
+  stay.
+
 **Findings recorded for later phases:**
 
 - **Carried forward to Phase 4 (resolved by checkpoint 4.2, verified live on run `aecfca87…`):** the single-project Director `priority-review` run `33ac8a25…`
@@ -1414,8 +1467,9 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 checkpoint 6.10a (the verification proposal withdrawn, 29 Sep) recorded on
-`claude/kind-cannon-7b7swp`; 6.9b merged (PR #62); next the rest of 6.10; each further
+**Current work:** Phase 6 checkpoint 6.10b (article `1003104c…` V6 checked, approved and proposed as
+`ea85edb0…`, 30 Sep; the lean V1 decision) recorded on `claude/kind-cannon-7b7swp`; 6.10a merged (PR #63); next
+6.11; each further
 step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
@@ -1724,9 +1778,11 @@ overwrite live content.
 - No automatic approval.
 - No write path to the `abdulrehmanvigo2-hash/nexra-ai` GitHub repository exists.
 - The draft path's production drafts remain unapproved; no draft proposal exists.
-- `nexra_article_publication_proposals` holds one row, the verification proposal `5f229630…`
-  (checkpoint 5.3). It was **withdrawn on 29 Sep** (checkpoint 6.10a), so there is no active proposal. It
-  published nothing.
+- `nexra_article_publication_proposals` holds two rows: the verification proposal `5f229630…` (checkpoint
+  5.3), **withdrawn on 29 Sep** (checkpoint 6.10a), and `ea85edb0…` (checkpoint 6.10b), the one active proposal —
+  article `1003104c…` V6 to `nexra-agency-website`, slug `ai-dead-lead-reactivation`. Neither published anything.
+- Article `1003104c-6b25-456f-9304-eefa2ba88e7d` is `approved` at Version 6 (`5ae7594d…`, all 7 units passed,
+  approval `98195295…` with the attestation ticked) and **not published**; 6.11 is its one external write.
 - The content workflow has no Create PR, Merge, Deploy or Publish control; C6 records proposal
   state only.
 - Article `c89182f9-4954-4834-8446-a831fc3c42d0` is `approved` at Version 4 (checkpoint 5.3: all 4
@@ -2069,7 +2125,7 @@ foundation, Search Console) are complete. Current work follows the content workf
 | Phase 2 | Project Manager loop closure: steps (a), (b) with 2.3b/c/d, and (c) | **Complete** (PR #27–#32); closing docs checkpoint 2.5 |
 | Phase 4 | Analytics, Competitors, AI Visibility and Outbound Links over stored data; the Director reads the performance and answer-readiness reviews; learnings from runs | **Complete:** design note 4.1 approved (Q1–Q8); 4.2 (Director and performance-review bounds) merged (PR #39, `0c64d77d`), deployed, verified live (runs `aecfca87…` 1,217 characters and `17623686…` 1,311); 4.3 (Analytics over stored data) merged (PR #40, `a73cfd21`), deployed; 4.4 (Competitors over stored crawls) merged (PR #41, `69379e3d`), deployed; 4.3 and 4.4 browser verified; 4.5 (AI Visibility and Outbound Links) merged (PR #42, `41519ffd`), deployed, browser verified; 4.6 (the Director's five-slot bundle, the Q7 ranking and the extra-paragraph fix) merged (PR #43, `ddc6cbb4`), deployed (manual redeploy `dpl_2bUN9N9R…`), verified live (run `288639f4…`, 5 of 5 sources); 4.8 closing (orphan cleanup, wording, docs) |
 | Phase 5 | Content Studio over stored content, the article positive path (C4 → C5 → C6 on one version), hardening (guards, health, spend caps, abort fix, runbook) → production ready | **Started:** design note 5.1 approved (Q1–Q12); 5.2 (observed Content Studio) merged (PR #45, `f9a32773`), deployed; 5.3 positive path recorded live (article `c89182f9…` Version 4: 4 of 4 units passed, approved 03:35 UTC, proposal `5f229630…` 03:38 UTC, nothing published); 5.4 (delete and truncate guards, migration `20261007120000`) merged (PR #46, `7bd748f7`), deployed, migration applied and recorded (28 Sep, probes verified); 5.5 (health, daily caps, abort fix, dynamic screens) merged (PR #47, `6b776b3a`), deployed, `/api/health` browser verified; 5.6 (runbook, claim race test) merged (PR #48, `fb048e81`), deployed; 5.7 closing (orphan cleanup, Modelled labels, docs) merged (PR #49, `bf71dd73`), deployed — **Complete: PRODUCTION READY** |
-| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) merged (PR #57, `f039a89b`); 6.7 (the learning loop) and 6.8 (approval records) merged (PR #58, `4a8b5562`), migrations `20261008120000` and `20261009120000` applied and recorded, the first cited priority change recorded (task `30e79092…` seq 21, Director run `288639f4…`); 6.8b (operator-attested paragraphs) merged (PR #59, `8980b3b0`), migration `20261010120000` applied and recorded; 6.9 (the `nexra-ai` re-audit at `1a688bd` and the renderer decisions D1–D11) merged (PR #61, `33ae4007`); 6.9b (the full article renderer, build-proven against `1a688bd`) merged (PR #62, `0381f1bb`); 6.10a (the verification proposal `5f229630…` withdrawn, 29 Sep); then the rest of 6.10, 6.11 and 6.12 in order, the one external write (6.11, one PR of three files) last |
+| Phase 6 | The full 12-agent V1: approval for C7, publishing through a pull request to `nexra-ai`, Command Center and Reports over stored data, per-agent run history, two grounded tasks per agent (option B), the recorded learning loop, operator-attested statements | **Started:** design notes 6.1 (Q1–Q8) and 6.1b (attestation) approved; 6.2 (per-agent run history) merged (PR #50, `b2b7da00`), deployed, browser checked; its follow-up (agent header figures labelled, fake sync button removed) merged (PR #51, `17ee0a64`), deployed; 6.3 (Command Center over stored data) merged (PR #52, `c8ac155c`), deployed; 6.4 (Reports on read, PR #53, `a2e3cdc1`), 6.5 (second grounded tasks, batch 1, PR #54, `1b2c2cbd`) and 6.6 (the scoped V1, PR #55, `04be98ae`) merged, deployed, browser confirmed; 6.6b (queue controls on agent pages) merged (PR #56, `67643262`), verified live (eight second-task runs, 28 Sep); 6.6c (the LIMITS line in the nine second tasks) merged (PR #57, `f039a89b`); 6.7 (the learning loop) and 6.8 (approval records) merged (PR #58, `4a8b5562`), migrations `20261008120000` and `20261009120000` applied and recorded, the first cited priority change recorded (task `30e79092…` seq 21, Director run `288639f4…`); 6.8b (operator-attested paragraphs) merged (PR #59, `8980b3b0`), migration `20261010120000` applied and recorded; 6.9 (the `nexra-ai` re-audit at `1a688bd` and the renderer decisions D1–D11) merged (PR #61, `33ae4007`); 6.9b (the full article renderer, build-proven against `1a688bd`) merged (PR #62, `0381f1bb`); 6.10a (the verification proposal `5f229630…` withdrawn, 29 Sep); 6.10b (article `1003104c…` V6 checked — 7 of 7 units, 20 check runs — approved and proposed as `ea85edb0…`, 30 Sep; the lean V1 decision defers C7b and the product's C7 publisher); then 6.11 and 6.12 in order, the one external write (6.11, one PR of three files) last |
 | Phase 3 | Technical & Keywords realification (the MVP target) | Design note 3.1 approved; 3.2 (Technical SEO live tabs) merged (PR #34, `5b79ba8d`) and deployed; 3.3 (page detail and derived finding history) merged (PR #35, `c244efd4`), deployed, browser verified; 3.4 (Keywords observed surfaces) merged (PR #36, `201d47a2`) and deployed; 3.5 (the curated keyword entity) merged (PR #37, `98b0fbd9`), deployed, migration `20261006120000` applied and recorded; 3.2–3.5 browser verified; 3.6 closing (fixture removal, sidebar note, docs) — **Complete: the MVP target** |
 
 **MVP COMPLETE (27 Sep).** Each MVP criterion from the audit, with its evidence:
@@ -2114,7 +2170,7 @@ production-ready criterion from the audit (§J), with its evidence:
 Next step: the Phase 6 design checkpoint (6.1), under its own explicit approval.
 
 Stages are executed in order. Each stage is broken into bounded features, and each bounded
-feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.10 (6.10a done)
+feature gets its own workflow cycle (§1) and Git checkpoint (§10). Current: Phase 6 checkpoint 6.11 next (6.10a and 6.10b done)
 (6.2 through 6.8b merged, PR #50–#59; the 6.7, 6.8 and 6.8b migrations applied). Phase 5 is complete — PRODUCTION READY (PR #45–#49). Phase 4 is
 complete (PR #39–#44).
 Phase 3 — the MVP target — is complete.
@@ -2128,7 +2184,7 @@ Intelligence screen over the stored Search Console rows; and the operator's cura
 Outbound Links screens over stored data, the Director and performance-review bounds, and the
 Director's five-slot bundle. Phase 5: the Content Studio, the article positive path and the hardening
 (guards, health, caps, the abort fix, the runbook). Not started, each under its own explicit
-approval: Phase 6 checkpoints 6.10–6.12.
+approval: Phase 6 checkpoints 6.11–6.12.
 
 ## 15. Definition of Done
 
