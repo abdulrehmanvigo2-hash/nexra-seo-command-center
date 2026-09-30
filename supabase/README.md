@@ -172,11 +172,32 @@ Editor (or run with the Supabase CLI against a linked project):
     recorded on 30 Sep
 34. `20261012120000_revoke_surplus_grants.sql` — the surplus grants revoked
     (fix F5, audit A2-02, A2-11) — applied to production and recorded on 30 Sep
+35. `20261013120000_retire_legacy_crawl_subsystem.sql` — the legacy crawl
+    subsystem retired (fix F6, audit A0-02, A0-03, A2-03) — **not applied**
 
-All thirty-four are applied to production and recorded in its migration
+The first thirty-four are applied to production and recorded in its migration
 history (35 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
-`docs/RUNBOOK.md`).
+`docs/RUNBOOK.md`). The thirty-fifth waits for its apply (§6).
+
+### The legacy crawl subsystem retired (fix F6, audit A0-02, A0-03, A2-03)
+
+`20261013120000_retire_legacy_crawl_subsystem.sql` drops the five unprefixed
+tables no file of this repository created or used — `crawls`, `crawl_pages`,
+`crawl_urls`, `crawl_page_signals`, `crawl_links` (135 rows, last written 19
+Sep) — and their four functions (`crawl_pages_claim`,
+`crawl_pages_recover_expired`, `crawl_pages_count_change`,
+`crawls_guard_update`), after the operator's decision (30 Sep: back up, then
+drop). The rows are in the encrypted backup of Actions run `36740624220`
+(artifact `nexra-backup-36740624220`). It fails closed: nothing is dropped
+unless all five tables exist with exactly the backed-up counts (9, 43, 43, 40,
+0), no drop cascades, and where none exists it does nothing. The shared
+`set_updated_at()` stays. Harness suites `legacy-retire` (11 assertions:
+production's legacy objects rebuilt — tables, keys, triggers, grants, functions,
+row counts — then dropped; every other row, relation, column, constraint, index,
+trigger, policy, function and grant unchanged; the application's writes still
+working; a re-run a no-op) and `legacy-retire-refusals` (an extra row, a missing
+table and a dependent view each refuse and drop nothing).
 
 ### The surplus grants revoked (fix F5, audit A2-02, A2-11)
 
