@@ -173,12 +173,13 @@ Editor (or run with the Supabase CLI against a linked project):
 34. `20261012120000_revoke_surplus_grants.sql` — the surplus grants revoked
     (fix F5, audit A2-02, A2-11) — applied to production and recorded on 30 Sep
 35. `20261013120000_retire_legacy_crawl_subsystem.sql` — the legacy crawl
-    subsystem retired (fix F6, audit A0-02, A0-03, A2-03) — **not applied**
+    subsystem retired (fix F6, audit A0-02, A0-03, A2-03) — applied to
+    production and recorded on 30 Sep
 
-The first thirty-four are applied to production and recorded in its migration
-history (35 versions: the articles migration is recorded under
+All thirty-five are applied to production and recorded in its migration
+history (36 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
-`docs/RUNBOOK.md`). The thirty-fifth waits for its apply (§6).
+`docs/RUNBOOK.md`).
 
 ### The legacy crawl subsystem retired (fix F6, audit A0-02, A0-03, A2-03)
 
@@ -198,6 +199,24 @@ row counts — then dropped; every other row, relation, column, constraint, inde
 trigger, policy, function and grant unchanged; the application's writes still
 working; a re-run a no-op) and `legacy-retire-refusals` (an extra row, a missing
 table and a dependent view each refuse and drop nothing).
+**Applied to production and recorded (30 Sep, separately approved).** Backup
+first: Actions run `36740624220` (32 tables, 1,226 rows — the five legacy
+tables' 135 included). Read-only re-verification: no code, cron, view,
+publication, policy, pg_cron job, other function or incoming foreign key uses
+them; the four functions had 0 calls; last write 19 Sep 15:28 UTC. Read-only
+preflight (PostgreSQL 17.6, READ COMMITTED, the version absent, latest
+`20261012120000`, 35 history rows, the legacy counts exactly 9 / 43 / 43 / 40 /
+0); the exact batch tested first on a disposable local cluster with the legacy
+fixture (a tampered hash failed closed, nothing dropped); then one transaction
+that inserted the history row and executed the recorded text only after its
+SHA-256 matched the file's (`cc638640…154888`). Verified read-only: 36 history
+rows; no legacy relation or function left; `set_updated_at()` kept; `anon` and
+`authenticated` hold no table privilege in `public`; every other table's row
+count, the fingerprints of every other relation, function, trigger and
+constraint, and the V4 / V6 hashes unchanged; the health probe's own read
+(`projects`, one id, as `service_role`) answers. `/api/health` itself could not
+be read from the session (the proxy and the Vercel connector refuse the
+production host): the operator confirms it in the browser.
 
 ### The surplus grants revoked (fix F5, audit A2-02, A2-11)
 
