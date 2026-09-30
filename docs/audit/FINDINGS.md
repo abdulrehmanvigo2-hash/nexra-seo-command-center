@@ -380,7 +380,7 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
   **(B)** an own scheduled dump job — a `pg_dump` of the public schema on a schedule, kept outside Supabase, with
   one restore drill (A6-14). Either needs §6 approval (a paid service, or a credential for the dump job).
 - Effort: S (A) / M (B)
-- Status: open (decision pending)
+- Status: fix in progress — F1 (the operator chose to stay on the Free plan with an own encrypted nightly backup, `.github/workflows/backup.yml`, RUNBOOK §6); closed once the operator's setup, the first run and a drill are done
 
 ### A2-06 — Auth: leaked-password protection is disabled
 - Severity: low
@@ -1144,7 +1144,7 @@ configured but not enforced on the current plan, and merge discipline is documen
   Supabase). Add a runbook §6: how to take a dump (public schema and data, plus `supabase_migrations`), where it is
   kept, and a restore drill into a disposable local cluster, run once and recorded.
 - Effort: S (docs) / M (drill)
-- Status: open (decision pending)
+- Status: fix in progress — F1 (the operator chose to stay on the Free plan with an own encrypted nightly backup, `.github/workflows/backup.yml`, RUNBOOK §6); closed once the operator's setup, the first run and a drill are done
 
 ### A6-02 — Nothing tells the operator when something breaks
 - Severity: medium

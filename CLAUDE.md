@@ -1564,9 +1564,16 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
-**Current work:** Phase 6 closing, checkpoint 6.12b (FULL V1), on `claude/festive-dirac-ib7i3e`, a draft PR; the
-6.12a apply record merged (PR #66, `be3ca1d6…`); next the full audit and the post-V1 backlog (§14); each further
-step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+**Current work:** the full audit (A0–A6) is complete and merged (PR #68–#73; `docs/audit/SUMMARY.md`). Fix **F1 —
+free daily backup** (audit A2-05, A6-01; the operator chose to stay on the Supabase Free plan): a nightly GitHub
+Actions job, `.github/workflows/backup.yml`, reads production read-only through the session pooler, dumps the
+`public` and `supabase_migrations` schemas plus a safe auth-user list (id, email, dates; no hash or token), verifies
+the dump, encrypts it with age to the operator's public key and stores it as a 30-day artifact. A failure fails the
+run and opens an issue. The procedure, the restore drill and a restore into a new project are in `docs/RUNBOOK.md` §6;
+the cycle is tested locally (`scripts/backup/test-local.sh`, 16 checks). It is a draft PR on
+`claude/festive-dirac-ib7i3e`. **Not yet active:** it needs the operator's `backup` environment (secret
+`BACKUP_DATABASE_URL`, variable `BACKUP_AGE_RECIPIENT`), a merge, a first manual run and a drill, each under its own
+approval. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -1891,6 +1898,9 @@ overwrite live content.
   can never be approved. The approve/propose permission was for Version 4 only.
 - Vercel deploys every push to `master` to production automatically.
 - Any external write requires explicit user approval (§6).
+- Once F1 is set up, one scheduled job reads production daily (`.github/workflows/backup.yml`, read-only, the
+  `backup` environment's credential); it writes nothing to the database, and its output is readable only with the
+  operator's age private key, which is never in GitHub, Vercel, Supabase or a Claude session.
 - Migration `20261006120000_curated_keywords.sql` (checkpoint 3.5) is applied to production and
   recorded; curated keywords are operator records, and since 6.5 ground one agent task only —
   the Keyword agent's `keyword-opportunity-review` (decision Q5 of the 6.1 note, lifting 3.5's Q6).

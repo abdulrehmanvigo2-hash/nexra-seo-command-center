@@ -1,0 +1,80 @@
+name: Nightly backup
+
+# Reads production and stores one encrypted file (docs/RUNBOOK.md §6). It writes nothing
+# to the database: pg_dump runs in a read-only snapshot and every other statement is a
+# SELECT. The dump is encrypted to the operator's age public key before it leaves the job;
+# only the operator's private key, which is never in GitHub, can open it.
+#
+# Credentials live in the "backup" environment only: the secret BACKUP_DATABASE_URL (the
+# Supabase session pooler connection string) and the variable BACKUP_AGE_RECIPIENT (the
+# age public key). Without them the job fails. A failure opens an issue (which GitHub emails
+# to the repository owner) and fails the run (which GitHub emails per its Actions settings).
+
+on:
+  schedule:
+    # 03:17 UTC, clear of the 04:00 recover and ~05:30 process jobs.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write # only to open the "Nightly backup failed" issue below
+
+jobs:
+  backup:
+    name: backup
+    runs-on: ubuntu-24.04
+    environment: backup
+    timeout-minutes: 20
+    defaults:
+      run:
+        # An explicit bash runs with -eo pipefail, so a failed backup piped into tee still
+        # fails the step (the default shell has no pipefail).
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # pg_dump must be at least the server's major version (production: PostgreSQL 17).
+      - name: Install pg_dump 17 and age
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common >/dev/null
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y -qq postgresql-client-17 age >/dev/null
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Dump, verify and encrypt
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+          BACKUP_OUT_DIR: backup-out
+        run: |
+          # Mask the password on its own too, in case a tool ever prints part of the URL.
+          password="$(printf '%s' "$BACKUP_DATABASE_URL" | sed -nE 's#^[a-z]+://[^:/@]+:([^@]+)@.*#\1#p')"
+          if [ -n "$password" ]; then echo "::add-mask::$password"; fi
+          bash scripts/backup/backup.sh | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Store the encrypted file (30 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexra-backup-${{ github.run_id }}
+          path: backup-out/*.tar.age
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      # Fail loudly: an issue in this repository, which GitHub emails to its owner. It holds
+      # the run's link and nothing read from the database.
+      - name: Open an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Nightly backup failed $(date -u +%Y-%m-%d)" \
+            --body "The nightly backup failed: $RUN_URL — see docs/RUNBOOK.md §6.3. Close this issue once a run is green again."
