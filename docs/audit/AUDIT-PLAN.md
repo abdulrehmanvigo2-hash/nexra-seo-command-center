@@ -171,66 +171,72 @@ Pass/fail rule for every item: **PASS** when the check holds exactly as stated; 
 evidence; **N/A** must say why. A check that cannot be run from the session (the Vercel API refuses it; the
 production host is proxied off) is recorded as *not checkable here* with what the operator should run instead.
 
-### A1 Security (30 items)
+### A1 Security (30 items) — run 30 Sep 2026 at `3a3f5c6`: 26 PASS, 2 FAIL, 2 OPERATOR
+
+Method: code read of the gate, every route and Server Action; a local `next start` of the production build with no
+environment (sign-in unconfigured) probed with curl; one read-only production query; `npm audit`; a scan of both
+repositories' history. Findings: `FINDINGS.md` A1-01…A1-07. Additional questions the operator asked (the anon key's
+reach, service_role's scope, secrets in history, dependencies, headers and cookies, the `/dev` routes) are answered
+under A1-05, A1-04, A1-03, A1-01, A1-02 and item 5.
 
 **Gate and sessions**
-1. Every page under `(app)` and every API route except `/api/health` (GET/HEAD) and `/login` refuses an unauthenticated
+1. Every page under `(app)` and every API route except `/api/health` (GET/HEAD) and `/login` refuses an unauthenticated **[PASS]**
    request — read `access.ts` and `proxy.ts`; confirm the matcher covers every route in §1.1–1.2; a test per route
    class exists in `src/lib/security/security.test.ts`.
-2. Every Server Action re-checks the operator before any read or write (grep `"use server"` files for the gate call
+2. Every Server Action re-checks the operator before any read or write (grep `"use server"` files for the gate call **[PASS]**
    as the first statement).
-3. The operator list (`NEXRA_OPERATOR_EMAILS`) is compared against a *confirmed* Supabase user (email confirmed), not
+3. The operator list (`NEXRA_OPERATOR_EMAILS`) is compared against a *confirmed* Supabase user (email confirmed), not **[PASS]**
    just an email string.
-4. Sign-in rate limits hold (`sign-in-limits.ts`): limit, window, and what a locked-out operator sees.
-5. `/dev/data` and `/dev/ui` are behind the gate (A0-06) — decide whether they should exist in production at all.
+4. Sign-in rate limits hold (`sign-in-limits.ts`): limit, window, and what a locked-out operator sees. **[PASS]**
+5. `/dev/data` and `/dev/ui` are behind the gate (A0-06) — decide whether they should exist in production at all. **[PASS (gated); decision open — A0-06]**
 
 **Worker and cron**
-6. `/api/worker/process` and `/recover` refuse without a Bearer that equals `CRON_SECRET` (constant-time compare);
+6. `/api/worker/process` and `/recover` refuse without a Bearer that equals `CRON_SECRET` (constant-time compare); **[PASS]**
    `/status` accepts an operator session as well — confirm nothing else does.
-7. Cron secrets are never logged; worker logs carry ids, outcomes and durations only.
+7. Cron secrets are never logged; worker logs carry ids, outcomes and durations only. **[PASS]**
 
 **Database access**
-8. RLS enabled on all 31 tables and 0 policies (re-run the A0 query); `anon` and `authenticated` hold no DML grant on
+8. RLS enabled on all 31 tables and 0 policies (re-run the A0 query); `anon` and `authenticated` hold no DML grant on **[FAIL — A0-03 (legacy `crawl_links` only)]**
    any table — FAIL for `crawl_links` (A0-03).
-9. Every `security definer` function has an empty `search_path` and owner `postgres`; EXECUTE only for
+9. Every `security definer` function has an empty `search_path` and owner `postgres`; EXECUTE only for **[PASS; A0-04 recorded]**
    `service_role` where the migration grants it; trigger functions' PUBLIC EXECUTE (A0-04) recorded.
-10. The application's direct writes (`.insert/.update/.delete` in `src/lib/**/supabase/*.ts`) are each covered by an
+10. The application's direct writes (`.insert/.update/.delete` in `src/lib/**/supabase/*.ts`) are each covered by an **[PASS; A1-06 recorded]**
     update/delete guard trigger or are on a table designed for direct writes; list them.
-11. Delete/truncate guards (5.4) enabled on projects, runs, attempts, the crawl tables; verify `tgenabled = 'O'`.
+11. Delete/truncate guards (5.4) enabled on projects, runs, attempts, the crawl tables; verify `tgenabled = 'O'`. **[PASS]**
 
 **Secrets**
-12. `npm run secret-scan` clean on the tree; the 24 allowlist entries are each a synthetic fixture (read each).
-13. No `NEXT_PUBLIC_` variable carries a secret; the five refusal checks have tests.
-14. Vercel environment variables target Production only (operator check in the dashboard — not checkable here).
-15. `.gitignore` excludes `.env*` except `.env.example`; `git log -p` finds no secret ever committed (scan history
+12. `npm run secret-scan` clean on the tree; the 24 allowlist entries are each a synthetic fixture (read each). **[PASS]**
+13. No `NEXT_PUBLIC_` variable carries a secret; the five refusal checks have tests. **[PASS]**
+14. Vercel environment variables target Production only (operator check in the dashboard — not checkable here). **[OPERATOR — A1-07]**
+15. `.gitignore` excludes `.env*` except `.env.example`; `git log -p` finds no secret ever committed (scan history **[PASS; A1-04 recorded]**
     with the secret scanner over `git log -p`).
 
 **Input handling**
-16. Every API route validates its request shape before touching a service (project id, uuid, ranges, limits).
-17. Output screening (`looksLikeSecret`, `output-screen`) covers every stored model answer and every grounding block
+16. Every API route validates its request shape before touching a service (project id, uuid, ranges, limits). **[PASS]**
+17. Output screening (`looksLikeSecret`, `output-screen`) covers every stored model answer and every grounding block **[PASS]**
     that quotes stored text.
-18. The crawler only fetches hosts in `CRAWL_ALLOWED_HOSTS`; redirects off-host refused; response size and time
+18. The crawler only fetches hosts in `CRAWL_ALLOWED_HOSTS`; redirects off-host refused; response size and time **[PASS]**
     bounded; no private-network address reachable (SSRF).
-19. The renderer's `tsString` escaping holds for every content field (hostile-text test present).
+19. The renderer's `tsString` escaping holds for every content field (hostile-text test present). **[PASS]**
 
 **Health and headers**
-20. `/api/health` returns exactly three fields, never an error string; its 120/min cap holds.
-21. Security headers (CSP, frame-ancestors, referrer-policy) — record what `next.config` sets; FAIL if none.
-22. Same-origin checks on write routes (`origin`/`sec-fetch-site`) present where CLAUDE.md says so.
+20. `/api/health` returns exactly three fields, never an error string; its 120/min cap holds. **[PASS]**
+21. Security headers (CSP, frame-ancestors, referrer-policy) — record what `next.config` sets; FAIL if none. **[FAIL — A1-01]**
+22. Same-origin checks on write routes (`origin`/`sec-fetch-site`) present where CLAUDE.md says so. **[PASS]**
 
 **Runtime**
-23. The Anthropic client sends only the grounded prompt; no environment or file content reaches it.
-24. Search Console credentials are read once, never returned by any route (`property` never returned).
-25. Rate limits on every write route (list route → limiter).
+23. The Anthropic client sends only the grounded prompt; no environment or file content reaches it. **[PASS]**
+24. Search Console credentials are read once, never returned by any route (`property` never returned). **[PASS]**
+25. Rate limits on every write route (list route → limiter). **[PASS]**
 
 **Records**
-26. Two curated keywords, one task, the article rows are the only operator-created data; nothing unexpected in
+26. Two curated keywords, one task, the article rows are the only operator-created data; nothing unexpected in **[PASS]**
     `rate_limit_windows` (26 rows; read them).
-27. `nexra_approvals` has 0 rows and nothing consumes it yet — confirm no route imports `src/lib/approvals`.
-28. The C6 slug lock triggers are enabled and READ COMMITTED is the default (re-run the D3 preflight).
-29. `service_role` UPDATE on `nexra_content_publication_proposals` is the withdraw path's only use
+27. `nexra_approvals` has 0 rows and nothing consumes it yet — confirm no route imports `src/lib/approvals`. **[PASS]**
+28. The C6 slug lock triggers are enabled and READ COMMITTED is the default (re-run the D3 preflight). **[PASS]**
+29. `service_role` UPDATE on `nexra_content_publication_proposals` is the withdraw path's only use **[PASS]**
     (`publications/supabase/store.ts:112`) and the update guard limits it to status/withdrawn fields.
-30. Supabase Auth settings: email confirmation required, no sign-up open to the public (operator check; not
+30. Supabase Auth settings: email confirmation required, no sign-up open to the public (operator check; not **[OPERATOR — A1-07]**
     checkable here).
 
 ### A2 Database (22 items)
