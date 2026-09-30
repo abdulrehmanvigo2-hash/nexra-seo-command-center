@@ -207,7 +207,7 @@ under A1-05, A1-04, A1-03, A1-01, A1-02 and item 5.
 **Secrets**
 12. `npm run secret-scan` clean on the tree; the 24 allowlist entries are each a synthetic fixture (read each). **[PASS]**
 13. No `NEXT_PUBLIC_` variable carries a secret; the five refusal checks have tests. **[PASS]**
-14. Vercel environment variables target Production only (operator check in the dashboard — not checkable here). **[OPERATOR — A1-07 (a)]**
+14. Vercel environment variables target Production only (operator check in the dashboard — not checkable here). **[OPERATOR — A1-07 (a): PASS, 30 Sep]**
 15. `.gitignore` excludes `.env*` except `.env.example`; `git log -p` finds no secret ever committed (scan history **[PASS; A1-04 recorded]**
     with the secret scanner over `git log -p`).
 
