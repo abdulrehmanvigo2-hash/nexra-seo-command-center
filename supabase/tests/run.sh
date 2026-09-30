@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, operator-attested paragraphs, live slugs published after the template pin, and the surplus grants revoked).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, operator-attested paragraphs, live slugs published after the template pin, the surplus grants revoked, and the legacy crawl subsystem retired).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -34,9 +34,10 @@ LEARNING_MIGRATION="$MIGRATIONS/20261008120000_task_priority_director_run.sql"
 ATTESTED_MIGRATION="$MIGRATIONS/20261010120000_attested_paragraphs.sql"
 LIVE_SLUGS_MIGRATION="$MIGRATIONS/20261011120000_live_slugs_after_pin.sql"
 GRANTS_MIGRATION="$MIGRATIONS/20261012120000_revoke_surplus_grants.sql"
+LEGACY_MIGRATION="$MIGRATIONS/20261013120000_retire_legacy_crawl_subsystem.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -605,7 +606,35 @@ suite_grants_upgrade() {
   run_sql_suite grants-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/findings/setup.sql" "$HERE/grants/common.sql" "$HERE/grants/upgrade-before.sql" "$GRANTS_MIGRATION" "$HERE/grants/upgrade-after.sql"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade)
+# The legacy crawl subsystem retired (fix F6, audit A0-03, A2-03): production's legacy objects rebuilt, then dropped;
+# every other row and object unchanged.
+suite_legacy_retire() {
+  fresh_db "$LEGACY_MIGRATION"
+  run_sql_suite legacy-retire "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/findings/setup.sql" "$HERE/grants/common.sql" "$HERE/legacy/fixture.sql" "$HERE/legacy/before.sql" "$LEGACY_MIGRATION" "$HERE/legacy/after.sql"
+}
+
+# The F6 migration fails closed: extra rows, a missing table, or an outside dependency refuses and drops nothing.
+suite_legacy_retire_refusals() {
+  local case setup expect out left
+  for case in extra-row missing-table dependent-view; do
+    fresh_db "$LEGACY_MIGRATION"
+    "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/legacy/fixture.sql" >/dev/null
+    case "$case" in
+      extra-row) setup="insert into public.crawl_urls (crawl_id, url, source) values ('11000000-0000-4000-8000-000000000001', 'https://halcyon.example/new', 'homepage')"; expect="rows differ from the backup"; left="5 tables" ;;
+      missing-table) setup="drop table public.crawl_links"; expect="4 of the five tables exist"; left="4 tables" ;;
+      dependent-view) setup="create view public.legacy_probe as select id from public.crawls"; expect="depend"; left="5 tables" ;;
+    esac
+    q "$setup" >/dev/null
+    out="$("${PSQL[@]}" -f "$LEGACY_MIGRATION" 2>&1 || true)"
+    local tables fns rows
+    tables="$(q "select count(*) from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relname in ('crawls','crawl_pages','crawl_urls','crawl_page_signals','crawl_links')") tables"
+    fns="$(q "select count(*) from pg_proc where pronamespace = 'public'::regnamespace and proname in ('crawl_pages_claim','crawl_pages_recover_expired','crawl_pages_count_change','crawls_guard_update')")"
+    check "legacy-retire refusal $case: refused ($(grep -o "$expect[^;]*" <<< "$out" | head -1)), nothing dropped ($tables, $fns functions)" \
+      "$(grep -q "$expect" <<< "$out" && [ "$tables" = "$left" ] && [ "$fns" = "4" ]; echo $?)"
+  done
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -626,6 +655,7 @@ for s in "${SUITES[@]}"; do
     attested) suite_attested ;; attested-upgrade) suite_attested_upgrade ;;
     live-slugs) suite_live_slugs ;; live-slugs-upgrade) suite_live_slugs_upgrade ;;
     grants) suite_grants ;; grants-upgrade) suite_grants_upgrade ;;
+    legacy-retire) suite_legacy_retire ;; legacy-retire-refusals) suite_legacy_retire_refusals ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done
