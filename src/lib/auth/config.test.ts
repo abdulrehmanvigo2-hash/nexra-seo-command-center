@@ -5,6 +5,7 @@ import {
   OPERATOR_EMAILS_VARIABLE,
   readAuthConfig,
   SESSION_COOKIE_OPTIONS,
+  sessionCookieOptions,
   SUPABASE_PUBLISHABLE_KEY_VARIABLE,
   SUPABASE_URL_VARIABLE,
 } from "./config.ts";
@@ -54,8 +55,12 @@ describe("readAuthConfig: what a valid configuration is", () => {
     assert.equal(readAuthConfig({ ...GOOD, [SUPABASE_PUBLISHABLE_KEY_VARIABLE]: jwtKey("anon") }).publishableKey, jwtKey("anon"));
   });
 
-  test("session cookies are httpOnly, site-wide and lax", () => {
-    assert.deepEqual(SESSION_COOKIE_OPTIONS, { path: "/", sameSite: "lax", httpOnly: true });
+  test("session cookies are httpOnly, site-wide and lax; Secure in a production build only (A1-02)", () => {
+    assert.deepEqual(sessionCookieOptions({ NODE_ENV: "production" }), { path: "/", sameSite: "lax", httpOnly: true, secure: true });
+    assert.deepEqual(sessionCookieOptions({ NODE_ENV: "development" }), { path: "/", sameSite: "lax", httpOnly: true, secure: false });
+    assert.deepEqual(sessionCookieOptions({ NODE_ENV: "test" }), { path: "/", sameSite: "lax", httpOnly: true, secure: false });
+    assert.deepEqual(sessionCookieOptions({}), { path: "/", sameSite: "lax", httpOnly: true, secure: false });
+    assert.deepEqual(SESSION_COOKIE_OPTIONS, sessionCookieOptions(process.env));
   });
 });
 

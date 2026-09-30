@@ -1588,7 +1588,12 @@ run logic, caps, prompts or schema; merged as PR #79 (`469b73e`). Fix **F4 — c
 (A5-04, A5-05, A5-03 in part), a draft PR: attestations follow their paragraph's text through edits and are cleared
 when it changes, a pre-save preview lists each label, Edit moves away from the approval and confirms on an approved
 article, and the H2 and H3 add buttons are labelled apart (`src/lib/content/articles/editor-safety.ts`). No content
-format, hash, pin or schema change. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+format, hash, pin or schema change; merged as PR #80 (`281205e`). Fix **F5 — security quick wins** (A1-01, A1-02,
+A2-02, A2-11), a draft PR: security headers on every route (the no-nonce CSP with `frame-ancestors 'none'`,
+`X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS; no `X-Powered-By`), `Secure` session
+cookies in a production build, and migration `20261012120000_revoke_surplus_grants.sql` (REFERENCES, TRIGGER and
+TRUNCATE revoked from `service_role` on the seven early tables; EXECUTE on the platform's `rls_auto_enable` revoked
+from PUBLIC, `anon` and `authenticated`), **not applied**. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22

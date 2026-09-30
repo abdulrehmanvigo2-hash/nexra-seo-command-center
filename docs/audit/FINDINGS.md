@@ -169,7 +169,7 @@ that produced the PASS marks, in brief:
   a `Permissions-Policy` denying camera/microphone/geolocation, and a CSP (start in report-only) — plus
   `poweredByHeader: false`. A code checkpoint with a header test.
 - Effort: S
-- Status: open
+- Status: fix F5 (draft PR): `src/lib/security/headers.ts` through `next.config.ts` on every route — the no-nonce CSP (`frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`, `strict-origin-when-cross-origin`, a `Permissions-Policy` for camera, microphone and geolocation, HSTS; `poweredByHeader: false`; every page loaded locally with no CSP violation
 
 ### A1-02 — Session cookies are written without the `Secure` attribute
 - Severity: low
@@ -183,7 +183,7 @@ that produced the PASS marks, in brief:
 - Suggested fix: add `secure: true` to `SESSION_COOKIE_OPTIONS` when the configured Supabase URL is `https` (it
   always is outside localhost); a test in `config.test.ts`.
 - Effort: S
-- Status: open
+- Status: fix F5 (draft PR): `sessionCookieOptions` adds `secure` in a production build (not under `next dev`); checked locally by a real sign-in
 
 ### A1-03 — `npm audit`: one high advisory, in the lint toolchain only; 12 packages outdated
 - Severity: info
@@ -329,7 +329,7 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
   being server-only (A1-05).
 - Suggested fix: one migration revoking REFERENCES, TRIGGER and TRUNCATE from `service_role` on the seven tables.
 - Effort: S
-- Status: open
+- Status: fix F5 (draft PR): migration `20261012120000_revoke_surplus_grants.sql`, harness suites `grants` and `grants-upgrade` — **not applied**; applying it is a separate §6 approval
 
 ### A2-03 — The legacy crawl subsystem (A0-02): provenance, use, last write, recommendation
 - Severity: medium (unchanged from A0-02; a decision is needed)
@@ -448,7 +448,7 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
 - Suggested fix: `revoke execute on function public.rls_auto_enable() from public, anon, authenticated;` in a
   migration (the event trigger keeps working under its owner).
 - Effort: S
-- Status: open
+- Status: fix F5 (draft PR): the same migration revokes EXECUTE from PUBLIC, `anon` and `authenticated` where the function exists — **not applied**
 
 ## Post-V1 backlog additions (from the audit)
 
