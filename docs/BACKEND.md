@@ -1812,6 +1812,20 @@ function the `withdrawArticleProposal` Server Action reaches, and the function a
 - No active proposal remains.
 - Nothing was ever published.
 
+### The real article checked, approved and proposed (Phase 6, checkpoint 6.10b)
+
+On 29–30 Sep the operator took article `1003104c…` (`ai-dead-lead-reactivation`) through C2 → C4 → C5 → C6 in the
+browser, with no code or schema change. Its explanatory paragraphs are attested with basis `opinion` (6.8b).
+
+- Version 6 (`5ae7594d…`) passed all 7 check units. Versions 1–5 were superseded; their results stay bound to them.
+- Approval `98195295…` (attestation ticked) and proposal `ea85edb0…`
+  (`nexra-agency-website`, preview `article-proposal-text/2` `47178c61…`) are recorded. Nothing is published.
+- The checker samples at the API's defaults, so identical unit text can be judged differently on two runs.
+  Carrying a passed result forward by unit hash, and a v3 instruction making self-describing metadata EDITORIAL,
+  are planned after V1.
+- V1 publishing takes the lean route: the 6.11 pull request is opened from a Claude Code session with the
+  operator's approval. The published-state table and the product's C7 publisher are deferred.
+
 ### The full article renderer (Phase 6, checkpoint 6.9b)
 
 `src/lib/content/articles/website/` renders an approved article version (format 1 or 2) and its C5 approval into
