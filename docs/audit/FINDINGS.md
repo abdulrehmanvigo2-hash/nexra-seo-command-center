@@ -270,7 +270,7 @@ that produced the PASS marks, in brief:
 
 ## A2 — Database (30 Sep 2026, at `961104f`)
 
-Checklist result: 17 PASS, 1 FAIL (item 10, docs → A0-01 / A2-01), 1 OPERATOR (item 15 → A2-05), 3 record-only
+Checklist result: 17 PASS, 2 FAIL (item 10, docs → A0-01 / A2-01; item 15 → A2-05, answered by the operator on 30 Sep: Free plan, no backups), 3 record-only
 items done (A2-01, A2-03). Nothing high or above. The comparison method: the 33 repository migrations applied to a
 disposable PostgreSQL 16, then on both sides `md5` of every function's `pg_get_functiondef` (CRLF removed), every
 table's ordered column list, constraint set, index set, trigger set, grants and RLS flag — 253 rows locally, the
@@ -349,7 +349,7 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
   outside the repository), revokes every grant, and drops the five tables and four functions; or **keep and
   document** them in `docs/BACKEND.md` and the runbook. Either way A0-03's revoke comes first.
 - Effort: M
-- Status: open (decision needed)
+- Status: open (decision needed; on 30 Sep the operator had not yet answered whether another tool used these tables)
 
 ### A2-04 — 20 foreign keys have no covering index
 - Severity: info
@@ -368,17 +368,19 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
 - Effort: S
 - Status: accepted (no fix)
 
-### A2-05 — Backups and point-in-time recovery: not visible from the session
-- Severity: low (unknown; could be higher)
+### A2-05 — Backups and point-in-time recovery: none (Free plan)
+- Severity: **medium** (raised from low on 30 Sep: the operator confirmed the plan)
 - Evidence: `get_project` reports only `ACTIVE_HEALTHY`, PostgreSQL 17.6.1, region `ap-southeast-1`, created 13 Sep;
-  no backup or PITR field is exposed. On Supabase's Free plan there are **no** automatic backups; Pro keeps daily
-  backups (7 days) and PITR is an add-on.
-- Impact: if the project is on the Free plan, the only copy of every run, article, approval and proposal is the
-  live database.
-- Suggested fix: the operator reads Supabase → Database → Backups and records the plan and retention here; if
-  none, decide on Pro or a scheduled `pg_dump` kept outside Supabase, and run one restore drill (A6-14).
-- Effort: S (check) / M (backups)
-- Status: open (operator)
+  no backup or PITR field is exposed. **Operator (30 Sep): Supabase project "nexra-seo" is on the Free plan**, which
+  keeps no automatic backups and offers no point-in-time recovery; Pro keeps daily backups (7 days) and PITR is an
+  add-on.
+- Impact: the only copy of every run, article, version, approval and proposal is the live database. A mistaken
+  write, a platform incident or a project pause loses it; the 5.4 guards stop deletes but not a lost database.
+- Options recorded (decision pending, operator): **(A)** the Pro plan with daily backups (and PITR if wanted);
+  **(B)** an own scheduled dump job — a `pg_dump` of the public schema on a schedule, kept outside Supabase, with
+  one restore drill (A6-14). Either needs §6 approval (a paid service, or a credential for the dump job).
+- Effort: S (A) / M (B)
+- Status: open (decision pending)
 
 ### A2-06 — Auth: leaked-password protection is disabled
 - Severity: low

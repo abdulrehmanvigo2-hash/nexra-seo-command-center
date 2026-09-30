@@ -239,7 +239,7 @@ under A1-05, A1-04, A1-03, A1-01, A1-02 and item 5.
 30. Supabase Auth settings: email confirmation required, no sign-up open to the public (operator check; not **[PASS — run by the operator 30 Sep: sign-up was ON and is now OFF, anonymous OFF, confirm email ON, 1 user; A1-08]**
     checkable here).
 
-### A2 Database (22 items) — run 30 Sep 2026 at `961104f`: 17 PASS, 1 FAIL, 1 OPERATOR, 3 DONE (record-only items)
+### A2 Database (22 items) — run 30 Sep 2026 at `961104f`: 17 PASS, 2 FAIL, 3 DONE (record-only items; item 15 was OPERATOR until the operator answered on 30 Sep)
 
 Method: a reference database built on a disposable PostgreSQL 16 from the 33 repository migrations, then every
 function, table, constraint, index, trigger, grant and RLS flag hashed on both sides (CRLF normalised) and compared;
@@ -271,7 +271,7 @@ the Supabase security and performance advisors. Findings: `FINDINGS.md` A2-01…
     the stores).
 13. `pg_stat_user_tables` dead tuples / bloat on the append-only tables — info only. **[PASS — dead tuples ≤ 38 on any table; autovacuum runs on the active ones]**
 14. Supabase advisors (`get_advisors` security and performance) — record every item. **[DONE — A2-06, A2-11, A2-04 (the advisor items)]**
-15. Backups: PITR/daily backup setting for project `nmseedcgtxelufewvbvr` (operator check). **[OPERATOR — A2-05]**
+15. Backups: PITR/daily backup setting for project `nmseedcgtxelufewvbvr` (operator check). **[FAIL — run by the operator 30 Sep: Free plan, no backups or PITR; A2-05 raised to medium, decision pending (Pro plan or an own dump job)]**
 16. The `set_updated_at` and `rls_auto_enable` functions: platform-provided, not in the repo; record. **[PASS — `set_updated_at` is the repository's (20260913120000); `rls_auto_enable` is the platform's (A2-11)]**
 17. `service_role` SELECT missing on `crawl_links` and the grant asymmetry on the legacy tables — part of A0-02. **[DONE — part of A2-02 / A2-03]**
 18. Extensions installed vs used (`list_extensions`). **[PASS — pg_stat_statements, pgcrypto, plpgsql, supabase_vault, uuid-ossp; nothing unused by the platform]**
