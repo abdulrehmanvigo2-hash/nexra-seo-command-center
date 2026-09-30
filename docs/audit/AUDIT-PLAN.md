@@ -239,7 +239,7 @@ under A1-05, A1-04, A1-03, A1-01, A1-02 and item 5.
 30. Supabase Auth settings: email confirmation required, no sign-up open to the public (operator check; not **[PASS — run by the operator 30 Sep: sign-up was ON and is now OFF, anonymous OFF, confirm email ON, 1 user; A1-08]**
     checkable here).
 
-### A2 Database (22 items) — run 30 Sep 2026 at `961104f`: 17 PASS, 1 FAIL, 1 OPERATOR, 3 DONE (record-only items)
+### A2 Database (22 items) — run 30 Sep 2026 at `961104f`: 17 PASS, 2 FAIL, 3 DONE (record-only items; item 15 was OPERATOR until the operator answered on 30 Sep)
 
 Method: a reference database built on a disposable PostgreSQL 16 from the 33 repository migrations, then every
 function, table, constraint, index, trigger, grant and RLS flag hashed on both sides (CRLF normalised) and compared;
@@ -271,7 +271,7 @@ the Supabase security and performance advisors. Findings: `FINDINGS.md` A2-01…
     the stores).
 13. `pg_stat_user_tables` dead tuples / bloat on the append-only tables — info only. **[PASS — dead tuples ≤ 38 on any table; autovacuum runs on the active ones]**
 14. Supabase advisors (`get_advisors` security and performance) — record every item. **[DONE — A2-06, A2-11, A2-04 (the advisor items)]**
-15. Backups: PITR/daily backup setting for project `nmseedcgtxelufewvbvr` (operator check). **[OPERATOR — A2-05]**
+15. Backups: PITR/daily backup setting for project `nmseedcgtxelufewvbvr` (operator check). **[FAIL — run by the operator 30 Sep: Free plan, no backups or PITR; A2-05 raised to medium, decision pending (Pro plan or an own dump job)]**
 16. The `set_updated_at` and `rls_auto_enable` functions: platform-provided, not in the repo; record. **[PASS — `set_updated_at` is the repository's (20260913120000); `rls_auto_enable` is the platform's (A2-11)]**
 17. `service_role` SELECT missing on `crawl_links` and the grant asymmetry on the legacy tables — part of A0-02. **[DONE — part of A2-02 / A2-03]**
 18. Extensions installed vs used (`list_extensions`). **[PASS — pg_stat_statements, pgcrypto, plpgsql, supabase_vault, uuid-ossp; nothing unused by the platform]**
@@ -281,37 +281,40 @@ the Supabase security and performance advisors. Findings: `FINDINGS.md` A2-01…
 22. Migration files never edited after apply: `git log --follow` on each applied file shows one commit (or docs-only **[PASS — three files carry two commits each, all before their apply; the applied schema equals the current files (A2-01)]**
     header changes never applied — record any).
 
-### A3 Agents (18 items)
+### A3 Agents (18 items) — run 30 Sep 2026 at `8451980`: 15 PASS, 0 FAIL, 3 DONE (record-only items)
 
-1. All 27 task types: registry entry, grounding reader, instructions, tests — a table; FAIL for any without a test.
-2. Output bounds: each structurally bound instruction's worst case (full caps) under the 2,000 ceiling (the 6.5/6.6c
+Method: a code read of the runtime, grounding, handoffs, provider and worker SQL; `npm test`; read-only production
+queries on runs, attempts, rate-limit windows, tasks, task events and snapshots. Findings: `FINDINGS.md` A3-01…A3-11.
+
+1. All 27 task types: registry entry, grounding reader, instructions, tests — a table; FAIL for any without a test. **[PASS — every task named in ≥ 2 test files; A3-01 (11 instructions not hash-pinned)]**
+2. Output bounds: each structurally bound instruction's worst case (full caps) under the 2,000 ceiling (the 6.5/6.6c **[PASS — full-caps worst cases 1,633–1,978, all under 2,000; live lengths and refusals in A3-10]**
    tests); the live answer lengths from production runs (read `agent_runs.result_summary` lengths, read-only) against
    the 1,200 soft target; list refusals (`rejected-output`) with dates.
-3. `rejected-output` history: every occurrence, its task, and whether a bound was later added.
-4. Daily caps: `daily-caps.ts` keys and windows; the counters in `rate_limit_windows` for the last days; the held-run
+3. `rejected-output` history: every occurrence, its task, and whether a bound was later added. **[DONE — A3-10 (11 refusals, 21–27 Sep, each task bounded afterwards; none since 28 Sep)]**
+4. Daily caps: `daily-caps.ts` keys and windows; the counters in `rate_limit_windows` for the last days; the held-run **[PASS — create and execute counters per project and in all, per UTC day, read in production; held path tested]**
    path (`heldByCap`) covered by a test.
-5. The worker: claim (`skip locked`), lease, heartbeat, recovery (`recover_expired`), retry policy and costs
+5. The worker: claim (`skip locked`), lease, heartbeat, recovery (`recover_expired`), retry policy and costs **[PASS — skip-locked claim, 60 s lease, 15 s heartbeat, recovery and retry pinned by tests and the harness; A3-05, A3-06]**
    (`retry-cost.test.ts`); the 04:00 recover job's effect on a run left `running`.
-6. Provider: abort classification (Q11), rate-limit and 5xx classification, timeout values; the API key read once.
-7. Grounding ceilings: every evidence kind's byte ceiling and truncation line; a missing reader never fails a run
+6. Provider: abort classification (Q11), rate-limit and 5xx classification, timeout values; the API key read once. **[PASS — A3-08]**
+7. Grounding ceilings: every evidence kind's byte ceiling and truncation line; a missing reader never fails a run **[PASS — every kind has a ceiling and a stated cut; second-task appendices never fail a run]**
    (6.5 rule) — one test per kind.
-8. The Director bundle: five slots, `MAX_BUNDLE_BYTES`, the stored summary within the run store's check.
-9. Handoffs: 11 of 12 agents; the Writer deferred by decision; the record chooser refusals
+8. The Director bundle: five slots, `MAX_BUNDLE_BYTES`, the stored summary within the run store's check. **[PASS — five slots, 66,000 bytes; A3-09 (docs say 54,000)]**
+9. Handoffs: 11 of 12 agents; the Writer deferred by decision; the record chooser refusals **[PASS — 11 agents mapped, the Writer deferred, every refusal code tested]**
    (`record-required` etc.) tested.
-10. The learning loop: `priority-changed` with a cited run only when that run is a completed
+10. The learning loop: `priority-changed` with a cited run only when that run is a completed **[PASS — A3-04 (the one citation reads as recorded)]**
     `project-priority-review` of the same project — the trigger and the function both; the one production citation
     (task `30e79092…` seq 21) still reads as recorded.
-11. Instruction hash pins: every pinned hash in tests equals the current text (`npm test` covers; list the pins).
-12. The mock executor covers every task type (so `NEXRA_AGENT_EXECUTOR=mock` never crashes).
-13. Output screening on every stored answer (`output-screen.test.ts`) and the `looksLikeSecret` withholding in
+11. Instruction hash pins: every pinned hash in tests equals the current text (`npm test` covers; list the pins). **[PASS — 16 pins, `npm test` 2,593 of 2,593; A3-01]**
+12. The mock executor covers every task type (so `NEXRA_AGENT_EXECUTOR=mock` never crashes). **[PASS — all 27 covered; the switch is exhaustive and type-checked]**
+13. Output screening on every stored answer (`output-screen.test.ts`) and the `looksLikeSecret` withholding in **[PASS — A3-07 (prompt injection: advisory only; three defence-in-depth gaps)]**
     grounding.
-14. Run history view: `runNowOffered` only on queued runs of the page's agent (6.6b tests).
-15. Production run totals: 82 runs, 83 attempts, all executors and models as recorded; any run `running` or `retrying`
+14. Run history view: `runNowOffered` only on queued runs of the page's agent (6.6b tests). **[PASS]**
+15. Production run totals: 82 runs, 83 attempts, all executors and models as recorded; any run `running` or `retrying` **[PASS — 82 runs, 83 attempts, all `ai`, every completed attempt `claude-opus-5`, 0 stale]**
     for more than a day (read-only).
-16. The checker variance finding (6.10b): document the default-sampling setting and the post-V1 items (carry-forward,
+16. The checker variance finding (6.10b): document the default-sampling setting and the post-V1 items (carry-forward, **[DONE — A3-03 (backlog; the draft fact-check is the other verdict task)]**
     instructions v3) as backlog, not findings.
-17. `approval-required` policy exists in the contract but no task uses it — record as latent (6.1 finding).
-18. The 1,200-character soft target overshoot (4.8): current numbers from production; still under 2,000.
+17. `approval-required` policy exists in the contract but no task uses it — record as latent (6.1 finding). **[DONE — A3-11]**
+18. The 1,200-character soft target overshoot (4.8): current numbers from production; still under 2,000. **[PASS — 29 of 71 completed answers over 1,200, none over 2,000 (A3-10)]**
 
 ### A4 Screens (16 items)
 
