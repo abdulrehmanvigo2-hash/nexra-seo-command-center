@@ -1012,7 +1012,7 @@ than silently re-applying a stale edit.
 - Suggested fix: a "Paste article JSON" box: validate with the C1 validator, fill the form (`formFromContent`), then
   save as now. Label the add buttons "Add H3 to this section" and "Add H2 section".
 - Effort: S
-- Status: open
+- Status: open — F4 (draft PR) did the labelling part: "Add H3 inside section N" and "Add H2 section" are labelled and set apart, and each section and H3 box is named; the paste/import is still open
 
 ### A5-04 — Attestation locators are paragraph indexes and do not follow edits
 - Severity: medium
@@ -1027,7 +1027,7 @@ than silently re-applying a stale edit.
 - Suggested fix: bind an attestation to the paragraph's text (or a stable id) and warn when its target moves or
   disappears.
 - Effort: S–M
-- Status: open
+- Status: fix in progress — F4 (draft PR): each attestation is bound in editor state to its paragraph's text and follows it through inserted, removed or moved lines and renamed sections; a changed or removed paragraph clears the mark until chosen again; a pre-save preview lists each label with its paragraph's first words. No content format change; closed on merge
 
 ### A5-05 — "Edit as version N" sits beside the version selector, above Approve, and stays on a live article
 - Severity: medium
@@ -1045,7 +1045,7 @@ than silently re-applying a stale edit.
 - Suggested fix: move Edit away from the approval controls (or make it a quiet button). On an approved article,
   confirm first ("This article is approved; a new version returns it to drafting and needs a full re-check").
 - Effort: S
-- Status: open
+- Status: fix in progress — F4 (draft PR): "Edit as version N…" moved to the foot of the article, away from the version selector and the approval; on an approved or checked article it confirms first (a new version returns it to drafting; the approved version stays on record; a live article says so); closed on merge
 
 ### A5-06 — The live article's proposal stays "proposed"; nothing in the product says it is published
 - Severity: info (by the lean V1 decision, 6.10b)

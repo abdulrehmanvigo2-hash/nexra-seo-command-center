@@ -13,6 +13,7 @@ import { ArticleProposalSection } from "@/components/content/article-proposal-se
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
+import { Modal } from "@/components/ui/modal";
 import { Panel, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import {
   attestableParagraphChoices,
@@ -26,6 +27,18 @@ import {
   type SectionForm,
 } from "@/lib/content/articles/editor-form";
 import { ATTESTATION_LABELS } from "@/lib/content/articles/attestations";
+import {
+  addAttestation,
+  attestationPreview,
+  attestationsReady,
+  chooseAttestation,
+  editGuard,
+  firstWords,
+  followAttestations,
+  initialBindings,
+  removeAttestation,
+  type AttestationBinding,
+} from "@/lib/content/articles/editor-safety";
 import { ATTESTATION_BASES, SEARCH_INTENTS, TOPIC_DECISIONS, validateArticleContent } from "@/lib/content/articles/validate";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { ArticleIssue, ArticleSourceReference, ValidatedArticleContent } from "@/types/content-article";
@@ -340,11 +353,6 @@ function ArticleDetail({
             }))}
           />
         </Field>
-        {current !== null && current.content !== null && article.status !== "archived" && (
-          <Button icon="edit" onClick={() => onEdit(current)}>
-            Edit as version {article.currentVersion + 1}
-          </Button>
-        )}
       </div>
 
       <ArticleApprovalSection
@@ -380,7 +388,60 @@ function ArticleDetail({
           {viewing.content !== null ? <ArticleContentView content={viewing.content} /> : null}
         </>
       )}
+
+      {/* Edit sits at the end, away from the version selector and the approval controls (fix F4, A5-05). */}
+      {current !== null && current.content !== null && article.status !== "archived" && <EditArticleRow article={article} onEdit={() => onEdit(current)} />}
     </section>
+  );
+}
+
+/**
+ * Editing, at the foot of the article. On an approved or checked article it
+ * confirms first: a saved version returns the article to drafting, and the
+ * approved version stays on record (fix F4, audit A5-05). Opening the editor
+ * writes nothing.
+ */
+function EditArticleRow({ article, onEdit }: { article: ArticleHistory["article"]; onEdit: () => void }) {
+  const guard = editGuard(article);
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+      <Button variant="ghost" icon="edit" onClick={() => (guard === null ? onEdit() : setConfirming(true))}>
+        Edit as version {article.currentVersion + 1}…
+      </Button>
+      <span className="text-xs text-fg-subtle">
+        Opens the editor; saving creates version {article.currentVersion + 1}
+        {article.status === "drafting" ? "." : " and returns the article to drafting."}
+      </span>
+      {confirming && guard !== null && (
+        <Modal
+          title={guard.title}
+          onClose={() => setConfirming(false)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setConfirming(false)}>
+                Go back
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirming(false);
+                  onEdit();
+                }}
+              >
+                {guard.confirmLabel}
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-2 text-[12.5px] leading-relaxed text-fg-muted">
+            {guard.lines.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }
 
@@ -516,15 +577,24 @@ function ArticleEditor({
   onSaved: (history: ArticleHistory, created: boolean) => void;
 }) {
   const id = useId();
-  const [form, setForm] = useState<ArticleForm>(() => (mode.kind === "edit" && mode.from.content !== null ? formFromContent(mode.from.content) : emptyForm()));
+  // The form and, beside it, each attestation's binding to its paragraph's text (fix F4, A5-04): every edit
+  // goes through followAttestations, so an attestation follows its paragraph or is cleared, never re-pointed.
+  const [state, setState] = useState<{ form: ArticleForm; bindings: AttestationBinding[] }>(() => {
+    const initial = mode.kind === "edit" && mode.from.content !== null ? formFromContent(mode.from.content) : emptyForm();
+    return { form: initial, bindings: initialBindings(initial) };
+  });
+  const form = state.form;
+  const [previewing, setPreviewing] = useState(false);
   const [planRunId, setPlanRunId] = useState("");
   const [sources, setSources] = useState<ArticleSourceReference[]>(() => initialSources(mode));
   const [issues, setIssues] = useState<readonly ArticleIssue[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const set = <K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => setForm((f) => ({ ...f, [key]: value }));
-  const setSection = (index: number, next: SectionForm) => setForm((f) => ({ ...f, sections: f.sections.map((s, i) => (i === index ? next : s)) }));
+  const update = (change: (f: ArticleForm) => ArticleForm) => setState((current) => followAttestations(change(current.form), current.bindings));
+  const set = <K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => update((f) => ({ ...f, [key]: value }));
+  const setSection = (index: number, next: SectionForm) => update((f) => ({ ...f, sections: f.sections.map((s, i) => (i === index ? next : s)) }));
+  const preview = attestationPreview(form, state.bindings);
 
   function toggleSource(candidate: ArticleSourceCandidate) {
     setSources((list) =>
@@ -645,9 +715,10 @@ function ArticleEditor({
       {area("introduction", "Introduction", "Optional. One paragraph per line.", 3)}
 
       <fieldset className="space-y-3">
-        <legend className="text-xs font-medium text-fg">Sections (H2, with optional H3 subsections)</legend>
+        <legend className="text-xs font-medium text-fg">Sections (H2, with optional H3 subsections inside each)</legend>
         {form.sections.map((section, index) => (
           <div key={index} className="space-y-2 rounded border border-border p-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">Section {index + 1} · H2</p>
             <div className="grid gap-2 sm:grid-cols-[12rem_1fr_auto]">
               <TextInput aria-label={`Section ${index + 1} id`} placeholder="section-id" value={section.id} onChange={(e) => setSection(index, { ...section, id: e.target.value })} />
               <TextInput aria-label={`Section ${index + 1} H2`} placeholder="H2 heading" value={section.heading} onChange={(e) => setSection(index, { ...section, heading: e.target.value })} />
@@ -657,7 +728,8 @@ function ArticleEditor({
             </div>
             <TextArea aria-label={`Section ${index + 1} paragraphs`} rows={3} placeholder="One paragraph per line." value={section.body} onChange={(e) => setSection(index, { ...section, body: e.target.value })} />
             {section.subsections.map((sub, subIndex) => (
-              <div key={subIndex} className="space-y-1 pl-4">
+              <div key={subIndex} className="space-y-1 border-l-2 border-border pl-4">
+                <p className="text-[11px] text-fg-subtle">H3 {subIndex + 1} in section {index + 1}</p>
                 <div className="grid gap-2 sm:grid-cols-[12rem_1fr_auto]">
                   <TextInput aria-label={`Section ${index + 1} subsection ${subIndex + 1} id`} placeholder="subsection-id" value={sub.id} onChange={(e) => setSection(index, { ...section, subsections: section.subsections.map((s, i) => (i === subIndex ? { ...s, id: e.target.value } : s)) })} />
                   <TextInput aria-label={`Section ${index + 1} subsection ${subIndex + 1} H3`} placeholder="H3 heading" value={sub.heading} onChange={(e) => setSection(index, { ...section, subsections: section.subsections.map((s, i) => (i === subIndex ? { ...s, heading: e.target.value } : s)) })} />
@@ -668,14 +740,20 @@ function ArticleEditor({
                 <TextArea aria-label={`Section ${index + 1} subsection ${subIndex + 1} paragraphs`} rows={2} placeholder="One paragraph per line." value={sub.body} onChange={(e) => setSection(index, { ...section, subsections: section.subsections.map((s, i) => (i === subIndex ? { ...s, body: e.target.value } : s)) })} />
               </div>
             ))}
-            <Button variant="ghost" icon="plus" onClick={() => setSection(index, { ...section, subsections: [...section.subsections, { id: "", heading: "", body: "" }] })}>
-              Add H3
-            </Button>
+            <div className="pl-4">
+              <Button variant="ghost" icon="plus" onClick={() => setSection(index, { ...section, subsections: [...section.subsections, { id: "", heading: "", body: "" }] })}>
+                Add H3 inside section {index + 1}
+              </Button>
+            </div>
           </div>
         ))}
-        <Button variant="ghost" icon="plus" onClick={() => set("sections", [...form.sections, emptySection()])}>
-          Add section
-        </Button>
+        {/* A new top-level section, set apart from the H3 control above it (fix F4, A5-03). */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-dashed border-border pt-3">
+          <Button variant="secondary" icon="plus" onClick={() => set("sections", [...form.sections, emptySection()])}>
+            Add H2 section
+          </Button>
+          <span className="text-[11px] text-fg-subtle">A new top-level section after section {form.sections.length}, not an H3 inside it.</span>
+        </div>
       </fieldset>
 
       <fieldset className="space-y-2">
@@ -717,26 +795,41 @@ function ArticleEditor({
           Mark a paragraph you attest yourself — first-hand client work, or your own view. The check does not verify it; readers see its label. No number, %, currency
           or count word other than &quot;one&quot; or &quot;first&quot;; at most 40% of the body&apos;s sentences and half of any section&apos;s.
         </p>
-        {form.attestations.map((attestation, index) => (
-          <div key={index} className="grid gap-2 sm:grid-cols-[1fr_14rem_auto]">
-            <Select
-              aria-label={`Attested paragraph ${index + 1}`}
-              value={attestation.locator}
-              onChange={(e) => set("attestations", form.attestations.map((a, i) => (i === index ? { ...a, locator: e.target.value } : a)))}
-              options={[{ value: "", label: "Choose a paragraph…" }, ...attestableParagraphChoices(form).map((choice) => ({ value: choice.locator, label: choice.label }))]}
-            />
-            <Select
-              aria-label={`Attested paragraph ${index + 1} basis`}
-              value={attestation.basis}
-              onChange={(e) => set("attestations", form.attestations.map((a, i) => (i === index ? { ...a, basis: e.target.value } : a)))}
-              options={[{ value: "", label: "Choose a basis…" }, ...ATTESTATION_BASES.map((basis) => ({ value: basis, label: `${basis} — “${ATTESTATION_LABELS[basis]}”` }))]}
-            />
-            <Button variant="ghost" onClick={() => set("attestations", form.attestations.filter((_, i) => i !== index))}>
-              Remove
-            </Button>
-          </div>
-        ))}
-        <Button variant="ghost" icon="plus" onClick={() => set("attestations", [...form.attestations, { locator: "", basis: "" }])}>
+        <p className="text-[11px] text-fg-subtle">
+          A marked paragraph stays marked while you add, remove or move lines around it. If its own text changes, or it is removed, the mark is cleared and
+          you choose the paragraph again.
+        </p>
+        {form.attestations.map((attestation, index) => {
+          const binding = state.bindings[index];
+          return (
+            <div key={index} className="space-y-1">
+              <div className="grid gap-2 sm:grid-cols-[1fr_14rem_auto]">
+                <Select
+                  aria-label={`Attested paragraph ${index + 1}`}
+                  value={attestation.locator}
+                  onChange={(e) => setState((current) => chooseAttestation(current.form, current.bindings, index, e.target.value))}
+                  options={[{ value: "", label: "Choose a paragraph…" }, ...attestableParagraphChoices(form).map((choice) => ({ value: choice.locator, label: choice.label }))]}
+                />
+                <Select
+                  aria-label={`Attested paragraph ${index + 1} basis`}
+                  value={attestation.basis}
+                  onChange={(e) => set("attestations", form.attestations.map((a, i) => (i === index ? { ...a, basis: e.target.value } : a)))}
+                  options={[{ value: "", label: "Choose a basis…" }, ...ATTESTATION_BASES.map((basis) => ({ value: basis, label: `${basis} — “${ATTESTATION_LABELS[basis]}”` }))]}
+                />
+                <Button variant="ghost" onClick={() => setState((current) => removeAttestation(current.form, current.bindings, index))}>
+                  Remove
+                </Button>
+              </div>
+              {binding?.lost === true && (
+                <p className="text-[11px] text-warning" role="status">
+                  Mark cleared: the paragraph it was on
+                  {binding.text !== null ? <> (“{firstWords(binding.text)}”)</> : null} changed or was removed. Choose the paragraph again.
+                </p>
+              )}
+            </div>
+          );
+        })}
+        <Button variant="ghost" icon="plus" onClick={() => setState((current) => addAttestation(current.form, current.bindings))}>
           Attest a paragraph
         </Button>
       </fieldset>
@@ -769,7 +862,7 @@ function ArticleEditor({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" icon="check" onClick={() => void submit()} disabled={saving}>
+        <Button variant="primary" icon="check" onClick={() => (form.attestations.length > 0 ? setPreviewing(true) : void submit())} disabled={saving}>
           {saving ? "Saving…" : mode.kind === "create" ? "Create version 1" : `Save as version ${mode.history.article.currentVersion + 1}`}
         </Button>
         <Button variant="ghost" onClick={onCancel} disabled={saving}>
@@ -777,6 +870,50 @@ function ArticleEditor({
         </Button>
         <span className="text-xs text-fg-subtle">{ARTICLE_PERSISTENCE_NOTICE}</span>
       </div>
+
+      {/* Before a save that attests anything: each label a reader will see, on the first words of its paragraph (fix F4, A5-04). */}
+      {previewing && (
+        <Modal
+          title="Check the attested paragraphs before saving"
+          description="Each label below is shown to readers above its paragraph. The check does not verify these paragraphs."
+          onClose={() => setPreviewing(false)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setPreviewing(false)}>
+                Go back
+              </Button>
+              <Button
+                variant="primary"
+                disabled={!attestationsReady(preview)}
+                onClick={() => {
+                  setPreviewing(false);
+                  void submit();
+                }}
+              >
+                {mode.kind === "create" ? "Create version 1" : `Save as version ${mode.history.article.currentVersion + 1}`}
+              </Button>
+            </>
+          }
+        >
+          <ol className="space-y-2 text-[12.5px]">
+            {preview.map((row) => (
+              <li key={row.row} className="rounded border border-border px-3 py-2">
+                <p className="font-medium text-fg">
+                  {row.row}. {row.label ?? "No label: choose a basis"}
+                  {row.where !== null && <span className="font-normal text-fg-subtle"> · {row.where}</span>}
+                </p>
+                {row.words !== null && <p className="text-fg-muted">“{row.words}”</p>}
+                {row.note !== null && (
+                  <p className="text-warning" role="status">
+                    {row.note}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
+          {!attestationsReady(preview) && <p className="mt-3 text-[12px] text-warning">Settle every row above before saving; go back to choose the paragraph or basis.</p>}
+        </Modal>
+      )}
     </section>
   );
 }
