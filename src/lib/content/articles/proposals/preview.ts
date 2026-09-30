@@ -44,7 +44,7 @@
 import { hasArticlePlaceholder } from "@/lib/content/articles/approvals/eligibility";
 import { attestedParagraphs, labelledParagraph } from "@/lib/content/articles/attestations";
 import { articleCanonicalFormat, readCanonicalArticle } from "@/lib/content/articles/canonical";
-import { liveSlugsFor } from "@/lib/content/articles/proposals/eligibility";
+import { liveSlugOutcome } from "@/lib/content/articles/proposals/live-slugs";
 import { websiteCompleteness } from "@/lib/content/articles/website-completeness";
 import { isProjectId, isUuid } from "@/lib/content/drafts/service";
 import { findDestination } from "@/lib/content/publications/destinations";
@@ -133,8 +133,11 @@ export function buildArticleProposalPreview(input: ArticleProposalPreviewInput):
   if (content === null) return { ok: false, reason: "content-unreadable" };
   if (content.slug !== binding.slug) return { ok: false, reason: "slug-mismatch" };
   if (hasArticlePlaceholder(canonicalContent)) return { ok: false, reason: "unresolved-placeholder" };
-  const live = liveSlugsFor(binding.destination).includes(binding.slug);
-  if (live && content.topicDecision !== "update-existing") return { ok: false, reason: "slug-live-collision" };
+  const liveOutcome = liveSlugOutcome(binding.destination, binding.slug, binding.articleId, content.topicDecision);
+  if (liveOutcome === "collision") return { ok: false, reason: "slug-live-collision" };
+  // The warning line only for update-existing over a pinned live slug (D2): the owning article of a slug published
+  // after the pin reads "None.", as it did before the slug was live, so its stored preview keeps every byte.
+  const live = liveOutcome === "update-existing-warning";
 
   const attested = attestedParagraphs(content);
   const format = attested.length > 0 ? ARTICLE_PROPOSAL_PREVIEW_FORMAT_ATTESTED : ARTICLE_PROPOSAL_PREVIEW_FORMAT;

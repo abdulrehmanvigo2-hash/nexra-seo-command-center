@@ -17,7 +17,10 @@
  * - the proposal state was read, and neither this article nor any other
  *   proposal — article or draft (D3) — holds the destination and slug;
  * - the slug is not a live article at the destination unless the topic
- *   decision is update-existing, which is allowed with a warning (D2).
+ *   decision is update-existing, which is allowed with a warning (D2); a slug
+ *   published after the template's pin belongs to the article it was
+ *   published from, which it never blocks, and blocks every other article
+ *   (D10, `live-slugs.ts`).
  *
  * Website completeness is reported, never a reason: `readingTime` is not
  * content and `published` exists only at publication.
@@ -42,6 +45,7 @@ import { websiteCompleteness } from "@/lib/content/articles/website-completeness
 import { isProjectId, isUuid } from "@/lib/content/drafts/service";
 import { findDestination } from "@/lib/content/publications/destinations";
 import { validateSlug } from "@/lib/content/publications/proposal-rules";
+import { liveSlugOutcome, liveSlugsFor } from "@/lib/content/articles/proposals/live-slugs";
 import { routeFor, templateForDestination } from "@/lib/content/publications/website/template";
 import type { ArticleApproval } from "@/types/content-article-approval";
 import type {
@@ -104,10 +108,8 @@ function isVersionNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 32_767;
 }
 
-/** The live slugs the pinned template lists for a destination (the same list D2 pins in SQL). */
-export function liveSlugsFor(destination: string): readonly string[] {
-  return templateForDestination(destination)?.existingArticles.map((existing) => existing.slug) ?? [];
-}
+/** The live slugs at a destination (D2, D10); defined in `live-slugs.ts`, re-exported for existing callers. */
+export { liveSlugsFor };
 
 function ordered(blocks: ReadonlySet<ArticleProposalBlock>): ArticleProposalBlock[] {
   return ARTICLE_PROPOSAL_BLOCKS.filter((block) => blocks.has(block));
@@ -199,10 +201,12 @@ export function articleProposalEligibility(facts: ArticleProposalFacts): Article
     }
   }
 
-  // Live slugs at the destination (D2). Without readable content the topic decision is unknown: refuse.
-  if (slugValid && liveSlugsFor(facts.destination).includes(facts.slug)) {
-    if (content !== null && content.topicDecision === "update-existing") warnings.push("live-slug-update-existing");
-    else blocks.add("slug-live-collision");
+  // Live slugs at the destination (D2, D10). Without readable content the topic decision is unknown: a pinned
+  // slug is refused; a slug published after the pin is decided by its owning article alone.
+  if (slugValid) {
+    const live = liveSlugOutcome(facts.destination, facts.slug, article.id, content === null ? null : content.topicDecision);
+    if (live === "update-existing-warning") warnings.push("live-slug-update-existing");
+    else if (live === "collision") blocks.add("slug-live-collision");
   }
 
   if (blocks.size > 0 || content === null || !versionMatches || approval === null) {
@@ -276,7 +280,7 @@ export function articleProposalBlockMessage(block: ArticleProposalBlock): string
     case "slug-taken-by-draft":
       return "A draft's active proposal already uses this slug at this destination.";
     case "slug-live-collision":
-      return "A live article at this destination already uses this slug. Only an article whose topic decision is Update existing may name it.";
+      return "A live article at this destination already uses this slug. Only the article it was published from, or, for a slug the pinned template lists, an article whose topic decision is Update existing, may name it.";
   }
 }
 

@@ -167,11 +167,36 @@ Editor (or run with the Supabase CLI against a linked project):
     checkpoint 6.8) — applied to production and recorded on 28 Sep
 32. `20261010120000_attested_paragraphs.sql` — operator-attested paragraphs
     (Phase 6, checkpoint 6.8b) — applied to production and recorded on 28 Sep
+33. `20261011120000_live_slugs_after_pin.sql` — live slugs published after the
+    template pin (Phase 6, checkpoint 6.12a, D10) — **not applied**; applying
+    it is a separate §6 approval
 
-All thirty-two are applied to production and recorded in its migration
+The first thirty-two are applied to production and recorded in its migration
 history (33 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
 `docs/RUNBOOK.md`).
+
+### Live slugs published after the template pin (Phase 6, checkpoint 6.12a)
+
+`20261011120000_live_slugs_after_pin.sql` records `ai-dead-lead-reactivation`
+as live at `nexra-agency-website` (nexra-ai pull request #9, merge
+`9a69c8c09aff7df7ce3d676700114d6efe91d4f9`, published 2026-09-30, from article
+`1003104c-6b25-456f-9304-eefa2ba88e7d`). The pinned templates are not edited.
+`nexra_article_publication_live_slugs(text)` is replaced (the pinned slug, then
+the one published after the pin); a new internal, immutable
+`nexra_article_publication_live_slug_article(text, text)` (executable by no API
+role) names the article a slug published after the pin came from (null for a
+pinned slug); `nexra_article_publication_propose` is replaced with the same
+signature and 20261010120000's body word for word except the live-slug check:
+a pinned slug keeps D2 (different-angle refused, update-existing allowed), and
+a slug published after the pin never refuses its own article and refuses every
+other article, whatever its topic decision. No table, row, trigger or grant
+changes; the active proposal `ea85edb0…` is untouched. The application restates
+the same list (`src/lib/content/articles/proposals/live-slugs.ts`). Harness
+suites `live-slugs` (21 assertions) and `live-slugs-upgrade` (10: every
+article, version, unit, approval and proposal row unchanged across the
+migration, the replaced functions keeping owner and privileges); `c6` now runs
+on the schema before this migration, which is what it pins.
 
 ### Operator-attested paragraphs (Phase 6, checkpoint 6.8b)
 
