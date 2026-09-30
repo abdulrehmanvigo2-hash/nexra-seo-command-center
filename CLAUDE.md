@@ -1576,8 +1576,11 @@ secret held the direct host with an unencoded `@` in the password, and libpq pri
 error. Its logs were deleted (approved), and fix F1b (`scripts/backup/conn.sh`) splits the URL at the last `@`,
 refuses a host that is not `*.pooler.supabase.com`, a port other than 5432 or a user other than `postgres.<ref>`,
 never hands libpq a URL, masks the password and its fragments and redacts database errors; it also removes a
-random SIGPIPE failure in the dump check (runbook §6.2). **Still to do:** the operator resets the password and
-re-enters both values, then a second manual run and a drill, each under its own approval. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+random SIGPIPE failure in the dump check (runbook §6.2). The operator reset the password and
+re-entered both values; a second run (`36710567750`) was refused by the host check before connecting (the direct
+string again); the third, **run `36720332709` (30 Sep 13:15 UTC), is green**: 32 tables, 1,225 rows, 10 projects,
+artifact `nexra-backup-36720332709` (676,388 bytes, kept 30 days); issues #75 and #77 closed. **Still to do:** the
+restore drill (runbook §6.4) on the operator's machine, which closes A2-05 and A6-01. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22
@@ -1902,8 +1905,8 @@ overwrite live content.
   can never be approved. The approve/propose permission was for Version 4 only.
 - Vercel deploys every push to `master` to production automatically.
 - Any external write requires explicit user approval (§6).
-- Once F1 is set up, one scheduled job reads production daily (`.github/workflows/backup.yml`, read-only, the
-  `backup` environment's credential); it writes nothing to the database, and its output is readable only with the
+- One scheduled job reads production daily at 03:17 UTC (F1, active since 30 Sep; `.github/workflows/backup.yml`,
+  read-only, the `backup` environment's credential); it writes nothing to the database, and its output is readable only with the
   operator's age private key, which is never in GitHub, Vercel, Supabase or a Claude session.
 - Migration `20261006120000_curated_keywords.sql` (checkpoint 3.5) is applied to production and
   recorded; curated keywords are operator records, and since 6.5 ground one agent task only —
