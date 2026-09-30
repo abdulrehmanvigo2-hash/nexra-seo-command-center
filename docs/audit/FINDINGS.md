@@ -23,7 +23,7 @@ Each part appends its findings under its heading; A0 holds what the planning pas
 - Suggested fix: A2 verifies the schema for each pair; then a decision — extend the Q10 note to the full list (docs,
   S) or repair the history with the CLI's `migration repair` under §6 (M). Never re-execute a migration.
 - Effort: S (docs) / M (repair)
-- Status: open
+- Status: superseded by A2-01 (the schema matches the repository; severity low there)
 
 ### A0-02 — Five legacy crawl tables and four functions exist in production that nothing in the repository names
 - Severity: medium
@@ -39,7 +39,7 @@ Each part appends its findings under its heading; A0 holds what the planning pas
 - Suggested fix: decision needed — record them as retired (docs) and, under §6, a migration that revokes
   `service_role`'s writes and EXECUTE on them, then drops them after an export; or keep and document.
 - Effort: M
-- Status: open
+- Status: superseded by A2-03 (provenance, last write and a recommendation)
 
 ### A0-03 — `anon` and `authenticated` hold TRUNCATE, TRIGGER and REFERENCES on the legacy `crawl_links` table
 - Severity: low
@@ -97,7 +97,7 @@ Each part appends its findings under its heading; A0 holds what the planning pas
   re-pinned — a post-V1 checkpoint, already in the backlog.
 - Suggested fix: none in the audit; re-pin at the next publishing checkpoint.
 - Effort: S
-- Status: accepted (no fix)
+- Status: superseded by A5-01 (a re-pin alone is not enough)
 
 ### A0-08 — Deployment confirmation cannot be done from this session
 - Severity: info
@@ -911,7 +911,7 @@ and A4-12, plus the switcher note under A4-04.
 - Suggested fix: in A6, confirm which case it is from the server logs (without starting a run); if it is the empty
   window, give it its own state and wording ("No data in the previous window").
 - Effort: S
-- Status: open (A6)
+- Status: superseded by A6-04 (cause: an empty earlier window, reported as a failed read)
 
 **Remaining fixture data (item 4).** Importers outside `src/lib/mock`, by module:
 
@@ -923,10 +923,350 @@ and A4-12, plus the switcher note under A4-04.
 The two unimported components kept in 6.12b, `keywords/pagination` and `projects/unmeasured-selection-notice`, are
 still unimported.
 
-## A5 — Content path
+## A5 — Content path (30 Sep 2026, at `6a019b0`)
 
-_(pending)_
+Checklist result: 14 PASS, 0 FAIL, 1 OPERATOR (item 9), 1 record-only item done (16). Highest severity: **medium**
+(A5-01 … A5-05). Method:
 
-## A6 — Operations
+- a code read of the path, from draft to article (C1, C2), check units (C4), approval (C5), proposal (C6), the
+  website renderer (6.9b) and the live slugs (6.12a);
+- the four content test files run (132 of 132 pass);
+- the stored V6 of article `1003104c…` rendered locally against nexra-ai `main` `9a69c8c` (files read with git,
+  nothing written);
+- read-only production queries.
 
-_(pending)_
+**Production at audit time.**
+
+- Article `1003104c…` is `approved` at V6 (`5ae7594d…`, 7 of 7 units passed). Its approval `98195295…` has 3
+  paragraphs attested and the tick recorded.
+- Article `c89182f9…` is `approved` at V4 (`e9db287f…`, 4 of 4 units passed). Its approval `5f02d149…` has nothing
+  attested.
+- Proposals: `5f229630…` is withdrawn and `ea85edb0…` is proposed; 0 draft proposals.
+- All 23 check units are bound to existing versions (0 orphans).
+- Recomputed hashes of nexra-ai `main`: `lib/blog.ts` `d6f1c74c…`, the follow-up article `e5f173dd…`, the new
+  article `7e1e1e3c…` and `components/site/article.tsx` `beb543a0…`, all as recorded at 6.11.
+
+**The renderer against `main` (item 8).**
+
+| Files given to the renderer | Answer |
+|---|---|
+| `main` as it is | `registry-changed` (`lib/blog.ts`) |
+| pinned registry, `main` follow-up article | `live-article-changed` |
+
+The pins do what they were built for. The renderer refuses to write over files that changed since the pin, rather
+than silently re-applying a stale edit.
+
+### A5-01 — The next article needs renderer work beyond a re-pin
+- Severity: medium (supersedes A0-07)
+- Evidence: `website/template.ts` pins one commit (`1a688bd`), one registry hash, one live article and a hand-typed
+  list. Current `main` is refused, as above. Re-pinning alone is not enough:
+  - `slug-live` checks the template's own list (`render.ts:234`), which holds only `ai-lead-follow-up-automation`,
+    not `liveSlugsFor`. The proposal step would still refuse the live slug, because C6 reads `liveSlugsFor`.
+  - Keyword overlap compares against the follow-up article's ten keywords only (`render.ts:240`,
+    `template.ts:81`). A third article could repeat `ai-dead-lead-reactivation`'s keywords undetected.
+  - The cross-link is mandatory, with one fixed target (`render.ts:507`). It edits only plain JSX text lines inside a
+    `<P>` (`:133`, `:476-488`). The renderer writes every paragraph as a string literal (`:287`), so an article it
+    rendered can never be a cross-link source.
+  - The component-file pin (`beb543a0…`) is recorded but never checked (A5-07).
+- Impact: no second article can be rendered, by design. A naive re-pin would weaken the slug and overlap checks, and
+  the cross-link step cannot target any rendered article.
+- Suggested fix (before the next article):
+  1. A `/3` template pinned at the then-current `main`.
+  2. Live slugs and keywords taken from every live article (the registry, or `liveSlugsFor` plus the recorded
+     keywords).
+  3. A cross-link made optional, or its target chosen per article, with a way to link from a rendered article.
+  4. After the merge, a `LIVE_SLUGS_AFTER_PIN` entry and its SQL twin, as in 6.12a.
+- Effort: M
+- Status: open (post-V1, before article 2)
+
+### A5-02 — Checker variance and no carry-forward cost 8 of the 20 check runs for one article
+- Severity: medium (recorded as backlog, per 6.10b; A3-03 covers the draft fact-check)
+- Evidence: article `1003104c…` used 20 `article-check-unit` runs and recorded 17 results.
+  - 7 of those 17 re-checked unit text identical, hash for hash, to text that had already passed on an earlier
+    version: V3's metadata and lead (passed on V2), and five of V6's seven units (passed on V5).
+  - One more run refused unit text that had passed twice: the V4 metadata unit (`25e52823`, passed on V2 and V3).
+  - Results bind to one version (unique on version and unit), and approval needs every unit of the current version.
+  - No temperature or seed is sent, and the server-side refusal fallback may answer with another model.
+  - With a carry-forward, about 12 runs would have sufficed.
+- Impact: extra spend, extra wait and a flaky gate: identical text can pass and later fail. Each re-check can flip.
+- Suggested fix: the post-V1 carry-forward (reuse a passed result when the unit hash is identical) and checker
+  instructions v3. Optionally a fixed low temperature for the two verdict tasks, as its own decision (§6).
+- Effort: M
+- Status: backlog (post-V1)
+
+### A5-03 — Entering an article is about 35 typed fields, with no import
+- Severity: medium
+- Evidence: `article-panel.tsx:621-757` has no paste, JSON or canonical-text import. For the 6.10b article (3 H2s,
+  4 FAQs, a CTA, 2 links, 3 attestations) that is:
+  - about 35 text inputs, 9 selects and about 9 "Add" clicks, each typed or pasted by hand;
+  - "Add H3" (inside the last section) directly above "Add section" (outside it), both plus-icon ghost buttons
+    (`:671-678`);
+  - no way to promote an H3 to an H2 or move one.
+
+  V1 of the article was lost to exactly that mistake, and V3 to V5 were re-entered by hand. The server actions
+  already accept any `content`, so an import is a client-side change.
+- Impact: operator error and time on every version; each mistake costs a version and, after a check, re-check runs.
+- Suggested fix: a "Paste article JSON" box: validate with the C1 validator, fill the form (`formFromContent`), then
+  save as now. Label the add buttons "Add H3 to this section" and "Add H2 section".
+- Effort: S
+- Status: open
+
+### A5-04 — Attestation locators are paragraph indexes and do not follow edits
+- Severity: medium
+- Evidence: a locator is `<section id>/<paragraph index>` (`editor-form.ts:91-93`), and the form's attestation list
+  is never updated when the text changes:
+  - Inserting or deleting a line earlier in a section silently re-points an attestation to a different paragraph.
+    That paragraph then carries the "Our view" label without the operator choosing it.
+  - Removing an H3, or renaming a section id, leaves a locator with no matching option. The select shows "Choose a
+    paragraph…", so the attestation looks lost, and the validator refuses it at save (`attestation-target`).
+- Impact: a first-hand or opinion label can land on the wrong paragraph of a published article. The checker then
+  treats that paragraph's statements as ATTESTED, not checked.
+- Suggested fix: bind an attestation to the paragraph's text (or a stable id) and warn when its target moves or
+  disappears.
+- Effort: S–M
+- Status: open
+
+### A5-05 — "Edit as version N" sits beside the version selector, above Approve, and stays on a live article
+- Severity: medium
+- Evidence:
+  - The button (`article-panel.tsx:343-347`, the default button style) shares a row with the Version select. "Approve
+    version N…" renders directly below it in the same style.
+  - Clicking it writes nothing, but it unmounts the approval section and discards a started confirmation and its
+    attestation tick.
+  - The button stays on approved and published articles; it is hidden only when archived. Saving from it creates
+    V(N+1) and sets the article to `drafting` (`20260923120000_create_articles.sql:613-616`).
+  - For `1003104c…`, which is live, one save would leave the product saying `drafting` for a published article and
+    make V6 unapprovable (approval needs the current version).
+- Impact: the near-miss the operator reported during approval; a live article's record can be knocked out of
+  `approved` by one save.
+- Suggested fix: move Edit away from the approval controls (or make it a quiet button). On an approved article,
+  confirm first ("This article is approved; a new version returns it to drafting and needs a full re-check").
+- Effort: S
+- Status: open
+
+### A5-06 — The live article's proposal stays "proposed"; nothing in the product says it is published
+- Severity: info (by the lean V1 decision, 6.10b)
+- Evidence: proposal `ea85edb0…` is `proposed`. No published state exists (C7b deferred). Publication is recorded
+  only in three places: CLAUDE.md §0, nexra-ai PR #9 (merge `9a69c8c`) and `LIVE_SLUGS_AFTER_PIN`.
+- Impact: the Content Studio, the Command Center and Reports show the article as approved with an active proposal,
+  never as live.
+- Suggested fix: the post-V1 published-state table (C7b), or at least a read-only "live" badge from
+  `LIVE_SLUGS_AFTER_PIN`.
+- Effort: S (badge) / M (C7b)
+- Status: backlog (post-V1)
+
+### A5-07 — The component-file pin is recorded but never checked
+- Severity: low
+- Evidence: `template.ts:70-72` records `components/site/article.tsx` with a hash. `render.ts` never reads it, and the
+  renderer takes no component source.
+- Impact: a changed component (a renamed export, a changed `Meta`) would be found only by the site's build.
+- Suggested fix: add the component file to `sources` and hash-check it like the other two.
+- Effort: S
+- Status: open
+
+### A5-08 — The `unsafe-input` refusal has no behavioural test
+- Severity: low
+- Evidence: `article-website.test.ts:366` names the code in the list assertion only; its four paths
+  (`render.ts:192, 195, 232, 255`) are not exercised.
+- Impact: a regression in the renderer's id and slug guards would pass CI.
+- Suggested fix: tests with a malformed id, a malformed approval id and an unsafe slug.
+- Effort: S
+- Status: open
+
+### A5-09 — The attestation limits live in the app only
+- Severity: low
+- Evidence: the 40% of sentences, half a section and the number ban are enforced once, in `validate.ts:383-405`,
+  and re-applied on every read. The database counts the list (1–50) and nothing else
+  (`20261010120000_attested_paragraphs.sql:57-127`). The UI copy hard-codes "40%" and "half".
+- Impact: a direct `service_role` RPC could store format-2 text that breaks the limits; the app never does.
+- Suggested fix: document it beside the migration, or add a coarse SQL check.
+- Effort: M
+- Status: open
+
+### A5-10 — Two small content-path notes
+- Severity: info
+- Evidence:
+  - The proposal preview's completeness list still says `readingTime` is "missing … never estimated"
+    (`website-completeness.ts`), while the 6.9b renderer derives it.
+  - The draft store's compensating delete (`drafts/supabase/store.ts:106-121`) is not atomic. A crash between its two
+    inserts would leave a draft parent without a version.
+- Impact: wording only; an orphan draft row in a rare crash.
+- Suggested fix: reword; move draft creation into one RPC when that code is next touched.
+- Effort: S
+- Status: open
+
+**Reader quality (item 16, a record, not a finding).** The live article's four sentences quoting the site's meta
+descriptions exist because the checker's only evidence is the site's own crawl. They read as self-referential. The
+post-V1 item "checker external sources" is what would let them read naturally.
+
+## A6 — Operations (30 Sep 2026, at `6a019b0`)
+
+Checklist result: 5 PASS, 5 FAIL (items 1, 3, 4, 11, 14), 3 record-only items done (2, 7, 10), 1 OPERATOR (8).
+Highest severity: **medium** (A6-01, A6-02). Method:
+
+- a read of `docs/RUNBOOK.md`, `docs/BACKEND.md`, `README.md`, `supabase/README.md` and CLAUDE.md against the code;
+- the CI history on `master` (GitHub Actions API);
+- `npm outdated` and `npm audit`, read-only;
+- the Supabase documentation for Free-plan limits;
+- read-only production queries.
+
+The Vercel API and the production host were not reachable from this session, as in every Phase 6 session.
+
+**Worker timing.** The six stored snapshots were captured at 06:19–06:20 UTC each day from 25 to 30 Sep, with no day
+missed. The job is scheduled for 05:30; on the Hobby plan Vercel fires it within the hour. A missed day is never
+backfilled: the capture takes the 30-day window for the current date only (`snapshots/capture.ts:164-179`). A
+missed run is otherwise picked up by the next morning's run (A3-05).
+
+**Supabase Free plan, from Supabase's documentation, against current use.**
+
+| Limit | Current use |
+|---|---|
+| The project pauses after 7 days of low database activity | the daily worker and operator use are activity; a paused project stops the whole product until resumed (restorable for 90 days) |
+| The database turns read-only at 500 MB | 16 MB |
+| Egress 5 GB uncached plus 5 GB cached | not measured |
+| No backups (A2-05) | — |
+
+**CI.** All 48 `master` push runs since the gates began (26 Sep, `6363db53`) passed, except one cancelled run, which
+the next push superseded by design (6.5). The workflow pins Node 22 and holds no credential. Branch protection is
+configured but not enforced on the current plan, and merge discipline is documented (item 7).
+
+### A6-01 — No backup, no restore procedure, no drill
+- Severity: medium (with A2-05)
+- Evidence:
+  - the Free plan keeps no backups (A2-05);
+  - `docs/RUNBOOK.md` (§1–§5) has no backup or restore section; neither does `docs/BACKEND.md` or CLAUDE.md;
+  - no restore drill is recorded.
+
+  The database holds the only copy of append-only records: runs, attempts, articles, versions, check units,
+  approvals, proposals, task events and snapshots.
+- Impact: a lost or corrupted database cannot be recovered. The guards stop deletes, not a platform loss.
+- Suggested fix: decide A2-05's option (Pro plan with daily backups, or a scheduled `pg_dump` kept outside
+  Supabase). Add a runbook §6: how to take a dump (public schema and data, plus `supabase_migrations`), where it is
+  kept, and a restore drill into a disposable local cluster, run once and recorded.
+- Effort: S (docs) / M (drill)
+- Status: open (decision pending)
+
+### A6-02 — Nothing tells the operator when something breaks
+- Severity: medium
+- Evidence:
+  - The runbook recommends an uptime monitor on `/api/health` (§3) but records none, and none is known to exist.
+  - Nothing alerts on a failed or skipped cron run, a `rejected-output` spike, a daily-cap hit, a failed Search
+    Console capture or a missing auto-deploy (the 27 Sep `ddc6cbb4` skip was found by chance).
+  - `logEvent` expects a platform log drain (`log.ts:6-7`); none is configured.
+  - Vercel's logs and deployments cannot be read from these sessions (403).
+  - Supabase emails the owner before pausing a Free project; that is the only automatic warning in the stack.
+- Impact: an outage, a stopped worker or a skipped deploy is found only when the operator happens to look.
+- Suggested fix: under §6 approval, one free uptime monitor on `/api/health` (non-200 or timeout). A short daily
+  check in the runbook: `/api/worker/status`, the day's snapshot row, and the Vercel cron log. Later, a log drain
+  with an alert on `failed` worker outcomes.
+- Effort: S
+- Status: open (operator decision)
+
+### A6-03 — Deployment ids are not recorded for the last 20 merges
+- Severity: low
+- Evidence: CLAUDE.md §0 records deployment ids up to PR #52 (`dpl_5fzpNZrB…`, 28 Sep 07:59 UTC). For PR #53 to
+  PR #72 it says "not read" (Vercel 403) or nothing. The operator confirmed some builds in the browser (#55, #58)
+  but did not record ids. Rollback step 1 (`RUNBOOK.md:143-146`) starts from "CLAUDE.md §0 names the current
+  production deployment and the one before it".
+- Impact: a rollback depends on the Vercel dashboard's Production list, which still works but is not the documented
+  first step. There is no record of which build served which commit.
+- Suggested fix: make the dashboard list the runbook's primary rollback step; restore read access for a Vercel token
+  in a later session (§6), or have the operator note the id after each merge.
+- Effort: S
+- Status: open
+
+### A6-04 — "The previous window could not be read" is an empty window, reported as a failed read (cause of A4-12)
+- Severity: low
+- Evidence:
+  - All seven stored live Search Console reads for `nexra-agency` (20–28 Sep) carry `comparison-unavailable`. In the
+    same batch, the current window's totals, queries and pages all read normally.
+  - For a 30-day range ending on day X, the previous window is X−59 … X−30
+    (`date-windows.ts:54-73`): for the latest read, 28 Jul – 26 Aug.
+  - The live report marks the comparison unavailable when that request fails **or** when it succeeds with no rows or
+    zero impressions (`provider.ts:284`, `mappers.ts:43-47`). The screen and the agents' evidence then say "could not
+    be read" (`present.ts:78`, `grounding.ts:185-189`).
+  - Only a failed request is logged, and the log does not say which window failed.
+  - A second request failing on every one of seven occasions while the first always succeeds is unlikely. The
+    property's history is young, so an earlier window with no impressions is by far the likelier cause.
+  - Conclusion: data availability, mislabelled by the code. It could not be proved from logs (there is no log line
+    for the empty case).
+- Impact: the screen and seven agent runs were told a read failed when Google reported no data. It is the mirror image
+  of the no-zero rule.
+- Suggested fix: a separate state, `comparison-no-data` ("No data in the previous window"), with its own grounding
+  line (a hash-pin update), and the window named in the failure log.
+- Effort: S
+- Status: open
+
+### A6-05 — README.md is stale and partly false
+- Severity: low
+- Evidence:
+  - `README.md:30-37` says "Backend Phase 6 is complete" in an old sense, and "**Nothing has been deployed.**"
+  - `:82-83` says all agent activity is mocked.
+  - `:158-161` says "The application has not been scaffolded … There is no `package.json`."
+  - No setup or scripts are documented, and the roadmap still says "Backlinks & Authority".
+- Impact: misleads any new reader, contributor or reviewer.
+- Suggested fix: rewrite the status to FULL V1 (live, what is observed and what is modelled) and add local setup
+  (Node 22, `npm ci`, `.env.example`, the scripts). Point to CLAUDE.md, BACKEND.md and RUNBOOK.md.
+- Effort: S
+- Status: open
+
+### A6-06 — The runbook's migration notes are incomplete
+- Severity: low
+- Evidence: `RUNBOOK.md:107-112` and `supabase/README.md:174-177` name one history mismatch; A0-01 and A2-01 found
+  eight. The hash-checked apply method (`:42`) names two migrations, while §0 records it for six (`20261006120000` to
+  `20261011120000`). The SQL-editor path (`:37-40`) does not warn that a paste can change line endings, which is the
+  source of the CRLF function bodies (A0-05).
+- Impact: an operator reading `migration list` is misled. The method that avoided the CRLF problem looks optional.
+- Suggested fix: copy A2-01's per-version table into §1.5, name all six hash-checked applies, and make that method
+  the default, with a line-ending warning.
+- Effort: S
+- Status: open
+
+### A6-07 — Server Actions log the message of any error
+- Severity: low
+- Evidence: 13 `console.error` sites in the content and project Server Actions print
+  `${error.name}: ${error.message}` for any error: `projects/actions.ts:73,142`, `article-actions.ts:63,97`,
+  `article-approval-actions.ts:62`, `draft-actions.ts:52,113,170,223`, `publication-actions.ts:83,115`,
+  `article-check-actions.ts:67` and `proposals/requests.ts:50`. The store errors carry PostgREST's `message` (not
+  `details`). The agent-run routes use an allow-listed `logFailure` (`http.ts:126-134`). No secret, email or model
+  answer was found on these paths.
+- Impact: a third-party or database message (for example a `raise exception` text that includes an argument) can
+  reach the logs.
+- Suggested fix: route these through a `logFailure`-style helper that prints a message only for the product's own
+  store error classes.
+- Effort: S
+- Status: open
+
+### A6-08 — Versions and dependencies
+- Severity: info
+- Evidence:
+  - Node 22.22.2 locally, `NODE_VERSION: "22"` in CI. There is no `engines`, `.nvmrc` or `packageManager`, and
+    Vercel's Node version is set only in its dashboard. `npm test` needs Node's native type stripping.
+  - Next 16.3.4 (latest 16.3.7), React 19.2.8 (19.3.0), `@supabase/supabase-js` 2.116.0 (2.117.2),
+    `@anthropic-ai/sdk` 0.126.0 (0.129.0), TypeScript 5.9.3 (7.0.2).
+  - 12 packages are outdated. `npm audit --omit=dev` shows 0; the one high advisory is A1-03's lint-toolchain
+    `brace-expansion`, unchanged.
+- Impact: none now; a Node mismatch between local, CI and Vercel is possible.
+- Suggested fix: pin Node (`engines` or `.nvmrc`); take the Next patch releases in a normal checkpoint.
+- Effort: S
+- Status: open
+
+### A6-09 — Fixed counts in CLAUDE.md go stale daily
+- Severity: info
+- Evidence (item 11): production equals CLAUDE.md / A0 on every count but two. Runs 82, attempts 83, articles 2,
+  versions 10, units 23, approvals 2, proposals 2, keywords 2, tasks 1, events 16, crawls 8 and 34 history rows all
+  match. The two that grow every morning differ: snapshots 6 (doc 5) and query-page rows 55 (doc 42).
+- Impact: none; a reader may take a daily-growing figure as a fixed fact.
+- Suggested fix: record daily-growing counts with their date, or not at all.
+- Effort: S
+- Status: accepted (no fix)
+
+**Unchanged and correct (for the record):**
+
+- The environment variables: `docs/BACKEND.md`, `.env.example` and the code agree on the same 19 names.
+- The documented cron schedule, health behaviour (2 s timeout, 120 a minute), daily caps and worker batch match the
+  code.
+- The slow-database path of `/api/health` is tested (`health.test.ts:28`).
+- The runbook has the one-redeploy rule for an auto-deploy skip. The cause of the 27 Sep skip is still unknown
+  (item 13).
+- No Create PR, Merge, Deploy or Publish control exists in the product.

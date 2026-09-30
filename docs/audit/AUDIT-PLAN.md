@@ -347,58 +347,64 @@ A4-01…A4-12.
 15. Build output: the 11 list pages `force-dynamic` (`ƒ` in `next build`), detail pages as documented. **[PASS — the 11 list pages `ƒ`; detail pages `ƒ` with the stored roster (A4-09)]**
 16. `build-status.ts` sidebar note names every observed screen and no more. **[PASS — names the nine observed screens and no more]**
 
-### A5 Content path (16 items)
+### A5 Content path (16 items) — run 30 Sep 2026 at `6a019b0`: 14 PASS, 0 FAIL, 1 OPERATOR, 1 DONE
 
-1. C1 validator refusals (every code) covered by tests; the canonical format `/1` byte-stable (the V4 pin test).
-2. C2: versions immutable; `nexra_article_versions` guards; the C2 mismatch (A2-1).
-3. C4: unit packing (10 statements / 6,000 bytes / 150 units), the parser's `failed`/`coverage-incomplete` path,
+Method: a code read of the path, the content tests, a local render of the stored V6 against nexra-ai `main`, and
+read-only production queries. Findings: `FINDINGS.md` A5-01…A5-10.
+
+1. C1 validator refusals (every code) covered by tests; the canonical format `/1` byte-stable (the V4 pin test). **[PASS — 18 codes, each asserted; `/1` byte-stable (V4 pin)]**
+2. C2: versions immutable; `nexra_article_versions` guards; the C2 mismatch (A2-1). **[PASS — guard triggers on update, delete, truncate; writes only through RPCs]**
+3. C4: unit packing (10 statements / 6,000 bytes / 150 units), the parser's `failed`/`coverage-incomplete` path, **[PASS — limits and failure paths tested; 23 units, 0 bound to a missing version]**
    results bound to one version; production's 23 units all bound to existing versions (read-only).
-4. C5: approval only when every unit passed and the article is `checked`; the attestation tick and ≥3-supported rule
+4. C5: approval only when every unit passed and the article is `checked`; the attestation tick and ≥3-supported rule **[PASS — both approvals consistent (V4 4/4, nothing attested; V6 7/7, 3 attested, tick recorded)]**
    apply only when something is attested; production's 2 approvals consistent with their versions.
-5. C6: eligibility blocks in fixed order; the preview `/1` and `/2` hashes reproduce for the two production
+5. C6: eligibility blocks in fixed order; the preview `/1` and `/2` hashes reproduce for the two production **[PASS — order fixed and tested; `/1` and `/2` previews; D3 lock (hashes not recomputed here; recomputed at 6.8b and 6.12a)]**
    proposals (`bbf3fae3…`, `47178c61…`); the D3 slug lock across both tables.
-6. Live slugs: `liveSlugsFor` equals the SQL list (the drift test); D2 and D10 rules; the owning-article rule.
-7. The renderer (6.9b): every refusal code tested; `tsString` hostile text; the `/2` template pins
+6. Live slugs: `liveSlugsFor` equals the SQL list (the drift test); D2 and D10 rules; the owning-article rule. **[PASS — the drift test; owner rule]**
+7. The renderer (6.9b): every refusal code tested; `tsString` hostile text; the `/2` template pins **[PASS — refusals tested except `unsafe-input` (A5-08); pins stale by design; A5-01, A5-07]**
    (`lib/blog.ts` `c4af6f5c…`, live article `c2f2da23…`, `article.tsx` `beb543a0…`) — **now stale against nexra-ai
    `main` `9a69c8c`** (`lib/blog.ts` is `d6f1c74c…`, the live article `e5f173dd…`): record; re-pinning is post-V1 work.
-8. The renderer against nexra-ai `main`: render V6 with the live files and confirm `registry-changed` /
+8. The renderer against nexra-ai `main`: render V6 with the live files and confirm `registry-changed` / **[PASS — rendered locally: `registry-changed`, then `live-article-changed` with the pinned registry]**
    `live-article-changed` are the refusals (the pins protect against a second publish over changed files).
-9. The live page: `/blog/ai-dead-lead-reactivation` — title, date, "4 min read", 3 "Our view" labels, FAQPage, canonical
+9. The live page: `/blog/ai-dead-lead-reactivation` — title, date, "4 min read", 3 "Our view" labels, FAQPage, canonical **[OPERATOR — live and indexed (operator, 30 Sep: date, 4 min read); labels, FAQPage, canonical and cross-link not re-checked here (proxy)]**
    on www, the cross-link from the follow-up article (operator, browser; the session proxy refuses the host).
-10. Article `1003104c…` V6 hash `5ae7594d…` and `c89182f9…` V4 `e9db287f…` unchanged (read-only).
-11. Proposal states: `5f229630…` withdrawn, `ea85edb0…` proposed — the one active — and nothing else.
-12. The draft path (Stage 1–5B): the draft store's compensating delete still the only DELETE the app makes on a
+10. Article `1003104c…` V6 hash `5ae7594d…` and `c89182f9…` V4 `e9db287f…` unchanged (read-only). **[PASS — `5ae7594d…` and `e9db287f…`]**
+11. Proposal states: `5f229630…` withdrawn, `ea85edb0…` proposed — the one active — and nothing else. **[PASS — `5f229630…` withdrawn, `ea85edb0…` proposed, nothing else; A5-06]**
+12. The draft path (Stage 1–5B): the draft store's compensating delete still the only DELETE the app makes on a **[PASS — the drafts compensating delete is the only one; draft proposals 0; A5-10]**
     content table; draft proposals 0.
-13. Attestation limits (40 % / half a section / no numbers) enforced in the validator and mirrored nowhere else that
+13. Attestation limits (40 % / half a section / no numbers) enforced in the validator and mirrored nowhere else that **[PASS — one implementation; the database does not mirror it (A5-09)]**
     could drift.
-14. The checker instructions v2 hash `8788932b…` pinned; the parser accepts six- and seven-heading answers.
-15. Website completeness reporting never blocks (`readingTime`, `published` at publication time).
-16. The four "meta description" sentences in the live article (post-V1 backlog: external sources) — record, not a
+14. The checker instructions v2 hash `8788932b…` pinned; the parser accepts six- and seven-heading answers. **[PASS — `8788932b…` pinned; six and seven headings parse]**
+15. Website completeness reporting never blocks (`readingTime`, `published` at publication time). **[PASS — never blocks; wording note A5-10]**
+16. The four "meta description" sentences in the live article (post-V1 backlog: external sources) — record, not a **[DONE — recorded (reader quality), not a finding]**
     finding.
 
-### A6 Operations (14 items)
+### A6 Operations (14 items) — run 30 Sep 2026 at `6a019b0`: 5 PASS, 5 FAIL, 3 DONE, 1 OPERATOR
 
-1. Runbook §1 (migrations) matches what was actually done for 20261005–20261011 (the CLAUDE.md records); add the A0-01
+Method: the docs against the code, CI history, `npm outdated` / `npm audit`, Supabase's Free-plan documentation and
+read-only production queries. Findings: `FINDINGS.md` A6-01…A6-09.
+
+1. Runbook §1 (migrations) matches what was actually done for 20261005–20261011 (the CLAUDE.md records); add the A0-01 **[FAIL — the method matches; the notes name 1 of 8 mismatches and 2 of 6 hash-checked applies (A6-06)]**
    list to §1.5.
-2. Deployment confirmation: the Vercel API refuses this session (403) and the production host is proxied off — the
+2. Deployment confirmation: the Vercel API refuses this session (403) and the production host is proxied off — the **[DONE — ids recorded to PR #52; none for #53–#72 (A6-03)]**
    runbook's §2.1 depends on the operator; record which merges of Phase 6 have a confirmed deployment id (from
    CLAUDE.md §0: several "not read").
-3. Rollback (§2.2): the previous production deployment id is recorded for each merge or not — list gaps.
-4. `/api/health`: an uptime monitor exists or not (operator); the endpoint's behaviour when the database is slow
+3. Rollback (§2.2): the previous production deployment id is recorded for each merge or not — list gaps. **[FAIL — A6-03]**
+4. `/api/health`: an uptime monitor exists or not (operator); the endpoint's behaviour when the database is slow **[FAIL — no monitor recorded (A6-02); the slow-database path is tested]**
    (2 s) tested.
-5. Cron: both jobs' last runs succeeded (Vercel logs; operator) — the 05:30 process job's `snapshots` field for the
+5. Cron: both jobs' last runs succeeded (Vercel logs; operator) — the 05:30 process job's `snapshots` field for the **[PASS — snapshots daily 25–30 Sep at 06:19–06:20 UTC; Vercel cron logs: operator]**
    last 7 days; snapshot rows continue daily (`nexra_search_console_snapshots` — 5 rows: read-only, list window ends).
-6. CI: every PR since #25 merged on green; `master` runs green; the workflow pins Node 22 and no credential.
-7. Branch protection: configured but not enforced (plan); merge discipline is documented — record.
-8. Secret rotation: which secrets have rotated since creation and when (operator; names only).
-9. Logs: no secret or content body in server logs (grep `console.` and the log helpers for what they print).
-10. Dependency currency: `npm outdated` and `npm audit` (read-only) — record counts, no upgrade.
-11. Docs against production: CLAUDE.md §0 counts (runs 82, attempts 83, articles 2, versions 10, units 23,
+6. CI: every PR since #25 merged on green; `master` runs green; the workflow pins Node 22 and no credential. **[PASS — 48 `master` runs: 47 green, 1 cancelled (superseded); Node 22; no credential]**
+7. Branch protection: configured but not enforced (plan); merge discipline is documented — record. **[DONE — recorded]**
+8. Secret rotation: which secrets have rotated since creation and when (operator; names only). **[OPERATOR — not checkable here]**
+9. Logs: no secret or content body in server logs (grep `console.` and the log helpers for what they print). **[PASS — `logEvent` allow-listed and redacted; A6-07]**
+10. Dependency currency: `npm outdated` and `npm audit` (read-only) — record counts, no upgrade. **[DONE — A6-08 (12 outdated; runtime audit 0)]**
+11. Docs against production: CLAUDE.md §0 counts (runs 82, attempts 83, articles 2, versions 10, units 23, **[FAIL — two daily-growing counts differ (A6-09)]**
     approvals 2, proposals 2, keywords 2, tasks 1, events 16, snapshots 5, query pages 42, crawls 8 + 5 legacy) — one
     read-only query; FAIL on any difference.
-12. `docs/BACKEND.md` "Environment variables" section equals `.env.example` (names).
-13. The auto-deploy skip of 27 Sep (`ddc6cbb4`): is the cause known now; is a manual-redeploy step in the runbook.
-14. Disaster path: a restore drill has or has not been done (operator).
+12. `docs/BACKEND.md` "Environment variables" section equals `.env.example` (names). **[PASS — 19 names, identical]**
+13. The auto-deploy skip of 27 Sep (`ddc6cbb4`): is the cause known now; is a manual-redeploy step in the runbook. **[PASS — the one-redeploy rule is in the runbook; the cause is still unknown]**
+14. Disaster path: a restore drill has or has not been done (operator). **[FAIL — no drill, no procedure (A6-01)]**
 
 ---
 
