@@ -1815,7 +1815,7 @@ function the `withdrawArticleProposal` Server Action reaches, and the function a
 - No active proposal remains.
 - Nothing was ever published.
 
-### Live slugs published after the pin (Phase 6, checkpoint 6.12a; migration `20261011120000`, not applied)
+### Live slugs published after the pin (Phase 6, checkpoint 6.12a; migration `20261011120000`, applied and recorded 30 Sep)
 
 Decision D10: once the 6.11 pull request merged, `ai-dead-lead-reactivation` is a live slug at
 `nexra-agency-website`. The pinned templates (`/1` at `a4a5722`, `/2` at `1a688bd`) and their hashes are unchanged.
@@ -1839,6 +1839,10 @@ Decision D10: once the 6.11 pull request merged, `ai-dead-lead-reactivation` is 
   path has no live-slug check (a draft naming the slug is refused `slug-taken` while `ea85edb0…` is active).
 - **Tests:** `proposals/live-slugs.test.ts` (13, including the SQL drift checks) and the SQL suites `live-slugs` and
   `live-slugs-upgrade`.
+- **Applied to production and recorded (30 Sep):** one hash-checked transaction (`9087f84c…`), the runbook's method,
+  tested first on a disposable cluster. Verified read-only: both slugs live, the owner function names `1003104c…`,
+  propose unchanged in security and its body the file's, `ea85edb0…` still active and not blocked, and every row
+  count and article-table fingerprint unchanged.
 
 ### The article published (Phase 6, checkpoint 6.11, 30 Sep)
 

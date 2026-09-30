@@ -168,11 +168,11 @@ Editor (or run with the Supabase CLI against a linked project):
 32. `20261010120000_attested_paragraphs.sql` — operator-attested paragraphs
     (Phase 6, checkpoint 6.8b) — applied to production and recorded on 28 Sep
 33. `20261011120000_live_slugs_after_pin.sql` — live slugs published after the
-    template pin (Phase 6, checkpoint 6.12a, D10) — **not applied**; applying
-    it is a separate §6 approval
+    template pin (Phase 6, checkpoint 6.12a, D10) — applied to production and
+    recorded on 30 Sep
 
-The first thirty-two are applied to production and recorded in its migration
-history (33 versions: the articles migration is recorded under
+All thirty-three are applied to production and recorded in its migration
+history (34 versions: the articles migration is recorded under
 `20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
 `docs/RUNBOOK.md`).
 
