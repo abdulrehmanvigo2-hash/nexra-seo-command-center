@@ -153,7 +153,7 @@ describe("the on-page review request", () => {
     assert.equal(onPage.taskType, "on-page-review");
     assert.equal(onPage.agentId, "on-page-seo");
     for (const spec of [technical, onPage]) {
-      assert.ok(spec.action.startsWith("Analyze with "), spec.action);
+      assert.ok(spec.action.startsWith("Queue analysis by "), spec.action);
       assert.match(spec.summary, /^Queues a read-only review/);
     }
   });
@@ -211,7 +211,7 @@ describe("the search query review request", () => {
   test("the spec matches what the server allows, and promises no changes", () => {
     assert.equal(SEARCH_QUERY_REVIEW.agentId, "keyword-intent");
     assert.equal(SEARCH_QUERY_REVIEW.taskType, "search-query-review");
-    assert.ok(SEARCH_QUERY_REVIEW.action.startsWith("Analyze with "));
+    assert.ok(SEARCH_QUERY_REVIEW.action.startsWith("Queue analysis by "));
     assert.match(SEARCH_QUERY_REVIEW.summary, /^Queues a read-only review/);
     assert.match(SEARCH_QUERY_REVIEW.summary, /changes nothing/);
   });
@@ -526,7 +526,7 @@ describe("the SEO Director hand-off request", () => {
   test("the spec matches what the server allows, and promises no assignment and no change", () => {
     assert.equal(PRIORITY_REVIEW.agentId, "seo-director");
     assert.equal(PRIORITY_REVIEW.taskType, "priority-review");
-    assert.equal(PRIORITY_REVIEW.action, "Hand off to SEO Director");
+    assert.equal(PRIORITY_REVIEW.action, "Queue hand-off to SEO Director");
     assert.match(PRIORITY_REVIEW.summary, /^Queues a read-only priority review/);
     assert.match(PRIORITY_REVIEW.summary, /not the crawl or report behind it/);
     assert.match(PRIORITY_REVIEW.summary, /assigns nothing and changes nothing/);
@@ -714,7 +714,7 @@ describe("the performance review request", () => {
   test("the spec matches what the server allows, and promises a measurement and no changes", () => {
     assert.equal(PERFORMANCE_REVIEW.agentId, "analytics-learning");
     assert.equal(PERFORMANCE_REVIEW.taskType, "performance-review");
-    assert.ok(PERFORMANCE_REVIEW.action.startsWith("Analyze with "));
+    assert.ok(PERFORMANCE_REVIEW.action.startsWith("Queue analysis by "));
     assert.match(PERFORMANCE_REVIEW.summary, /^Queues a read-only performance review/);
     assert.match(PERFORMANCE_REVIEW.summary, /as a measurement/);
     assert.match(PERFORMANCE_REVIEW.summary, /changes nothing/);
@@ -853,7 +853,7 @@ describe("the answer-readiness review request", () => {
     assert.equal(spec.agentId, "ai-visibility");
     assert.equal(spec.taskType, "answer-readiness-review");
     assert.equal(spec.agentName, "AI Visibility / AEO");
-    assert.ok(spec.action.startsWith("Analyze with "));
+    assert.ok(spec.action.startsWith("Queue analysis by "));
     assert.match(spec.summary, /^Queues a read-only answer-readiness review/);
     assert.match(spec.summary, /not AI crawler access, citations or visibility, which no crawl can observe/);
     assert.match(spec.summary, /changes nothing/);
@@ -1296,7 +1296,7 @@ describe("the intake review request", () => {
     assert.equal(INTAKE_REVIEW.agentId, "project-manager");
     assert.equal(INTAKE_REVIEW.taskType, "intake-review");
     assert.equal(INTAKE_REVIEW.agentName, "Project Manager");
-    assert.equal(INTAKE_REVIEW.action, "Review intake with Project Manager Agent");
+    assert.equal(INTAKE_REVIEW.action, "Queue intake review by Project Manager Agent");
     assert.match(INTAKE_REVIEW.summary, /^Queues a read-only intake review/);
     assert.match(INTAKE_REVIEW.summary, /intake notes and competitor domains \(unverified\)/);
     assert.match(INTAKE_REVIEW.summary, /assigns nothing, schedules nothing, and changes nothing/);
@@ -1489,7 +1489,7 @@ describe("the competitor comparison request", () => {
     assert.equal(COMPETITOR_COMPARISON_REVIEW.agentId, "market-intelligence");
     assert.equal(COMPETITOR_COMPARISON_REVIEW.taskType, "competitor-comparison-review");
     assert.equal(COMPETITOR_COMPARISON_REVIEW.agentName, "Market & Competitor Intelligence");
-    assert.equal(COMPETITOR_COMPARISON_REVIEW.action, "Analyze competitor with Market Intelligence Agent");
+    assert.equal(COMPETITOR_COMPARISON_REVIEW.action, "Queue competitor analysis by Market Intelligence Agent");
     assert.match(COMPETITOR_COMPARISON_REVIEW.summary, /^Queues a read-only comparison/);
     assert.match(COMPETITOR_COMPARISON_REVIEW.summary, /page declarations both crawls recorded/);
     assert.match(COMPETITOR_COMPARISON_REVIEW.summary, /nothing about either site's traffic, rankings, links or performance/);
@@ -1637,7 +1637,7 @@ describe("the evidence pack request", () => {
     assert.equal(EVIDENCE_PACK_REVIEW.agentId, "research-evidence");
     assert.equal(EVIDENCE_PACK_REVIEW.taskType, "evidence-pack-review");
     assert.equal(EVIDENCE_PACK_REVIEW.agentName, "Research & Evidence");
-    assert.equal(EVIDENCE_PACK_REVIEW.action, "Compile evidence pack with Research & Evidence Agent");
+    assert.equal(EVIDENCE_PACK_REVIEW.action, "Queue evidence pack by Research & Evidence Agent");
     assert.match(EVIDENCE_PACK_REVIEW.summary, /^Queues a read-only evidence pack/);
     assert.match(EVIDENCE_PACK_REVIEW.summary, /each claim tagged with the record it rests on/);
     assert.match(EVIDENCE_PACK_REVIEW.summary, /consults no outside source, invents no citation, and changes nothing/);
@@ -1780,7 +1780,7 @@ describe("the content plan request", () => {
     assert.equal(CONTENT_PLAN_REVIEW.agentId, "content-strategist");
     assert.equal(CONTENT_PLAN_REVIEW.taskType, "content-plan-review");
     assert.equal(CONTENT_PLAN_REVIEW.agentName, "Content Strategist");
-    assert.equal(CONTENT_PLAN_REVIEW.action, "Create grounded content plan with Content Strategist Agent");
+    assert.equal(CONTENT_PLAN_REVIEW.action, "Queue content plan by Content Strategist Agent");
     assert.match(CONTENT_PLAN_REVIEW.summary, /^Queues a read-only plan for one page/);
     assert.match(CONTENT_PLAN_REVIEW.summary, /every unsupported section is marked as needing evidence/);
     assert.match(CONTENT_PLAN_REVIEW.summary, /names no volume, difficulty, ranking or competitor figure, reads no earlier agent's output, and changes nothing/);
@@ -1964,7 +1964,7 @@ describe("the section draft request", () => {
     assert.equal(SECTION_DRAFT.agentId, "writer");
     assert.equal(SECTION_DRAFT.taskType, "section-draft");
     assert.equal(SECTION_DRAFT.agentName, "Writer");
-    assert.equal(SECTION_DRAFT.action, "Draft one section with Writer Agent");
+    assert.equal(SECTION_DRAFT.action, "Queue one-section draft by Writer Agent");
     assert.match(SECTION_DRAFT.summary, /^Queues a draft of the one outline section you choose/);
     assert.match(SECTION_DRAFT.summary, /drafts that section only/);
     assert.doesNotMatch(SECTION_DRAFT.summary, /first outline section/);
@@ -2082,7 +2082,7 @@ describe("the outbound link review — the Authority & Backlink agent", () => {
     assert.equal(spec.agentId, "authority-backlink");
     assert.equal(spec.taskType, "outbound-link-review");
     assert.equal(spec.agentName, "Authority & Backlink");
-    assert.equal(spec.action, "Review outbound links with Authority Agent");
+    assert.equal(spec.action, "Queue outbound-link review by Authority Agent");
     assert.match(spec.summary, /^Queues a read-only review of the outbound links this crawl recorded on the project's own pages/);
     assert.match(spec.summary, /fetches no host, contacts no one/);
     assert.match(spec.summary, /no inbound backlink, referring domain or authority record to read, because this product holds none/);
@@ -2184,7 +2184,7 @@ describe("the draft fact-check review", () => {
     assert.equal(spec.taskType, "draft-fact-check");
     assert.equal(spec.agentId, "research-evidence");
     assert.equal(spec.agentName, "Research & Evidence");
-    assert.equal(spec.action, "Run fact-check with Research & Evidence Agent");
+    assert.equal(spec.action, "Queue fact-check by Research & Evidence Agent");
     assert.match(spec.summary, /this exact version/);
     assert.match(spec.summary, /never as evidence/);
     assert.match(spec.summary, /Absence from the records is reported as absence, never as falsehood/);
@@ -2242,7 +2242,7 @@ describe("the SEO Director's project review request (M5)", () => {
     });
     assert.equal(PROJECT_PRIORITY_REVIEW.agentId, "seo-director");
     assert.equal(PROJECT_PRIORITY_REVIEW.taskType, "project-priority-review");
-    assert.equal(PROJECT_PRIORITY_REVIEW.action, "Run project Director review");
+    assert.equal(PROJECT_PRIORITY_REVIEW.action, "Queue project Director review");
     assert.match(PROJECT_PRIORITY_REVIEW.summary, /chosen by fixed rules on the server/);
     assert.match(PROJECT_PRIORITY_REVIEW.summary, /not the crawls or reports themselves/);
     assert.match(PROJECT_PRIORITY_REVIEW.summary, /It assigns nothing and changes nothing\./);

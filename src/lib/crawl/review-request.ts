@@ -72,7 +72,7 @@ export type ReviewSpec = {
     | "authority-backlink";
   /** The agent's display name, as the registry has it. */
   readonly agentName: string;
-  /** The button label. Says "analyze", and the note beside it says "queues". */
+  /** The button label. Starts with "Queue": the button queues, and a confirmation says so first (fix F3). */
   readonly action: string;
   /** What the review reads, in one sentence, for the section under the button. */
   readonly summary: string;
@@ -85,7 +85,7 @@ export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, ReviewSpec>> = {
     taskType: REVIEW_TASK_TYPE,
     agentId: REVIEW_AGENT_ID,
     agentName: "Technical SEO",
-    action: "Analyze with Technical SEO Agent",
+    action: "Queue analysis by Technical SEO Agent",
     summary:
       "Queues a read-only review of the pages above. The agent reads this crawl's recorded readings; it changes nothing and fetches nothing.",
     groundedIn: "this crawl's recorded pages",
@@ -94,7 +94,7 @@ export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, ReviewSpec>> = {
     taskType: "on-page-review",
     agentId: "on-page-seo",
     agentName: "On-Page SEO",
-    action: "Analyze with On-Page SEO Agent",
+    action: "Queue analysis by On-Page SEO Agent",
     summary:
       "Queues a read-only review of the titles, descriptions, headings, canonicals and links recorded above. Proposes changes for you to apply; it edits and publishes nothing.",
     groundedIn: "this crawl's recorded pages",
@@ -103,7 +103,7 @@ export const CRAWL_REVIEWS: Readonly<Record<CrawlReviewKind, ReviewSpec>> = {
     taskType: "answer-readiness-review",
     agentId: "ai-visibility",
     agentName: "AI Visibility / AEO",
-    action: "Analyze with AI Visibility Agent",
+    action: "Queue analysis by AI Visibility Agent",
     summary:
       "Queues a read-only answer-readiness review of the structured data, headings, titles, descriptions, canonicals and robots directives recorded above. It judges page declarations only — not AI crawler access, citations or visibility, which no crawl can observe — and changes nothing.",
     groundedIn: "this crawl's recorded pages",
@@ -124,7 +124,7 @@ export const OUTBOUND_LINK_REVIEW: ReviewSpec = {
   taskType: "outbound-link-review",
   agentId: "authority-backlink",
   agentName: "Authority & Backlink",
-  action: "Review outbound links with Authority Agent",
+  action: "Queue outbound-link review by Authority Agent",
   summary:
     "Queues a read-only review of the outbound links this crawl recorded on the project's own pages: which outside hosts they link to, how many edges, and the rel declarations as written. It reads recorded edges only — it fetches no host, contacts no one, and has no inbound backlink, referring domain or authority record to read, because this product holds none — and changes nothing.",
   groundedIn:
@@ -143,7 +143,7 @@ export const SEARCH_QUERY_REVIEW: ReviewSpec = {
   taskType: "search-query-review",
   agentId: "keyword-intent",
   agentName: "Keyword & Search Intent",
-  action: "Analyze with Keyword & Search Intent Agent",
+  action: "Queue analysis by Keyword & Search Intent Agent",
   summary:
     "Queues a read-only review of the totals and top queries Google reported for this window. The agent reads the Search Console figures above; it changes nothing and fetches nothing beyond that report.",
   groundedIn: "this project's Search Console report",
@@ -163,7 +163,7 @@ export const PERFORMANCE_REVIEW: ReviewSpec = {
   taskType: "performance-review",
   agentId: "analytics-learning",
   agentName: "Analytics & Learning",
-  action: "Analyze with Analytics & Learning Agent",
+  action: "Queue analysis by Analytics & Learning Agent",
   summary:
     "Queues a read-only performance review of the totals and top queries Google reported for this window against the previous one. The agent reads the Search Console figures above as a measurement; it changes nothing and fetches nothing beyond that report.",
   groundedIn: "this project's Search Console report",
@@ -188,7 +188,7 @@ export const PRIORITY_REVIEW: ReviewSpec = {
   taskType: "priority-review",
   agentId: "seo-director",
   agentName: "SEO Director",
-  action: "Hand off to SEO Director",
+  action: "Queue hand-off to SEO Director",
   summary:
     "Queues a read-only priority review of the completed review above. The Director reads that agent's written review only — not the crawl or report behind it — and ranks the actions it supports. It assigns nothing and changes nothing.",
   groundedIn: "one upstream agent's completed review",
@@ -212,7 +212,7 @@ export const PROJECT_PRIORITY_REVIEW: ReviewSpec = {
   taskType: "project-priority-review",
   agentId: "seo-director",
   agentName: "SEO Director",
-  action: "Run project Director review",
+  action: "Queue project Director review",
   summary:
     "Queues a read-only project-level review by the SEO Director over the latest completed Technical SEO, On-Page SEO, Keyword & Search Intent, Analytics & Learning (performance) and AI Visibility (answer-readiness) reviews of this project, chosen by fixed rules on the server. The Director reads those agents' written reviews and the crawl findings recorded for the crawls they reviewed — not the crawls or reports themselves — and ranks the actions they support into one bounded plan. It assigns nothing and changes nothing.",
   groundedIn: "the latest completed specialist reviews of this project and the crawl findings recorded for their crawls",
@@ -233,7 +233,7 @@ export const INTAKE_REVIEW: ReviewSpec = {
   taskType: "intake-review",
   agentId: "project-manager",
   agentName: "Project Manager",
-  action: "Review intake with Project Manager Agent",
+  action: "Queue intake review by Project Manager Agent",
   summary:
     "Queues a read-only intake review of this project's stored record: the recorded goal and details, the agency's intake notes and competitor domains (unverified), and which evidence this product holds. It proposes one next step for you; it assigns nothing, schedules nothing, and changes nothing.",
   groundedIn: "this project's stored record and evidence inventory",
@@ -253,7 +253,7 @@ export const TASK_PLAN_REVIEW: ReviewSpec = {
   taskType: "task-plan-review",
   agentId: "project-manager",
   agentName: "Project Manager",
-  action: "Review open tasks with Project Manager Agent",
+  action: "Queue open-task review by Project Manager Agent",
   summary:
     "Queues a read-only plan review of this project's open tasks: their recorded status, priority, owner and what became of their newest handoff (titles are screened and quoted as data). It proposes an order and names the blocked tasks; it assigns, schedules, and changes nothing, and you apply what you accept through each task's own controls.",
   groundedIn: "this project's open tasks as recorded, with their handoff outcomes",
@@ -276,7 +276,7 @@ export const COMPETITOR_COMPARISON_REVIEW: ReviewSpec = {
   taskType: "competitor-comparison-review",
   agentId: "market-intelligence",
   agentName: "Market & Competitor Intelligence",
-  action: "Analyze competitor with Market Intelligence Agent",
+  action: "Queue competitor analysis by Market Intelligence Agent",
   summary:
     "Queues a read-only comparison of this project's newest recorded site crawl with this competitor's newest recorded crawl. The agent reads the page declarations both crawls recorded — titles, descriptions, headings, canonicals, structured data — and nothing about either site's traffic, rankings, links or performance. It proposes one next step for you; it fetches nothing and changes nothing.",
   groundedIn: "this project's recorded site crawl and this competitor's recorded crawl (page declarations only)",
@@ -297,7 +297,7 @@ export const EVIDENCE_PACK_REVIEW: ReviewSpec = {
   taskType: "evidence-pack-review",
   agentId: "research-evidence",
   agentName: "Research & Evidence",
-  action: "Compile evidence pack with Research & Evidence Agent",
+  action: "Queue evidence pack by Research & Evidence Agent",
   summary:
     "Queues a read-only evidence pack from the records this product holds for this project: the newest site crawl above, the Search Console window where connected, and which competitor crawls exist. The agent says what those records establish and cannot establish, each claim tagged with the record it rests on; it consults no outside source, invents no citation, and changes nothing.",
   groundedIn: "records this product holds for this project (advice organising that evidence, not a new measurement)",
@@ -318,7 +318,7 @@ export const CONTENT_PLAN_REVIEW: ReviewSpec = {
   taskType: "content-plan-review",
   agentId: "content-strategist",
   agentName: "Content Strategist",
-  action: "Create grounded content plan with Content Strategist Agent",
+  action: "Queue content plan by Content Strategist Agent",
   summary:
     "Queues a read-only plan for one page from the records this product holds for this project: the newest site crawl above, the Search Console window where connected, and which competitor crawls exist. Every recorded fact in the plan is tagged with its record and every unsupported section is marked as needing evidence; it names no volume, difficulty, ranking or competitor figure, reads no earlier agent's output, and changes nothing.",
   groundedIn:
@@ -341,7 +341,7 @@ export const SECTION_DRAFT: ReviewSpec = {
   taskType: "section-draft",
   agentId: "writer",
   agentName: "Writer",
-  action: "Draft one section with Writer Agent",
+  action: "Queue one-section draft by Writer Agent",
   summary:
     "Queues a draft of the one outline section you choose. The Writer reads the completed plan above as a proposal — never as evidence — beside the records it was written over, drafts that section only, lists every claim with its record, and marks anything unsupported as a placeholder. The draft is for you to review; it is not published, not approved, and changes nothing.",
   groundedIn:
@@ -357,7 +357,7 @@ export const DRAFT_FACT_CHECK: ReviewSpec = {
   taskType: "draft-fact-check",
   agentId: "research-evidence",
   agentName: "Research & Evidence",
-  action: "Run fact-check with Research & Evidence Agent",
+  action: "Queue fact-check by Research & Evidence Agent",
   summary:
     "Queues a fact-check of this exact version. The Research & Evidence agent reads the version's text as the thing under check — never as evidence — beside the records this product holds, and places every sentence as supported, partly supported, unsupported or unverifiable, each supported one with its record. Absence from the records is reported as absence, never as falsehood. The check approves nothing and publishes nothing; recording its result on the version is a separate click.",
   groundedIn:
@@ -374,7 +374,7 @@ export const ARTICLE_CHECK_UNIT: ReviewSpec = {
   taskType: "article-check-unit",
   agentId: "research-evidence",
   agentName: "Research & Evidence",
-  action: "Check this unit with Research & Evidence Agent",
+  action: "Queue check of this unit by Research & Evidence Agent",
   summary:
     "Queues a check of this one unit of this exact article version. The Research & Evidence agent reads the unit's text as the thing under check — never as evidence — beside the records this product holds, and places every sentence as supported, partly supported, unsupported, unverifiable or editorial. Absence from the records is reported as absence, never as falsehood. The check approves nothing and publishes nothing; recording its outcome on the unit is a separate click.",
   groundedIn:

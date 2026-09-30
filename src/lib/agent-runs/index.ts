@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createAiExecutor } from "@/lib/agent-runs/ai-executor";
-import { DAILY_CAPS, DAY_SECONDS, createDailyCaps, type DailyCaps } from "@/lib/agent-runs/daily-caps";
+import { DAILY_CAPS, DAILY_CAP_LIMITER_NAMES, DAY_SECONDS, createDailyCaps, type DailyCaps } from "@/lib/agent-runs/daily-caps";
 import { crawlService } from "@/lib/crawl";
 import { unavailableAgentRunStore, type AgentRunStore } from "@/lib/agent-runs/contract";
 import type { AgentExecutor } from "@/lib/agent-runs/executor";
@@ -268,10 +268,11 @@ function configuredService(): AgentRunService {
  * day, counted through the shared `rate_limit_consume` (no schema).
  */
 function dailyCaps(): DailyCaps {
-  const perDay = (name: string, limit: number) => appRateLimiter(`agent-runs.daily-${name}`, { limit, windowSeconds: DAY_SECONDS });
+  const perDay = (name: string, limit: number) => appRateLimiter(name, { limit, windowSeconds: DAY_SECONDS });
+  const names = DAILY_CAP_LIMITER_NAMES;
   return createDailyCaps({
-    create: { project: perDay("create-project", DAILY_CAPS.perProject), global: perDay("create-global", DAILY_CAPS.global) },
-    execute: { project: perDay("execute-project", DAILY_CAPS.perProject), global: perDay("execute-global", DAILY_CAPS.global) },
+    create: { project: perDay(names.create.project, DAILY_CAPS.perProject), global: perDay(names.create.global, DAILY_CAPS.global) },
+    execute: { project: perDay(names.execute.project, DAILY_CAPS.perProject), global: perDay(names.execute.global, DAILY_CAPS.global) },
   });
 }
 

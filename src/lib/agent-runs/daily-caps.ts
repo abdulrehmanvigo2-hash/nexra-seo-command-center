@@ -35,6 +35,16 @@ export const DAILY_CAPS = {
   global: 100,
 } as const;
 
+/**
+ * The shared limiters' names, per kind and scope. The stored key is
+ * `<name>:<dailyCapKey>`, lowercased (`shared-rate-limit.ts`); the read-only
+ * usage reader (`daily-usage.ts`) builds the same keys from these names.
+ */
+export const DAILY_CAP_LIMITER_NAMES: Readonly<Record<DailyCapKind, Readonly<Record<DailyCapScope, string>>>> = {
+  create: { project: "agent-runs.daily-create-project", global: "agent-runs.daily-create-global" },
+  execute: { project: "agent-runs.daily-execute-project", global: "agent-runs.daily-execute-global" },
+};
+
 /** One UTC day, in seconds: the fixed window `rate_limit_consume` counts in. */
 export const DAY_SECONDS = 86_400;
 

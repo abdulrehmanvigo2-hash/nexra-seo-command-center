@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
 import { Badge } from "@/components/ui/badge";
+import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Button } from "@/components/ui/button";
+import { crawlConfirmation } from "@/lib/agent-runs/spend-confirm";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -219,6 +221,8 @@ function CompetitorRow({
 
   const running = run.status === "running";
   const shown = run.status === "finished" ? run.crawl : latest.status === "loaded" ? latest.crawl : null;
+  // Crawl competitor site opens a confirmation first (fix F3, audit A4-02): the host and the page budget.
+  const [confirming, setConfirming] = useState(false);
   const described = shown ? describeCompetitorCrawl(shown) : null;
 
   /**
@@ -251,13 +255,24 @@ function CompetitorRow({
         <Button
           variant="secondary"
           icon="technical"
-          onClick={start}
+          onClick={() => setConfirming(true)}
           disabled={!request.ok || !canStart(run) || latest.status === "unavailable"}
           title={request.ok ? undefined : request.why}
           aria-busy={running}
         >
           {running ? "Crawling…" : "Crawl competitor site"}
         </Button>
+        {confirming && request.ok && (
+          <SpendConfirmDialog
+            confirmation={crawlConfirmation({ kind: "competitor", host, projectId, budget: shown?.budget ?? null })}
+            projectId={projectId}
+            onClose={() => setConfirming(false)}
+            onConfirm={() => {
+              setConfirming(false);
+              void start();
+            }}
+          />
+        )}
       </div>
 
       {running && (
