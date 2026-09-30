@@ -747,7 +747,7 @@ data is left to the operator's read-only pass.
 - Suggested fix: a one-line confirmation on Queue and Run Now naming the task and that it will call the model; a
   Cancel control on queued runs (the API action exists); labels that say "Queue …".
 - Effort: S–M
-- Status: open
+- Status: fix in progress — F3 (draft PR): a confirmation before every Queue and Run now (task, project, record, today's cap usage), "Queue …" labels, and Cancel on queued runs through the existing action; closed on merge
 
 ### A4-02 — Crawls start on the first click
 - Severity: low
@@ -758,7 +758,7 @@ data is left to the operator's read-only pass.
   allow-list, and a durable crawl record.
 - Suggested fix: the same one-line confirmation, naming the host and the page budget.
 - Effort: S
-- Status: open
+- Status: fix in progress — F3 (draft PR): Run crawl and Crawl competitor site confirm first, naming the host and page budget; closed on merge
 
 ### A4-03 — Check results are recorded on the first click, and they are final
 - Severity: low

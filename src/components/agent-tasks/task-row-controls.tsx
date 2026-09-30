@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from "react";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { DailyUsageBlock } from "@/components/spend/spend-confirm";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import {
@@ -325,6 +326,8 @@ export function TaskRowControls({ task, onChanged }: { task: AgentTask; onChange
             worker, or for Run Now on the project&apos;s review panel for that review. Nothing runs when you confirm.
           </p>
           {mapping.record && <RecordChoice kind={mapping.record} choices={choices} chosen={chosen} onChoose={setChosen} disabled={busy} />}
+          {/* The queued run is a paid model call when it runs, and counts toward today's queue limit (fix F3). */}
+          <DailyUsageBlock projectId={task.projectId} limit="created" />
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"

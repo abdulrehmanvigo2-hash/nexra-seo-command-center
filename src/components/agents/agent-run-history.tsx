@@ -8,6 +8,8 @@ import { Select } from "@/components/ui/field";
 import { Panel, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
+import { CancelRunControl } from "@/components/spend/spend-confirm";
+import { cancelOffered } from "@/lib/agent-runs/spend-confirm";
 import { runHistoryEmptyState, runHistoryListUrl, runNowOffered } from "@/lib/agent-runs/run-history-view";
 import { getTaskType } from "@/lib/agent-runs/task-types";
 import { outputProvenance } from "@/lib/crawl/review-request";
@@ -339,13 +341,30 @@ export function AgentRunHistory({
   );
 }
 
-/** The shared Run Now control for one queued run; its read-back refreshes the list. */
+/**
+ * The shared Run Now control for one queued run, with Cancel beside it; each
+ * confirms first (fix F3), and its read-back refreshes the list.
+ */
 function RunNowInRow({ run, onRunChanged }: { run: AgentRun; onRunChanged: () => void }) {
   const { executing, executeNote, runNow } = useRunNow(onRunChanged);
   return (
     <div className="mt-2 space-y-1">
-      <RunNowButton run={run} executing={executing} onRunNow={() => void runNow(run)} />
+      <RunNowButton run={run} executing={executing} onRunNow={() => void runNow(run)} onPersisted={onRunChanged} />
       <RunNowNote note={executeNote} />
+    </div>
+  );
+}
+
+/**
+ * Cancel alone, for a queued run a list shows without Run Now (the AI Agents
+ * list, or another agent's run): a queued run can always be stopped before
+ * it starts (fix F3).
+ */
+function CancelInRow({ run, onRunChanged }: { run: AgentRun; onRunChanged: () => void }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <CancelRunControl run={run} onPersisted={onRunChanged} />
+      <span className="text-xs text-fg-subtle">Queued, not started: the scheduled worker runs it at about 05:30 UTC unless it is cancelled.</span>
     </div>
   );
 }
@@ -442,6 +461,7 @@ function RunRow({
       )}
 
       {offersRunNow && <RunNowInRow run={run} onRunChanged={onRunChanged ?? (() => {})} />}
+      {!offersRunNow && cancelOffered(run) && <CancelInRow run={run} onRunChanged={onRunChanged ?? (() => {})} />}
 
       {open && (
         <div id={panelId} className="mt-3 rounded-md border border-border">

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { RecordTaskControl } from "@/components/agent-tasks/record-task-control";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
+import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { SaveDraftControl } from "@/components/content/draft-panel";
 import { directorTaskProposal, offersDirectorTask } from "@/lib/agent-tasks/proposals";
 import { Badge } from "@/components/ui/badge";
@@ -23,10 +24,12 @@ import {
   type Queueability,
   type QueueState,
   type ReviewInput,
+  type ReviewPayload,
   type ReviewSpec,
   type Tone,
 } from "@/lib/crawl/review-request";
 import { planSections } from "@/lib/content/draft-grounding";
+import { queueConfirmation } from "@/lib/agent-runs/spend-confirm";
 import { offersSaveAsDraft } from "@/lib/content/drafts/eligibility";
 import type { AgentRun } from "@/types/agent-run";
 
@@ -166,6 +169,8 @@ export function useQueuedReview(
 
   return {
     state,
+    /** The exact request Queue sends, for its confirmation; null while the review cannot be queued. */
+    queueRequest: reviewable.ok ? reviewable.payload : null,
     blockedWhy: reviewable.ok ? null : reviewable.why,
     busy: state.status === "queuing",
     onQueue: queue,
@@ -187,6 +192,7 @@ export function useQueuedReview(
 export function QueuedReview({
   review,
   state,
+  queueRequest = null,
   blockedWhy,
   busy,
   onQueue,
@@ -198,6 +204,8 @@ export function QueuedReview({
 }: {
   review: ReviewSpec;
   state: QueueState;
+  /** The request Queue would send; its confirmation names it (fix F3). */
+  queueRequest?: ReviewPayload | null;
   /** Why the control is unavailable, or null when it can be used. */
   blockedWhy: string | null;
   busy: boolean;
@@ -218,6 +226,11 @@ export function QueuedReview({
   const queued = state.status === "queued" ? state : null;
   const run = queued?.run ?? null;
   const provenance = run ? outputProvenance(run, review.groundedIn) : null;
+  // Queue opens a confirmation first (fix F3); only its confirm sends the request.
+  const [confirming, setConfirming] = useState(false);
+  // A run read back after a cancel replaces the one shown.
+  const [cancelled, setCancelled] = useState<AgentRun | null>(null);
+  const shownRun = cancelled !== null && run !== null && cancelled.id === run.id ? cancelled : run;
 
   return (
     <section
@@ -231,14 +244,26 @@ export function QueuedReview({
         <Button
           variant="secondary"
           icon="agents"
-          onClick={onQueue}
-          disabled={blockedWhy !== null || busy}
+          onClick={() => setConfirming(true)}
+          disabled={blockedWhy !== null || busy || queueRequest === null}
           title={blockedWhy ?? undefined}
           aria-busy={busy}
         >
           {busy ? "Queueing…" : review.action}
         </Button>
       </div>
+
+      {confirming && queueRequest !== null && (
+        <SpendConfirmDialog
+          confirmation={queueConfirmation(queueRequest)}
+          projectId={queueRequest.projectId}
+          onClose={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            onQueue();
+          }}
+        />
+      )}
 
       {blockedWhy !== null && state.status === "idle" && (
         <p className="text-xs text-fg-subtle">{blockedWhy}</p>
@@ -250,23 +275,23 @@ export function QueuedReview({
         </p>
       )}
 
-      {queued && run && (
+      {queued && run && shownRun && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge
-              tone={RUN_STATUS[run.status].tone}
+              tone={RUN_STATUS[shownRun.status].tone}
               dot
-              pulse={run.status === "running"}
-              title={RUN_STATUS[run.status].title}
+              pulse={shownRun.status === "running"}
+              title={RUN_STATUS[shownRun.status].title}
             >
-              {RUN_STATUS[run.status].label}
+              {RUN_STATUS[shownRun.status].label}
             </Badge>
             <span className="text-xs text-fg-subtle">
-              {queuedNote({ run, duplicate: queued.duplicate, restored: queued.restored })}
+              {queuedNote({ run: shownRun, duplicate: queued.duplicate, restored: queued.restored })}
             </span>
           </div>
 
-          <RunNowButton run={run} executing={executing} onRunNow={onRunNow} />
+          <RunNowButton run={shownRun} executing={executing} onRunNow={onRunNow} onPersisted={setCancelled} />
 
           <RunNowNote note={executeNote} />
 

@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { CancelRunControl, SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Button } from "@/components/ui/button";
+import { runNowConfirmation } from "@/lib/agent-runs/spend-confirm";
 import { executability, executeOutcome, reconciledNote, type Tone } from "@/lib/crawl/review-request";
 import type { AgentRun } from "@/types/agent-run";
 
@@ -65,17 +67,46 @@ export function useRunNow(onPersisted: (run: AgentRun) => void) {
   return { executing, executeNote, setExecuteNote, runNow };
 }
 
-/** The Run Now button and the line beside it, for one run. */
-export function RunNowButton({ run, executing, onRunNow }: { run: AgentRun | null; executing: boolean; onRunNow: () => void }) {
+/**
+ * The Run Now button and the line beside it, for one run. The button opens a
+ * confirmation (fix F3): the task, project and record, today's use of the
+ * daily caps, and that it calls the model now. Only its confirm sends the
+ * execute request; beside it, a queued run can be cancelled instead.
+ */
+export function RunNowButton({
+  run,
+  executing,
+  onRunNow,
+  onPersisted,
+}: {
+  run: AgentRun | null;
+  executing: boolean;
+  onRunNow: () => void;
+  /** Receives the run read back after a cancel; without it, no Cancel is offered here. */
+  onPersisted?: (run: AgentRun) => void;
+}) {
   const runnable = executability(run);
+  const [confirming, setConfirming] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant="secondary" icon="bolt" onClick={onRunNow} disabled={!runnable.ok || executing} title={runnable.why ?? undefined} aria-busy={executing}>
-        {executing ? "Running…" : "Run Now"}
+      <Button variant="secondary" icon="bolt" onClick={() => setConfirming(true)} disabled={!runnable.ok || executing} title={runnable.why ?? undefined} aria-busy={executing}>
+        {executing ? "Running…" : "Run now"}
       </Button>
+      {onPersisted && <CancelRunControl run={run} onPersisted={onPersisted} />}
       <span className="text-xs text-fg-subtle">
-        {runnable.ok ? "Runs this run through the operator worker now, instead of waiting for the scheduled one." : (runnable.why ?? "")}
+        {runnable.ok ? "Queued, not started. Run now calls the model immediately instead of waiting for the scheduled worker." : (runnable.why ?? "")}
       </span>
+      {confirming && run !== null && (
+        <SpendConfirmDialog
+          confirmation={runNowConfirmation(run)}
+          projectId={run.projectId}
+          onClose={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            onRunNow();
+          }}
+        />
+      )}
     </div>
   );
 }

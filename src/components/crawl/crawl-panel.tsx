@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Button } from "@/components/ui/button";
+import { crawlConfirmation } from "@/lib/agent-runs/spend-confirm";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -168,6 +170,8 @@ export function CrawlPanel({
 
   const running = run.status === "running";
   const shown = run.status === "finished" ? run.crawl : load.status === "loaded" ? load.latest : null;
+  // Run crawl opens a confirmation first (fix F3, audit A4-02): the host and the page budget.
+  const [confirming, setConfirming] = useState(false);
   const shownId = shown?.id ?? null;
 
   /**
@@ -240,16 +244,28 @@ export function CrawlPanel({
           <Button
             variant="primary"
             icon="technical"
-            onClick={start}
+            onClick={() => setConfirming(true)}
             disabled={!canStart(run) || load.status === "unavailable"}
             aria-busy={running}
           >
-            {running ? "Crawling…" : "Run Crawl"}
+            {running ? "Crawling…" : "Run crawl"}
           </Button>
         }
       />
 
       <PanelBody className="space-y-4">
+        {confirming && (
+          <SpendConfirmDialog
+            confirmation={crawlConfirmation({ kind: "own-site", host: domain, projectId, budget: shown?.budget ?? null })}
+            projectId={projectId}
+            onClose={() => setConfirming(false)}
+            onConfirm={() => {
+              setConfirming(false);
+              void start();
+            }}
+          />
+        )}
+
         {running && (
           <p className="text-sm text-fg-muted" role="status">
             Fetching {domain}. The crawl runs inside this request and stops on the server&apos;s

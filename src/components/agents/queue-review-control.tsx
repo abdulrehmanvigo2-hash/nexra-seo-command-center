@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
+import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
@@ -19,6 +20,7 @@ import {
   reviewableCrawls,
   type QueueSelection,
 } from "@/lib/agent-runs/queue-control";
+import { queueConfirmation } from "@/lib/agent-runs/spend-confirm";
 import type { CompetitorSummary } from "@/lib/crawl/competitor-overview";
 import { AGENT_NAMES } from "@/lib/mock/agents/registry";
 import type { ProjectOption } from "@/lib/projects/selection";
@@ -128,6 +130,8 @@ export function QueueReviewControl({
   };
 
   const request = queueRequest(projectId || null, agentId, task, selection);
+  // Queue opens a confirmation first (fix F3); only its confirm sends the request.
+  const [confirming, setConfirming] = useState(false);
 
   const queue = async () => {
     if (!request.ok || phase.status === "queuing") return;
@@ -312,9 +316,20 @@ export function QueueReviewControl({
         )}
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="primary" icon="plus" disabled={!request.ok || phase.status === "queuing"} onClick={queue}>
-            {phase.status === "queuing" ? "Queuing…" : "Queue"}
+          <Button variant="primary" icon="plus" disabled={!request.ok || phase.status === "queuing"} onClick={() => setConfirming(true)}>
+            {phase.status === "queuing" ? "Queuing…" : "Queue run"}
           </Button>
+          {confirming && request.ok && (
+            <SpendConfirmDialog
+              confirmation={queueConfirmation(request.body)}
+              projectId={request.body.projectId}
+              onClose={() => setConfirming(false)}
+              onConfirm={() => {
+                setConfirming(false);
+                void queue();
+              }}
+            />
+          )}
           {!request.ok && task?.chooser !== "elsewhere" && <span className="text-[12px] text-fg-subtle">{request.why}</span>}
         </div>
 
