@@ -180,9 +180,46 @@ Editor (or run with the Supabase CLI against a linked project):
     to production and recorded on 1 Oct
 37. `20261015120000_live_articles_read.sql` — the live articles read from the
     records (fix F9, audit A5-01) — applied to production and recorded on 1 Oct
+38. `20261016120000_provider_snapshot.sql` — the F0 provider keyword
+    snapshot schema (`docs/roadmap/F0-dataforseo-keyword-snapshot.md`) — **not
+    yet applied to production** (its own approval, after PR 2 of F0 merges)
 
-All thirty-seven are applied to production and recorded in its migration
-history (38 versions).
+The first thirty-seven are applied to production and recorded in its migration
+history (38 versions); the thirty-eighth is not.
+
+`20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
+tables with provenance on every row — `nexra_provider_runs` (one per snapshot:
+project, provider, kind, mode `sandbox` or `live` and the host that mode used,
+the seeds, location and language, status, estimate, recorded cost and the
+estimate of timed-out calls), `nexra_provider_requests` (one per provider call:
+endpoint, parameters without a credential, outcome, the provider's status code,
+task id and reported cost, item count, the raw response's SHA-256, times;
+`unique (run_id, seq)`) and `nexra_keyword_metrics` (one per keyword per run:
+volume, CPC, competition, difficulty, intent and monthly searches as the
+provider gave them, null when not given; `unique (run_id, seed, keyword)`) —
+and five `security definer` functions (empty `search_path`, EXECUTE for
+`service_role` only): `nexra_provider_run_reserve` (under an advisory lock on
+the UTC day: `reserved`, `cap-reached`, `run-active`, `project-not-found`; a cap
+above $5.00 or an estimate above the cap raises invalid_parameter_value; a
+sandbox run is recorded at estimate 0 and never counted; today's live spend is
+the sum over today's live runs of `coalesce(cost_usd, estimate_usd) +
+unknown_cost_usd`), `nexra_provider_request_record` (`recorded`, `exists`
+unchanged, `run-not-found`, `run-not-open`; a params key naming a credential
+raises), `nexra_provider_metrics_record` (one set per request: `recorded`,
+`exists`, `run-not-found`, `run-not-open`, `request-not-found`, `invalid-row`),
+`nexra_provider_run_finish` (`finished`, `run-not-found`, `run-not-open`,
+`cost-mismatch` when the cost given is not the succeeded calls' recorded sum,
+`status-not-consistent`) and `nexra_provider_run_resume` (decision Q4;
+`reserved`, `cap-reached`, `run-active`, `run-not-partial`, `run-not-found`).
+Guards refuse every direct insert, every delete and every truncate; a request
+or metric row never changes; a run changes only status, estimate, cost, unknown
+cost, error code and finish time, under the functions' flag, along reserved →
+completed | partial | failed and partial → reserved. RLS on, no policies;
+`service_role` holds SELECT on the three tables. Harness suites `provider`
+(160) and `provider-races` (V1 two live reserves on different projects against
+one cap: one `reserved`, one `cap-reached`; V2 the first rolls back; V3 two on
+one project: `run-active`; V4 sandbox reserves do not wait; V5 two records of
+one seq: `recorded`, `exists`); the `c5` inventory names the five functions.
 
 `20261015120000_live_articles_read.sql` (fix F9) adds one read function,
 `nexra_article_publication_live_articles(destination)` (`security definer`,

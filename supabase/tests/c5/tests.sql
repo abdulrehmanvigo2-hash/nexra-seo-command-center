@@ -1,4 +1,4 @@
--- C5 article approval gate. Updated for C6: approvals are referenced by a foreign key (TRUNCATE 0A000 / CASCADE 23514), and the security definer inventory names the C6 functions and (since 20260927120000) the M1 Search Console snapshot record function, (since 20260928120000) the T3 crawl findings record function, and (since 20260930120000) the M1 P4c query × page record function, and (since 20261002120000) the M3 finding triage set function, and (since 20261003120000) the agent task create function, and (since 20261014120000) the F8 check-unit carry and fresh functions.
+-- C5 article approval gate. Updated for C6: approvals are referenced by a foreign key (TRUNCATE 0A000 / CASCADE 23514), and the security definer inventory names the C6 functions and (since 20260927120000) the M1 Search Console snapshot record function, (since 20260928120000) the T3 crawl findings record function, and (since 20260930120000) the M1 P4c query × page record function, and (since 20261002120000) the M3 finding triage set function, and (since 20261003120000) the agent task create function, and (since 20261014120000) the F8 check-unit carry and fresh functions, and (since 20261016120000) the F0 provider snapshot functions.
 -- Part of the local PostgreSQL test harness; run only through supabase/tests/run.sh,
 -- which creates and destroys its own disposable cluster. Never run against a hosted database.
 
@@ -205,6 +205,9 @@ begin
              'nexra_crawl_findings_record(text,uuid,smallint,integer,integer,integer,integer,integer,boolean,jsonb,text[],jsonb)',
              'nexra_keyword_add(text,text,text,text,text,uuid)','nexra_keyword_set_group(text,uuid,text,uuid)','nexra_keyword_set_note(text,uuid,text,uuid)',
              'nexra_keyword_set_status(text,uuid,text,uuid)','nexra_keyword_set_target(text,uuid,text,uuid)',
+             'nexra_provider_metrics_record(uuid,uuid,jsonb)',
+             'nexra_provider_request_record(uuid,smallint,text,jsonb,text,integer,text,numeric,integer,text,timestamp with time zone,timestamp with time zone)',
+             'nexra_provider_run_finish(uuid,text,numeric,numeric,text)','nexra_provider_run_reserve(text,text[],integer,text,text,text,numeric,numeric,uuid)','nexra_provider_run_resume(uuid,numeric,numeric,uuid)',
              'nexra_search_console_query_pages_record(text,text,text,date,date,jsonb,timestamp with time zone)',
              'nexra_search_console_snapshot_record(text,text,text,date,date,text,bigint,bigint,numeric,numeric,jsonb,jsonb,text[],timestamp with time zone)',
              'rate_limit_consume(text,integer,integer)'],
