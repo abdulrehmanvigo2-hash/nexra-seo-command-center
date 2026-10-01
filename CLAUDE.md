@@ -1581,7 +1581,9 @@ random SIGPIPE failure in the dump check (runbook §6.2). The operator reset the
 re-entered both values; a second run (`36710567750`) was refused by the host check before connecting (the direct
 string again); the third, **run `36720332709` (30 Sep 13:15 UTC), is green**: 32 tables, 1,225 rows, 10 projects,
 artifact `nexra-backup-36720332709` (676,388 bytes, kept 30 days); issues #75 and #77 closed. **Still to do:** the
-restore drill (runbook §6.4) on the operator's machine, which closes A2-05 and A6-01. Fix **F3 — spending controls** (A4-01, A4-02), a
+restore drill (runbook §6.4) on the operator's machine, which closes A2-05 and A6-01; for a Windows PC without WSL,
+`scripts/backup/restore-drill.ps1` and runbook §6.4a (a draft PR; tested under PowerShell 7 on Linux by `test-local.sh`,
+not yet on Windows). Fix **F3 — spending controls** (A4-01, A4-02), a
 draft PR: every control that queues or runs a paid agent run, and both crawl buttons, open a confirmation first (the
 task, project and record; today's cap usage, read by the new read-only `GET /api/agent-runs/daily-usage`); Queue
 labels start with "Queue"; a queued run can be cancelled (confirmed) through the existing cancel action. No change to
