@@ -13,6 +13,7 @@ import {
   withdrawResultToOutcome,
   type ArticleProposalsDatabase,
 } from "@/lib/content/articles/proposals/supabase/schema";
+import { parseLiveArticles } from "@/lib/content/articles/proposals/live-slugs";
 import { ArticleStoreError } from "@/lib/content/articles/supabase/store";
 
 /**
@@ -74,6 +75,13 @@ export function createSupabaseArticleProposalStore(client: SupabaseClient<Articl
         .eq("status", "proposed");
       if (drafts.error) throw new ArticleStoreError("list draft slug reservations", drafts.error);
       return [...articles.data.map(articleReservationRow), ...drafts.data.map(draftReservationRow)];
+    },
+
+    // Fix F9: the one list of live articles is the database's; a failed read throws, and the caller blocks.
+    async listLiveArticles(destination) {
+      const { data, error } = await client.rpc("nexra_article_publication_live_articles", { p_destination: destination });
+      if (error) throw new ArticleStoreError("read live articles", error);
+      return parseLiveArticles(data);
     },
 
     // One function, one transaction under the article's row lock and the D3 slug lock.

@@ -59,9 +59,9 @@ describe("the store matches the committed SQL functions", () => {
     assert.deepEqual(outcomes("nexra_article_publication_withdraw"), ["already-withdrawn", "not-found", "withdrawn"]);
   });
 
-  test("the store writes only through the two functions; the draft table is only read", () => {
+  test("the store writes only through the two functions; the draft table is only read; the live articles are read through one function (F9)", () => {
     assert.equal(/\.(insert|update|upsert|delete)\(/.test(STORE), false);
-    assert.deepEqual([...STORE.matchAll(/\.rpc\("(\w+)"/g)].map((m) => m[1]), ["nexra_article_publication_propose", "nexra_article_publication_withdraw"]);
+    assert.deepEqual([...STORE.matchAll(/\.rpc\("(\w+)"/g)].map((m) => m[1]), ["nexra_article_publication_live_articles", "nexra_article_publication_propose", "nexra_article_publication_withdraw"]);
     assert.equal(/select\("\*"\)|\.select\(\)/.test(STORE), false, "explicit columns only");
   });
 

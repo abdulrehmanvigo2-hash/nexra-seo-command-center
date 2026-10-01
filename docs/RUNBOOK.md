@@ -396,3 +396,35 @@ restore into a **new** Supabase project, never over the damaged one.
 **Recovering a few rows** (a mistaken write, not a lost database): restore the newest backup
 with the drill and `NEXRA_DRILL_KEEP=1`, read the rows there, and apply the correction to
 production as its own approved change.
+
+## 7. Before the next article (publishing article 2 and later)
+
+The renderer can render a second article only after these steps (audit A5-01; fix F9 did step 1). Each is its own
+checkpoint under its own approval (`CLAUDE.md` §6).
+
+1. **Live slugs and keywords come from the records (done, F9).** The product keeps no list of live slugs in code. It
+   reads `nexra_article_publication_live_articles(destination)` (migration `20261015120000`). That function returns
+   each live slug with the article it was published from and that version's keywords. The proposal eligibility, the
+   preview, the editor's live notice and the renderer all follow it. Until that migration is applied, every proposal
+   is blocked `live-articles-unread`.
+2. **Re-pin the website template at the then-current `nexra-ai` `main`** (a `/3` template beside `/2`; never edit a
+   pinned template):
+   - read `lib/blog.ts`, the live article files the renderer edits and `components/site/article.tsx` read-only at the
+     new commit;
+   - record each file's SHA-256 in the new template;
+   - check every component name the renderer imports;
+   - list the template's own live slugs.
+   The renderer refuses any file whose hash differs (`registry-changed`, `live-article-changed`).
+3. **Choose the cross-link** for the new article. Today it is mandatory and targets the one pinned live article. A
+   rendered article writes its paragraphs as string literals, so it cannot be a cross-link source until the renderer
+   can target it (A5-01 item 3).
+4. **Render and build** the three files from the stored, approved version and its approval, in a temporary copy of
+   `nexra-ai`. `npm ci`, `npm run build`, `npm run typecheck` and `npm run lint` must all pass; then delete the copy.
+   The renderer refuses a slug the records list as live, any keyword that repeats a live article's recorded keywords,
+   and a live article whose keywords are not recorded.
+5. **After the merge, record the new live slug in the database** with a migration in the 6.12a shape. Replace
+   `nexra_article_publication_live_slugs` and `nexra_article_publication_live_slug_article` with the new slug and its
+   owning article; the propose function is unchanged. Apply it by §1. No code list changes: the product reads the
+   records.
+6. **Confirm read-only** that `nexra_article_publication_live_articles('nexra-agency-website')` lists the new slug,
+   its article, the proposed version and that version's keywords.

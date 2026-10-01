@@ -22,7 +22,6 @@
 
 import { ATTESTATION_LABELS } from "@/lib/content/articles/attestations";
 import { lines, type ArticleForm } from "@/lib/content/articles/editor-form";
-import { LIVE_SLUGS_AFTER_PIN } from "@/lib/content/articles/proposals/live-slugs";
 import type { ArticleAttestationBasis } from "@/types/content-article";
 
 /** One attestation's binding: the text of the paragraph it was marked on, and whether that text was lost. */
@@ -191,14 +190,17 @@ export type EditGuard = {
  * and a checked one each lose that state when a version is saved; a
  * drafting article loses nothing.
  */
-export function editGuard(article: {
-  readonly id: string;
-  readonly status: string;
-  readonly currentVersion: number;
-  readonly approvedVersion: number | null;
-}): EditGuard | null {
+export function editGuard(
+  article: {
+    readonly id: string;
+    readonly status: string;
+    readonly currentVersion: number;
+    readonly approvedVersion: number | null;
+  },
+  /** The slug this article is live under, as the records say (fix F9); null when it is not live or was not read. */
+  live: { readonly slug: string } | null = null,
+): EditGuard | null {
   const next = article.currentVersion + 1;
-  const live = LIVE_SLUGS_AFTER_PIN.find((entry) => entry.articleId === article.id) ?? null;
   if (article.status === "approved") {
     return {
       title: `Version ${article.currentVersion} is approved. Edit it as version ${next}?`,
@@ -206,7 +208,7 @@ export function editGuard(article: {
         `Saving an edit creates version ${next} and returns the article to drafting. Version ${next} needs a full re-check and its own approval before it can be proposed.`,
         `Version ${article.currentVersion}, its approval and any proposal for it stay on record, unchanged.`,
         ...(live !== null
-          ? [`This article is live on the website (/blog/${live.slug}, published ${live.source.published}). Saving a version here does not change the live page, but the product will show the article as drafting.`]
+          ? [`This article is live on the website (/blog/${live.slug}). Saving a version here does not change the live page, but the product will show the article as drafting.`]
           : []),
         "Opening the editor writes nothing; only Save does.",
       ],

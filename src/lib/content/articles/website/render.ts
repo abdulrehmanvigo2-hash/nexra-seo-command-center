@@ -34,6 +34,7 @@ import { ATTESTATION_LABELS } from "@/lib/content/articles/attestations";
 import { ARTICLE_CANONICAL_FORMAT, ARTICLE_CANONICAL_FORMAT_ATTESTED, readCanonicalArticle } from "@/lib/content/articles/canonical";
 import { isInternalPathSyntax } from "@/lib/content/articles/internal-links";
 import { validateArticleContent } from "@/lib/content/articles/validate";
+import { liveSlugsIn, type LiveArticle } from "@/lib/content/articles/proposals/live-slugs";
 import { keywordOverlaps, normalisedKeywords } from "@/lib/content/articles/website/overlap";
 import { articlePagePath, articleRoute, type ArticleWebsiteTemplate } from "@/lib/content/articles/website/template";
 import { tsString } from "@/lib/content/publications/website/tsx-literal";
@@ -52,6 +53,7 @@ export const ARTICLE_RENDER_REFUSALS = [
   "published-invalid",
   "section-id-reserved",
   "keyword-overlap",
+  "live-keywords-unrecorded",
   "link-to-subsection",
   "link-anchor-not-found",
   "link-overlap",
@@ -93,6 +95,11 @@ export type ArticleRenderInput = {
   readonly crossLinkAnchor: string;
   /** The two files the renderer modifies, exactly as read at the template's pinned commit. */
   readonly sources: { readonly registry: string; readonly liveArticle: string };
+  /**
+   * The destination's live articles, from the records (`nexra_article_publication_live_articles`, fix F9): every live
+   * slug is refused, and every live article's recorded keywords join the overlap check beside the template's.
+   */
+  readonly liveArticles: readonly LiveArticle[];
   readonly sha256: (text: string) => string;
 };
 
@@ -228,17 +235,35 @@ function readContent(canonical: string): ValidatedArticleContent {
   return article;
 }
 
-function checkArticle(template: ArticleWebsiteTemplate, article: ValidatedArticleContent, published: string): void {
+/**
+ * The live keyword sets the overlap check reads (D7, fix F9): the template's live article, then each article the
+ * records name as live with the keywords of the version it was published from. A live article the records name
+ * without keywords, or a pinned slug the template holds no keywords for, refuses: nothing is checked against a
+ * set that is not known.
+ */
+function liveKeywordSets(template: ArticleWebsiteTemplate, live: readonly LiveArticle[], articleId: string): { readonly slug: string; readonly keywords: readonly string[] }[] {
+  const sets = [{ slug: template.liveArticle.slug, keywords: template.liveArticle.keywords }];
+  for (const entry of live) {
+    if (entry.slug === template.liveArticle.slug || entry.articleId === articleId) continue;
+    if (entry.keywords === null) refuse("live-keywords-unrecorded", entry.slug);
+    sets.push({ slug: entry.slug, keywords: entry.keywords });
+  }
+  return sets;
+}
+
+function checkArticle(template: ArticleWebsiteTemplate, article: ValidatedArticleContent, published: string, live: readonly LiveArticle[], articleId: string): void {
   if (!SLUG.test(article.slug)) refuse("unsafe-input", "slug");
   if (article.topicDecision !== "different-angle") refuse("topic-decision", article.topicDecision);
-  if (template.liveSlugs.includes(article.slug)) refuse("slug-live", article.slug);
+  if (template.liveSlugs.includes(article.slug) || liveSlugsIn(live).includes(article.slug)) refuse("slug-live", article.slug);
   if (typeof published !== "string" || !validDate(published)) refuse("published-invalid");
   for (const section of article.sections) {
     if (template.reservedSectionIds.includes(section.id)) refuse("section-id-reserved", section.id);
     for (const sub of section.subsections) if (template.reservedSectionIds.includes(sub.id)) refuse("section-id-reserved", sub.id);
   }
-  const overlap = keywordOverlaps(article.keywords, template.liveArticle.keywords)[0];
-  if (overlap !== undefined) refuse("keyword-overlap", `${overlap.keyword} repeats ${overlap.liveKeyword}`);
+  for (const set of liveKeywordSets(template, live, articleId)) {
+    const overlap = keywordOverlaps(article.keywords, set.keywords)[0];
+    if (overlap !== undefined) refuse("keyword-overlap", `${overlap.keyword} repeats ${overlap.liveKeyword} (/${set.slug})`);
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -496,7 +521,7 @@ export function renderArticleWebsite(input: ArticleRenderInput): ArticleRenderRe
   try {
     checkBinding(input);
     const article = readContent(input.version.canonicalContent);
-    checkArticle(input.template, article, input.published);
+    checkArticle(input.template, article, input.published, input.liveArticles, input.version.articleId);
     const links = placeLinks(article);
     const route = articleRoute(input.template, article.slug);
     const wordCount = articleWordCount(article);

@@ -1862,12 +1862,36 @@ function the `withdrawArticleProposal` Server Action reaches, and the function a
 - No active proposal remains.
 - Nothing was ever published.
 
+### Live articles from the records (fix F9, audit A5-01; migration `20261015120000`, not applied until separately approved)
+
+The application keeps no list of live slugs. `nexra_article_publication_live_articles(destination)` (`security definer`,
+`stable`, EXECUTE for `service_role` only) answers each slug of the database's live-slug list in its order. Each entry
+has the slug, the article it was published from (null for a pinned template slug), the version that article proposed
+for it, and that version's keywords. The proposal store reads it (`listLiveArticles`, parsed by `parseLiveArticles` in
+`proposals/live-slugs.ts`), and four checks use it:
+- **Eligibility and preview:** `liveSlugOutcome` applies rule 2 over the records. A failed read blocks the proposal
+  `live-articles-unread`.
+- **Proposal state:** it answers `liveSlug` (the slug this article is live under), so the editor's confirmation can
+  name the live page.
+- **Renderer:** `renderArticleWebsite` takes `liveArticles`. It refuses a live slug and any keyword that repeats a
+  live article's recorded keywords (`keyword-overlap`, naming the slug). It also refuses a live article whose keywords
+  are not recorded (`live-keywords-unrecorded`).
+
+A slug published later is added to the database's list by its own migration (`docs/RUNBOOK.md` §7).
+
+### Article import (fix F9, audit A5-03)
+
+*Import article JSON…* in the article editor takes one pasted article object (the C1 contract) or a version's stored
+canonical text and fills every field through `formFromContent` (`src/lib/content/articles/import.ts`). The C1 validator
+decides: an unknown field, a missing one or any other issue is listed per field and nothing is filled. Importing writes
+nothing; the operator saves with Create or Save, and the server validates again.
+
 ### Live slugs published after the pin (Phase 6, checkpoint 6.12a; migration `20261011120000`, applied and recorded 30 Sep)
 
 Decision D10: once the 6.11 pull request merged, `ai-dead-lead-reactivation` is a live slug at
 `nexra-agency-website`. The pinned templates (`/1` at `a4a5722`, `/2` at `1a688bd`) and their hashes are unchanged.
 
-- **The list:** `LIVE_SLUGS_AFTER_PIN` in `src/lib/content/articles/proposals/live-slugs.ts` — one entry,
+- **The list (as built in 6.12a; since fix F9 the database alone holds it, below):** `LIVE_SLUGS_AFTER_PIN` in `src/lib/content/articles/proposals/live-slugs.ts` — one entry,
   `ai-dead-lead-reactivation`, from article `1003104c-6b25-456f-9304-eefa2ba88e7d`, source nexra-ai pull request #9,
   merge `9a69c8c09aff7df7ce3d676700114d6efe91d4f9`, published 2026-09-30. `liveSlugsFor` answers the pinned
   template's slugs, then these; `liveSlugArticle` names the owning article.

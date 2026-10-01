@@ -45,7 +45,7 @@ import { websiteCompleteness } from "@/lib/content/articles/website-completeness
 import { isProjectId, isUuid } from "@/lib/content/drafts/service";
 import { findDestination } from "@/lib/content/publications/destinations";
 import { validateSlug } from "@/lib/content/publications/proposal-rules";
-import { liveSlugOutcome, liveSlugsFor } from "@/lib/content/articles/proposals/live-slugs";
+import { liveSlugOutcome, type LiveArticle } from "@/lib/content/articles/proposals/live-slugs";
 import { routeFor, templateForDestination } from "@/lib/content/publications/website/template";
 import type { ArticleApproval } from "@/types/content-article-approval";
 import type {
@@ -80,6 +80,7 @@ export const ARTICLE_PROPOSAL_BLOCKS: readonly ArticleProposalBlock[] = [
   "slug-taken-by-article",
   "slug-taken-by-draft",
   "slug-live-collision",
+  "live-articles-unread",
 ];
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -102,14 +103,13 @@ export type ArticleProposalFacts = {
   readonly approval: ArticleApproval | null;
   /** The proposal state; null when it was not read. */
   readonly proposals: ArticleProposalState | null;
+  /** The destination's live articles, from the records (fix F9); null when they were not read. */
+  readonly liveArticles: readonly LiveArticle[] | null;
 };
 
 function isVersionNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 32_767;
 }
-
-/** The live slugs at a destination (D2, D10); defined in `live-slugs.ts`, re-exported for existing callers. */
-export { liveSlugsFor };
 
 function ordered(blocks: ReadonlySet<ArticleProposalBlock>): ArticleProposalBlock[] {
   return ARTICLE_PROPOSAL_BLOCKS.filter((block) => blocks.has(block));
@@ -203,10 +203,15 @@ export function articleProposalEligibility(facts: ArticleProposalFacts): Article
 
   // Live slugs at the destination (D2, D10). Without readable content the topic decision is unknown: a pinned
   // slug is refused; a slug published after the pin is decided by its owning article alone.
+  // The list is the records' (fix F9): unread, nothing can be vouched for.
   if (slugValid) {
-    const live = liveSlugOutcome(facts.destination, facts.slug, article.id, content === null ? null : content.topicDecision);
-    if (live === "update-existing-warning") warnings.push("live-slug-update-existing");
-    else if (live === "collision") blocks.add("slug-live-collision");
+    if (facts.liveArticles === null) {
+      blocks.add("live-articles-unread");
+    } else {
+      const live = liveSlugOutcome(facts.liveArticles, facts.slug, article.id, content === null ? null : content.topicDecision);
+      if (live === "update-existing-warning") warnings.push("live-slug-update-existing");
+      else if (live === "collision") blocks.add("slug-live-collision");
+    }
   }
 
   if (blocks.size > 0 || content === null || !versionMatches || approval === null) {
@@ -282,6 +287,8 @@ export function articleProposalBlockMessage(block: ArticleProposalBlock): string
       return "A draft's active proposal already uses this slug at this destination.";
     case "slug-live-collision":
       return "A live article at this destination already uses this slug. Only the article it was published from, or, for a slug the pinned template lists, an article whose topic decision is Update existing, may name it.";
+    case "live-articles-unread":
+      return "The live articles at this destination could not be read from the records, so the slug cannot be checked against them. Nothing can be proposed until they can.";
   }
 }
 

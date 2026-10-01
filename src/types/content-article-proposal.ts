@@ -117,7 +117,9 @@ export type ArticleProposalBlock =
   /** A draft's active proposal holds this destination and slug (D3). */
   | "slug-taken-by-draft"
   /** The slug names a live article at the destination, and the topic decision is not update-existing (D2). */
-  | "slug-live-collision";
+  | "slug-live-collision"
+  /** The destination's live articles were not read from the records (fix F9), so the slug cannot be checked. */
+  | "live-articles-unread";
 
 /** Something the operator must see that does not block. */
 export type ArticleProposalWarning =

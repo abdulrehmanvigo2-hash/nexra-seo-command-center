@@ -132,6 +132,8 @@ function input(canonical: string, overrides: Partial<ArticleRenderInput> = {}): 
     published: "2026-10-05",
     crossLinkAnchor: "reactivation run",
     sources: { registry: REGISTRY, liveArticle: LIVE },
+    // The records as they stood at the 6.9b build proof: only the pinned template slug was live (fix F9 tests the rest).
+    liveArticles: [{ slug: "ai-lead-follow-up-automation", articleId: null, articleVersion: null, keywords: null }],
     sha256,
     ...overrides,
   };
@@ -356,6 +358,7 @@ describe("refusals: typed, and never a partial file", () => {
       "published-invalid",
       "section-id-reserved",
       "keyword-overlap",
+      "live-keywords-unrecorded",
       "link-to-subsection",
       "link-anchor-not-found",
       "link-overlap",
@@ -465,8 +468,45 @@ describe("refusals: typed, and never a partial file", () => {
   test("keyword overlap with the live article is refused (D7)", () => {
     assert.deepEqual(refused(raw((v) => (v.keywords = ["AI lead reactivation", "Dead-lead follow up"]))), {
       code: "keyword-overlap",
-      detail: "Dead-lead follow up repeats dead lead follow-up",
+      detail: "Dead-lead follow up repeats dead lead follow-up (/ai-lead-follow-up-automation)",
     });
+  });
+});
+
+describe("live articles from the records (fix F9, audit A5-01)", () => {
+  const PINNED = { slug: "ai-lead-follow-up-automation", articleId: null, articleVersion: null, keywords: null };
+  const PUBLISHED = { slug: "ai-dead-lead-reactivation", articleId: "1003104c-6b25-456f-9304-eefa2ba88e7d", articleVersion: 6, keywords: ["AI dead lead reactivation", "revive old CRM leads"] };
+  const third = () => raw((v) => {
+    v.slug = "missed-call-text-back";
+    v.keywords = ["missed call text back"];
+  });
+
+  test("a slug the records list as live is refused, though the pinned template does not list it", () => {
+    assert.deepEqual(refused(raw(), { liveArticles: [PINNED, PUBLISHED] }), { code: "slug-live", detail: "ai-dead-lead-reactivation" });
+  });
+
+  test("a third article is checked against every live article's recorded keywords, not only the template's", () => {
+    assert.ok(renderArticleWebsite(input(canonicalArticleJson(valid(third())), { liveArticles: [PINNED, PUBLISHED] })).ok);
+    const repeat = raw((v) => {
+      v.slug = "missed-call-text-back";
+      v.keywords = ["missed call text back", "Revive old CRM leads"];
+    });
+    assert.deepEqual(refused(repeat, { liveArticles: [PINNED, PUBLISHED] }), {
+      code: "keyword-overlap",
+      detail: "Revive old CRM leads repeats revive old CRM leads (/ai-dead-lead-reactivation)",
+    });
+  });
+
+  test("a live article the records name without keywords refuses: nothing is checked against an unknown set", () => {
+    assert.deepEqual(refused(third(), { liveArticles: [PINNED, { ...PUBLISHED, articleVersion: null, keywords: null }] }), {
+      code: "live-keywords-unrecorded",
+      detail: "ai-dead-lead-reactivation",
+    });
+  });
+
+  test("the article's own live record is not a set it must avoid", () => {
+    const own = { ...PUBLISHED, slug: "an-earlier-slug", articleId: ARTICLE_ID, keywords: ["missed call text back"] };
+    assert.ok(renderArticleWebsite(input(canonicalArticleJson(valid(third())), { liveArticles: [PINNED, own] })).ok);
   });
 });
 

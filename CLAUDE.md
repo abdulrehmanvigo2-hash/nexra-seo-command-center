@@ -1627,7 +1627,13 @@ now records both hashes, so results recorded before F8 (V4, V6 included) are nev
 CARRIED CHECK RESULTS section only when there is one, so every earlier preview keeps its bytes); the operator can clear
 a carried unit for a fresh check (confirmed; an approved version refuses). Checker instructions v3 (`6299e783…`) add one
 sentence: an article's own title, meta description, excerpt, headings and labels describing itself are EDITORIAL; v2
-(`8788932b…`) is kept. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+(`8788932b…`) is kept. Fix **F9 — article import and live slugs from the records** (A5-03, A5-01 in part), a draft PR;
+migration `20261015120000_live_articles_read.sql` **not applied**: the article editor gains *Import article JSON…* (one
+pasted article object or stored canonical text fills every field; C1 validation, unknown fields refused, errors per field;
+nothing saved until Create or Save); the hand-typed `LIVE_SLUGS_AFTER_PIN` is gone — the proposal eligibility, the
+preview, the editor's live notice and the renderer's slug and keyword checks read the database's live articles through
+`nexra_article_publication_live_articles` (unread → `live-articles-unread`); the steps before article 2 are in
+`docs/RUNBOOK.md` §7. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22

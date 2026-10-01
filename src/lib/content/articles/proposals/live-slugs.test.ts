@@ -4,10 +4,12 @@ import { describe, test } from "node:test";
 
 import { NEXRA_AI_BLOG_TEMPLATE_V2 } from "@/lib/content/articles/website/template";
 import { articleProposalEligibility, type ArticleProposalFacts } from "@/lib/content/articles/proposals/eligibility";
-import { LIVE_SLUGS_AFTER_PIN, liveSlugArticle, liveSlugOutcome, liveSlugsFor } from "@/lib/content/articles/proposals/live-slugs";
+import { liveArticleOf, liveSlugArticle, liveSlugOutcome, liveSlugsIn, parseLiveArticles } from "@/lib/content/articles/proposals/live-slugs";
+import { DATABASE_LIVE_SLUGS } from "@/lib/content/articles/proposals/test-support/memory-db";
 import { buildArticleProposalPreview } from "@/lib/content/articles/proposals/preview";
 import {
   DESTINATION,
+  LIVE_ARTICLES,
   OTHER_ARTICLE_ID,
   approvedArticle,
   approvedContent,
@@ -21,10 +23,12 @@ import type { ValidatedArticleContent } from "@/types/content-article";
 /**
  * Phase 6, checkpoint 6.12a (D10): `ai-dead-lead-reactivation` is live at
  * nexra-agency-website (nexra-ai PR #9, merge 9a69c8c, published 2026-09-30).
- * The pinned templates are unchanged; the slug is listed as published after
- * the pin, bound to article 1003104c, and the SQL restates the same list.
- * Rule 2: the owning article (and its active proposal ea85edb0…) gains no
- * block; every other article naming the slug is refused.
+ * The pinned templates are unchanged; the slug is listed in the database as
+ * published after the pin, bound to article 1003104c. Since fix F9 (A5-01)
+ * the application keeps no list of its own: it reads the records
+ * (`nexra_article_publication_live_articles`). Rule 2: the owning article
+ * (and its active proposal ea85edb0…) gains no block; every other article
+ * naming the slug is refused.
  */
 
 const OWNER = "1003104c-6b25-456f-9304-eefa2ba88e7d";
@@ -67,16 +71,28 @@ function factsFor(articleId: string, content: ValidatedArticleContent, overrides
   };
 }
 
-describe("the list of slugs published after the pin", () => {
-  test("one entry: ai-dead-lead-reactivation, from article 1003104c, nexra-ai PR #9, merge 9a69c8c, 2026-09-30", () => {
-    assert.deepEqual(LIVE_SLUGS_AFTER_PIN, [
-      {
-        destination: DESTINATION,
-        slug: SLUG,
-        articleId: OWNER,
-        source: { repository: "abdulrehmanvigo2-hash/nexra-ai", pullRequest: 9, mergeCommit: "9a69c8c09aff7df7ce3d676700114d6efe91d4f9", published: "2026-09-30" },
-      },
+describe("the live articles are the records'", () => {
+  test("the application holds no hand-typed list of live slugs (fix F9)", () => {
+    const source = readFileSync(new URL("src/lib/content/articles/proposals/live-slugs.ts", root), "utf8");
+    assert.doesNotMatch(source, /LIVE_SLUGS_AFTER_PIN|ai-dead-lead-reactivation|1003104c|9a69c8c/);
+    for (const path of ["src/lib/content/articles/editor-safety.ts", "src/lib/content/articles/proposals/eligibility.ts", "src/lib/content/articles/proposals/preview.ts", "src/lib/content/articles/website/render.ts"]) {
+      assert.doesNotMatch(readFileSync(new URL(path, root), "utf8"), /LIVE_SLUGS_AFTER_PIN|ai-dead-lead-reactivation/, path);
+    }
+  });
+
+  test("the read function's answer is parsed entry by entry; anything else is an error", () => {
+    assert.deepEqual(parseLiveArticles([
+      { slug: PINNED_SLUG, articleId: null, articleVersion: null, keywords: null },
+      { slug: SLUG, articleId: OWNER, articleVersion: 6, keywords: ["dead lead reactivation"] },
+    ]), [
+      { slug: PINNED_SLUG, articleId: null, articleVersion: null, keywords: null },
+      { slug: SLUG, articleId: OWNER, articleVersion: 6, keywords: ["dead lead reactivation"] },
     ]);
+    for (const bad of [null, {}, [{ slug: "Bad Slug", articleId: null, articleVersion: null, keywords: null }], [{ slug: SLUG, articleId: "x", articleVersion: null, keywords: null }],
+      [{ slug: SLUG, articleId: null, articleVersion: 0, keywords: null }], [{ slug: SLUG, articleId: null, articleVersion: null, keywords: [1] }],
+      [{ slug: SLUG, articleId: null, articleVersion: null, keywords: null }, { slug: SLUG, articleId: null, articleVersion: null, keywords: null }]]) {
+      assert.throws(() => parseLiveArticles(bad), JSON.stringify(bad));
+    }
   });
 
   test("the pinned templates are unchanged: /1 at a4a5722 and /2 at 1a688bd list only the pinned slug", () => {
@@ -86,43 +102,37 @@ describe("the list of slugs published after the pin", () => {
     assert.deepEqual(NEXRA_AI_BLOG_TEMPLATE_V2.liveSlugs, [PINNED_SLUG]);
   });
 
-  test("liveSlugsFor: the pinned slug, then the one published after the pin; liveSlugArticle names its article", () => {
-    assert.deepEqual(liveSlugsFor(DESTINATION), [PINNED_SLUG, SLUG]);
-    assert.deepEqual(liveSlugsFor("other-site"), []);
-    assert.equal(liveSlugArticle(DESTINATION, SLUG), OWNER);
-    assert.equal(liveSlugArticle(DESTINATION, PINNED_SLUG), null);
-    assert.equal(liveSlugArticle("other-site", SLUG), null);
+  test("the lists from records: the pinned slug, then the one published after the pin; the owner of each", () => {
+    assert.deepEqual(liveSlugsIn(LIVE_ARTICLES), [PINNED_SLUG, SLUG]);
+    assert.equal(liveSlugArticle(LIVE_ARTICLES, SLUG), OWNER);
+    assert.equal(liveSlugArticle(LIVE_ARTICLES, PINNED_SLUG), null);
+    assert.equal(liveSlugArticle([], SLUG), null);
+    assert.equal(liveArticleOf(LIVE_ARTICLES, OWNER)?.slug, SLUG);
+    assert.equal(liveArticleOf(LIVE_ARTICLES, OTHER_ARTICLE_ID), null);
   });
 
   test("liveSlugOutcome: the owner never collides; every other article does; a pinned slug keeps D2", () => {
     for (const topic of ["different-angle", "update-existing", null]) {
-      assert.equal(liveSlugOutcome(DESTINATION, SLUG, OWNER, topic), "none");
-      assert.equal(liveSlugOutcome(DESTINATION, SLUG, OTHER_ARTICLE_ID, topic), "collision");
+      assert.equal(liveSlugOutcome(LIVE_ARTICLES, SLUG, OWNER, topic), "none");
+      assert.equal(liveSlugOutcome(LIVE_ARTICLES, SLUG, OTHER_ARTICLE_ID, topic), "collision");
     }
-    assert.equal(liveSlugOutcome(DESTINATION, PINNED_SLUG, OWNER, "different-angle"), "collision");
-    assert.equal(liveSlugOutcome(DESTINATION, PINNED_SLUG, OTHER_ARTICLE_ID, "update-existing"), "update-existing-warning");
-    assert.equal(liveSlugOutcome(DESTINATION, PINNED_SLUG, OTHER_ARTICLE_ID, null), "collision");
-    assert.equal(liveSlugOutcome(DESTINATION, "not-live", OTHER_ARTICLE_ID, "different-angle"), "none");
+    assert.equal(liveSlugOutcome(LIVE_ARTICLES, PINNED_SLUG, OWNER, "different-angle"), "collision");
+    assert.equal(liveSlugOutcome(LIVE_ARTICLES, PINNED_SLUG, OTHER_ARTICLE_ID, "update-existing"), "update-existing-warning");
+    assert.equal(liveSlugOutcome(LIVE_ARTICLES, PINNED_SLUG, OTHER_ARTICLE_ID, null), "collision");
+    assert.equal(liveSlugOutcome(LIVE_ARTICLES, "not-live", OTHER_ARTICLE_ID, "different-angle"), "none");
   });
 });
 
 describe("the SQL restates the same list (migration 20261011120000)", () => {
-  test("live slugs per destination equal liveSlugsFor", () => {
+  test("the tests' model of the database (memory-db DATABASE_LIVE_SLUGS) is the SQL's list and owners", () => {
     const body = between(SQL, "create or replace function public.nexra_article_publication_live_slugs", "$$;");
     const sqlSlugs = new Map([...body.matchAll(/when '([a-z0-9-]+)' then array\[([^\]]*)\]/g)].map((m) => [m[1], [...m[2].matchAll(/'([a-z0-9-]+)'/g)].map((s) => s[1])]));
-    const codeSlugs = new Map(WEBSITE_TEMPLATES.map((t) => [t.destinationKey, [...liveSlugsFor(t.destinationKey)]]));
-    assert.deepEqual(sqlSlugs, codeSlugs);
-  });
-
-  test("the owning article per slug equals LIVE_SLUGS_AFTER_PIN, and the header names each source", () => {
-    const body = between(SQL, "create function public.nexra_article_publication_live_slug_article", "$$;");
-    const sqlOwners = [...body.matchAll(/\(p_destination, p_slug\) = \('([a-z0-9-]+)', '([a-z0-9-]+)'\)\s+then '([0-9a-f-]{36})'::uuid/g)].map((m) => `${m[1]}|${m[2]}|${m[3]}`);
-    assert.deepEqual(sqlOwners, LIVE_SLUGS_AFTER_PIN.map((e) => `${e.destination}|${e.slug}|${e.articleId}`));
-    for (const entry of LIVE_SLUGS_AFTER_PIN) {
-      for (const fact of [entry.source.mergeCommit, `pull request #${entry.source.pullRequest}`, entry.source.published, entry.articleId]) {
-        assert.ok(LIVE_MIGRATION.includes(fact), fact);
-      }
-    }
+    const modelSlugs = new Map(WEBSITE_TEMPLATES.map((t) => [t.destinationKey, DATABASE_LIVE_SLUGS.filter((e) => e.destination === t.destinationKey).map((e) => e.slug)]));
+    assert.deepEqual(sqlSlugs, modelSlugs);
+    const owners = between(SQL, "create function public.nexra_article_publication_live_slug_article", "$$;");
+    const sqlOwners = [...owners.matchAll(/\(p_destination, p_slug\) = \('([a-z0-9-]+)', '([a-z0-9-]+)'\)\s+then '([0-9a-f-]{36})'::uuid/g)].map((m) => `${m[1]}|${m[2]}|${m[3]}`);
+    assert.deepEqual(sqlOwners, DATABASE_LIVE_SLUGS.filter((e) => e.articleId !== null).map((e) => `${e.destination}|${e.slug}|${e.articleId}`));
+    for (const fact of ["9a69c8c09aff7df7ce3d676700114d6efe91d4f9", "pull request #9", "2026-09-30", OWNER]) assert.ok(LIVE_MIGRATION.includes(fact), fact);
   });
 
   test("propose is 20261010120000's function word for word, apart from the live-slug check", () => {
@@ -196,10 +206,10 @@ describe("rule 2: the owning article gains no block; every other article is refu
   test("the preview: the owner's reads WARNINGS None. (its stored preview keeps its bytes); another article's is refused", () => {
     const content = contentWith(SLUG, "different-angle");
     const text = canonicalOf(content).text;
-    const owner = buildArticleProposalPreview({ binding: eligibleBinding(content, { articleId: OWNER }), canonicalContent: text });
+    const owner = buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content, { articleId: OWNER }), canonicalContent: text });
     assert.ok(owner.ok);
     assert.ok(owner.ok && owner.preview.document.includes("\nWARNINGS\nNone.\n"));
-    assert.deepEqual(buildArticleProposalPreview({ binding: eligibleBinding(content, { articleId: OTHER_ARTICLE_ID }), canonicalContent: text }), {
+    assert.deepEqual(buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content, { articleId: OTHER_ARTICLE_ID }), canonicalContent: text }), {
       ok: false,
       reason: "slug-live-collision",
     });

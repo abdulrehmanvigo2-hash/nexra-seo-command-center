@@ -23,7 +23,7 @@ import {
   buildArticleProposalPreview,
 } from "@/lib/content/articles/proposals/preview";
 import { articleProposalPreviewSha256, hashedArticleProposalPreview } from "@/lib/content/articles/proposals/preview-hash";
-import { eligibleBinding } from "@/lib/content/articles/proposals/test-support/fixtures";
+import { eligibleBinding, LIVE_ARTICLES } from "@/lib/content/articles/proposals/test-support/fixtures";
 import { completeArticle } from "@/lib/content/articles/test-support/fixtures";
 import { statesAttestedNumber, validateArticleContent } from "@/lib/content/articles/validate";
 import { FACT_CHECK_CLOSING } from "@/lib/content/drafts/fact-check-grounding";
@@ -116,7 +116,7 @@ describe("the V4 regression pin (production, never rewritten)", () => {
   // (4a8b5562) gives 7a232c68…, and the preview must still give exactly that.
   test("its proposal preview is still article-proposal-text/1, byte for byte as before 6.8b", () => {
     const hashed = hashedArticleProposalPreview({
-      binding: {
+      liveArticles: LIVE_ARTICLES, binding: {
         projectId: "nexra-agency",
         articleId: PIN.articleId,
         articleVersion: 4,
@@ -360,7 +360,7 @@ describe("the proposal preview of an attesting version", () => {
       }),
     );
     const canonical = canonicalArticleJson(content);
-    const result = buildArticleProposalPreview({ binding: eligibleBinding(content), canonicalContent: canonical });
+    const result = buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content), canonicalContent: canonical });
     assert.ok(result.ok, JSON.stringify(result));
     assert.equal(result.preview.format, ARTICLE_PROPOSAL_PREVIEW_FORMAT_ATTESTED);
     const doc = result.preview.document;

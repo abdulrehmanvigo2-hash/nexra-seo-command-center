@@ -178,9 +178,23 @@ Editor (or run with the Supabase CLI against a linked project):
 36. `20261014120000_check_unit_carry_forward.sql` — check-result
     carry-forward and the fresh check (fix F8, audit A5-02, A3-03) — applied
     to production and recorded on 1 Oct
+37. `20261015120000_live_articles_read.sql` — the live articles read from the
+    records (fix F9, audit A5-01) — **not applied**
 
-All thirty-six are applied to production and recorded in its migration
-history (37 versions). The history differs from the files in eight places —
+The first thirty-six are applied to production and recorded in its migration
+history (37 versions); the thirty-seventh waits for its own approval.
+
+`20261015120000_live_articles_read.sql` (fix F9) adds one read function,
+`nexra_article_publication_live_articles(destination)` (`security definer`,
+`stable`, empty `search_path`, EXECUTE for `service_role` only). For each slug in
+the database's live-slug list, in its order, it returns the slug, the article it
+was published from (null for a pinned template slug), the version that article
+proposed for it (the active proposal, else the newest withdrawn one) and that
+version's keywords. The application reads it instead of a list in code. No table,
+row, trigger or other grant changes; the two list functions stay closed to API
+roles. Until it is applied, the proposal eligibility answers `live-articles-unread`
+and nothing can be proposed. Harness suite `live-articles` (14); the `c5`
+inventory names the function. The history differs from the files in eight places —
 renumbered, unrecorded or legacy rows, the schema identical to the repository
 in every case — listed and left as they are in `docs/RUNBOOK.md` §1.5.
 

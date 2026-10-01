@@ -39,6 +39,7 @@ import {
   removeAttestation,
   type AttestationBinding,
 } from "@/lib/content/articles/editor-safety";
+import { importArticleJson } from "@/lib/content/articles/import";
 import { ATTESTATION_BASES, SEARCH_INTENTS, TOPIC_DECISIONS, validateArticleContent } from "@/lib/content/articles/validate";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { ArticleIssue, ArticleSourceReference, ValidatedArticleContent } from "@/types/content-article";
@@ -390,7 +391,7 @@ function ArticleDetail({
       )}
 
       {/* Edit sits at the end, away from the version selector and the approval controls (fix F4, A5-05). */}
-      {current !== null && current.content !== null && article.status !== "archived" && <EditArticleRow article={article} onEdit={() => onEdit(current)} />}
+      {current !== null && current.content !== null && article.status !== "archived" && <EditArticleRow projectId={projectId} article={article} onEdit={() => onEdit(current)} />}
     </section>
   );
 }
@@ -401,8 +402,19 @@ function ArticleDetail({
  * approved version stays on record (fix F4, audit A5-05). Opening the editor
  * writes nothing.
  */
-function EditArticleRow({ article, onEdit }: { article: ArticleHistory["article"]; onEdit: () => void }) {
-  const guard = editGuard(article);
+function EditArticleRow({ projectId, article, onEdit }: { projectId: string; article: ArticleHistory["article"]; onEdit: () => void }) {
+  // Fix F9: whether the article is live comes from the records (the proposal state's live slug), never a code list.
+  const [liveSlug, setLiveSlug] = useState<string | null>(null);
+  useEffect(() => {
+    if (article.status !== "approved") return;
+    const controller = new AbortController();
+    fetch(`/api/content-article-proposals?project=${encodeURIComponent(projectId)}&article=${encodeURIComponent(article.id)}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => (response.ok ? ((await response.json()) as { proposal?: { liveSlug?: unknown } }) : null))
+      .then((body) => setLiveSlug(typeof body?.proposal?.liveSlug === "string" ? body.proposal.liveSlug : null))
+      .catch(() => setLiveSlug(null));
+    return () => controller.abort();
+  }, [projectId, article.id, article.status]);
+  const guard = editGuard(article, liveSlug === null ? null : { slug: liveSlug });
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
@@ -590,6 +602,26 @@ function ArticleEditor({
   const [issues, setIssues] = useState<readonly ArticleIssue[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importErrors, setImportErrors] = useState<readonly string[]>([]);
+  const [imported, setImported] = useState<string | null>(null);
+
+  // Fix F9 (A5-03): one pasted JSON fills every field; nothing is sent until Create or Save.
+  function applyImport() {
+    const result = importArticleJson(importText);
+    if (!result.ok) {
+      setImportErrors(result.errors);
+      return;
+    }
+    setState({ form: result.form, bindings: initialBindings(result.form) });
+    setIssues([]);
+    setMessage(null);
+    setImportErrors([]);
+    setImported(result.summary);
+    setImportText("");
+    setImporting(false);
+  }
 
   const update = (change: (f: ArticleForm) => ArticleForm) => setState((current) => followAttestations(change(current.form), current.bindings));
   const set = <K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => update((f) => ({ ...f, [key]: value }));
@@ -651,9 +683,48 @@ function ArticleEditor({
 
   return (
     <section className="space-y-4 rounded border border-border p-3" aria-label={mode.kind === "create" ? "New article" : "Edit article"}>
-      <h3 className="text-sm font-semibold text-fg">
-        {mode.kind === "create" ? "New article — version 1" : `Edit — saves version ${mode.history.article.currentVersion + 1} from version ${mode.from.version}`}
-      </h3>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold text-fg">
+          {mode.kind === "create" ? "New article — version 1" : `Edit — saves version ${mode.history.article.currentVersion + 1} from version ${mode.from.version}`}
+        </h3>
+        <Button variant="secondary" icon="plus" onClick={() => setImporting(true)} disabled={saving}>
+          Import article JSON…
+        </Button>
+      </div>
+      {imported !== null && (
+        <p className="rounded border border-border bg-surface-raised px-3 py-2 text-xs text-fg-muted" role="status">
+          {imported}
+        </p>
+      )}
+      {importing && (
+        <Modal
+          title="Import article JSON"
+          description="Paste one article object (the article.json format) or a version's stored canonical text. Every field is filled, sections, H3s, FAQs, links and attested paragraphs included. Nothing is saved: review the form, then Create or Save as usual."
+          onClose={() => setImporting(false)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setImporting(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={applyImport} disabled={importText.trim() === ""}>
+                Fill the form
+              </Button>
+            </>
+          }
+        >
+          <Field label="Article JSON" htmlFor={`${id}-import`} hint="The current form is replaced only when the whole paste is valid.">
+            <TextArea id={`${id}-import`} rows={12} value={importText} onChange={(e) => setImportText(e.target.value)} className="font-mono text-[12px]" />
+          </Field>
+          {importErrors.length > 0 && (
+            <ul className="mt-2 max-h-48 space-y-0.5 overflow-y-auto rounded border border-critical/40 bg-critical/10 p-2 text-xs text-critical" role="alert">
+              {importErrors.slice(0, 40).map((error, i) => (
+                <li key={`${i}-${error}`}>{error}</li>
+              ))}
+              {importErrors.length > 40 && <li>…and {importErrors.length - 40} more.</li>}
+            </ul>
+          )}
+        </Modal>
+      )}
 
       {mode.kind === "create" && (
         <Field label="Content plan run" htmlFor={`${id}-plan`} required hint="A completed content plan of this project that has no article yet.">
