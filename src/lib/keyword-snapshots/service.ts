@@ -173,10 +173,9 @@ export function createKeywordSnapshotService(store: SnapshotStore, options: Snap
     const costUsd = run.mode === "sandbox" ? 0 : Math.round(succeeded.reduce((sum, request) => sum + (request.costUsd ?? 0), 0) * 10_000) / 10_000;
     const unknownCostUsd = run.mode === "sandbox" ? 0 : Math.round((run.unknownCostUsd + estimateCalls(unknownSeqs, run.seeds.length)) * 10_000) / 10_000;
     const remaining = missingSeqs(run, requests);
-    // The database's `completed` needs every recorded call succeeded; a resumed run keeps its earlier failed or
-    // unknown rows, so it closes as `partial` with no error code and no missing seed (the screen reads that as complete).
-    const everyCallSucceeded = requests.every((request) => request.outcome === "succeeded");
-    const status = remaining.length === 0 ? (everyCallSucceeded ? "completed" : "partial") : succeeded.length > 0 ? "partial" : "failed";
+    // `completed` when every planned call has a succeeded request, a retry counting by its retry_of; the earlier
+    // failed or unknown rows stay as history and are already in the cost and unknown-cost figures.
+    const status = remaining.length === 0 ? "completed" : succeeded.length > 0 ? "partial" : "failed";
     const errorCode = stopped === "credentials" ? "provider-refused" : stopped === "deadline" ? "deadline" : status === "failed" ? "provider-error" : remaining.length > 0 ? "incomplete" : null;
     const finished = await store.finish({ runId: run.id, status, costUsd, unknownCostUsd, errorCode });
     if (finished.status !== "finished") {

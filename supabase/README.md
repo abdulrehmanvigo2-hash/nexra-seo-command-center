@@ -209,14 +209,17 @@ raises), `nexra_provider_metrics_record` (one set per request: `recorded`,
 `exists`, `run-not-found`, `run-not-open`, `request-not-found`, `invalid-row`),
 `nexra_provider_run_finish` (`finished`, `run-not-found`, `run-not-open`,
 `cost-mismatch` when the cost given is not the succeeded calls' recorded sum,
-`status-not-consistent`) and `nexra_provider_run_resume` (decision Q4;
+`status-not-consistent` when `completed` is asked while a planned call — seq 0
+and one per seed — has no succeeded request, a retry counting by its
+`retry_of`; earlier failed or unknown rows stay as history and still count in
+the cost and unknown cost) and `nexra_provider_run_resume` (decision Q4;
 `reserved`, `cap-reached`, `run-active`, `run-not-partial`, `run-not-found`).
 Guards refuse every direct insert, every delete and every truncate; a request
 or metric row never changes; a run changes only status, estimate, cost, unknown
 cost, error code and finish time, under the functions' flag, along reserved →
 completed | partial | failed and partial → reserved. RLS on, no policies;
 `service_role` holds SELECT on the three tables. Harness suites `provider`
-(160) and `provider-races` (V1 two live reserves on different projects against
+(163) and `provider-races` (V1 two live reserves on different projects against
 one cap: one `reserved`, one `cap-reached`; V2 the first rolls back; V3 two on
 one project: `run-active`; V4 sandbox reserves do not wait; V5 two records of
 one seq: `recorded`, `exists`); the `c5` inventory names the five functions.

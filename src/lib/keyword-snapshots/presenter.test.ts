@@ -113,7 +113,8 @@ describe("labels (§8)", () => {
   test("status lines: nothing missing is complete (a resumed run included); partial names the missing seeds; failed names why", () => {
     assert.deepEqual(runStatusLine(view(run())).label, "Complete");
     const resumed = runStatusLine(view(run({ status: "partial" })));
-    assert.deepEqual([resumed.label, resumed.detail], ["Complete", "Completed after a resume; the earlier failed calls stay on record."]);
+    assert.equal(resumed.label, "Complete");
+    assert.equal(runStatusLine(view(run({ status: "completed", unknownCostUsd: 0.0288 }))).detail, null, "a run resumed to full is completed; its earlier timed-out calls stay in the unknown cost only");
     const partial = runStatusLine(view(run({ status: "partial", errorCode: "deadline" }), [SEED_TOPICS[2], SEED_TOPICS[5]]));
     assert.equal(partial.label, "Partial");
     assert.match(partial.detail ?? "", /Missing 2 of 10 seeds: reactivate old CRM leads, AI SDR\. The run stopped at its time limit\./);

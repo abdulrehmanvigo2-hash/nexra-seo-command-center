@@ -135,7 +135,10 @@ function memoryStore(options: { setUp?: boolean; today?: () => Date } = {}) {
       const sum = Math.round(rows.filter((r) => r.outcome === "succeeded").reduce((s, r) => s + (r.costUsd ?? 0), 0) * 10_000) / 10_000;
       if (run.mode === "sandbox" && (input.costUsd !== 0 || input.unknownCostUsd !== 0)) return { status: "cost-mismatch" };
       if (input.costUsd !== sum) return { status: "cost-mismatch" };
-      if (input.status === "completed" && (rows.length === 0 || rows.some((r) => r.outcome !== "succeeded"))) return { status: "status-not-consistent" };
+      if (input.status === "completed") {
+        const covered = new Set(rows.filter((r) => r.outcome === "succeeded").map((r) => (typeof r.params.retry_of === "number" ? r.params.retry_of : r.seq)));
+        for (let n = 0; n <= run.seeds.length; n += 1) if (!covered.has(n)) return { status: "status-not-consistent" };
+      }
       const next: ProviderRun = { ...run, status: input.status, costUsd: sum, unknownCostUsd: run.mode === "live" ? input.unknownCostUsd : 0, errorCode: input.errorCode, finishedAt: today().toISOString() };
       runs.set(run.id, next);
       return { status: "finished", run: next };
@@ -375,13 +378,32 @@ describe("resume (decision Q4)", () => {
     const rows = requests.get(first.run.id)!;
     assert.deepEqual(rows.filter((r) => r.seq > 10).map((r) => [r.seq, r.params.retry_of, r.outcome]), [[11, 5, "succeeded"], [12, 8, "succeeded"]]);
     assert.deepEqual(missingSeqs(resumed.run, rows), []);
-    assert.equal(resumed.run.status, "partial", "the earlier timed-out rows stand, so the database's completed is not available; nothing is missing");
+    assert.equal(resumed.run.status, "completed", "every planned call has a succeeded request (two by retry); the earlier timed-out rows stay as history");
     assert.equal(resumed.run.errorCode, null);
+    assert.equal(rows.filter((r) => r.outcome === "unknown").length, 2, "the earlier unknown rows are still on record");
     assert.equal(resumed.run.costUsd, usd(0.0132 + 10 * 0.0144));
     assert.equal(resumed.run.unknownCostUsd, usd(2 * 0.0144), "the two timeouts stay counted: the provider may have charged them");
     assert.deepEqual(await svc.resume(first.run.id, OPERATOR), { status: "run-not-partial" }, "nothing is missing any more");
     const view = await service(store, client, configured("live")).read("nexra-agency");
     assert.equal(view.status === "read" && view.view.runs[0].missingSeeds.length, 0);
+  });
+
+  test("a resume that still leaves a call missing stays partial, with the cost totals unchanged by the rule", async () => {
+    const { store, requests } = memoryStore();
+    const answers: Answer[] = [(_, task) => succeeded(overviewBody(task.keywords as string[]))];
+    for (let i = 0; i < 10; i += 1) answers.push(i === 1 || i === 6 ? timeout : (_, task) => succeeded(relatedBody(task.keyword as string)));
+    const first = await service(store, fakeClient(answers).client, configured("live")).run("nexra-agency", OPERATOR);
+    assert.equal(first.status, "finished");
+    if (first.status !== "finished") return;
+    // The retry of seed 2 succeeds, the retry of seed 7 times out again.
+    const resumed = await service(store, fakeClient([(_, task) => (task.keyword === SEED_TOPICS[6] ? timeout : succeeded(relatedBody(task.keyword as string)))]).client, configured("live")).resume(first.run.id, OPERATOR);
+    assert.equal(resumed.status, "finished");
+    if (resumed.status !== "finished") return;
+    assert.equal(resumed.run.status, "partial");
+    assert.equal(resumed.run.errorCode, "incomplete");
+    assert.deepEqual(missingSeeds(resumed.run, requests.get(first.run.id)!), [SEED_TOPICS[6]]);
+    assert.equal(resumed.run.costUsd, usd(0.0132 + 9 * 0.0144), "the nine succeeded related calls plus the overview");
+    assert.equal(resumed.run.unknownCostUsd, usd(3 * 0.0144), "three timeouts in all, each at its estimate");
   });
 
   test("a completed run and a failed run cannot be resumed; the usage read sums today's live runs", async () => {

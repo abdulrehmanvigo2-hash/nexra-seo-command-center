@@ -97,8 +97,11 @@ declare r jsonb; a uuid; b uuid; c uuid; s uuid;
 begin
   a := (select id from nexra_provider_runs where project_id = 'halcyon-fintech');
   b := (select id from nexra_provider_runs where project_id = 'verdant-home');
-  perform t.req(a, 0, 'succeeded', 0); perform t.finish(a, 'completed', 0, 0);
-  perform t.req(b, 0, 'succeeded', 0.013); perform t.finish(b, 'completed', 0.013, 0);
+  -- Under the finish rule, completed needs every planned call (seq 0 and one per seed) to have succeeded: four calls each.
+  perform t.req(a, 0, 'succeeded', 0); perform t.req(a, 1, 'succeeded', 0); perform t.req(a, 2, 'succeeded', 0); perform t.req(a, 3, 'succeeded', 0);
+  perform t.finish(a, 'completed', 0, 0);
+  perform t.req(b, 0, 'succeeded', 0.013); perform t.req(b, 1, 'succeeded', 0); perform t.req(b, 2, 'succeeded', 0); perform t.req(b, 3, 'succeeded', 0);
+  perform t.finish(b, 'completed', 0.013, 0);
   -- verdant spends 0.587 more today (recorded cost 0.5 + an unknown call at 0.087): 0.6 counted.
   s := t.spent('verdant-home', 0.5, 'partial', 0.1);
   perform t.ok((t.run(s)).status = 'partial' and (t.run(s)).cost_usd = 0.5 and (t.run(s)).unknown_cost_usd = 0.1, 'B setup: a partial live run with 0.5 recorded and 0.1 unknown');
@@ -109,6 +112,7 @@ begin
   c := (select id from nexra_provider_runs where project_id = 'halcyon-fintech' and status = 'reserved');
   perform t.req(c, 0, 'succeeded', 0.5);
   perform t.ok((select cost_usd from nexra_provider_requests where run_id = c) = 0, 'B a sandbox call is recorded at cost 0 whatever the caller says');
+  perform t.req(c, 1, 'succeeded', 0); perform t.req(c, 2, 'succeeded', 0); perform t.req(c, 3, 'succeeded', 0);
   perform t.finish(c, 'completed', 0, 0);
   r := t.reserve('halcyon-fintech', 'live', 0.387, 1.00);
   perform t.ok(r->>'outcome' = 'reserved' and (r->>'spent_usd')::numeric = 0.613, 'B exactly up to the cap (0.613 + 0.387 = 1.00): reserved — the finished 0.013 run and the partial run count, the sandbox runs do not');
@@ -203,7 +207,7 @@ declare a uuid; r jsonb; v uuid;
 begin
   a := (select id from nexra_provider_runs where project_id = 'halcyon-fintech' and status = 'reserved');
   -- a holds: seq 0 succeeded 0.013, seq 1 unknown, seq 2 failed, seq 3 succeeded 0.013.
-  perform t.ok(t.finish(a, 'completed', 0.026, 0)->>'outcome' = 'status-not-consistent', 'E completed with a failed and an unknown call: status-not-consistent');
+  perform t.ok(t.finish(a, 'completed', 0.026, 0)->>'outcome' = 'status-not-consistent' and (t.finish(a, 'completed', 0.026, 0)->>'planned_missing')::int = 2, 'E completed while two planned calls (seq 1 unknown, seq 2 failed) have no succeeded request: status-not-consistent, naming 2 missing');
   perform t.ok(t.finish(a, 'partial', 0.03, 0)->>'outcome' = 'cost-mismatch' and (t.finish(a, 'partial', 0.03, 0)->>'recorded_usd')::numeric = 0.026, 'E a cost that is not the succeeded calls'' sum: cost-mismatch, naming the recorded sum');
   perform t.ok((t.run(a)).status = 'reserved', 'E the refusals left the run open');
   perform t.ok(t.err(format($q$select t.finish(%L, 'done')$q$, a)) = '22023', 'E a status outside completed/partial/failed raises 22023');
@@ -219,6 +223,8 @@ begin
   v := t.rid(t.reserve('verdant-home', 'sandbox'));
   perform t.req(v, 0, 'succeeded', 0.013);
   perform t.ok(t.finish(v, 'completed', 0.013, 0)->>'outcome' = 'cost-mismatch', 'E a sandbox run with a cost: cost-mismatch');
+  perform t.ok(t.finish(v, 'completed', 0, 0)->>'outcome' = 'status-not-consistent', 'E completed with three planned calls unrecorded: status-not-consistent');
+  perform t.req(v, 1, 'succeeded', 0); perform t.req(v, 2, 'succeeded', 0); perform t.req(v, 3, 'succeeded', 0);
   r := t.finish(v, 'completed', 0, 0);
   perform t.ok(r->>'outcome' = 'finished' and (t.run(v)).cost_usd = 0, 'E a sandbox run finishes at 0');
 end $$;
@@ -243,10 +249,11 @@ begin
   perform t.ok(r->>'outcome' = 'reserved' and (t.run(a)).status = 'reserved' and (t.run(a)).estimate_usd = 0.226 and (t.run(a)).cost_usd is null and (t.run(a)).finished_at is null and (t.run(a)).error_code is null and (t.run(a)).unknown_cost_usd = 0.1,
     'F resume within the cap: reserved, estimate = recorded cost so far + the missing calls (0.026 + 0.2), cost cleared, unknown kept');
   perform t.ok(t.req(a, 1, 'succeeded', 0.013)->>'outcome' = 'exists', 'F the earlier unknown seq is not re-recorded (exists) — the application resumes with new seqs or accepts the record');
-  perform t.ok(t.req(a, 4, 'succeeded', 0.013)->>'outcome' = 'recorded', 'F a missing call is recorded under the reopened run');
-  perform t.ok(t.finish(a, 'completed', 0.039, 0)->>'outcome' = 'status-not-consistent', 'F completed still refused while a failed/unknown call stands');
-  r := t.finish(a, 'partial', 0.039, 0.1);
-  perform t.ok(r->>'outcome' = 'finished' and (t.run(a)).cost_usd = 0.039, 'F finished again as partial, the cost recomputed over every succeeded call (3 × 0.013)');
+  perform t.ok(t.req(a, 4, 'succeeded', 0.013, p_params => jsonb_build_object('keyword', 'seed 1', 'retry_of', 1))->>'outcome' = 'recorded', 'F a missing call is recorded under the reopened run as a retry (seq 4, retry_of 1)');
+  perform t.ok(t.finish(a, 'completed', 0.039, 0.1)->>'outcome' = 'status-not-consistent', 'F completed still refused: planned seq 2 (failed) has no succeeded retry yet');
+  perform t.ok(t.req(a, 5, 'succeeded', 0.013, p_params => jsonb_build_object('keyword', 'seed 2', 'retry_of', 2))->>'outcome' = 'recorded', 'F the failed seq 2 retried under seq 5 with retry_of 2');
+  perform t.ok(t.err(format($q$select t.finish(%L, 'completed', 0.052, 0.1)$q$, a)) = 'none', 'F (setup) completed accepted below');
+  perform t.ok((t.run(a)).status = 'completed' and (t.run(a)).cost_usd = 0.052 and (t.run(a)).unknown_cost_usd = 0.1 and (t.run(a)).error_code is null, 'F resumed to full: completed — every planned call has a succeeded request (0 and 3 directly, 1 and 2 by retries), the earlier unknown and failed rows stay, the cost (4 × 0.013) and the unknown estimate (0.1) are unchanged');
   p := t.rid(t.reserve('verdant-home', 'sandbox'));
   perform t.req(p, 0, 'succeeded', 0); perform t.finish(p, 'partial', 0, 0);
   r := t.resume(p, 0.5, 1.00);
