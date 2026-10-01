@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, operator-attested paragraphs, live slugs published after the template pin, the surplus grants revoked, the legacy crawl subsystem retired, check-result carry-forward, and the live articles read from the records).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, operator-attested paragraphs, live slugs published after the template pin, the surplus grants revoked, the legacy crawl subsystem retired, check-result carry-forward, the live articles read from the records, and the F0 provider keyword snapshot).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles provider provider-races
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -38,7 +38,7 @@ LEGACY_MIGRATION="$MIGRATIONS/20261013120000_retire_legacy_crawl_subsystem.sql"
 CARRY_MIGRATION="$MIGRATIONS/20261014120000_check_unit_carry_forward.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [provider]=160)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -655,7 +655,44 @@ suite_live_articles() {
   run_sql_suite live-articles "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-articles/tests.sql"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles)
+# F0 provider keyword snapshot (migration 20261016120000): the three tables and their security, reserve against the daily
+# cap (the $5.00 ceiling, sandbox never counted), request and metric records, finish, resume (Q4), the guards, isolation.
+suite_provider() {
+  fresh_db
+  run_sql_suite provider "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/provider/setup.sql" "$HERE/provider/tests.sql"
+}
+
+# Two sessions reserve at once: the day's advisory lock serialises them, so two reservations never both pass the cap;
+# two on one project never both open; two records of one seq never both write.
+suite_provider_races() {
+  fresh_db
+  "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/gsc/setup.sql" -f "$HERE/provider/setup.sql" >/dev/null
+  local o="->>'outcome'" rows a
+  race "select t.reserve('halcyon-fintech', 'live', 0.6, 1.00)$o" "select t.reserve('verdant-home', 'live', 0.6, 1.00)$o"
+  rows="$(q "select count(*) || '/' || coalesce(sum(estimate_usd), 0) from public.nexra_provider_runs where mode = 'live'")"
+  check "provider race V1 two live reserves, different projects, one cap: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, live runs/estimates $rows" \
+    "$([ "$R1" = reserved ] && [ "$R2" = cap-reached ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/0.6000" ]; echo $?)"
+  q "select t.finish(id, 'failed', 0, 0, 'abandoned') from public.nexra_provider_runs where status = 'reserved'" >/dev/null
+  race "select t.reserve('halcyon-fintech', 'live', 0.6, 1.00)$o" "select t.reserve('verdant-home', 'live', 0.6, 1.00)$o" rollback
+  rows="$(q "select count(*) || '/' || coalesce(sum(estimate_usd), 0) from public.nexra_provider_runs where status = 'reserved'")"
+  check "provider race V2 the first reserve rolls back: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, open runs/estimates $rows" \
+    "$([ "$R1" = reserved ] && [ "$R2" = reserved ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/0.6000" ]; echo $?)"
+  q "select t.finish(id, 'failed', 0, 0, 'abandoned') from public.nexra_provider_runs where status = 'reserved'" >/dev/null
+  race "select t.reserve('halcyon-fintech', 'live', 0.1, 1.00)$o" "select t.reserve('halcyon-fintech', 'live', 0.1, 1.00)$o"
+  rows="$(q "select count(*) from public.nexra_provider_runs where project_id = 'halcyon-fintech' and status = 'reserved'")"
+  check "provider race V3 two reserves on one project: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, open runs $rows" \
+    "$([ "$R1" = reserved ] && [ "$R2" = run-active ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = 1 ]; echo $?)"
+  race "select t.reserve('halcyon-fintech', 'sandbox', 0.1, 1.00)$o" "select t.reserve('verdant-home', 'sandbox', 0.1, 1.00)$o"
+  check "provider race V4 two sandbox reserves on different projects do not wait: s1=$R1 s2=$R2, waited ${WAIT_MS} ms" \
+    "$([ "$R1" = run-active ] && [ "$R2" = reserved ] && [ "$WAIT_MS" -lt 1000 ]; echo $?)"
+  a="$(q "select id from public.nexra_provider_runs where project_id = 'halcyon-fintech' and status = 'reserved'")"
+  race "select t.req('$a', 0, 'succeeded', 0.013)$o" "select t.req('$a', 0, 'succeeded', 0.5)$o"
+  rows="$(q "select count(*) || '/' || min(cost_usd) from public.nexra_provider_requests where run_id = '$a'")"
+  check "provider race V5 two records of one seq: s1=$R1 s2=$R2, waited ${WAIT_MS} ms, rows/cost $rows" \
+    "$([ "$R1" = recorded ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/0.0130" ]; echo $?)"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles provider provider-races)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -679,6 +716,7 @@ for s in "${SUITES[@]}"; do
     legacy-retire) suite_legacy_retire ;; legacy-retire-refusals) suite_legacy_retire_refusals ;;
     carry) suite_carry ;; carry-upgrade) suite_carry_upgrade ;;
     live-articles) suite_live_articles ;;
+    provider) suite_provider ;; provider-races) suite_provider_races ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done
