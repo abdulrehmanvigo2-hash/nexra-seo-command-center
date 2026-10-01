@@ -475,6 +475,11 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
   environments (the `backup` environment's deployment-branch rule and secrets on a private repository need a paid
   plan on GitHub's current terms); enforced branch protection (the item above, which Pro would allow); and that
   Vercel's Git connection and the session tooling keep their access.
+- **Backup heartbeat (operator decision, 1 Oct; design later).** A missed scheduled backup is silent today (no
+  scheduled run on 1 Oct; Phase 0 audit §I). Add a dead-man check through Healthchecks.io's free plan: the backup job
+  pings a check URL at its end (success only), and Healthchecks alerts the operator after 26 hours without a ping.
+  The check URL is a secret (anyone holding it can ping): it goes in the `backup` environment as a secret, never in
+  the repository. A new external integration (§4/§6); its own small design note first.
 
 ## A3 — Agents (30 Sep 2026, at `8451980`)
 

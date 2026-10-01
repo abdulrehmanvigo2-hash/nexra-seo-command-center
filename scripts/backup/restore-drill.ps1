@@ -12,10 +12,16 @@
     3. decrypts it with age into a new temporary folder and checks every file against the
        manifest's SHA-256;
     4. creates a throwaway PostgreSQL cluster in that folder, listening on 127.0.0.1 only, on a
-       free port, with a random password made for this run;
+       free port other than 5432, with trust authentication (nothing prompts for a password);
     5. restores the backup into it and compares every table's row count with the manifest;
     6. prints one line, "RESTORE DRILL: OK ..." or "RESTORE DRILL: FAIL ...";
     7. stops the cluster and deletes the folder: the database and every decrypted file.
+
+  Every external program runs as one named step with a timeout: a line is printed before and
+  after it ("start :" / "done  :"), and a step that runs too long is stopped and reported as
+  "RESTORE DRILL: FAIL - <step> timed out" with the last 20 lines of the server log. pg_ctl is
+  never run through a pipe: on Windows the server it starts inherits a pipe and holds it open,
+  which made PowerShell wait forever (the 1 Oct hang after "decrypted").
 
   It never connects to production or any hosted database (it only ever talks to the cluster it
   started on 127.0.0.1), never prints the key or its contents, and writes nothing outside its
@@ -39,6 +45,10 @@
   For scripts/backup/test-local.sh only (its local cluster may be older). Leave it out: the
   drill requires PostgreSQL 17, the production major.
 
+.PARAMETER TestStepTimeout
+  For scripts/backup/test-local.sh only: "<step name>=<seconds>" overrides one step's timeout,
+  to test the timeout path. Leave it out.
+
 .PARAMETER Keep
   Keep the temporary folder (stopped cluster and decrypted files) for inspection. Delete it
   yourself afterwards: it holds the decrypted backup.
@@ -54,7 +64,8 @@ param(
   [string]$PgBin,
   [string]$Age,
   [switch]$Keep,
-  [int]$TestMinimumMajor = 17
+  [int]$TestMinimumMajor = 17,
+  [string]$TestStepTimeout = ''
 )
 
 # Written for Windows PowerShell 5.1 (built into Windows 10 and 11) and PowerShell 7: no
@@ -87,23 +98,95 @@ function Find-Program([string]$folder, [string]$name) {
   return $null
 }
 
-# Run a native program; return its output lines (stdout and stderr together) and stop on a
-# non-zero exit. Windows PowerShell 5.1 turns stderr lines into errors under 'Stop', so the
-# preference is relaxed for the call itself.
-function Invoke-Program([string]$exe, [string[]]$arguments, [string]$what) {
-  $saved = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
+$script:LogDir = $null
+$script:ServerLog = $null
+$script:StepCount = 0
+$script:StepTimeouts = @{}
+if ($TestStepTimeout -match '^(.+)=(\d+)$') { $script:StepTimeouts[$Matches[1]] = [int]$Matches[2] }
+
+# One argument as Windows' command-line parser reads it back (the same rules .NET applies on
+# Linux), so paths with spaces and SQL with quotes arrive intact.
+function Format-Argument([string]$value) {
+  if ($value -eq '') { return '""' }
+  if ($value -notmatch '[\s"]') { return $value }
+  $escaped = [regex]::Replace($value, '(\\*)"', { param($m) ($m.Groups[1].Value * 2) + '\"' })
+  $escaped = [regex]::Replace($escaped, '(\\+)$', { param($m) $m.Groups[1].Value * 2 })
+  return '"' + $escaped + '"'
+}
+
+# The first line of a step's output, trimmed; a named failure when there is none.
+function Get-FirstLine($lines, [string]$step) {
+  $first = @($lines) | Select-Object -First 1
+  if ($null -eq $first) { Stop-Drill "$step returned no output." }
+  return "$first".Trim()
+}
+
+# Read a file another process may still hold open.
+function Read-SharedLines([string]$path) {
+  if (-not $path -or -not (Test-Path -LiteralPath $path)) { return @() }
+  $stream = [System.IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
   try {
-    $output = & $exe @arguments 2>&1 | ForEach-Object { "$_" }
-    $code = $LASTEXITCODE
+    $reader = New-Object System.IO.StreamReader($stream)
+    $text = $reader.ReadToEnd()
+  } finally { $stream.Dispose() }
+  if ($text -eq '') { return @() }
+  return @($text -split "`r?`n" | Where-Object { $_ -ne '' })
+}
+
+function Get-ServerLogTail {
+  $lines = Read-SharedLines $script:ServerLog
+  if ($lines.Count -eq 0) { return '(the server log is empty or was not created)' }
+  return (($lines | Select-Object -Last 20) -join [Environment]::NewLine)
+}
+
+function Stop-ProcessTree($process) {
+  try {
+    if ($OnWindows) { $null = & taskkill.exe /PID $process.Id /T /F 2>&1 }
+    else { try { $process.Kill($true) } catch { $process.Kill() } }
+  } catch { }
+}
+
+# Run one external program as a named step: a line before and after, a timeout, stdout and
+# stderr to files (never a pipe), and a FAIL naming the step on a non-zero exit or a timeout.
+# -Console leaves the program on the console with nothing redirected: used for pg_ctl, whose
+# server must not inherit any handle of ours. Returns stdout's lines.
+function Invoke-Step([string]$step, [string]$exe, [string[]]$arguments, [int]$timeoutSeconds, [switch]$Console) {
+  if ($script:StepTimeouts.ContainsKey($step)) { $timeoutSeconds = $script:StepTimeouts[$step] }
+  $script:StepCount++
+  $folder = $script:LogDir
+  if (-not $folder) { $folder = [System.IO.Path]::GetTempPath() }
+  $stem = Join-Path $folder ('nexra-step-{0:D3}-{1}' -f $script:StepCount, [Guid]::NewGuid().ToString('N').Substring(0, 6))
+  $outFile = "$stem.out"
+  $errFile = "$stem.err"
+  Write-Host "  start : $step"
+  $watch = [System.Diagnostics.Stopwatch]::StartNew()
+  $commandLine = (@($arguments) | ForEach-Object { Format-Argument $_ }) -join ' '
+  if ($Console) {
+    $process = Start-Process -FilePath $exe -ArgumentList $commandLine -NoNewWindow -PassThru
+  } else {
+    $process = Start-Process -FilePath $exe -ArgumentList $commandLine -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+  }
+  try { $null = $process.Handle } catch { }  # keeps ExitCode readable after exit
+  try {
+    if (-not $process.WaitForExit($timeoutSeconds * 1000)) {
+      Stop-ProcessTree $process
+      Stop-Drill ("$step timed out after $timeoutSeconds s and was stopped. Last lines of the server log:" + [Environment]::NewLine + (Get-ServerLogTail))
+    }
+    # The process has exited. PowerShell 7 copies redirected output to the files asynchronously:
+    # this second wait returns once that copy is done (these programs leave no child behind;
+    # pg_ctl runs with -Console, nothing redirected, so it never reaches here holding a pipe).
+    if (-not $Console) { $process.WaitForExit() }
+    $code = $process.ExitCode
+    $stdout = Read-SharedLines $outFile
+    if ($code -ne 0) {
+      $detail = @(Read-SharedLines $errFile) + @($stdout) | Select-Object -Last 15
+      Stop-Drill ("$step failed (exit $code)." + [Environment]::NewLine + ($detail -join [Environment]::NewLine))
+    }
   } finally {
-    $ErrorActionPreference = $saved
+    if (-not $script:LogDir) { Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue }
   }
-  if ($code -ne 0) {
-    $tail = ($output | Select-Object -Last 15) -join [Environment]::NewLine
-    Stop-Drill "$what failed (exit $code).$([Environment]::NewLine)$tail"
-  }
-  return $output
+  Write-Host ('  done  : {0} ({1:N1} s)' -f $step, $watch.Elapsed.TotalSeconds)
+  return $stdout
 }
 
 function Get-Major([string]$versionLine) {
@@ -111,20 +194,16 @@ function Get-Major([string]$versionLine) {
   return 0
 }
 
+# A free loopback port, never 5432 (the installed PostgreSQL service's).
 function Get-FreePort {
-  $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
-  $listener.Start()
-  $port = $listener.LocalEndpoint.Port
-  $listener.Stop()
-  return $port
-}
-
-function New-RandomPassword {
-  $bytes = New-Object byte[] 24
-  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-  $rng.GetBytes($bytes)
-  $rng.Dispose()
-  return ([Convert]::ToBase64String($bytes) -replace '[^A-Za-z0-9]', 'x')
+  for ($i = 0; $i -lt 20; $i++) {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    $port = $listener.LocalEndpoint.Port
+    $listener.Stop()
+    if ($port -ne 5432) { return $port }
+  }
+  Stop-Drill 'no free port found.'
 }
 
 function Remove-Folder([string]$path) {
@@ -170,7 +249,7 @@ if ($PgBin) {
 }
 $pgMajor = 0
 if ($pg.Count -eq 5) {
-  $pgMajor = Get-Major ((Invoke-Program $pg.postgres @('--version') 'postgres --version') | Select-Object -First 1)
+  $pgMajor = Get-Major (Get-FirstLine (Invoke-Step 'postgres --version' $pg.postgres @('--version') 30) 'postgres --version')
   if ($pgMajor -lt $RequiredMajor) {
     $missing.Add("PostgreSQL $RequiredMajor (found $pgMajor in $PgBin). Install it with:`n    $($WinGetInstall.postgres)`n  In the installer keep 'PostgreSQL Server' and 'Command Line Tools'; untick 'pgAdmin 4' and 'Stack Builder'.")
   }
@@ -217,20 +296,27 @@ $Work = Join-Path ([System.IO.Path]::GetTempPath()) ('nexra-drill-' + [Guid]::Ne
 $Files = Join-Path $Work 'files'
 $Data = Join-Path $Work 'data'
 New-Item -ItemType Directory -Path $Files -Force | Out-Null
-if ($OnWindows) {
-  # Only the current user may read the folder (it will hold the decrypted backup).
-  $null = & icacls.exe $Work /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F" 2>&1
-}
+New-Item -ItemType Directory -Path (Join-Path $Work 'steps') -Force | Out-Null
 
 $started = $false
-$savedPassword = $env:PGPASSWORD
+$savedConnectTimeout = $env:PGCONNECT_TIMEOUT
 $result = 1
 try {
+  if ($OnWindows) {
+    # Only the current user may read the folder (it will hold the decrypted backup).
+    $null = Invoke-Step 'icacls (folder for this user only)' "$env:SystemRoot\System32\icacls.exe" @($Work, '/inheritance:r', '/grant:r', "$($env:USERNAME):(OI)(CI)F") 30
+  }
+  $script:LogDir = Join-Path $Work 'steps'
+  $script:ServerLog = Join-Path $Work 'server.log'
+  $env:PGCONNECT_TIMEOUT = '10'
+
   # --- 3. Decrypt and unpack ---------------------------------------------------------------
   $encrypted = $Backup
   if ($Backup -match '\.zip$') {
     $unzipped = Join-Path $Work 'artifact'
+    Write-Host '  start : unzip the artifact'
     Expand-Archive -LiteralPath $Backup -DestinationPath $unzipped -Force
+    Write-Host '  done  : unzip the artifact'
     $inside = @(Get-ChildItem -LiteralPath $unzipped -Recurse -File -Filter '*.tar.age')
     if ($inside.Count -ne 1) { Stop-Drill "the zip should hold exactly one .tar.age file; it holds $($inside.Count)." }
     $encrypted = $inside[0].FullName
@@ -241,8 +327,8 @@ try {
   if ([System.Text.Encoding]::ASCII.GetString($header) -ne 'age-encryption.org/v1') { Stop-Drill 'the backup is not an age file.' }
 
   $tarFile = Join-Path $Work 'backup.tar'
-  $null = Invoke-Program $Age @('--decrypt', '--identity', $KeyFile, '--output', $tarFile, $encrypted) 'decryption (wrong key, or a damaged file)'
-  $null = Invoke-Program $Tar @('-x', '-f', $tarFile, '-C', $Files) 'unpacking'
+  $null = Invoke-Step 'decryption (wrong key, or a damaged file)' $Age @('--decrypt', '--identity', $KeyFile, '--output', $tarFile, $encrypted) 300
+  $null = Invoke-Step 'unpacking' $Tar @('-x', '-f', $tarFile, '-C', $Files) 300
   Remove-Item -LiteralPath $tarFile -Force
 
   foreach ($name in @('manifest.txt', 'db.dump', 'auth-users.csv')) {
@@ -282,12 +368,9 @@ try {
   }
   Write-Host "decrypted   : manifest and $($hashes.Count) files match their SHA-256; $($expected.Count) tables listed"
 
-  # --- 4. A throwaway cluster: 127.0.0.1 only, a free port, a password made for this run ---
-  $password = New-RandomPassword
-  $pwFile = Join-Path $Work 'pw.txt'
-  [System.IO.File]::WriteAllText($pwFile, $password)
-  $null = Invoke-Program $pg.initdb @('-D', $Data, '--username=postgres', "--pwfile=$pwFile", '--auth=scram-sha-256', '--encoding=UTF8', '--locale=C') 'initdb'
-  Remove-Item -LiteralPath $pwFile -Force
+  # --- 4. A throwaway cluster: 127.0.0.1 only, a free port, trust authentication -----------
+  # trust: nothing prompts for a password; the server listens on loopback only, for this run.
+  $null = Invoke-Step 'initdb' $pg.initdb @('-D', $Data, '--username=postgres', '--auth=trust', '--encoding=UTF8', '--locale=C') 180
   $port = Get-FreePort
   $settings = @(
     '',
@@ -298,50 +381,53 @@ try {
     'fsync = off'
   )
   [System.IO.File]::AppendAllText((Join-Path $Data 'postgresql.conf'), ($settings -join "`n") + "`n")
-  $null = Invoke-Program $pg.pg_ctl @('-D', $Data, '-l', (Join-Path $Work 'server.log'), '-w', '-t', '60', 'start') 'starting the throwaway PostgreSQL'
+  # pg_ctl on the console, never through a pipe; -l sends the server's output to its log.
   $started = $true
+  $null = Invoke-Step 'pg_ctl start' $pg.pg_ctl @('start', '-D', $Data, '-l', $script:ServerLog, '-w', '-t', '60', '-s') 90 -Console
 
-  $env:PGPASSWORD = $password
-  $conn = @('-h', '127.0.0.1', '-p', "$port", '-U', 'postgres')
-  function Invoke-Sql([string]$database, [string]$sql, [string]$what) {
-    return Invoke-Program $pg.psql ($conn + @('-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-d', $database, '-c', $sql)) $what
+  $conn = @('-h', '127.0.0.1', '-p', "$port", '-U', 'postgres', '-w')
+  function Invoke-Sql([string]$step, [string]$database, [string]$sql) {
+    return Invoke-Step $step $pg.psql ($conn + @('-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-d', $database, '-c', $sql)) 60
   }
-  $listen = (Invoke-Sql 'postgres' 'show listen_addresses' 'reading listen_addresses' | Select-Object -First 1).Trim()
+  $listen = Get-FirstLine (Invoke-Sql 'psql: read listen_addresses' 'postgres' 'show listen_addresses') 'psql: read listen_addresses'
   if ($listen -ne '127.0.0.1') { Stop-Drill "the throwaway server listens on '$listen', not 127.0.0.1 only; stopping." }
-  $null = Invoke-Sql 'postgres' 'create database drill' 'creating the drill database'
-  Write-Host "cluster     : PostgreSQL $pgMajor on 127.0.0.1:$port (throwaway)"
+  $null = Invoke-Sql 'psql: create the drill database' 'postgres' 'create database drill'
+  Write-Host "cluster     : PostgreSQL $pgMajor on 127.0.0.1:$port (throwaway, trust, loopback only)"
 
   # --- 5. Every role the dump names, created without login ---------------------------------
   $schemaSql = Join-Path $Work 'schema.sql'
-  $null = Invoke-Program $pg.pg_restore @('--schema-only', '-f', $schemaSql, (Join-Path $Files 'db.dump')) 'reading the dump schema'
+  $null = Invoke-Step 'pg_restore: read the schema (roles)' $pg.pg_restore @('--schema-only', '-f', $schemaSql, (Join-Path $Files 'db.dump')) 120
   $roles = [regex]::Matches([System.IO.File]::ReadAllText($schemaSql), '(?:OWNER TO|TO|FROM) ([a-z_][a-z0-9_]*);') |
     ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
   Remove-Item -LiteralPath $schemaSql -Force
   foreach ($role in $roles) {
     if ($role -eq 'postgres' -or $role -eq 'public') { continue }
-    $null = Invoke-Sql 'postgres' "do `$`$ begin if not exists (select 1 from pg_roles where rolname = '$role') then create role $role nologin; end if; end `$`$;" "creating role $role"
+    $null = Invoke-Sql "psql: create role $role" 'postgres' "do `$`$ begin if not exists (select 1 from pg_roles where rolname = '$role') then create role $role nologin; end if; end `$`$;"
   }
 
   # --- 6. Restore: one transaction; pg_restore's order creates triggers after the data -------
   # The public schema exists in every new database, so its own CREATE and COMMENT entries are
   # left out of the list; everything in it is restored.
-  $list = Invoke-Program $pg.pg_restore @('--list', (Join-Path $Files 'db.dump')) 'listing the dump'
+  $list = Invoke-Step 'pg_restore: list the dump' $pg.pg_restore @('--list', (Join-Path $Files 'db.dump')) 120
   $kept = $list | Where-Object { $_ -notmatch ' (SCHEMA|COMMENT) - (SCHEMA )?public ' }
   $listFile = Join-Path $Work 'restore.list'
   [System.IO.File]::WriteAllLines($listFile, [string[]]$kept)
-  $null = Invoke-Program $pg.pg_restore ($conn + @('--dbname=drill', '--exit-on-error', '--single-transaction', "--use-list=$listFile", (Join-Path $Files 'db.dump'))) 'pg_restore'
+  $null = Invoke-Step 'pg_restore: restore' $pg.pg_restore ($conn + @('--dbname=drill', '--exit-on-error', '--single-transaction', "--use-list=$listFile", (Join-Path $Files 'db.dump'))) 900
   Write-Host 'restored    : one transaction, no error'
 
   # --- 7. Compare every table's row count with the manifest ---------------------------------
+  Write-Host "  start : row-count compare ($($expected.Count) tables)"
   $problems = New-Object System.Collections.Generic.List[string]
   foreach ($row in $expected) {
     try {
-      $got = [long]((Invoke-Sql 'drill' "select count(*) from $($row.Table)" "counting $($row.Table)" | Select-Object -First 1).Trim())
+      $got = [long](Get-FirstLine (Invoke-Sql "psql: count $($row.Table)" 'drill' "select count(*) from $($row.Table)") "psql: count $($row.Table)")
       if ($got -ne $row.Count) { $problems.Add("$($row.Table): manifest $($row.Count), restored $got") }
-    } catch {
+    } catch [System.ApplicationException] {
+      if ($_.Exception.Message -match 'timed out|returned no output') { throw }
       $problems.Add("$($row.Table): missing from the restore")
     }
   }
+  Write-Host "  done  : row-count compare ($($problems.Count) differ)"
   $users = @([System.IO.File]::ReadAllLines((Join-Path $Files 'auth-users.csv')) | Where-Object { $_ -ne '' }).Count - 1
   $rows = ($expected | Measure-Object -Property Count -Sum).Sum
   if ($problems.Count -gt 0) {
@@ -360,12 +446,10 @@ try {
   $result = 1
 } finally {
   if ($started) {
-    $saved = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $null = & $pg.pg_ctl -D $Data -m immediate -w stop 2>&1
-    $ErrorActionPreference = $saved
+    try { $null = Invoke-Step 'pg_ctl stop' $pg.pg_ctl @('stop', '-D', $Data, '-m', 'immediate', '-w', '-t', '60', '-s') 90 -Console }
+    catch { Write-Host "  warning: $($_.Exception.Message)" -ForegroundColor Yellow }
   }
-  if ($null -eq $savedPassword) { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue } else { $env:PGPASSWORD = $savedPassword }
+  if ($null -eq $savedConnectTimeout) { Remove-Item Env:PGCONNECT_TIMEOUT -ErrorAction SilentlyContinue } else { $env:PGCONNECT_TIMEOUT = $savedConnectTimeout }
   if ($Keep) {
     Write-Host "kept (stopped; holds the DECRYPTED backup - delete it when done): $Work" -ForegroundColor Yellow
   } elseif (Remove-Folder $Work) {
