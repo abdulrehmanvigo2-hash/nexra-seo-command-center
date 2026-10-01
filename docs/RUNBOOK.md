@@ -255,15 +255,19 @@ database outside Supabase.
 | Leaves out | Supabase's own schemas (`auth`, `storage`, `realtime`, `extensions`, …), which a new project recreates |
 | Checks before storing | `public.projects` holds at least one row, and the dump lists the projects, runs and migration-history tables; any failure fails the job |
 | Encryption | [age](https://age-encryption.org), to the operator's public key; the private key is never in GitHub, Vercel, Supabase or a Claude session |
-| Stored | as a GitHub Actions artifact of this private repository, one per run, kept **30 days** (`nexra-backup-<run id>`, containing `nexra-backup-<UTC>.tar.age`) |
+| Stored | as a GitHub Actions artifact of this **public** repository (see *Public repository* below), one per run, kept **30 days** (`nexra-backup-<run id>`, containing `nexra-backup-<UTC>.tar.age`) |
 | Code | `scripts/backup/backup.sh` (dump, verify, encrypt), `scripts/backup/restore-drill.sh` (6.4, Linux / WSL), `scripts/backup/restore-drill.ps1` (6.4a, Windows), `scripts/backup/test-local.sh` (the whole cycle against a local database) |
 
 Inside the encrypted file: `db.dump` (`pg_dump` custom format), `auth-users.csv`, and
 `manifest.txt` (the time, the server and `pg_dump` versions, each table's row count and each
 file's SHA-256).
 
-**Why an artifact, not a backups repository.** The repository is private, and the file is
-encrypted before upload. Artifacts need no extra credential, while a second repository would
+**Public repository.** The repository is public on purpose (operator decision, 1 Oct); it may become private
+later. Any signed-in GitHub user can download its Actions artifacts, so a backup is only ever stored
+**encrypted** with age, and that exposure is accepted: without the operator's private key the file is
+unreadable. Never commit a secret, production data or personal data; the run summary prints counts only.
+
+**Why an artifact, not a backups repository.** The file is encrypted before upload. Artifacts need no extra credential, while a second repository would
 need a write token in Actions and would keep every backup in its history forever. Thirty
 files fit easily in the Free plan's Actions storage: a local test file was under 0.5 MB, and the
 first production run shows the real size. The operator keeps one download a month offline

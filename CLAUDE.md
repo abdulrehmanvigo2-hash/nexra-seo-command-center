@@ -2120,6 +2120,11 @@ Ask the user and wait for explicit approval before any of these:
 - Any value carrying a client-exposure prefix (for example `NEXT_PUBLIC_*`) is public by
   definition — never put a secret behind one.
 - Verify no secrets are staged before every commit.
+- **Public repository rules.** The GitHub repository is **public** on purpose (operator decision, 1 Oct 2026;
+  private later, when revenue allows). Never commit secrets, production data (row contents, exports, dumps) or
+  personal data (emails, names of users or clients); identifiers and hashes recorded in the docs are accepted.
+  Backups leave the job only age-encrypted; that Actions artifacts can be downloaded by any signed-in GitHub user
+  is accepted.
 
 ## 8. File Safety Rules
 
@@ -2390,6 +2395,12 @@ control, and the one V1 write was made from a Claude Code session under the lean
 - **Renderer:** rich blocks and H3 anchors; review the "Our view" label's visibility on the live page.
 - **Website:** service pages (the planned nexra-ai PR 3); a Search Console follow-up on the new article's indexing
   and first impressions.
+- **Private repository and GitHub Pro, when revenue allows (operator decision, 1 Oct).** The repository is public on
+  purpose for now. Making it private later means checking, before the switch: Actions minutes (a private repository
+  on the Free plan has 2,000 minutes a month; the CI jobs and the nightly backup must fit, or GitHub Pro's 3,000);
+  environments (the `backup` environment's deployment-branch rule and secrets on a private repository need a paid
+  plan on GitHub's current terms); enforced branch protection (the item above, which Pro would allow); and that
+  Vercel's Git connection and the session tooling keep their access.
 
 **Full audit — what it should cover:**
 
