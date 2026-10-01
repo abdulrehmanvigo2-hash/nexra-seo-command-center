@@ -49,6 +49,10 @@ export type ArticleProposalsDatabase = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      nexra_article_publication_live_articles: {
+        Args: { p_destination: string };
+        Returns: unknown;
+      };
       nexra_article_publication_propose: {
         Args: {
           p_project_id: string;

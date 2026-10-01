@@ -10,6 +10,7 @@
  * here publishes anything.
  */
 
+import type { LiveArticle } from "@/lib/content/articles/proposals/live-slugs";
 import type { ArticleProposalPreviewFormat, ArticleProposalReservation, ArticlePublicationProposal } from "@/types/content-article-proposal";
 
 export type ProposeArticleInput = {
@@ -82,6 +83,8 @@ export type ArticleProposalStore = {
   propose(input: ProposeArticleInput): Promise<ProposeArticleOutcome>;
   /** One withdrawal, under the article's lock; never a delete. */
   withdraw(input: WithdrawArticleInput): Promise<WithdrawArticleOutcome>;
+  /** The destination's live articles, from the records (`nexra_article_publication_live_articles`, fix F9). Throws when not read. */
+  listLiveArticles(destination: string): Promise<readonly LiveArticle[]>;
 };
 
 /** The store used when articles are not persisted anywhere. It refuses rather than pretends. */
@@ -101,5 +104,8 @@ export const unavailableArticleProposalStore: ArticleProposalStore = {
   },
   async withdraw() {
     return { status: "not-found" };
+  },
+  async listLiveArticles() {
+    throw new Error("live articles: this deployment keeps no records");
   },
 };

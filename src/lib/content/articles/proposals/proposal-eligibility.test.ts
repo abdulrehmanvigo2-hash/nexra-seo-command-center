@@ -7,15 +7,16 @@ import {
   articleProposalBlockMessage,
   articleProposalEligibility,
   articleProposalWarningMessage,
-  liveSlugsFor,
   type ArticleProposalFacts,
 } from "@/lib/content/articles/proposals/eligibility";
+import { liveSlugsIn } from "@/lib/content/articles/proposals/live-slugs";
 import {
   APPROVAL_ID,
   APPROVED_AT,
   APPROVER,
   ARTICLE_ID,
   DESTINATION,
+  LIVE_ARTICLES,
   OTHER_ARTICLE_ID,
   PROJECT_ID,
   VERSION_ID,
@@ -234,9 +235,14 @@ describe("the destination and proposal state (D3)", () => {
 });
 
 describe("live slugs (D2)", () => {
-  test("the live slugs: the pinned template's, then those published after the pin (6.12a), the same list the SQL pins", () => {
-    assert.deepEqual(liveSlugsFor(DESTINATION), ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation"]);
-    assert.deepEqual(liveSlugsFor("other-site"), []);
+  test("the live slugs are the records': the pinned template's, then those published after the pin (fix F9)", () => {
+    assert.deepEqual(liveSlugsIn(LIVE_ARTICLES), ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation"]);
+    assert.deepEqual(liveSlugsIn([]), []);
+  });
+
+  test("live articles not read from the records: the slug cannot be vouched for, so it blocks (fix F9)", () => {
+    const result = blockedWith(eligibleFacts({ liveArticles: null }), "live-articles-unread");
+    assert.deepEqual(result.warnings, []);
   });
 
   test("a new article (different-angle) naming a live slug is refused", () => {

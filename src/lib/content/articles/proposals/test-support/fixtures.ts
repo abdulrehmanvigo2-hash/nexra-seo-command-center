@@ -1,4 +1,5 @@
 import { canonicalArticleJson } from "@/lib/content/articles/canonical";
+import type { LiveArticle } from "@/lib/content/articles/proposals/live-slugs";
 import type { ArticleProposalFacts } from "@/lib/content/articles/proposals/eligibility";
 import { completeArticle } from "@/lib/content/articles/test-support/fixtures";
 import { validateArticleContent } from "@/lib/content/articles/validate";
@@ -59,6 +60,15 @@ export function approvedArticle(overrides: Partial<Article> = {}): Article {
   };
 }
 
+/**
+ * The destination's live articles as production's records answer them since 20261015120000 (fix F9): the pinned
+ * template slug (no article record), then the slug published from article 1003104c with its proposed version 6.
+ */
+export const LIVE_ARTICLES: readonly LiveArticle[] = [
+  { slug: "ai-lead-follow-up-automation", articleId: null, articleVersion: null, keywords: null },
+  { slug: "ai-dead-lead-reactivation", articleId: "1003104c-6b25-456f-9304-eefa2ba88e7d", articleVersion: 6, keywords: ["ai dead lead reactivation", "dead lead reactivation"] },
+];
+
 /** Eligible facts for version 2; `overrides` replace whole facts. */
 export function eligibleFacts(overrides: Partial<ArticleProposalFacts> = {}, content: ValidatedArticleContent = approvedContent()): ArticleProposalFacts {
   const { text, sha256 } = canonicalOf(content);
@@ -86,6 +96,7 @@ export function eligibleFacts(overrides: Partial<ArticleProposalFacts> = {}, con
     computedContentSha256: sha256,
     approval,
     proposals: { activeForArticle: null, holders: [] },
+    liveArticles: LIVE_ARTICLES,
     ...overrides,
   };
 }

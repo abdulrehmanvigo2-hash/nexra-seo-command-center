@@ -51,7 +51,7 @@ import { hasArticlePlaceholder } from "@/lib/content/articles/approvals/eligibil
 import { CARRY_BASIS_COPY, carriedLabel } from "@/lib/content/articles/checks/carry-copy";
 import { attestedParagraphs, labelledParagraph } from "@/lib/content/articles/attestations";
 import { articleCanonicalFormat, readCanonicalArticle } from "@/lib/content/articles/canonical";
-import { liveSlugOutcome } from "@/lib/content/articles/proposals/live-slugs";
+import { liveSlugOutcome, type LiveArticle } from "@/lib/content/articles/proposals/live-slugs";
 import { websiteCompleteness } from "@/lib/content/articles/website-completeness";
 import { isProjectId, isUuid } from "@/lib/content/drafts/service";
 import { findDestination } from "@/lib/content/publications/destinations";
@@ -73,6 +73,8 @@ export type ArticleProposalPreviewInput = {
   readonly binding: ArticleProposalBinding;
   /** The approved version's stored canonical text, exactly as stored. */
   readonly canonicalContent: string;
+  /** The destination's live articles, from the records (fix F9). */
+  readonly liveArticles: readonly LiveArticle[];
 };
 
 export type ArticleProposalPreviewRefusal =
@@ -154,7 +156,7 @@ export function buildArticleProposalPreview(input: ArticleProposalPreviewInput):
   if (content === null) return { ok: false, reason: "content-unreadable" };
   if (content.slug !== binding.slug) return { ok: false, reason: "slug-mismatch" };
   if (hasArticlePlaceholder(canonicalContent)) return { ok: false, reason: "unresolved-placeholder" };
-  const liveOutcome = liveSlugOutcome(binding.destination, binding.slug, binding.articleId, content.topicDecision);
+  const liveOutcome = liveSlugOutcome(input.liveArticles, binding.slug, binding.articleId, content.topicDecision);
   if (liveOutcome === "collision") return { ok: false, reason: "slug-live-collision" };
   // The warning line only for update-existing over a pinned live slug (D2): the owning article of a slug published
   // after the pin reads "None.", as it did before the slug was live, so its stored preview keeps every byte.

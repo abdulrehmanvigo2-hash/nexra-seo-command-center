@@ -1,14 +1,15 @@
 /**
- * The live slugs at each destination (D2, D10): the pinned website template's
- * existing articles, then the slugs published after that pin, each with the
- * article it was published from and the merge that put it live.
+ * The live articles at a destination (D2, D10), as the records say (fix F9,
+ * audit A5-01).
  *
- * The pinned templates (`nexra-ai-blog-tsx/1` at a4a5722, `/2` at 1a688bd)
- * are never edited: a slug published later is listed here instead, so every
- * template hash stays as it was. The SQL restates the same list
- * (`nexra_article_publication_live_slugs` and
- * `nexra_article_publication_live_slug_article`, migration 20261011120000);
- * a test keeps the two in step.
+ * The one list is the database's: the pinned template's slugs
+ * (20260925120000) and those published after the pin, each with the article
+ * it was published from (20261011120000), read through
+ * `nexra_article_publication_live_articles` (20261015120000) with the version
+ * that article proposed for the slug and that version's keywords. The
+ * application keeps no list of its own: a slug published later is added to
+ * the database's list by its own migration (docs/RUNBOOK.md, *Before the next
+ * article*), and every check here follows it.
  *
  * The rule (checkpoint 6.12a, rule 2):
  * - a pinned template slug has no article record behind it: a different-angle
@@ -16,53 +17,70 @@
  *   warning (D2, unchanged);
  * - a slug published after the pin belongs to the article it was published
  *   from: that article is never refused for it, and every other article is,
- *   whatever its topic decision (a revision of the live page is a new version
- *   of the owning article).
+ *   whatever its topic decision.
  *
- * Pure: no store, no network; safe to import from either side.
+ * Pure: the list is read by the proposal store and handed in; no store, no
+ * network here; safe to import from either side.
  */
 
-import { templateForDestination } from "@/lib/content/publications/website/template";
-
-/** A slug that went live after the destination's template was pinned. */
-export type LiveSlugAfterPin = {
-  readonly destination: string;
+/** One live article at a destination, as the records hold it. */
+export type LiveArticle = {
   readonly slug: string;
-  /** The article the live page was rendered from. */
-  readonly articleId: string;
-  readonly source: {
-    readonly repository: string;
-    readonly pullRequest: number;
-    readonly mergeCommit: string;
-    /** YYYY-MM-DD, the date the page carries. */
-    readonly published: string;
-  };
+  /** The article the live page was rendered from; null for a pinned template slug (no article record). */
+  readonly articleId: string | null;
+  /** The version that article proposed for this slug; null when the records name none. */
+  readonly articleVersion: number | null;
+  /** That version's keywords as stored; null when no version is named. */
+  readonly keywords: readonly string[] | null;
 };
 
-export const LIVE_SLUGS_AFTER_PIN: readonly LiveSlugAfterPin[] = [
-  {
-    destination: "nexra-agency-website",
-    slug: "ai-dead-lead-reactivation",
-    articleId: "1003104c-6b25-456f-9304-eefa2ba88e7d",
-    source: {
-      repository: "abdulrehmanvigo2-hash/nexra-ai",
-      pullRequest: 9,
-      mergeCommit: "9a69c8c09aff7df7ce3d676700114d6efe91d4f9",
-      published: "2026-09-30",
-    },
-  },
-];
+export class LiveArticlesError extends Error {
+  constructor(message: string) {
+    super(`live articles: ${message}`);
+    this.name = "LiveArticlesError";
+  }
+}
 
-/** Every live slug at a destination: the pinned template's, then those published after the pin (the same list the SQL pins). */
-export function liveSlugsFor(destination: string): readonly string[] {
-  const pinned = templateForDestination(destination)?.existingArticles.map((existing) => existing.slug) ?? [];
-  const after = LIVE_SLUGS_AFTER_PIN.filter((entry) => entry.destination === destination).map((entry) => entry.slug);
-  return [...pinned, ...after];
+const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** What the read function answers, checked entry by entry: a shape it does not promise is an error, never a guess. */
+export function parseLiveArticles(data: unknown): readonly LiveArticle[] {
+  if (!Array.isArray(data)) throw new LiveArticlesError("the answer is not a list.");
+  const seen = new Set<string>();
+  return data.map((entry, index) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) throw new LiveArticlesError(`entry ${index} is not an object.`);
+    const e = entry as Record<string, unknown>;
+    if (typeof e.slug !== "string" || !SLUG.test(e.slug)) throw new LiveArticlesError(`entry ${index} has no valid slug.`);
+    if (seen.has(e.slug)) throw new LiveArticlesError(`the slug ${e.slug} is listed twice.`);
+    seen.add(e.slug);
+    if (e.articleId !== null && (typeof e.articleId !== "string" || !UUID.test(e.articleId))) throw new LiveArticlesError(`entry ${index} has an invalid article id.`);
+    if (e.articleVersion !== null && (typeof e.articleVersion !== "number" || !Number.isInteger(e.articleVersion) || e.articleVersion < 1)) {
+      throw new LiveArticlesError(`entry ${index} has an invalid version.`);
+    }
+    if (e.keywords !== null && (!Array.isArray(e.keywords) || !e.keywords.every((k) => typeof k === "string"))) throw new LiveArticlesError(`entry ${index} has invalid keywords.`);
+    return {
+      slug: e.slug,
+      articleId: e.articleId === null ? null : (e.articleId as string),
+      articleVersion: e.articleVersion === null ? null : (e.articleVersion as number),
+      keywords: e.keywords === null ? null : [...(e.keywords as string[])],
+    };
+  });
+}
+
+/** Every live slug, in the records' order. */
+export function liveSlugsIn(live: readonly LiveArticle[]): readonly string[] {
+  return live.map((entry) => entry.slug);
 }
 
 /** The article a live slug was published from; null for a pinned template slug or a slug that is not live. */
-export function liveSlugArticle(destination: string, slug: string): string | null {
-  return LIVE_SLUGS_AFTER_PIN.find((entry) => entry.destination === destination && entry.slug === slug)?.articleId ?? null;
+export function liveSlugArticle(live: readonly LiveArticle[], slug: string): string | null {
+  return live.find((entry) => entry.slug === slug)?.articleId ?? null;
+}
+
+/** The live page an article was published as, or null. */
+export function liveArticleOf(live: readonly LiveArticle[], articleId: string): LiveArticle | null {
+  return live.find((entry) => entry.articleId !== null && entry.articleId === articleId) ?? null;
 }
 
 /**
@@ -72,13 +90,13 @@ export function liveSlugArticle(destination: string, slug: string): string | nul
  * decision) but not the owning article of a slug published after the pin.
  */
 export function liveSlugOutcome(
-  destination: string,
+  live: readonly LiveArticle[],
   slug: string,
   articleId: string,
   topicDecision: string | null,
 ): "none" | "collision" | "update-existing-warning" {
-  if (!liveSlugsFor(destination).includes(slug)) return "none";
-  const owner = liveSlugArticle(destination, slug);
-  if (owner !== null) return owner === articleId ? "none" : "collision";
+  const entry = live.find((candidate) => candidate.slug === slug);
+  if (entry === undefined) return "none";
+  if (entry.articleId !== null) return entry.articleId === articleId ? "none" : "collision";
   return topicDecision === "update-existing" ? "update-existing-warning" : "collision";
 }

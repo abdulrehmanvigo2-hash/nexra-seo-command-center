@@ -12,7 +12,7 @@ import { readEvidencePackGrounding } from "../../../research/evidence-pack.ts";
 import { utf8Sha256 } from "../../publications/content-hash.ts";
 import { approvalRowToApproval } from "../approvals/supabase/schema.ts";
 import { buildArticleProposalPreview } from "../proposals/preview.ts";
-import { approvedContent, canonicalOf, eligibleBinding } from "../proposals/test-support/fixtures.ts";
+import { approvedContent, canonicalOf, eligibleBinding, LIVE_ARTICLES } from "../proposals/test-support/fixtures.ts";
 import { carryDecision, evidenceFingerprint, sourceRunHashes, type SourceRunHashes } from "./carry.ts";
 import { CARRY_REFUSAL_COPY, carriedLabel } from "./carry-copy.ts";
 import { ARTICLE_CHECK_INSTRUCTIONS_SHA256, formatArticleCheckGrounding, resolveArticleUnit } from "./grounding.ts";
@@ -391,14 +391,14 @@ describe("the approval and the preview name carried results (never silent)", () 
   test("a binding with no carried unit builds the preview byte for byte as before; one with a carried unit lists it, format unchanged", () => {
     const value = approvedContent();
     const { text } = canonicalOf(value);
-    const plain = buildArticleProposalPreview({ binding: eligibleBinding(value), canonicalContent: text });
-    const empty = buildArticleProposalPreview({ binding: eligibleBinding(value, { carriedUnits: [] }), canonicalContent: text });
+    const plain = buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(value), canonicalContent: text });
+    const empty = buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(value, { carriedUnits: [] }), canonicalContent: text });
     assert.ok(plain.ok && empty.ok);
     assert.equal(empty.preview.document, plain.preview.document);
     assert.doesNotMatch(plain.preview.document, /CARRIED CHECK RESULTS/);
 
     const carried = buildArticleProposalPreview({
-      binding: eligibleBinding(value, { carriedUnits: [{ unitIndex: 2, unitKey: "section:x:1", fromVersion: 5, fromUnitId: "f0000000-0000-4000-8000-000000000005", runId: "d9d3b975-0000-4000-8000-000000000000", basis: "evidence-unchanged" }] }),
+      liveArticles: LIVE_ARTICLES, binding: eligibleBinding(value, { carriedUnits: [{ unitIndex: 2, unitKey: "section:x:1", fromVersion: 5, fromUnitId: "f0000000-0000-4000-8000-000000000005", runId: "d9d3b975-0000-4000-8000-000000000000", basis: "evidence-unchanged" }] }),
       canonicalContent: text,
     });
     assert.ok(carried.ok);

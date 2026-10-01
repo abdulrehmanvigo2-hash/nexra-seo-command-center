@@ -164,9 +164,11 @@ describe("editing an approved article confirms first (A5-05)", () => {
     assert.equal(guard.confirmLabel, "Edit as version 5");
   });
 
-  test("the live article says it is live, and that saving does not change the live page", () => {
-    const guard = editGuard({ id: "1003104c-6b25-456f-9304-eefa2ba88e7d", status: "approved", currentVersion: 6, approvedVersion: 6 });
-    assert.ok(guard?.lines.some((line) => line.includes("live on the website (/blog/ai-dead-lead-reactivation, published 2026-09-30)")));
+  test("the live article says it is live (the slug from the records, fix F9), and that saving does not change the live page", () => {
+    const article = { id: "1003104c-6b25-456f-9304-eefa2ba88e7d", status: "approved", currentVersion: 6, approvedVersion: 6 };
+    const guard = editGuard(article, { slug: "ai-dead-lead-reactivation" });
+    assert.ok(guard?.lines.some((line) => line.includes("live on the website (/blog/ai-dead-lead-reactivation). Saving a version here does not change the live page")));
+    assert.ok(editGuard(article)?.lines.every((line) => !/live on the website/.test(line)), "no live line without the records' slug");
   });
 
   test("checked: confirms too; drafting: no confirmation", () => {
@@ -181,7 +183,8 @@ describe("the panel (wiring)", () => {
     assert.ok(detail.indexOf("<EditArticleRow") > detail.indexOf("<ArticleContentView"));
     assert.ok(detail.indexOf("<EditArticleRow") > detail.indexOf("<ArticleApprovalSection"));
     assert.doesNotMatch(detail.slice(0, detail.indexOf("<ArticleApprovalSection")), /Edit as version/);
-    assert.match(PANEL, /const guard = editGuard\(article\);/);
+    assert.match(PANEL, /const guard = editGuard\(article, liveSlug === null \? null : \{ slug: liveSlug \}\);/);
+    assert.match(PANEL, /\/api\/content-article-proposals\?project=\$\{encodeURIComponent\(projectId\)\}&article=\$\{encodeURIComponent\(article\.id\)\}/);
     assert.match(PANEL, /onClick=\{\(\) => \(guard === null \? onEdit\(\) : setConfirming\(true\)\)\}/);
     assert.match(PANEL, /<Button variant="ghost" icon="edit"/);
   });

@@ -27,6 +27,7 @@ import "server-only";
  * file, reaches a repository or a site, or deletes anything.
  */
 
+import { liveArticleOf, type LiveArticle } from "@/lib/content/articles/proposals/live-slugs";
 import type { ArticleApprovalStore } from "@/lib/content/articles/approvals/contract";
 import { readCanonicalArticle } from "@/lib/content/articles/canonical";
 import type { ArticleCheckStore, StoredArticleVersion } from "@/lib/content/articles/checks/contract";
@@ -63,6 +64,12 @@ export type ArticleProposalStateView = {
   readonly activeProposalCurrent: boolean | null;
   /** Every proposal of the article, active and withdrawn, newest first. Immutable history. */
   readonly history: readonly ArticlePublicationProposal[];
+  /**
+   * Fix F9: the slug this article is live under at the destination, as the records say; null when it is not live
+   * there, or when the live articles could not be read (`liveArticlesRead` false).
+   */
+  readonly liveSlug: string | null;
+  readonly liveArticlesRead: boolean;
 };
 
 type ReadFailure = "invalid" | "unavailable" | "not-found" | "failed";
@@ -186,6 +193,15 @@ export function createArticleProposalService(dependencies: {
     const slug = version === null ? "" : (readCanonicalArticle(version.canonicalContent)?.slug ?? "");
     // The holders are read whenever there is a destination and slug to ask about; a failed read throws.
     const holders = destinationKey !== "" && slug !== "" ? await proposals.listSlugHolders(destinationKey, slug) : [];
+    // The live articles are the records' (fix F9); a failed read blocks the proposal rather than failing the state.
+    let liveArticles: readonly LiveArticle[] | null = null;
+    if (destinationKey !== "") {
+      try {
+        liveArticles = await proposals.listLiveArticles(destinationKey);
+      } catch (error) {
+        console.error("article proposals: live articles not read:", error instanceof Error ? `${error.name}: ${error.message}` : "unknown error");
+      }
+    }
 
     const eligibility = articleProposalEligibility({
       projectId,
@@ -201,11 +217,12 @@ export function createArticleProposalService(dependencies: {
         activeForArticle: active === null ? null : { proposalId: active.id, articleVersion: active.articleVersion, destination: active.destination, slug: active.slug },
         holders,
       },
+      liveArticles,
     });
 
     let preview: ArticleProposalStateView["preview"] = null;
     if (eligibility.status === "eligible" && version !== null) {
-      const hashed = hashedArticleProposalPreview({ binding: eligibility.binding, canonicalContent: version.canonicalContent });
+      const hashed = hashedArticleProposalPreview({ binding: eligibility.binding, canonicalContent: version.canonicalContent, liveArticles: liveArticles ?? [] });
       // An eligible version whose preview cannot be built is an inconsistency, never a silent success.
       if (!hashed.ok) return { ok: false, reason: "failed" };
       preview = { ...hashed.preview, previewSha256: hashed.previewSha256 };
@@ -223,6 +240,8 @@ export function createArticleProposalService(dependencies: {
         activeProposal: active,
         activeProposalCurrent: active === null ? null : isArticleProposalCurrent(active, article, version, approval),
         history,
+        liveSlug: liveArticles === null ? null : (liveArticleOf(liveArticles, article.id)?.slug ?? null),
+        liveArticlesRead: liveArticles !== null,
       },
     };
   }

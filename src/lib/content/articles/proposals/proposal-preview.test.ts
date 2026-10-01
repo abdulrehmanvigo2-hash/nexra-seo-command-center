@@ -16,6 +16,7 @@ import {
   APPROVED_AT,
   APPROVER,
   ARTICLE_ID,
+  LIVE_ARTICLES,
   VERSION_ID,
   approvedContent,
   canonicalOf,
@@ -32,7 +33,7 @@ import { NEXRA_AI_BLOG_TEMPLATE } from "@/lib/content/publications/website/templ
 const root = new URL("../../../../../", import.meta.url);
 
 function preview(content = approvedContent(), overrides = {}) {
-  const result = buildArticleProposalPreview({ binding: eligibleBinding(content, overrides), canonicalContent: canonicalOf(content).text });
+  const result = buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content, overrides), canonicalContent: canonicalOf(content).text });
   assert.ok(result.ok, JSON.stringify(result));
   return result.preview;
 }
@@ -132,7 +133,7 @@ describe("the document", () => {
     const eligibility = articleProposalEligibility(eligibleFacts({}, content));
     assert.equal(eligibility.status, "eligible");
     if (eligibility.status !== "eligible") return;
-    const built = buildArticleProposalPreview({ binding: eligibility.binding, canonicalContent: canonicalOf(content).text });
+    const built = buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibility.binding, canonicalContent: canonicalOf(content).text });
     assert.ok(built.ok);
     assert.equal(built.ok && built.preview.document, preview(content).document);
     assert.ok(built.ok && built.preview.document.includes(`Proposed route (not written): ${eligibility.route}`));
@@ -141,8 +142,8 @@ describe("the document", () => {
 
 describe("determinism and the hash", () => {
   test("the same input gives byte-identical text and the same SHA-256", () => {
-    const a = hashedArticleProposalPreview({ binding: eligibleBinding(), canonicalContent: canonicalOf(approvedContent()).text });
-    const b = hashedArticleProposalPreview({ binding: eligibleBinding(), canonicalContent: canonicalOf(approvedContent()).text });
+    const a = hashedArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(), canonicalContent: canonicalOf(approvedContent()).text });
+    const b = hashedArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(), canonicalContent: canonicalOf(approvedContent()).text });
     assert.ok(a.ok && b.ok);
     if (!a.ok || !b.ok) return;
     assert.ok(Buffer.from(a.preview.document, "utf8").equals(Buffer.from(b.preview.document, "utf8")));
@@ -158,7 +159,7 @@ describe("determinism and the hash", () => {
 
   test("the preview hash is not the content hash, and both are kept", () => {
     const content = approvedContent();
-    const hashed = hashedArticleProposalPreview({ binding: eligibleBinding(content), canonicalContent: canonicalOf(content).text });
+    const hashed = hashedArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content), canonicalContent: canonicalOf(content).text });
     assert.ok(hashed.ok);
     if (!hashed.ok) return;
     assert.notEqual(hashed.previewSha256, canonicalOf(content).sha256);
@@ -176,7 +177,7 @@ describe("determinism and the hash", () => {
 
   test("nothing from the clock, randomness or the environment", () => {
     const content = approvedContent();
-    const input = { binding: eligibleBinding(content), canonicalContent: canonicalOf(content).text };
+    const input = { liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content), canonicalContent: canonicalOf(content).text };
     const first = buildArticleProposalPreview(input);
     const realNow = Date.now;
     const realRandom = Math.random;
@@ -216,37 +217,37 @@ describe("refusals: no preview for anything that would not be eligible", () => {
       { approvedAt: "yesterday" },
       { slug: "Bad Slug" },
     ]) {
-      const result = buildArticleProposalPreview({ binding: eligibleBinding(content, bad), canonicalContent: text });
+      const result = buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content, bad), canonicalContent: text });
       assert.deepEqual(result, { ok: false, reason: "binding-invalid" }, JSON.stringify(bad));
     }
   });
 
   test("a destination not registered for the project", () => {
-    assert.deepEqual(buildArticleProposalPreview({ binding: eligibleBinding(content, { destination: "other-site" }), canonicalContent: text }), { ok: false, reason: "destination-unavailable" });
-    assert.deepEqual(buildArticleProposalPreview({ binding: eligibleBinding(content, { projectId: "verdant-home" }), canonicalContent: text }), { ok: false, reason: "destination-unavailable" });
+    assert.deepEqual(buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content, { destination: "other-site" }), canonicalContent: text }), { ok: false, reason: "destination-unavailable" });
+    assert.deepEqual(buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content, { projectId: "verdant-home" }), canonicalContent: text }), { ok: false, reason: "destination-unavailable" });
   });
 
   test("text that is not canonical content", () => {
-    assert.deepEqual(buildArticleProposalPreview({ binding: eligibleBinding(content), canonicalContent: `${text} ` }), { ok: false, reason: "content-unreadable" });
-    assert.deepEqual(buildArticleProposalPreview({ binding: eligibleBinding(content), canonicalContent: undefined as unknown as string }), { ok: false, reason: "content-unreadable" });
+    assert.deepEqual(buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content), canonicalContent: `${text} ` }), { ok: false, reason: "content-unreadable" });
+    assert.deepEqual(buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content), canonicalContent: undefined as unknown as string }), { ok: false, reason: "content-unreadable" });
   });
 
   test("a slug that is not the content's own", () => {
-    assert.deepEqual(buildArticleProposalPreview({ binding: eligibleBinding(content, { slug: "another-slug" }), canonicalContent: text }), { ok: false, reason: "slug-mismatch" });
+    assert.deepEqual(buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content, { slug: "another-slug" }), canonicalContent: text }), { ok: false, reason: "slug-mismatch" });
   });
 
   test("a placeholder, and a live-slug collision for a new article", () => {
     const placeholder = approvedContent((raw) => {
       raw.lead = "Lead [NEEDS EVIDENCE: x].";
     });
-    assert.deepEqual(buildArticleProposalPreview({ binding: eligibleBinding(placeholder), canonicalContent: canonicalOf(placeholder).text }), { ok: false, reason: "unresolved-placeholder" });
+    assert.deepEqual(buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(placeholder), canonicalContent: canonicalOf(placeholder).text }), { ok: false, reason: "unresolved-placeholder" });
     const live = approvedContent((raw) => {
       raw.slug = NEXRA_AI_BLOG_TEMPLATE.existingArticles[0].slug;
     });
-    assert.deepEqual(buildArticleProposalPreview({ binding: eligibleBinding(live), canonicalContent: canonicalOf(live).text }), { ok: false, reason: "slug-live-collision" });
+    assert.deepEqual(buildArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(live), canonicalContent: canonicalOf(live).text }), { ok: false, reason: "slug-live-collision" });
   });
 
   test("the server refuses text that does not hash to the binding's content hash", () => {
-    assert.deepEqual(hashedArticleProposalPreview({ binding: eligibleBinding(content, { contentSha256: "a".repeat(64) }), canonicalContent: text }), { ok: false, reason: "content-hash-mismatch" });
+    assert.deepEqual(hashedArticleProposalPreview({ liveArticles: LIVE_ARTICLES, binding: eligibleBinding(content, { contentSha256: "a".repeat(64) }), canonicalContent: text }), { ok: false, reason: "content-hash-mismatch" });
   });
 });

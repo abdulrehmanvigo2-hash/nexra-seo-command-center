@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, operator-attested paragraphs, live slugs published after the template pin, the surplus grants revoked, the legacy crawl subsystem retired, and check-result carry-forward).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, operator-attested paragraphs, live slugs published after the template pin, the surplus grants revoked, the legacy crawl subsystem retired, check-result carry-forward, and the live articles read from the records).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -38,7 +38,7 @@ LEGACY_MIGRATION="$MIGRATIONS/20261013120000_retire_legacy_crawl_subsystem.sql"
 CARRY_MIGRATION="$MIGRATIONS/20261014120000_check_unit_carry_forward.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -649,7 +649,13 @@ suite_carry_upgrade() {
   run_sql_suite carry-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/carry/upgrade-before.sql" "$CARRY_MIGRATION" "$HERE/carry/upgrade-after.sql"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade)
+# The live articles read from the records (fix F9, audit A5-01): the function, its security, the owner's proposed version and keywords.
+suite_live_articles() {
+  fresh_db
+  run_sql_suite live-articles "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-articles/tests.sql"
+}
+
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -672,6 +678,7 @@ for s in "${SUITES[@]}"; do
     grants) suite_grants ;; grants-upgrade) suite_grants_upgrade ;;
     legacy-retire) suite_legacy_retire ;; legacy-retire-refusals) suite_legacy_retire_refusals ;;
     carry) suite_carry ;; carry-upgrade) suite_carry_upgrade ;;
+    live-articles) suite_live_articles ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done
