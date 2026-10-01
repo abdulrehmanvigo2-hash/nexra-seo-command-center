@@ -469,6 +469,12 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
 - **Branch protection on `master` (enforced).** Today it is configured but not enforced on the current GitHub plan;
   merge discipline rests on the operator's approval and green CI. Enforce required checks (the five CI jobs) and a
   pull request for every change to `master` once the plan allows it, or record why not.
+- **Private repository and GitHub Pro, when revenue allows (operator decision, 1 Oct).** The repository is public on
+  purpose for now. Making it private later means checking, before the switch: Actions minutes (a private repository
+  on the Free plan has 2,000 minutes a month; the CI jobs and the nightly backup must fit, or GitHub Pro's 3,000);
+  environments (the `backup` environment's deployment-branch rule and secrets on a private repository need a paid
+  plan on GitHub's current terms); enforced branch protection (the item above, which Pro would allow); and that
+  Vercel's Git connection and the session tooling keep their access.
 
 ## A3 — Agents (30 Sep 2026, at `8451980`)
 

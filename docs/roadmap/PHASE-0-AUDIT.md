@@ -163,12 +163,14 @@ States: **REAL+G** real and grounded in stored records; **REAL-API** real, reach
    - Merging in nexra-ai is an external write (§6) for each article, unless the operator approves standing
      automation.
 6. **The repository is public** (GitHub reports `visibility: public`, `private: false`), while the runbook (§6.1)
-   and CLAUDE.md say *private*. As a result:
+   said *private* (CLAUDE.md never did; corrected 1 Oct). **Decision (operator, 1 Oct): it stays public on purpose,
+   private later when revenue allows** — the runbook is corrected and CLAUDE.md §7 holds the public repository
+   rules. As a result:
    - CLAUDE.md and the docs publish production identifiers (project ref, run ids, hashes);
    - backup artifacts can be downloaded by any signed-in GitHub user. They are age-encrypted, so their content is
-     safe, but the "private repository" claim is wrong.
+     safe; this exposure is accepted.
    - Any DataForSEO or GitHub publishing credential must never touch the repository.
-   - Recommended decision before P-L2: make the repository private, or correct the docs. Recorded only.
+   - Making it private, with GitHub Pro, is in the post-V1 backlog (Actions minutes and environments to check).
 7. **Daily caps count runs, not money.** Paid data calls need their own spend cap, measured from the provider's
    reported cost.
 8. **Ungrounded tasks.** `keyword-research` and `project-review` run with no evidence. That conflicts with
@@ -305,19 +307,37 @@ nexra-ai PR and publishes.
 **Risks:** the highest of all milestones, because it is the product's first automated external write. Recommended
 after M3, with its own design note, threat model and a dry-run mode that opens the PR but never merges.
 
-## I. Backup check (adjustment G)
+## I. Backup check (adjustment G; re-checked 1 Oct 04:56 UTC)
 
-- **No scheduled run yet.** As of 04:43 UTC on 1 Oct the Nightly backup has **no scheduled run** for 03:17 UTC,
-  and the repository has never had a run from a `schedule` event. The 4 backup runs so far were all started by
-  hand on 30 Sep: two failures, then two successes.
-- **What is ruled out:**
-  - the workflow is on the default branch (`master`) with its cron line;
-  - environment protection would show a waiting run, not none.
-- **Cause: not established.** GitHub documents that scheduled events can be delayed or dropped at busy times.
-- **Recorded only:**
-  - re-check after 03:17 UTC on 2 Oct;
-  - if again none, check the workflow's enabled state in the Actions tab and run it by hand.
-  - The Vercel crons (Search Console snapshots at 05:30) are separate and unaffected.
+**No scheduled run has happened.** The 03:17 UTC run on 1 Oct does not exist, and the repository has never had a
+run from a `schedule` event (the runs API with `event=schedule` reports 0). The 4 backup runs so far were all
+started by hand on 30 Sep: two failures, then two successes.
+
+| Check | Result | How it was checked |
+|---|---|---|
+| Default branch | `master` | `GET /repos/…` → `"default_branch": "master"` |
+| Cron line on `master` | `"17 3 * * *"` under `on.schedule`, plus `workflow_dispatch` | `git show origin/master:.github/workflows/backup.yml`; parsed with a YAML parser, the trigger map is `{schedule: [{cron: "17 3 * * *"}], workflow_dispatch: null}` |
+| Workflow enabled | `"state": "active"` | `GET /repos/…/actions/workflows/backup.yml`; it is not `disabled_manually` or `disabled_inactivity` |
+| Actions enabled | Yes | CI runs on every push and pull request (the latest on 1 Oct) |
+| "Scheduled workflows disabled" notice | None found | A workflow GitHub disables for inactivity reads `disabled_inactivity`, and the 60-day rule cannot apply to a repository pushed today. The repository's Actions-permissions endpoint is refused by this session's proxy (403), so the Settings page itself was not read. |
+| When the schedule arrived | The workflow file reached `master` on 30 Sep (PR #74, 11:14 UTC); the cron line has not changed since | `git log -- .github/workflows/backup.yml` |
+
+**Cause: not established by configuration.** Every setting is correct. GitHub documents that the `schedule` event
+can be delayed under load, and that queued scheduled runs may be dropped. The first scheduled run after a workflow
+is added is a known weak spot. This is the most likely cause, but it is unproven from here.
+
+**Fix (nothing changed yet):**
+1. **Wait one cycle:** check for a scheduled run after 03:17 UTC on 2 Oct (allow up to an hour's delay).
+2. **If none again, re-register the schedule.** A one-line commit to `backup.yml` changing the cron minute (for
+   example `"23 3 * * *"`), merged to `master` and approved as usual, makes GitHub re-read the schedule. Meanwhile,
+   run it by hand (Run workflow) so no day is missed.
+3. **Detect a silent miss** (approval needed; a choice for the operator):
+   - (a) the monthly routine (runbook §6.3) checks that the Actions list shows a scheduled run for each recent day;
+   - (b) a dead-man check: the backup pings an external heartbeat that alerts after 26 hours of silence (a new
+     integration, §4/§6);
+   - (c) a daily check from the product's own worker, which needs a read-only GitHub token (a credential, §6).
+
+   (a) costs nothing; (b) is the most reliable.
 
 ## J. Risks
 
@@ -326,7 +346,7 @@ after M3, with its own design note, threat model and a dry-run mode that opens t
 2. **Spend.** A loop or an automatic fetch could drain the balance. Mitigation: operator-triggered calls only at
    first, a daily dollar cap from reported cost, a confirmation with an estimate, and a low prepaid balance.
 3. **Credentials in a public repository.** Mitigation: Vercel Sensitive production variables only; the secret
-   scan; never in a session or a doc. Decide whether the repository should be private.
+   scan; never in a session or a doc. The repository stays public by decision; CLAUDE.md §7's rules apply.
 4. **Thin data.** 12 queries and a 5-page crawl make any map or score fragile. Mitigation: F0 data, a full crawl,
    and saying "insufficient data" on screen.
 5. **History is time-bound.** M7/M11 cannot be tested on real data before December. Mitigation: design and fixture
