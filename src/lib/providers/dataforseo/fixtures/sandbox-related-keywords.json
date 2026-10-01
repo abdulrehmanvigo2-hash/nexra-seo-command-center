@@ -1,0 +1,76 @@
+{
+  "version": "0.1.20260930",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.1234 sec.",
+  "cost": 0,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "0.1 sec.",
+      "cost": 0,
+      "result_count": 1,
+      "path": ["v3", "dataforseo_labs", "google", "related_keywords", "live"],
+      "data": { "api": "dataforseo_labs", "function": "related_keywords", "se_type": "google", "keyword": "AI lead follow-up", "location_code": 2840, "language_code": "en", "limit": 20, "depth": 1 },
+      "result": [
+        {
+          "se_type": "google",
+          "seed_keyword": "AI lead follow-up",
+          "seed_keyword_data": null,
+          "location_code": 2840,
+          "language_code": "en",
+          "total_count": 3,
+          "items_count": 3,
+          "items": [
+            {
+              "se_type": "google",
+              "keyword_data": {
+                "se_type": "google",
+                "keyword": "AI lead follow-up",
+                "location_code": 2840,
+                "language_code": "en",
+                "keyword_info": { "se_type": "google", "last_updated_time": "2026-09-30 00:00:00 +00:00", "competition": 0.5, "competition_level": "MEDIUM", "cpc": 10, "search_volume": 1000, "monthly_searches": [] },
+                "keyword_properties": { "se_type": "google", "core_keyword": null, "keyword_difficulty": 50 },
+                "search_intent_info": { "se_type": "google", "main_intent": "informational", "foreign_intent": null, "last_updated_time": null }
+              },
+              "depth": 0,
+              "related_keywords": ["ai lead follow up software", "automated lead follow up"]
+            },
+            {
+              "se_type": "google",
+              "keyword_data": {
+                "se_type": "google",
+                "keyword": "ai lead follow up software",
+                "location_code": 2840,
+                "language_code": "en",
+                "keyword_info": { "se_type": "google", "last_updated_time": "2026-09-30 00:00:00 +00:00", "competition": 0.25, "competition_level": "LOW", "cpc": 5, "search_volume": 100, "monthly_searches": [{ "year": 2026, "month": 8, "search_volume": 100 }] },
+                "keyword_properties": { "se_type": "google", "core_keyword": null, "keyword_difficulty": 30 },
+                "search_intent_info": { "se_type": "google", "main_intent": "commercial", "foreign_intent": null, "last_updated_time": null }
+              },
+              "depth": 1,
+              "related_keywords": null
+            },
+            {
+              "se_type": "google",
+              "keyword_data": {
+                "se_type": "google",
+                "keyword": "automated lead follow up",
+                "location_code": 2840,
+                "language_code": "en",
+                "keyword_info": { "se_type": "google", "last_updated_time": null, "competition": null, "competition_level": null, "cpc": null, "search_volume": null, "monthly_searches": null },
+                "keyword_properties": { "se_type": "google", "core_keyword": null, "keyword_difficulty": null },
+                "search_intent_info": null
+              },
+              "depth": 1,
+              "related_keywords": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
