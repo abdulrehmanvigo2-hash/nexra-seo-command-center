@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { IconName } from "@/components/icons";
 import { CuratedKeywordsList, type CuratedLoad } from "@/components/keywords/curated-keywords";
 import { ObservedCannibalization, ObservedGroups, ObservedMovement, ObservedOpportunities, ObservedPortfolio } from "@/components/keywords/observed-views";
+import { ProviderEstimatesSection } from "@/components/keywords/provider-estimates";
 import { SearchConsoleKeywords, type Curation } from "@/components/search-console/search-console-keywords";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { Badge } from "@/components/ui/badge";
@@ -279,6 +280,8 @@ export function KeywordsWorkspace({
                     <ObservedPortfolio screen={screen} />
                     <SearchConsoleKeywords projectId={projectId} view={inventory} rows={screen.rows} filtered={filtered} curation={curation} />
                     <SearchConsolePanel projectId={projectId} rangeId="30d" view="summary" />
+                    {/* F0: a provider's estimates, on their own read, kept apart from the observed rows. */}
+                    <ProviderEstimatesSection projectId={projectId} />
                   </>
                 )}
                 {tab === "clusters" && <ObservedGroups view={inventory} />}
