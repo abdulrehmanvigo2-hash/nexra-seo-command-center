@@ -137,7 +137,7 @@ export type ArticleCheckUnitVerdict = {
  * a line that is neither a numbered classification nor an EDITORIAL
  * observation — the check did not do its job, so it is no verdict.
  */
-export type ArticleCheckFailureReason = "run-failed" | "run-cancelled" | "output-malformed" | "coverage-incomplete";
+export type ArticleCheckFailureReason = "run-failed" | "run-cancelled" | "output-malformed" | "coverage-incomplete" | "fresh-check-requested";
 
 /** What a `coverage-incomplete` answer got wrong, kept so an operator can see it. */
 export type ArticleCheckCoverageDefect = {
@@ -161,6 +161,11 @@ export type ArticleCheckUnitFailure = {
   readonly recordedAt: string;
   /** Present only for `coverage-incomplete`. */
   readonly coverage?: ArticleCheckCoverageDefect;
+  /**
+   * Present only for `fresh-check-requested` (fix F8): the operator cleared a
+   * carried pass so a new run checks the unit; the carry it held is kept here.
+   */
+  readonly carriedFrom?: ArticleCheckCarry;
 };
 
 export type ArticleCheckUnitResult = ArticleCheckUnitVerdict | ArticleCheckUnitFailure;
@@ -182,8 +187,25 @@ export type ArticleCheckUnitRecord = {
   /** Null while pending. */
   readonly result: ArticleCheckUnitResult | null;
   readonly checkedByRunId: string;
+  /**
+   * Set only on a result carried from an earlier version's identical,
+   * run-checked unit (fix F8): its source unit, the version it passed on, why
+   * it could be carried, and the hashes it was carried under. The result and
+   * `checkedByRunId` are the source's. Null on every result a run checked.
+   */
+  readonly carriedFrom: ArticleCheckCarry | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+};
+
+/** Where a carried result came from (fix F8). */
+export type ArticleCheckCarry = {
+  readonly unitId: string;
+  readonly version: number;
+  readonly basis: "no-supported" | "evidence-unchanged";
+  readonly instructionsSha256: string;
+  /** Null when the basis is no-supported. */
+  readonly evidenceSha256: string | null;
 };
 
 /**
@@ -213,7 +235,31 @@ export type ArticleCheckUnitView = {
   readonly bytes: number;
   /** The stored row for this unit of this version, or null when none was recorded. */
   readonly record: ArticleCheckUnitRecord | null;
+  /**
+   * Fix F8: for an unrecorded unit of the current version, the earlier pass of this exact unit it could carry, or
+   * why the identical earlier pass cannot be carried. Absent or null when no earlier version passed this unit.
+   */
+  readonly carryOffer?: ArticleCheckCarryOffer | null;
 };
+
+/**
+ * Whether an unrecorded unit could carry an earlier pass (fix F8). `evidence-to-compare`: the earlier pass rests on
+ * a record and its run recorded the evidence fingerprint; the evidence is re-read and compared when the operator
+ * carries it, and the carry is refused if it changed.
+ */
+export type ArticleCheckCarryOffer =
+  | {
+      readonly available: true;
+      readonly sourceUnitId: string;
+      readonly fromVersion: number;
+      readonly runId: string;
+      readonly basis: "no-supported" | "evidence-to-compare";
+    }
+  | {
+      readonly available: false;
+      readonly fromVersion: number;
+      readonly reason: "instructions-not-recorded" | "instructions-changed" | "evidence-not-recorded" | "evidence-changed";
+    };
 
 export type ArticleVersionChecks = {
   readonly articleId: string;

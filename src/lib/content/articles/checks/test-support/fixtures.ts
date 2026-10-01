@@ -1,5 +1,5 @@
 import { canonicalArticleJson, readCanonicalArticle } from "@/lib/content/articles/canonical";
-import type { ArticleCheckStore, RecordUnitInput, RecordUnitOutcome, StoredArticleVersion } from "@/lib/content/articles/checks/contract";
+import type { ArticleCheckStore, CarryUnitInput, CarryUnitOutcome, FreshUnitOutcome, RecordUnitInput, RecordUnitOutcome, StoredArticleVersion } from "@/lib/content/articles/checks/contract";
 import { unitSha256 } from "@/lib/content/articles/checks/unit-hash";
 import { articleCheckPlan } from "@/lib/content/articles/checks/units";
 import { completeArticle } from "@/lib/content/articles/test-support/fixtures";
@@ -344,6 +344,8 @@ export type MemoryCheckStore = ArticleCheckStore & {
   readonly rows: ArticleCheckUnitRecord[];
   /** Every write, in order. */
   readonly writes: RecordUnitInput[];
+  /** Every carry request, in order (fix F8). */
+  readonly carries: CarryUnitInput[];
   /** An operator's save of version N+1, as C2's function would make it: new version, status back to drafting. */
   saveVersion(value: ValidatedArticleContent): StoredArticleVersion;
 };
@@ -358,6 +360,7 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
   const versions = options.versions ?? [storedVersion(1, content())];
   const rows: ArticleCheckUnitRecord[] = [];
   const writes: RecordUnitInput[] = [];
+  const carries: CarryUnitInput[] = [];
   let sequence = 0;
 
   function find(input: RecordUnitInput): ArticleCheckUnitRecord | undefined {
@@ -370,6 +373,7 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
     versions,
     rows,
     writes,
+    carries,
 
     async getArticle(projectId, articleId) {
       return articles.find((a) => a.projectId === projectId && a.id === articleId) ?? null;
@@ -474,6 +478,7 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
           status: input.status,
           result: input.result,
           checkedByRunId: input.runId,
+          carriedFrom: null,
           createdAt: now,
           updatedAt: now,
         };
@@ -507,6 +512,109 @@ export function memoryCheckStore(options: { readonly articles?: Article[]; reado
         }
       }
       return { status: "recorded", record: row, article: current, articleStatusAdvanced: advanced };
+    },
+
+    async listArticleUnitRecords(articleId) {
+      return rows.filter((row) => row.articleId === articleId).sort((a, b) => a.articleVersion - b.articleVersion || a.unitIndex - b.unitIndex);
+    },
+
+    // The carry function's rules (fix F8, `20261014120000`), in one synchronous step.
+    async carry(input): Promise<CarryUnitOutcome> {
+      carries.push(input);
+      const index = articles.findIndex((a) => a.projectId === input.projectId && a.id === input.articleId);
+      if (index < 0) return { status: "not-found" };
+      const parent = articles[index];
+      if (parent.status === "archived") return { status: "archived" };
+      const version = versions.find((v) => v.articleId === input.articleId && v.version === input.articleVersion);
+      if (version === undefined) return { status: "version-not-found" };
+      if (version.id !== input.articleVersionId) return { status: "version-mismatch" };
+      if (parent.currentVersion !== input.articleVersion) return { status: "not-current" };
+      if (rows.some((r) => r.articleVersionId === input.articleVersionId && (r.unitIndex === input.unitIndex || r.unitKey === input.unitKey))) {
+        return { status: "already-recorded" };
+      }
+      const source = rows.find(
+        (r) =>
+          r.id === input.sourceUnitId &&
+          r.articleId === input.articleId &&
+          r.articleVersion < input.articleVersion &&
+          r.status === "passed" &&
+          r.carriedFrom === null &&
+          r.unitSha256 === input.unitSha256 &&
+          r.unitKey === input.unitKey &&
+          r.unitKind === input.unitKind,
+      );
+      if (source === undefined) return { status: "source-not-eligible" };
+      const run = options.runs.find((r) => r.id === source.checkedByRunId && r.projectId === input.projectId && r.status === "completed");
+      const evidence = run?.resultMetadata?.evidence as JsonObject | undefined;
+      if (run === undefined || evidence?.instructionsSha256 !== input.instructionsSha256 || evidence?.unitSha256 !== input.unitSha256) {
+        return { status: "source-not-eligible" };
+      }
+      const supported = source.result?.status === "passed" ? source.result.counts.supported : -1;
+      let basis: "no-supported" | "evidence-unchanged";
+      if (supported === 0) basis = "no-supported";
+      else if (input.evidenceSha256 !== null && evidence?.evidenceSha256 === input.evidenceSha256) basis = "evidence-unchanged";
+      else return { status: "source-not-eligible" };
+
+      sequence += 1;
+      const now = `2026-09-23T13:00:${String(sequence).padStart(2, "0")}.000Z`;
+      const row: ArticleCheckUnitRecord = {
+        ...source,
+        id: `f0000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+        articleVersionId: input.articleVersionId,
+        articleVersion: input.articleVersion,
+        unitIndex: input.unitIndex,
+        part: input.part,
+        partCount: input.partCount,
+        unitCount: input.unitCount,
+        carriedFrom: {
+          unitId: source.id,
+          version: source.articleVersion,
+          basis,
+          instructionsSha256: input.instructionsSha256,
+          evidenceSha256: basis === "evidence-unchanged" ? input.evidenceSha256 : null,
+        },
+        createdAt: now,
+        updatedAt: now,
+      };
+      rows.push(row);
+      let advanced = false;
+      let current = parent;
+      if (parent.status === "drafting" && versionComplete(rows, version, input.unitCount)) {
+        current = { ...parent, status: "checked", updatedAt: now };
+        articles[index] = current;
+        advanced = true;
+      }
+      return { status: "carried", record: row, article: current, articleStatusAdvanced: advanced };
+    },
+
+    async fresh(input): Promise<FreshUnitOutcome> {
+      const index = articles.findIndex((a) => a.projectId === input.projectId && a.id === input.articleId);
+      if (index < 0) return { status: "not-found" };
+      const parent = articles[index];
+      if (parent.status === "archived") return { status: "archived" };
+      const unit = rows.find((r) => r.articleId === input.articleId && r.articleVersionId === input.articleVersionId && r.unitIndex === input.unitIndex);
+      if (unit === undefined) return { status: "unit-not-found" };
+      if (unit.articleVersion !== parent.currentVersion) return { status: "not-current" };
+      if (parent.status === "approved") return { status: "approved" };
+      if (unit.carriedFrom === null) return { status: "not-carried" };
+      sequence += 1;
+      const now = `2026-09-23T13:00:${String(sequence).padStart(2, "0")}.000Z`;
+      const row: ArticleCheckUnitRecord = {
+        ...unit,
+        status: "failed",
+        result: { status: "failed", reason: "fresh-check-requested", checkedByRunId: unit.checkedByRunId, recordedBy: input.recordedBy, recordedAt: now, carriedFrom: unit.carriedFrom },
+        carriedFrom: null,
+        updatedAt: now,
+      };
+      rows[rows.indexOf(unit)] = row;
+      let reverted = false;
+      let current = parent;
+      if (parent.status === "checked") {
+        current = { ...parent, status: "drafting", updatedAt: now };
+        articles[index] = current;
+        reverted = true;
+      }
+      return { status: "cleared", record: row, article: current, articleStatusReverted: reverted };
     },
 
     saveVersion(value) {

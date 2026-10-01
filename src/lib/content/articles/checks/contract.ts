@@ -60,6 +60,57 @@ export type RecordUnitOutcome =
         | "invalid-result";
     };
 
+/** Fix F8: carry an earlier pass of the identical unit onto the current version (`nexra_article_check_unit_carry`). */
+export type CarryUnitInput = {
+  readonly projectId: string;
+  readonly articleId: string;
+  readonly articleVersion: number;
+  readonly articleVersionId: string;
+  readonly unitIndex: number;
+  readonly unitKind: ArticleCheckUnitKind;
+  readonly unitKey: string;
+  readonly part: number;
+  readonly partCount: number;
+  readonly unitCount: number;
+  readonly unitSha256: string;
+  /** The earlier, run-checked passed row to carry. */
+  readonly sourceUnitId: string;
+  /** The SHA-256 of the instructions the server checks with now. */
+  readonly instructionsSha256: string;
+  /** The evidence fingerprint read now, or null when the source holds no SUPPORTED statement and none was read. */
+  readonly evidenceSha256: string | null;
+  readonly recordedBy: string;
+};
+
+export type CarryUnitOutcome =
+  | { readonly status: "carried"; readonly record: ArticleCheckUnitRecord; readonly article: Article; readonly articleStatusAdvanced: boolean }
+  | {
+      readonly status:
+        | "not-found"
+        | "archived"
+        | "version-not-found"
+        | "version-mismatch"
+        | "not-current"
+        | "unit-mismatch"
+        | "count-mismatch"
+        | "already-recorded"
+        /** The database found no eligible source under its own rule; it never says which condition failed. */
+        | "source-not-eligible";
+    };
+
+/** Fix F8: clear a carried unit of the current, unapproved version so a fresh run may check it (`nexra_article_check_unit_fresh`). */
+export type FreshUnitInput = {
+  readonly projectId: string;
+  readonly articleId: string;
+  readonly articleVersionId: string;
+  readonly unitIndex: number;
+  readonly recordedBy: string;
+};
+
+export type FreshUnitOutcome =
+  | { readonly status: "cleared"; readonly record: ArticleCheckUnitRecord; readonly article: Article; readonly articleStatusReverted: boolean }
+  | { readonly status: "not-found" | "archived" | "unit-not-found" | "not-current" | "approved" | "not-carried" };
+
 export type ArticleCheckStore = {
   /** Whether this store keeps articles and checks. The fixture data source does not. */
   readonly storesChecks: boolean;
@@ -71,6 +122,12 @@ export type ArticleCheckStore = {
   listUnitRecords(articleVersionId: string): Promise<readonly ArticleCheckUnitRecord[]>;
   /** One unit's status and result, in one database transaction under the parent's lock. */
   record(input: RecordUnitInput): Promise<RecordUnitOutcome>;
+  /** Every check unit row of every version of one article (fix F8: the earlier passes a unit may carry). */
+  listArticleUnitRecords(articleId: string): Promise<readonly ArticleCheckUnitRecord[]>;
+  /** Carries an earlier pass, under the parent's lock; the database re-checks every rule. */
+  carry(input: CarryUnitInput): Promise<CarryUnitOutcome>;
+  /** Clears a carried unit for a fresh check, under the parent's lock. */
+  fresh(input: FreshUnitInput): Promise<FreshUnitOutcome>;
 };
 
 /** The store used when articles are not persisted anywhere. It refuses rather than pretends. */
@@ -86,6 +143,15 @@ export const unavailableArticleCheckStore: ArticleCheckStore = {
     return [];
   },
   async record() {
+    return { status: "not-found" };
+  },
+  async listArticleUnitRecords() {
+    return [];
+  },
+  async carry() {
+    return { status: "not-found" };
+  },
+  async fresh() {
     return { status: "not-found" };
   },
 };

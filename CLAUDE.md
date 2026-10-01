@@ -55,7 +55,8 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `7a718f7c…` (merge of PR #65, `claude/festive-dirac-ib7i3e`, checkpoint 6.12a and the 6.11 record;
+GitHub `master`: `5a26b2c5…` (merge of PR #85, fix F7; the audit fixes since `7a718f7c…` are under *Current work*). Before
+them: `7a718f7c…` (merge of PR #65, `claude/festive-dirac-ib7i3e`, checkpoint 6.12a and the 6.11 record;
 preceded by PR #64 `ae8be880…` (the 6.10b record), PR #63
 `e6280763…` (the 6.10a record), PR #62 `0381f1bb…` (the full article renderer), PR #61 `33ae4007…` (the nexra-ai re-audit and
 decisions), PR #60 `0c373216…` (the 6.8b migration record), PR #59 `8980b3b0…` (operator-attested paragraphs), PR #58 `4a8b5562…` (the learning loop and
@@ -1612,7 +1613,17 @@ text made true; seven page subtitles name only what their screens read; two dead
 and technical page details state a failed read in place; URL facts break at separators and the "Opens on" select no
 longer clips; Search Console's empty earlier window is `comparison-no-data`, not "could not be read"; README rewritten;
 the runbook lists all eight migration-history differences; publishing Level 2 (with a reviewer role) and enforced
-branch protection added to the post-V1 backlog. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+branch protection added to the post-V1 backlog; merged as PR #85 (`5a26b2c`). Fix **F8 — checker carry-forward and
+instructions v3** (A5-02, A3-03 in part), a draft PR; migration `20261014120000_check_unit_carry_forward.sql` (SHA-256
+`51fe6e69…489639`) **not applied**: a passed article check result may be carried to a later version's identical unit
+(same unit hash, key and kind) under the same checker instructions hash, when the pass holds no SUPPORTED statement or
+the evidence fingerprint (the evidence-pack text without its "Read from Google at" line) is unchanged; every check run
+now records both hashes, so results recorded before F8 (V4, V6 included) are never carried. A carried unit reads
+"Carried from vN, run X" on the unit, the Studio detail, the approval (`carried_units`) and the proposal preview (a
+CARRIED CHECK RESULTS section only when there is one, so every earlier preview keeps its bytes); the operator can clear
+a carried unit for a fresh check (confirmed; an approved version refuses). Checker instructions v3 (`6299e783…`) add one
+sentence: an article's own title, meta description, excerpt, headings and labels describing itself are EDITORIAL; v2
+(`8788932b…`) is kept. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22

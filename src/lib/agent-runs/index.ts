@@ -33,6 +33,7 @@ import { readSearchConsoleHistory } from "@/lib/search-console/history";
 import { readKeywordIntelligence } from "@/lib/search-console/keywords";
 import { readLatestPagePairs, readSearchConsoleQueryPages } from "@/lib/search-console/query-pages";
 import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supabase/server";
+import type { EvidencePackReaders } from "@/lib/research/evidence-pack";
 
 /**
  * The server's agent runtime — the one place that wires it together.
@@ -94,6 +95,28 @@ function agentTaskStoreForRuntime(): AgentTaskStore {
     : unavailableAgentTaskStore;
 }
 
+// The Research & Evidence pack reads the same records through the same
+// services: the newest own-site crawl by exact host, the default Search
+// Console window through the cached provider, and competitor crawls by
+// exact host for availability only. Intake notes and earlier runs are not
+// read at all. The Writer's draft re-reads the same pack, through the same
+// readers, beside the completed plan it was written over; the article check's
+// carry-forward (fix F8) re-reads it to compare the evidence fingerprint.
+export function evidencePackReadersForRuntime(): EvidencePackReaders {
+  return {
+    getProjectById: (id: string) => projectRepository.getProjectById(id),
+    getProjectIntake: (id: string) => projectRepository.getProjectIntake(id),
+    listProjectCrawls: (projectId: string) => crawlService().listCrawls(projectId, 1),
+    listCompetitorCrawls: async (projectId: string, competitorHost: string) => {
+      const listed = await crawlService().listCompetitorCrawls(projectId, competitorHost, 1);
+      return listed.ok ? listed.crawls : [];
+    },
+    crawls: crawlService(),
+    searchConsole: (projectId: string) =>
+      getSearchConsoleReport(searchConsoleProvider(), projectId, INVENTORY_RANGE_ID),
+  };
+}
+
 function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; timeoutMs: number } {
   if (selectExecutor(process.env) === "mock") {
     return { executor: mockAgentExecutor, timeoutMs: MOCK_TIMEOUT_MS };
@@ -108,24 +131,7 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
     model: config.model,
     timeoutMs: AI_TIMEOUT_MS - 5_000,
   });
-  // The Research & Evidence pack reads the same records through the same
-  // services: the newest own-site crawl by exact host, the default Search
-  // Console window through the cached provider, and competitor crawls by
-  // exact host for availability only. Intake notes and earlier runs are not
-  // read at all. The Writer's draft re-reads the same pack, through the same
-  // readers, beside the completed plan it was written over.
-  const evidencePackReaders = {
-    getProjectById: (id: string) => projectRepository.getProjectById(id),
-    getProjectIntake: (id: string) => projectRepository.getProjectIntake(id),
-    listProjectCrawls: (projectId: string) => crawlService().listCrawls(projectId, 1),
-    listCompetitorCrawls: async (projectId: string, competitorHost: string) => {
-      const listed = await crawlService().listCompetitorCrawls(projectId, competitorHost, 1);
-      return listed.ok ? listed.crawls : [];
-    },
-    crawls: crawlService(),
-    searchConsole: (projectId: string) =>
-      getSearchConsoleReport(searchConsoleProvider(), projectId, INVENTORY_RANGE_ID),
-  };
+  const evidencePackReaders = evidencePackReadersForRuntime();
   return {
     // The evidence a task may see is read here, from this product's own
     // records, and decided by the task type's declaration

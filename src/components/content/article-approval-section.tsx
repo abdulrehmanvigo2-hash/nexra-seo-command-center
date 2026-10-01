@@ -5,6 +5,7 @@ import { approveArticleVersion, type ApproveArticleVersionActionResult } from "@
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { approvalBlockMessage } from "@/lib/content/articles/approvals/eligibility";
+import { carriedLabel } from "@/lib/content/articles/checks/carry-copy";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { ArticleApproval, ArticleApprovalState } from "@/types/content-article-approval";
 import type { ArticleCheckState } from "@/types/content-article-check";
@@ -319,6 +320,12 @@ function ApprovalHistory({ history, currentVersion }: { history: readonly Articl
               {entry.articleVersion === currentVersion ? " (current)" : ""} · approved {stamp(entry.approvedAt)} by {entry.approvedBy} · content hash{" "}
               {entry.contentSha256.slice(0, 12)}… · {entry.unitCount} units · unit set {entry.unitsSha256.slice(0, 12)}…
               {entry.attestedCount > 0 ? ` · ${entry.attestedCount} attested ${entry.attestedCount === 1 ? "paragraph" : "paragraphs"}, attestation ticked` : ""}
+              {entry.carriedUnits !== undefined && entry.carriedUnits.length > 0 && (
+                <span className="block text-accent">
+                  {entry.carriedUnits.length} carried {entry.carriedUnits.length === 1 ? "result" : "results"}:{" "}
+                  {entry.carriedUnits.map((unit) => `unit ${unit.unitIndex} ${carriedLabel({ fromVersion: unit.fromVersion, runId: unit.runId }).toLowerCase()}`).join("; ")}
+                </span>
+              )}
             </li>
           ))}
         </ul>

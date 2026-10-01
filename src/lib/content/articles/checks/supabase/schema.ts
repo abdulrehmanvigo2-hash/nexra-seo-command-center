@@ -1,5 +1,5 @@
-import type { RecordUnitOutcome } from "@/lib/content/articles/checks/contract";
-import { readUnitResult } from "@/lib/content/articles/checks/result";
+import type { CarryUnitOutcome, FreshUnitOutcome, RecordUnitOutcome } from "@/lib/content/articles/checks/contract";
+import { readCarry, readUnitResult } from "@/lib/content/articles/checks/result";
 import { ArticleRowError, articleRowToArticle, type ArticleRow, type ArticleVersionRow } from "@/lib/content/articles/supabase/schema";
 import type { ArticleCheckUnitKind, ArticleCheckUnitRecord, ArticleCheckUnitStatus } from "@/types/content-article-check";
 
@@ -30,6 +30,12 @@ export type ArticleCheckUnitRow = {
   recorded_by: string;
   created_at: string;
   updated_at: string;
+  /** F8 (`20261014120000`); absent before that migration is applied. */
+  carried_from_unit_id?: string | null;
+  carried_from_version?: number | null;
+  carry_basis?: string | null;
+  carried_instructions_sha256?: string | null;
+  carried_evidence_sha256?: string | null;
 };
 
 type ReadOnly<Row> = { Row: Row; Insert: never; Update: never; Relationships: [] };
@@ -63,6 +69,36 @@ export type ArticleChecksDatabase = {
         };
         Returns: unknown;
       };
+      nexra_article_check_unit_carry: {
+        Args: {
+          p_project_id: string;
+          p_article_id: string;
+          p_article_version: number;
+          p_article_version_id: string;
+          p_unit_index: number;
+          p_unit_kind: string;
+          p_unit_key: string;
+          p_part: number;
+          p_part_count: number;
+          p_unit_count: number;
+          p_unit_sha256: string;
+          p_source_unit_id: string;
+          p_instructions_sha256: string;
+          p_evidence_sha256: string | null;
+          p_recorded_by: string;
+        };
+        Returns: unknown;
+      };
+      nexra_article_check_unit_fresh: {
+        Args: {
+          p_project_id: string;
+          p_article_id: string;
+          p_article_version_id: string;
+          p_unit_index: number;
+          p_recorded_by: string;
+        };
+        Returns: unknown;
+      };
     };
   };
 };
@@ -70,8 +106,12 @@ export type ArticleChecksDatabase = {
 export const CHECK_ARTICLE_READ_COLUMNS =
   "id, project_id, source_plan_run_id, status, current_version, approved_version, approved_by, approved_at, created_by, created_at, updated_at";
 export const CHECK_VERSION_READ_COLUMNS = "id, article_id, version, origin, canonical_content, content_sha256, created_by, created_at";
-export const CHECK_UNIT_READ_COLUMNS =
-  "id, article_id, article_version_id, article_version, unit_index, unit_kind, unit_key, part, part_count, unit_count, unit_sha256, status, result, checked_by_run_id, recorded_by, created_at, updated_at";
+/**
+ * Every column (fix F8): the carry columns exist only once `20261014120000` is applied, and the application is
+ * deployed before it, so the read names none of them; a row without them reads as not carried. The approvals read
+ * does the same (6.8b).
+ */
+export const CHECK_UNIT_READ_COLUMNS = "*";
 
 const KINDS: readonly ArticleCheckUnitKind[] = ["metadata", "lead-introduction", "section", "faq", "cta"];
 const STATUSES: readonly ArticleCheckUnitStatus[] = ["pending", "passed", "needs-review", "failed"];
@@ -89,6 +129,21 @@ function text(value: unknown, field: string): string {
 function integer(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isInteger(value)) throw new ArticleRowError(`${field} is not an integer.`);
   return value;
+}
+
+/** A row's carry (F8): null when its columns are absent (before the migration) or empty; an error when half-set or on a row that is not passed. */
+function carryOfRow(r: Record<string, unknown>, status: ArticleCheckUnitStatus): ArticleCheckUnitRecord["carriedFrom"] {
+  const columns = [r.carried_from_unit_id, r.carried_from_version, r.carry_basis, r.carried_instructions_sha256, r.carried_evidence_sha256];
+  if (columns.every((value) => value === null || value === undefined)) return null;
+  const carry = readCarry({
+    unitId: r.carried_from_unit_id,
+    version: r.carried_from_version,
+    basis: r.carry_basis,
+    instructionsSha256: r.carried_instructions_sha256,
+    evidenceSha256: r.carried_evidence_sha256,
+  });
+  if (carry === null || status !== "passed") throw new ArticleRowError("the row's carry columns do not describe a carried pass.");
+  return carry;
 }
 
 export function unitRowToRecord(row: unknown): ArticleCheckUnitRecord {
@@ -119,6 +174,7 @@ export function unitRowToRecord(row: unknown): ArticleCheckUnitRecord {
     status,
     result,
     checkedByRunId: text(r.checked_by_run_id, "checked_by_run_id"),
+    carriedFrom: carryOfRow(r, status),
     createdAt: text(r.created_at, "created_at"),
     updatedAt: text(r.updated_at, "updated_at"),
   };
@@ -148,6 +204,55 @@ export function recordResultToOutcome(data: unknown): RecordUnitOutcome {
     case "run-mismatch":
     case "run-state-mismatch":
     case "invalid-result":
+      return { status: result.outcome };
+    default:
+      throw new ArticleRowError(`the function answered "${String(result.outcome)}", which this product does not recognise.`);
+  }
+}
+
+/** What `nexra_article_check_unit_carry` answers (fix F8), checked field by field. */
+export function carryResultToOutcome(data: unknown): CarryUnitOutcome {
+  const result = record(data, "the function's answer");
+  switch (result.outcome) {
+    case "carried":
+      return {
+        status: "carried",
+        record: unitRowToRecord(result.record),
+        article: articleRowToArticle(result.article),
+        articleStatusAdvanced: result.article_status_advanced === true,
+      };
+    case "not-found":
+    case "archived":
+    case "version-not-found":
+    case "version-mismatch":
+    case "not-current":
+    case "unit-mismatch":
+    case "count-mismatch":
+    case "already-recorded":
+    case "source-not-eligible":
+      return { status: result.outcome };
+    default:
+      throw new ArticleRowError(`the function answered "${String(result.outcome)}", which this product does not recognise.`);
+  }
+}
+
+/** What `nexra_article_check_unit_fresh` answers (fix F8), checked field by field. */
+export function freshResultToOutcome(data: unknown): FreshUnitOutcome {
+  const result = record(data, "the function's answer");
+  switch (result.outcome) {
+    case "cleared":
+      return {
+        status: "cleared",
+        record: unitRowToRecord(result.record),
+        article: articleRowToArticle(result.article),
+        articleStatusReverted: result.article_status_reverted === true,
+      };
+    case "not-found":
+    case "archived":
+    case "unit-not-found":
+    case "not-current":
+    case "approved":
+    case "not-carried":
       return { status: result.outcome };
     default:
       throw new ArticleRowError(`the function answered "${String(result.outcome)}", which this product does not recognise.`);

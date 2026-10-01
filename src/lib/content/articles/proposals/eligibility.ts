@@ -226,6 +226,7 @@ export function articleProposalEligibility(facts: ArticleProposalFacts): Article
       approvedAt: approval.approvedAt,
       destination: facts.destination,
       slug: facts.slug,
+      ...(approval.carriedUnits !== undefined && approval.carriedUnits.length > 0 ? { carriedUnits: approval.carriedUnits } : {}),
     },
     content,
     completeness: websiteCompleteness(content),

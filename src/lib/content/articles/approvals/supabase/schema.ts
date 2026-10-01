@@ -1,6 +1,6 @@
 import type { ApproveVersionOutcome } from "@/lib/content/articles/approvals/contract";
 import { ArticleRowError, articleRowToArticle } from "@/lib/content/articles/supabase/schema";
-import type { ArticleApproval } from "@/types/content-article-approval";
+import type { ArticleApproval, ArticleApprovalCarriedUnit } from "@/types/content-article-approval";
 
 /**
  * The shape of `nexra_article_approvals` and of what
@@ -24,6 +24,8 @@ export type ArticleApprovalRow = {
   /** Since 20261010120000 (6.8b); absent on a database the migration has not reached. */
   attested_count?: number;
   attested_confirmed?: boolean;
+  /** Since 20261014120000 (F8); absent before it. */
+  carried_units?: unknown;
 };
 
 type ReadOnly<Row> = { Row: Row; Insert: never; Update: never; Relationships: [] };
@@ -97,7 +99,25 @@ export function approvalRowToApproval(row: unknown): ArticleApproval {
     approvedAt: text(r.approved_at, "approved_at"),
     attestedCount: r.attested_count === undefined ? 0 : integer(r.attested_count, "attested_count"),
     attestedConfirmed: r.attested_confirmed === undefined ? false : boolean(r.attested_confirmed, "attested_confirmed"),
+    carriedUnits: r.carried_units === undefined ? [] : carriedUnits(r.carried_units),
   };
+}
+
+/** The approval's carried units (F8), each field checked; a shape the trigger does not write is an error. */
+function carriedUnits(value: unknown): readonly ArticleApprovalCarriedUnit[] {
+  if (!Array.isArray(value)) throw new ArticleRowError("carried_units is not an array.");
+  return value.map((entry) => {
+    const e = record(entry, "a carried unit");
+    if (e.basis !== "no-supported" && e.basis !== "evidence-unchanged") throw new ArticleRowError("a carried unit's basis is not recognised.");
+    return {
+      unitIndex: integer(e.unitIndex, "carried_units.unitIndex"),
+      unitKey: text(e.unitKey, "carried_units.unitKey"),
+      fromVersion: integer(e.fromVersion, "carried_units.fromVersion"),
+      fromUnitId: text(e.fromUnitId, "carried_units.fromUnitId"),
+      runId: text(e.runId, "carried_units.runId"),
+      basis: e.basis,
+    };
+  });
 }
 
 function boolean(value: unknown, field: string): boolean {

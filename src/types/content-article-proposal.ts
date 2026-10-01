@@ -1,3 +1,5 @@
+import type { ArticleApprovalCarriedUnit } from "@/types/content-article-approval";
+
 /**
  * Shapes for the article publication proposal (Stage 5, milestone C6,
  * Checkpoint 2): whether one exact approved article version may be proposed
@@ -38,6 +40,11 @@ export type ArticleProposalBinding = {
   readonly destination: string;
   /** The approved content's own slug (D1). */
   readonly slug: string;
+  /**
+   * Fix F8: the approval's carried check results, present only when there is one. The preview lists them, so a
+   * carried result is never silent; a binding without them builds the preview byte for byte as before.
+   */
+  readonly carriedUnits?: readonly ArticleApprovalCarriedUnit[];
 };
 
 /** An active proposal that holds a destination and slug, from either proposal table (D3). */

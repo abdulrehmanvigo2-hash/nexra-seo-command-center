@@ -53,6 +53,7 @@
 import { tagNamesRecord, type FactCheckEvidence, type ParsedFactCheckItem, type ParsedFactCheckOutput } from "@/lib/content/drafts/parse-fact-check-output";
 import type { ArticleAttestationBasis } from "@/types/content-article";
 import type {
+  ArticleCheckCarry,
   ArticleCheckCounts,
   ArticleCheckStatement,
   ArticleCheckCoverageDefect,
@@ -284,7 +285,32 @@ function count(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
-const FAILURE_REASONS: readonly ArticleCheckFailureReason[] = ["run-failed", "run-cancelled", "output-malformed", "coverage-incomplete"];
+const FAILURE_REASONS: readonly ArticleCheckFailureReason[] = ["run-failed", "run-cancelled", "output-malformed", "coverage-incomplete", "fresh-check-requested"];
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A stored carry (fix F8) read back, or null where it is not one: from a
+ * carried row's columns, or from a `fresh-check-requested` failure's
+ * `carriedFrom`. Field by field; a basis of evidence-unchanged needs its
+ * fingerprint and no-supported has none.
+ */
+export function readCarry(value: {
+  readonly unitId: unknown;
+  readonly version: unknown;
+  readonly basis: unknown;
+  readonly instructionsSha256: unknown;
+  readonly evidenceSha256: unknown;
+}): ArticleCheckCarry | null {
+  const { unitId, version, basis, instructionsSha256, evidenceSha256 } = value;
+  if (typeof unitId !== "string" || !UUID.test(unitId)) return null;
+  if (typeof version !== "number" || !Number.isInteger(version) || version < 1) return null;
+  if (basis !== "no-supported" && basis !== "evidence-unchanged") return null;
+  if (typeof instructionsSha256 !== "string" || !SHA256_HEX.test(instructionsSha256)) return null;
+  if (basis === "no-supported" ? evidenceSha256 !== null && evidenceSha256 !== undefined : typeof evidenceSha256 !== "string" || !SHA256_HEX.test(evidenceSha256)) return null;
+  return { unitId, version, basis, instructionsSha256, evidenceSha256: basis === "no-supported" ? null : (evidenceSha256 as string) };
+}
 
 function numberList(list: unknown): readonly number[] | null {
   return Array.isArray(list) && list.every((n) => typeof n === "number" && Number.isInteger(n) && n >= 1) ? (list as number[]) : null;
@@ -316,6 +342,14 @@ export function readUnitResult(value: unknown): ArticleCheckUnitResult | null {
     const reason = FAILURE_REASONS.find((entry) => entry === r.reason);
     if (reason === undefined) return null;
     const failure = { status: "failed" as const, reason, checkedByRunId: r.checkedByRunId, recordedBy: r.recordedBy, recordedAt: r.recordedAt };
+    // A fresh check requested on a carried pass keeps the carry it cleared (F8), and carries nothing else.
+    if (reason === "fresh-check-requested") {
+      if (r.coverage !== undefined || typeof r.carriedFrom !== "object" || r.carriedFrom === null) return null;
+      const c = r.carriedFrom as Record<string, unknown>;
+      const carriedFrom = readCarry({ unitId: c.unitId, version: c.version, basis: c.basis, instructionsSha256: c.instructionsSha256, evidenceSha256: c.evidenceSha256 });
+      return carriedFrom === null ? null : { ...failure, carriedFrom };
+    }
+    if (r.carriedFrom !== undefined) return null;
     // The detail belongs to a coverage-incomplete failure, and to nothing else.
     if (reason !== "coverage-incomplete") return r.coverage === undefined ? failure : null;
     const coverage = readCoverageDefect(r.coverage);

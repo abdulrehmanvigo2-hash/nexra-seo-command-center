@@ -179,7 +179,7 @@ describe("the reader", () => {
     two.store.rows.push({
       id: "f0000000-0000-4000-8000-000000000001", articleId: ARTICLE_ID, articleVersionId: V1.id, articleVersion: 1, unitIndex: 3, unitKind: "section", unitKey: unit.key, unitSha256: unitSha256(unit),
       part: 1, partCount: 1, unitCount: 6,
-      status: "passed", result: null, checkedByRunId: "c0000000-0000-4000-8000-000000000001", createdAt: "x", updatedAt: "x",
+      status: "passed", result: null, checkedByRunId: "c0000000-0000-4000-8000-000000000001", carriedFrom: null, createdAt: "x", updatedAt: "x",
     });
     assert.deepEqual(await readArticleCheckGrounding(two.readers, { projectId: PROJECT_ID, articleId: ARTICLE_ID, articleVersion: 1, articleVersionId: V1.id, unitIndex: 3 }), { ok: false, reason: "unit-already-checked" });
     two.store.rows[0] = { ...two.store.rows[0], status: "failed", unitSha256: "1".repeat(64) };

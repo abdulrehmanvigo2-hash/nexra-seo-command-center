@@ -14,6 +14,7 @@
  * write stay on the project screen, never here.
  */
 
+import { CARRY_BASIS_COPY, carriedLabel } from "@/lib/content/articles/checks/carry-copy";
 import type { ArticleApprovalBlock, ArticleApprovalState } from "@/types/content-article-approval";
 import type { ArticleCheckUnitStatus, ArticleVersionChecks } from "@/types/content-article-check";
 import type { ArticleProposalBlock } from "@/types/content-article-proposal";
@@ -292,6 +293,8 @@ export type DetailUnit = {
   readonly attestedStatementCount: number;
   readonly status: ArticleCheckUnitStatus | "unchecked";
   readonly runId: string | null;
+  /** Fix F8: "Carried from vN, run X" when this version's result was carried from an earlier version; null when checked here. */
+  readonly carried: string | null;
   readonly counts: { readonly supported: number; readonly partial: number; readonly unsupported: number; readonly unverifiable: number; readonly attested: number | null } | null;
 };
 
@@ -347,6 +350,7 @@ export function presentUnits(checks: ArticleVersionChecks): readonly DetailUnit[
       attestedStatementCount: unit.attestedStatementCount,
       status: unit.record?.status ?? "unchecked",
       runId: unit.record?.checkedByRunId ?? null,
+      carried: unit.record?.carriedFrom ? carriedLabel({ fromVersion: unit.record.carriedFrom.version, runId: unit.record.checkedByRunId }) : null,
       counts:
         counts === null ? null : { supported: counts.supported, partial: counts.partial, unsupported: counts.unsupported, unverifiable: counts.unverifiable, attested: counts.attested ?? null },
     };
@@ -355,7 +359,14 @@ export function presentUnits(checks: ArticleVersionChecks): readonly DetailUnit[
 
 export function approvalSummary(state: ArticleApprovalState): { readonly headline: string; readonly reasons: readonly string[] } {
   const { eligibility } = state;
-  if (eligibility.status === "approved") return { headline: `Version ${eligibility.approval.articleVersion} approved`, reasons: [] };
+  if (eligibility.status === "approved") {
+    // Fix F8: a carried check result is named on the approval, never silent.
+    const carried = [...(eligibility.approval.carriedUnits ?? [])].sort((a, b) => a.unitIndex - b.unitIndex);
+    return {
+      headline: `Version ${eligibility.approval.articleVersion} approved`,
+      reasons: carried.map((unit) => `Unit ${unit.unitIndex} (${unit.unitKey}): ${carriedLabel({ fromVersion: unit.fromVersion, runId: unit.runId })} — ${CARRY_BASIS_COPY[unit.basis]}`),
+    };
+  }
   if (eligibility.status === "eligible") return { headline: "Eligible for approval — approving is done on the project screen", reasons: [] };
   return { headline: "Not eligible for approval", reasons: eligibility.blocks.map(approvalBlockLabel) };
 }
