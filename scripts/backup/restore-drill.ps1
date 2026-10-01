@@ -68,6 +68,9 @@ param(
   [string]$TestStepTimeout = ''
 )
 
+# Tested on Windows (1 Oct 2026): passed on the operator's PC, Windows PowerShell 5.1 started from
+# PowerShell 7 in a non-administrator shell, PostgreSQL 17, on backup 36740624220 (docs/RUNBOOK.md
+# section 6.2, Run history). Also tested under PowerShell 7 on Linux by scripts/backup/test-local.sh.
 # Written for Windows PowerShell 5.1 (built into Windows 10 and 11) and PowerShell 7: no
 # ternaries, no ?? and no && in this file.
 Set-StrictMode -Version 2.0
