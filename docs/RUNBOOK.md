@@ -352,7 +352,8 @@ Proves a backup opens and restores, without touching any hosted database.
    (`PG_BIN=/usr/lib/postgresql/17/bin` if several versions are installed). It:
    1. decrypts into a temporary directory and checks every file against the manifest's SHA-256;
    2. starts a throwaway cluster on a Unix socket with TCP off;
-   3. creates every role the dump names, without login;
+   3. creates, without login, every role the dump names (owners, grantees and the owners of
+      default privileges, such as Supabase's `supabase_admin`) and Supabase's platform roles;
    4. restores in one transaction, creating the triggers after the data, so no guard fires;
    5. compares every table's row count with the manifest;
    6. deletes everything.
@@ -445,7 +446,11 @@ What it does, step by step:
 4. It creates a throwaway PostgreSQL there, listening on `127.0.0.1` only, on a free port
    (never 5432, the installed service's), with trust authentication, so nothing prompts for a
    password.
-5. It creates the roles the dump names, without login, and restores in one transaction.
+5. It creates, without login, the roles the dump names (including `supabase_admin`, which owns
+   Supabase's default privileges on `public`) and Supabase's platform roles, then restores in
+   one transaction. The first Windows run on the real backup `36740624220` stopped here with
+   `role "supabase_admin" does not exist`; `test-local.sh` now builds its dump with those
+   default privileges, so this cannot come back unnoticed.
 6. It compares every table's row count with the manifest.
 7. It stops the database and deletes the folder.
 
