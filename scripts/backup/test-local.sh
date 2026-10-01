@@ -125,6 +125,16 @@ if command -v pwsh >/dev/null; then
   else fail "ps1 drill: $OUTPS"; fi
   grep -qF -- "$KEY_TEXT" <<< "$OUTPS" && fail "ps1 drill printed the key" || pass "ps1 drill never printed the key"
   ls -d "${TMPDIR:-/tmp}"/nexra-drill-* >/dev/null 2>&1 && fail "ps1 drill left its temporary folder" || pass "ps1 drill deleted its temporary folder"
+  STEPS_OK=1
+  for step in "initdb" "pg_ctl start" "psql: create the drill database" "pg_restore: list the dump" "pg_restore: restore" "row-count compare" "pg_ctl stop"; do
+    grep -qF "start : $step" <<< "$OUTPS" && grep -qF "done  : $step" <<< "$OUTPS" || { STEPS_OK=0; echo "  no start/done lines for: $step"; }
+  done
+  [ "$STEPS_OK" = 1 ] && pass "ps1 drill prints a line before and after every step" || fail "ps1 drill step lines missing"
+  grep -q "127.0.0.1:5432 " <<< "$OUTPS" && fail "ps1 drill used port 5432" || pass "ps1 drill used a free port other than 5432 (trust, loopback only)"
+  OUTPS="$(psdrill -Backup "$PSD/$(basename "$FILE")" -KeyFile "$PSD/drill.key" -TestStepTimeout "pg_restore: restore=0")" && fail "ps1: a timed-out step passed" \
+    || { grep -q "RESTORE DRILL: FAIL - pg_restore: restore timed out after 0 s" <<< "$OUTPS" && grep -q "Last lines of the server log" <<< "$OUTPS" && grep -q "done  : pg_ctl stop" <<< "$OUTPS" \
+      && pass "ps1: a step over its timeout is stopped, named, shown with the server log tail; the cluster stopped" || fail "ps1 timeout: $OUTPS"; }
+  ls -d "${TMPDIR:-/tmp}"/nexra-drill-* >/dev/null 2>&1 && fail "ps1 timeout left its temporary folder" || pass "ps1 timeout deleted its temporary folder"
   if [ -f "$PSD/artifact.zip" ]; then
     OUTPS="$(psdrill -Backup "$PSD/artifact.zip" -KeyFile "$PSD/drill.key")" && grep -q "RESTORE DRILL: OK" <<< "$OUTPS" \
       && pass "ps1 drill (the downloaded .zip)" || fail "ps1 drill on the zip: $OUTPS"

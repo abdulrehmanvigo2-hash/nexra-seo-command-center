@@ -442,8 +442,9 @@ What it does, step by step:
 2. It unzips the artifact and decrypts the `.tar.age` with age into a new folder in
    `%TEMP%`, readable by your Windows user only.
 3. It checks every file against the manifest's SHA-256.
-4. It creates a throwaway PostgreSQL there, listening on `127.0.0.1` only, on a free port,
-   with a random password made for this run.
+4. It creates a throwaway PostgreSQL there, listening on `127.0.0.1` only, on a free port
+   (never 5432, the installed service's), with trust authentication, so nothing prompts for a
+   password.
 5. It creates the roles the dump names, without login, and restores in one transaction.
 6. It compares every table's row count with the manifest.
 7. It stops the database and deletes the folder.
@@ -451,20 +452,40 @@ What it does, step by step:
 It never prints the key. Add `-Keep` to keep the stopped folder for inspection: it then holds
 the **decrypted** backup, so delete it when done.
 
+**Progress and timeouts.** Every program the script runs is one named step. It prints
+`start : <step>` before it and `done  : <step> (N s)` after it, and runs under a timeout. A step
+that runs too long is stopped, and the script ends with `RESTORE DRILL: FAIL - <step> timed out
+…` and the last 20 lines of the throwaway server's log. It still stops the server and deletes the
+folder.
+
+**The 1 Oct hang.** The first Windows run stopped after `decrypted` and printed nothing for over
+10 minutes. Cause: `pg_ctl start` ran through a PowerShell pipe. On Windows the server it starts
+inherits that pipe and keeps it open, so PowerShell waited for the end of output forever. Now
+`pg_ctl` runs on the console with nothing redirected (`-l <log> -w -t 60 -s`). Every other program
+writes to files, never a pipe.
+
 **What was tested, and what was not.**
 - `scripts/backup/test-local.sh` runs the script under PowerShell 7 on Linux, on a real
   backup. It checks:
   - a pass on both the `.tar.age` and the downloaded `.zip`;
   - the wrong key, a tampered file, a missing key file and a missing PostgreSQL each end in
     one FAIL line;
-  - the key is never printed, and no temporary folder is left.
+  - the key is never printed, and no temporary folder is left;
+  - a `start`/`done` pair for every step, a port other than 5432, and a forced timeout (FAIL
+    naming the step, the log tail, the server stopped, the folder deleted).
 - A doctored manifest was also checked by hand: it gives the row-count FAIL.
+- The hang's mechanism was reproduced on Linux with a stand-in program that leaves a child
+  holding its output. The old pipe call waited until the child let go; the new console call
+  returned in 0.1 s. Linux's real `pg_ctl` detaches from its output, so the hang itself never
+  happens there.
 - Not run on Windows itself:
   - Windows PowerShell 5.1 (the script is written for it);
   - the EDB installer's `C:\Program Files\PostgreSQL\17\bin` lookup and `winget`'s `age`
     link;
   - the `icacls` lock on the folder;
-  - `initdb` and `pg_ctl` on Windows paths.
+  - `initdb` and `pg_ctl` on Windows paths, and `pg_ctl` started from a non-administrator
+    shell;
+  - `Start-Process` output files in Windows PowerShell 5.1, and `taskkill` on a timeout.
 
   If the first Windows run fails, send the FAIL line (it never holds the key).
 
