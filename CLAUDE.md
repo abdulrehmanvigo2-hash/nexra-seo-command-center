@@ -55,7 +55,7 @@ core and task workflow are merged and production verified (see §0).**
 
 ## 0. Current Checkpoint
 
-GitHub `master`: `215083af…` (merge of PR #86, fix F8; before it `5a26b2c5…`, PR #85, fix F7; the audit fixes since `7a718f7c…` are under *Current work*). Before
+GitHub `master`: `ea3f223a…` (merge of PR #88, fix F9; before it `deea54cc…`, PR #87, the F8 apply record; `215083af…`, PR #86, fix F8; `5a26b2c5…`, PR #85, fix F7; the audit fixes since `7a718f7c…` are under *Current work*). Before
 them: `7a718f7c…` (merge of PR #65, `claude/festive-dirac-ib7i3e`, checkpoint 6.12a and the 6.11 record;
 preceded by PR #64 `ae8be880…` (the 6.10b record), PR #63
 `e6280763…` (the 6.10a record), PR #62 `0381f1bb…` (the full article renderer), PR #61 `33ae4007…` (the nexra-ai re-audit and
@@ -1627,8 +1627,12 @@ now records both hashes, so results recorded before F8 (V4, V6 included) are nev
 CARRIED CHECK RESULTS section only when there is one, so every earlier preview keeps its bytes); the operator can clear
 a carried unit for a fresh check (confirmed; an approved version refuses). Checker instructions v3 (`6299e783…`) add one
 sentence: an article's own title, meta description, excerpt, headings and labels describing itself are EDITORIAL; v2
-(`8788932b…`) is kept. Fix **F9 — article import and live slugs from the records** (A5-03, A5-01 in part), a draft PR;
-migration `20261015120000_live_articles_read.sql` **not applied**: the article editor gains *Import article JSON…* (one
+(`8788932b…`) is kept. Fix **F9 — article import and live slugs from the records** (A5-03, A5-01 in part), merged as PR #88 (`ea3f223`);
+migration `20261015120000_live_articles_read.sql` (SHA-256 `00d2bfcf…51eab4`) **applied to production and recorded on 1 Oct**
+(preflight read-only, tested locally first with a tampered hash failing closed, one hash-checked transaction, then
+`NOTIFY pgrst`; verified read-only: 38 history rows, the function `security definer` with EXECUTE for `service_role` only,
+the pinned slug with no article and `ai-dead-lead-reactivation` → `1003104c…` V6 with its keywords, every row count,
+fingerprint and the V4 / V6 hashes unchanged; no probe run): the article editor gains *Import article JSON…* (one
 pasted article object or stored canonical text fills every field; C1 validation, unknown fields refused, errors per field;
 nothing saved until Create or Save); the hand-typed `LIVE_SLUGS_AFTER_PIN` is gone — the proposal eligibility, the
 preview, the editor's live notice and the renderer's slug and keyword checks read the database's live articles through
@@ -1949,6 +1953,9 @@ overwrite live content.
 - Article `1003104c-6b25-456f-9304-eefa2ba88e7d` is `approved` at Version 6 (`5ae7594d…`, all 7 units passed,
   approval `98195295…` with the attestation ticked) and **published** on 30 Sep (6.11: nexra-ai PR #9, merge
   `9a69c8c`, `/blog/ai-dead-lead-reactivation`); its proposal `ea85edb0…` stays as the record of that intent.
+- Migration `20261015120000_live_articles_read.sql` (F9) is applied to production and recorded (1 Oct): the application
+  reads the live slugs and their keywords from the database (`nexra_article_publication_live_articles`, `service_role`
+  only); it keeps no list in code, and an unread list blocks a proposal (`live-articles-unread`).
 - Migration `20261014120000_check_unit_carry_forward.sql` (F8) is applied to production and recorded (1 Oct): a passed
   check result may be carried to an identical later unit only under the same instructions hash and, when it rests on a
   record, an unchanged evidence fingerprint; no existing result is carried (none recorded the hashes).

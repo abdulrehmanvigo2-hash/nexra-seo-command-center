@@ -990,7 +990,7 @@ than silently re-applying a stale edit.
   3. A cross-link made optional, or its target chosen per article, with a way to link from a rendered article.
   4. After the merge, a `LIVE_SLUGS_AFTER_PIN` entry and its SQL twin, as in 6.12a.
 - Effort: M
-- Status: partly fixed — F9 (draft PR; migration `20261015120000` not applied): live slugs and keywords are read from the records by the proposal, the preview, the editor and the renderer (items 2 and 4 need no code list); the re-pin, the cross-link and the rest are written up as steps in `docs/RUNBOOK.md` §7
+- Status: partly fixed — F9 (PR #88, `ea3f223`; migration `20261015120000` applied and recorded 1 Oct): live slugs and keywords are read from the records by the proposal, the preview, the editor and the renderer (items 2 and 4 need no code list); the re-pin, the cross-link and the rest are written up as steps in `docs/RUNBOOK.md` §7
 
 ### A5-02 — Checker variance and no carry-forward cost 8 of the 20 check runs for one article
 - Severity: medium (recorded as backlog, per 6.10b; A3-03 covers the draft fact-check)
@@ -1022,7 +1022,7 @@ than silently re-applying a stale edit.
 - Suggested fix: a "Paste article JSON" box: validate with the C1 validator, fill the form (`formFromContent`), then
   save as now. Label the add buttons "Add H3 to this section" and "Add H2 section".
 - Effort: S
-- Status: fixed — F4 labelled the add buttons; F9 (draft PR) adds *Import article JSON…*: one pasted article object or stored canonical text fills every field, validated by the C1 validator (unknown fields refused, errors listed per field), nothing saved until Create or Save
+- Status: fixed — F4 labelled the add buttons; F9 (PR #88, `ea3f223`) adds *Import article JSON…*: one pasted article object or stored canonical text fills every field, validated by the C1 validator (unknown fields refused, errors listed per field), nothing saved until Create or Save
 
 ### A5-04 — Attestation locators are paragraph indexes and do not follow edits
 - Severity: medium
