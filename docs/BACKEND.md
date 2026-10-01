@@ -1862,7 +1862,7 @@ function the `withdrawArticleProposal` Server Action reaches, and the function a
 - No active proposal remains.
 - Nothing was ever published.
 
-### Live articles from the records (fix F9, audit A5-01; migration `20261015120000`, not applied until separately approved)
+### Live articles from the records (fix F9, audit A5-01; migration `20261015120000`, applied and recorded 1 Oct)
 
 The application keeps no list of live slugs. `nexra_article_publication_live_articles(destination)` (`security definer`,
 `stable`, EXECUTE for `service_role` only) answers each slug of the database's live-slug list in its order. Each entry

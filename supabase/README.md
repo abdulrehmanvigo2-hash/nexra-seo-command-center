@@ -179,10 +179,10 @@ Editor (or run with the Supabase CLI against a linked project):
     carry-forward and the fresh check (fix F8, audit A5-02, A3-03) — applied
     to production and recorded on 1 Oct
 37. `20261015120000_live_articles_read.sql` — the live articles read from the
-    records (fix F9, audit A5-01) — **not applied**
+    records (fix F9, audit A5-01) — applied to production and recorded on 1 Oct
 
-The first thirty-six are applied to production and recorded in its migration
-history (37 versions); the thirty-seventh waits for its own approval.
+All thirty-seven are applied to production and recorded in its migration
+history (38 versions).
 
 `20261015120000_live_articles_read.sql` (fix F9) adds one read function,
 `nexra_article_publication_live_articles(destination)` (`security definer`,
@@ -192,9 +192,14 @@ was published from (null for a pinned template slug), the version that article
 proposed for it (the active proposal, else the newest withdrawn one) and that
 version's keywords. The application reads it instead of a list in code. No table,
 row, trigger or other grant changes; the two list functions stay closed to API
-roles. Until it is applied, the proposal eligibility answers `live-articles-unread`
-and nothing can be proposed. Harness suite `live-articles` (14); the `c5`
-inventory names the function. The history differs from the files in eight places —
+roles. Harness suite `live-articles` (14); the `c5` inventory names the function.
+Applied on 1 Oct (SHA-256 `00d2bfcf…51eab4`, one hash-checked transaction, then
+`NOTIFY pgrst`); verified read-only: 38 history rows, the function `security
+definer`, `stable`, empty `search_path`, owner `postgres`, EXECUTE for
+`service_role` only; for `nexra-agency-website` it answers
+`ai-lead-follow-up-automation` (no article) and `ai-dead-lead-reactivation` →
+article `1003104c…` Version 6 with its four keywords; every row count and table
+fingerprint and the V4 / V6 hashes unchanged. The history differs from the files in eight places —
 renumbered, unrecorded or legacy rows, the schema identical to the repository
 in every case — listed and left as they are in `docs/RUNBOOK.md` §1.5.
 
