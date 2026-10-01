@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -48,6 +48,7 @@ export function SpendConfirmDialog({
   busy = false,
   onConfirm,
   onClose,
+  children,
 }: {
   confirmation: Confirmation;
   /** The project whose usage is shown; the dialog reads it when the action spends a daily count. */
@@ -55,6 +56,8 @@ export function SpendConfirmDialog({
   busy?: boolean;
   onConfirm: () => void;
   onClose: () => void;
+  /** An extra block beneath the consequence — a spend reading the action's own usage route (F0's provider spend). */
+  children?: ReactNode;
 }) {
 
   return (
@@ -83,6 +86,8 @@ export function SpendConfirmDialog({
         </dl>
 
         <p className="leading-relaxed text-fg-muted">{confirmation.consequence}</p>
+
+        {children}
 
         {confirmation.usage !== null && projectId !== null && <DailyUsageBlock projectId={projectId} limit={confirmation.usage} />}
       </div>
