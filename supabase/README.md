@@ -176,11 +176,11 @@ Editor (or run with the Supabase CLI against a linked project):
     subsystem retired (fix F6, audit A0-02, A0-03, A2-03) — applied to
     production and recorded on 30 Sep
 36. `20261014120000_check_unit_carry_forward.sql` — check-result
-    carry-forward and the fresh check (fix F8, audit A5-02, A3-03) — **not
-    applied**
+    carry-forward and the fresh check (fix F8, audit A5-02, A3-03) — applied
+    to production and recorded on 1 Oct
 
-The first thirty-five are applied to production and recorded in its migration
-history (36 versions); the thirty-sixth waits for its own approval. The history differs from the files in eight places —
+All thirty-six are applied to production and recorded in its migration
+history (37 versions). The history differs from the files in eight places —
 renumbered, unrecorded or legacy rows, the schema identical to the repository
 in every case — listed and left as they are in `docs/RUNBOOK.md` §1.5.
 
@@ -207,6 +207,26 @@ fingerprint; runs before F8 recorded neither hash, so no existing result can be
 carried. The record and approve functions, every existing row and grant are
 unchanged (harness `carry-upgrade`). Harness suites `carry` (47) and
 `carry-upgrade` (10); `c4` and `attested` now pin the schema before it.
+
+**Applied to production and recorded (1 Oct, separately approved):** read-only
+preflight (PostgreSQL 17.6, READ COMMITTED, the version absent, latest
+`20261013120000`, 36 history rows, none of the new columns or functions; projects
+10, runs 82, attempts 83, articles 2, versions 10, check units 23, approvals 2,
+proposals 2); the batch tested first on a disposable local cluster (a tampered
+hash failed closed with no history row; the real batch passed the 10
+`carry-upgrade` assertions); then one transaction that inserted the history row
+and executed the recorded text only after checking its SHA-256 equals the
+file's; then `NOTIFY pgrst` (two new API functions). Verified read-only: the
+recorded text hashes `51fe6e69…489639`, 37 history rows; the five carry
+columns (nullable) and `carried_units` (jsonb, not null, default `[]`); the
+carry and fresh functions `security definer`, empty `search_path`, owner
+`postgres`, EXECUTE for `service_role` only; the two trigger functions not
+`security definer`, executable by no API role; every check-unit and approval
+trigger enabled; 0 carried rows, 0 approvals with carried units; every row count
+unchanged; the check-unit and approval rows' original columns, the versions,
+runs, articles and proposals fingerprint exactly as before; V4 of `c89182f9…`
+`e9db287f…` and V6 of `1003104c…` `5ae7594d…` (stored and recomputed). No probe
+was run (no data write was allowed).
 
 `20261013120000_retire_legacy_crawl_subsystem.sql` drops the five unprefixed
 tables no file of this repository created or used — `crawls`, `crawl_pages`,

@@ -577,7 +577,7 @@ UTC** each day, so the job fires about 50 minutes after its schedule (Hobby timi
 - Suggested fix: the post-V1 items (carry a passed result forward; checker instructions v3), extended to the draft
   fact-check; optionally a fixed low temperature for the two verdict tasks, as its own decision.
 - Effort: M
-- Status: partly fixed — F8 (draft PR, migration `20261014120000` not applied): the article check gains the carry-forward and instructions v3; the draft fact-check is unchanged and stays backlog
+- Status: partly fixed — F8 (PR #86, `215083a`; migration `20261014120000` applied 1 Oct): the article check gains the carry-forward and instructions v3; the draft fact-check is unchanged and stays backlog
 
 ### A3-04 — The learning loop cites correctly; relevance is the operator's call
 - Severity: info
@@ -1005,7 +1005,7 @@ than silently re-applying a stale edit.
 - Suggested fix: the post-V1 carry-forward (reuse a passed result when the unit hash is identical) and checker
   instructions v3. Optionally a fixed low temperature for the two verdict tasks, as its own decision (§6).
 - Effort: M
-- Status: fix drafted — F8 (draft PR; migration `20261014120000` not applied): carry a passed result to an identical later unit under the same instructions (no SUPPORTED statement, or unchanged evidence fingerprint), marked on the unit, the approval and the preview; a confirmed fresh check; checker instructions v3 (`6299e783…`). No temperature change
+- Status: fixed — F8 (PR #86, `215083a`; migration `20261014120000` applied and recorded 1 Oct): carry a passed result to an identical later unit under the same instructions (no SUPPORTED statement, or unchanged evidence fingerprint), marked on the unit, the approval and the preview; a confirmed fresh check; checker instructions v3 (`6299e783…`). No temperature change
 
 ### A5-03 — Entering an article is about 35 typed fields, with no import
 - Severity: medium

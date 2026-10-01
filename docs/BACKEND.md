@@ -1623,7 +1623,7 @@ classified 9 of 8 with one unnumbered line. The malformed-answer path
 
 ### Check-result carry-forward and checker instructions v3 (fix F8)
 
-Migration `20261014120000_check_unit_carry_forward.sql` (not applied until separately approved). A passed check result
+Migration `20261014120000_check_unit_carry_forward.sql` (applied to production and recorded on 1 Oct). A passed check result
 may be carried onto the current version's unit with identical text, instead of a new run, when:
 
 - the source passed on an earlier version of the same article and was checked by its own run (a carried row is never
