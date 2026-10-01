@@ -394,15 +394,29 @@ try {
   $null = Invoke-Sql 'psql: create the drill database' 'postgres' 'create database drill'
   Write-Host "cluster     : PostgreSQL $pgMajor on 127.0.0.1:$port (throwaway, trust, loopback only)"
 
-  # --- 5. Every role the dump names, created without login ---------------------------------
+  # --- 5. Every role the dump names, plus Supabase's platform roles, created without login --
+  # Owners, grantees and default-privilege owners (Supabase's supabase_admin owns the default
+  # privileges on public). A new Supabase project already has them; this throwaway cluster does
+  # not. Only top-level statements are read, so text inside a function body is not taken for a
+  # role; a stray name only adds a harmless NOLOGIN role to the throwaway cluster.
+  $platformRoles = @('anon', 'authenticated', 'service_role', 'authenticator', 'supabase_admin', 'supabase_auth_admin',
+    'supabase_storage_admin', 'supabase_realtime_admin', 'supabase_replication_admin', 'supabase_read_only_user',
+    'dashboard_user', 'pgbouncer')
   $schemaSql = Join-Path $Work 'schema.sql'
   $null = Invoke-Step 'pg_restore: read the schema (roles)' $pg.pg_restore @('--schema-only', '-f', $schemaSql, (Join-Path $Files 'db.dump')) 120
-  $roles = [regex]::Matches([System.IO.File]::ReadAllText($schemaSql), '(?:OWNER TO|TO|FROM) ([a-z_][a-z0-9_]*);') |
-    ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+  $dumpRoles = New-Object System.Collections.Generic.List[string]
+  foreach ($line in [System.IO.File]::ReadAllLines($schemaSql)) {
+    if ($line -notmatch '^(ALTER|GRANT|REVOKE) ') { continue }
+    foreach ($m in [regex]::Matches($line, '(?:OWNER TO|FOR ROLE|GRANTED BY|TO|FROM) ("[^"]+"|[A-Za-z_][A-Za-z0-9_$]*)')) {
+      $dumpRoles.Add($m.Groups[1].Value.Trim('"'))
+    }
+  }
   Remove-Item -LiteralPath $schemaSql -Force
+  $roles = @($platformRoles) + @($dumpRoles) | Sort-Object -Unique
   foreach ($role in $roles) {
-    if ($role -eq 'postgres' -or $role -eq 'public') { continue }
-    $null = Invoke-Sql "psql: create role $role" 'postgres' "do `$`$ begin if not exists (select 1 from pg_roles where rolname = '$role') then create role $role nologin; end if; end `$`$;"
+    if ($role -eq 'postgres' -or $role -eq 'public' -or $role -like 'pg_*') { continue }
+    $literal = $role -replace "'", "''"
+    $null = Invoke-Sql "psql: create role $role" 'postgres' "do `$`$ begin if not exists (select 1 from pg_roles where rolname = '$literal') then execute format('create role %I nologin', '$literal'); end if; end `$`$;"
   }
 
   # --- 6. Restore: one transaction; pg_restore's order creates triggers after the data -------

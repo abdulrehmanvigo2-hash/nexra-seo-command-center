@@ -35,6 +35,17 @@ PSQL=("$PG_BIN/psql" -X -q -v ON_ERROR_STOP=1)
 [ "$("$PG_BIN/psql" -X -At -d postgres -c "show listen_addresses")" = "" ] || { echo "TCP is on; stopping" >&2; exit 3; }
 "${PSQL[@]}" -d postgres -c "create database source"
 "${PSQL[@]}" -d source -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;"
+# Supabase's platform roles in the shapes the production dump carries (backup 36740624220 failed
+# on the first): supabase_admin owns default privileges on public, and another platform role is
+# granted on it. A drill that misses either fails the restore.
+"${PSQL[@]}" -d source <<'SQL'
+create role supabase_admin nologin;
+create role supabase_auth_admin nologin;
+alter default privileges for role supabase_admin in schema public grant all on sequences to postgres, anon, authenticated, service_role;
+alter default privileges for role supabase_admin in schema public grant all on tables to postgres, anon, authenticated, service_role;
+alter default privileges for role supabase_admin in schema public grant all on functions to postgres, anon, authenticated, service_role;
+grant usage on schema public to supabase_auth_admin;
+SQL
 for f in "$ROOT"/supabase/migrations/*.sql; do "${PSQL[@]}" -d source -f "$f" >/dev/null; done
 "${PSQL[@]}" -d source >/dev/null <<'SQL'
 -- The platform's pieces the backup reads: migration history and the auth user table.
@@ -106,6 +117,10 @@ age -d -i "$WORK/drill.key" "$FILE" | tar -C "$WORK/peek" -xf -
 [ "$(head -1 "$WORK/peek/auth-users.csv")" = "id,email,created_at,email_confirmed_at,last_sign_in_at" ] && pass "auth list holds only id, email and dates" || fail "auth list header: $(head -1 "$WORK/peek/auth-users.csv")"
 grep -q "drillhash\|drill-token-value" "$WORK/peek/auth-users.csv" && fail "a password hash or token was exported" || pass "no password hash or token exported"
 grep -q " auth " <<< "$("$PG_BIN/pg_restore" --list "$WORK/peek/db.dump")" && fail "the dump holds the auth schema" || pass "the dump holds public and supabase_migrations only"
+DEFACLS="$("$PG_BIN/pg_restore" --list "$WORK/peek/db.dump" | grep -c "DEFAULT ACL.*supabase_admin" || true)"
+[ "$DEFACLS" -ge 3 ] && grep -q "supabase_auth_admin" <<< "$("$PG_BIN/pg_restore" --schema-only -f - "$WORK/peek/db.dump")" \
+  && pass "the dump carries Supabase-shaped platform roles ($DEFACLS default-privilege entries for supabase_admin, a grant to supabase_auth_admin)" \
+  || fail "the test dump lacks the platform-role entries ($DEFACLS default ACLs)"
 
 # --- 3. The restore drill --------------------------------------------------------------
 if DRILL="$(bash "$HERE/restore-drill.sh" "$FILE" "$WORK/drill.key" 2>&1)"; then pass "drill: $DRILL"; else fail "drill failed: $DRILL"; fi

@@ -54,13 +54,19 @@ PSQL=("$PG_BIN/psql" -X -q -v ON_ERROR_STOP=1)
 [ "$("$PG_BIN/psql" -X -At -d postgres -c "show listen_addresses")" = "" ] || fail "TCP is on; stopping"
 "${PSQL[@]}" -d postgres -c "create database drill"
 
-# 3. Every role the dump names (owners and grantees) must exist; create the missing ones
-# without login. A new Supabase project already has them.
-ROLES="$("$PG_BIN/pg_restore" --schema-only -f - "$FILES/db.dump" \
-  | grep -oE '(OWNER TO|TO|FROM) [a-z_][a-z0-9_]*;' | awk '{ print $NF }' | tr -d ';' | sort -u)"
-for role in $ROLES; do
-  [ "$role" = "postgres" ] || [ "$role" = "public" ] && continue
-  "${PSQL[@]}" -d postgres -c "do \$\$ begin if not exists (select 1 from pg_roles where rolname = '$role') then create role $role nologin; end if; end \$\$;"
+# 3. Every role the dump names (owners, grantees, default-privilege owners such as Supabase's
+# supabase_admin), plus Supabase's own platform roles, must exist: create the missing ones
+# without login. A new Supabase project already has them; this throwaway cluster does not.
+# Only top-level statements (column 0) are read, so text inside a function body is not taken
+# for a role; a stray name only adds a harmless NOLOGIN role to the throwaway cluster.
+PLATFORM_ROLES="anon authenticated service_role authenticator supabase_admin supabase_auth_admin supabase_storage_admin supabase_realtime_admin supabase_replication_admin supabase_read_only_user dashboard_user pgbouncer"
+DUMP_ROLES="$("$PG_BIN/pg_restore" --schema-only -f - "$FILES/db.dump" | grep -E '^(ALTER|GRANT|REVOKE) ' \
+  | grep -oE '(OWNER TO|FOR ROLE|GRANTED BY|TO|FROM) ("[^"]+"|[A-Za-z_][A-Za-z0-9_$]*)' | awk '{ print $NF }' | tr -d '"')"
+printf '%s\n' $PLATFORM_ROLES "$DUMP_ROLES" | sort -u | while read -r role; do
+  case "$role" in ""|postgres|public|pg_*) continue ;; esac
+  "$PG_BIN/psql" -X -q -v ON_ERROR_STOP=1 -d postgres -v r="$role" >/dev/null <<'SQL'
+select format('create role %I nologin', :'r') where not exists (select 1 from pg_roles where rolname = :'r') \gexec
+SQL
 done
 
 # 4. Restore: schemas, then data, then constraints, indexes and triggers (pg_restore's own
