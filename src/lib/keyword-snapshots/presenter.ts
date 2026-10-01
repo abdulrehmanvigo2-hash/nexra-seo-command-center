@@ -71,7 +71,7 @@ export function runStatusLine(view: SnapshotRunView): { readonly label: string; 
   const { run, missingSeeds } = view;
   if (run.status === "reserved") return { label: "Running", tone: "neutral", detail: "The run is open; its calls are being recorded." };
   if (run.status === "failed") return { label: "Failed", tone: "critical", detail: run.errorCode === "provider-refused" ? "DataForSEO refused the credentials; nothing was charged." : run.errorCode === "abandoned" ? "The run was left open and closed as abandoned." : `No call succeeded (${run.errorCode ?? "no code"}).` };
-  if (missingSeeds.length === 0) return { label: "Complete", tone: "positive", detail: run.status === "partial" ? "Completed after a resume; the earlier failed calls stay on record." : null };
+  if (missingSeeds.length === 0) return { label: "Complete", tone: "positive", detail: run.status === "partial" ? "Nothing is missing; the stored status is partial from an earlier build of the finish rule." : null };
   return { label: "Partial", tone: "warning", detail: `Missing ${missingSeeds.length} of ${run.seeds.length} seeds: ${missingSeeds.join(", ")}.${run.errorCode === "deadline" ? " The run stopped at its time limit." : ""}` };
 }
 

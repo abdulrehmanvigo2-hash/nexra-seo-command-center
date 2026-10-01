@@ -62,8 +62,12 @@
 --   nexra_provider_run_finish    closes a run: `finished`, `run-not-found`,
 --                                `run-not-open`, `cost-mismatch` (the cost given
 --                                is not the sum of the succeeded requests'),
---                                `status-not-consistent` (`completed` with a
---                                request that did not succeed, or none).
+--                                `status-not-consistent` (`completed` while a
+--                                planned call — seq 0, the overview, and seq
+--                                1..n, one per seed — has no succeeded request,
+--                                counting a retry by its `retry_of`; earlier
+--                                failed or unknown rows stay as history and
+--                                still count in the cost and unknown cost).
 --   nexra_provider_run_resume    reopens a `partial` run for its missing calls
 --                                (decision Q4: only ever reached through the
 --                                confirmation dialog, never automatically):
@@ -665,6 +669,7 @@ declare
   v_cost numeric(10, 4);
   v_requests integer;
   v_succeeded integer;
+  v_planned_missing integer;
 begin
   if p_run_id is null or p_status is null or p_cost_usd is null or p_unknown_cost_usd is null then
     raise exception 'nexra_provider_run_finish: run, status, cost and unknown cost are required'
@@ -700,8 +705,18 @@ begin
   if p_cost_usd <> v_cost then
     return pg_catalog.jsonb_build_object('outcome', 'cost-mismatch', 'recorded_usd', v_cost);
   end if;
-  if p_status = 'completed' and (v_requests = 0 or v_succeeded <> v_requests) then
-    return pg_catalog.jsonb_build_object('outcome', 'status-not-consistent', 'requests', v_requests, 'succeeded', v_succeeded);
+  -- `completed` means every planned call (seq 0 and one per seed) has a succeeded request, directly or by a retry
+  -- naming it in params.retry_of. Earlier failed or unknown rows stay as history and are already in the figures.
+  if p_status = 'completed' then
+    select count(*) into v_planned_missing
+      from pg_catalog.generate_series(0, pg_catalog.cardinality(v_run.seeds)) planned(n)
+     where not exists (
+       select 1 from public.nexra_provider_requests r
+        where r.run_id = p_run_id and r.outcome = 'succeeded'
+          and coalesce((r.params->>'retry_of')::integer, r.seq) = planned.n);
+    if v_planned_missing > 0 then
+      return pg_catalog.jsonb_build_object('outcome', 'status-not-consistent', 'requests', v_requests, 'succeeded', v_succeeded, 'planned_missing', v_planned_missing);
+    end if;
   end if;
 
   perform pg_catalog.set_config('nexra.provider_write', v_run.id::text, true);
@@ -720,7 +735,7 @@ end;
 $$;
 
 comment on function public.nexra_provider_run_finish(uuid, text, numeric, numeric, text) is
-  'Closes an open run as completed, partial or failed, recording its cost (which must equal the succeeded requests'' recorded sum) and the estimate of its timed-out calls: finished, run-not-found, run-not-open, cost-mismatch or status-not-consistent.';
+  'Closes an open run as completed, partial or failed, recording its cost (which must equal the succeeded requests'' recorded sum) and the estimate of its timed-out calls: finished, run-not-found, run-not-open, cost-mismatch or status-not-consistent (completed needs a succeeded request for every planned call, a retry counting by its retry_of).';
 
 -- ---------------------------------------------------------------------------
 -- Resuming one partial run for its missing calls (decision Q4).
