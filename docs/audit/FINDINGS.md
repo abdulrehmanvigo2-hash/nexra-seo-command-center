@@ -383,7 +383,7 @@ functions 98 = 98 with 3 differing; grants 26 = 26 with 7 differing** — both e
   **(B)** an own scheduled dump job — a `pg_dump` of the public schema on a schedule, kept outside Supabase, with
   one restore drill (A6-14). Either needs §6 approval (a paid service, or a credential for the dump job).
 - Effort: S (A) / M (B)
-- Status: fix in progress — F1 (the operator chose to stay on the Free plan with an own encrypted nightly backup, `.github/workflows/backup.yml`, RUNBOOK §6; merged as PR #74; the first two runs on 30 Sep failed at the connection, fixed by F1b and a re-entered secret; run `36720332709` green on 30 Sep, see RUNBOOK §6.2 *Run history*); closed once the operator's restore drill passes
+- Status: **closed** (1 Oct 2026) — F1, the operator's own encrypted nightly backup (`.github/workflows/backup.yml`, RUNBOOK §6, PR #74 and fix F1b; first green run `36720332709` on 30 Sep); the restore drill passed on 1 Oct 2026 on the operator's Windows PC (non-admin PowerShell, PostgreSQL 17, `restore-drill.ps1` at `master` `596aeb9`) on backup `nexra-backup-36740624220`: "RESTORE DRILL: OK - 32 tables, 1226 rows, every row count equals the manifest; 1 auth users listed; backup 20260930T155743Z, server 170006, restored on PostgreSQL 17"; see RUNBOOK §6.2 *Run history*
 
 ### A2-06 — Auth: leaked-password protection is disabled
 - Severity: low
@@ -1168,7 +1168,7 @@ configured but not enforced on the current plan, and merge discipline is documen
   Supabase). Add a runbook §6: how to take a dump (public schema and data, plus `supabase_migrations`), where it is
   kept, and a restore drill into a disposable local cluster, run once and recorded.
 - Effort: S (docs) / M (drill)
-- Status: fix in progress — F1 (the operator chose to stay on the Free plan with an own encrypted nightly backup, `.github/workflows/backup.yml`, RUNBOOK §6; merged as PR #74; the first two runs on 30 Sep failed at the connection, fixed by F1b and a re-entered secret; run `36720332709` green on 30 Sep, see RUNBOOK §6.2 *Run history*); closed once the operator's restore drill passes
+- Status: **closed** (1 Oct 2026) — F1, the operator's own encrypted nightly backup (`.github/workflows/backup.yml`, RUNBOOK §6, PR #74 and fix F1b; first green run `36720332709` on 30 Sep); the restore drill passed on 1 Oct 2026 on the operator's Windows PC (non-admin PowerShell, PostgreSQL 17, `restore-drill.ps1` at `master` `596aeb9`) on backup `nexra-backup-36740624220`: "RESTORE DRILL: OK - 32 tables, 1226 rows, every row count equals the manifest; 1 auth users listed; backup 20260930T155743Z, server 170006, restored on PostgreSQL 17"; see RUNBOOK §6.2 *Run history*
 
 ### A6-02 — Nothing tells the operator when something breaks
 - Severity: medium

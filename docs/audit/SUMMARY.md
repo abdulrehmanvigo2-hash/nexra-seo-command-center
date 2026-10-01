@@ -47,7 +47,7 @@ money without warning: the backups and the one-click runs.
 
 1. **A2-05 and A6-01 — no backups, no restore procedure, no drill.** The project is on Supabase's Free plan. The
    database is the only copy of every run, article, approval and proposal. Decision pending: the Pro plan, or an
-   own scheduled dump job.
+   own scheduled dump job. **Closed 1 Oct 2026** (fix F1; restore drill passed — FINDINGS A2-05, A6-01).
 2. **A6-02 — nothing alerts.** There is no uptime monitor, cron-failure alert or log drain, and the Vercel logs cannot
    be read from these sessions. An outage or a skipped deploy is found by chance.
 3. **A2-03 — a legacy crawl subsystem lives in production.** Five tables and four functions, last written on

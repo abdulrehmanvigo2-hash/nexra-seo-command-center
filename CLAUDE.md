@@ -1580,10 +1580,11 @@ never hands libpq a URL, masks the password and its fragments and redacts databa
 random SIGPIPE failure in the dump check (runbook §6.2). The operator reset the password and
 re-entered both values; a second run (`36710567750`) was refused by the host check before connecting (the direct
 string again); the third, **run `36720332709` (30 Sep 13:15 UTC), is green**: 32 tables, 1,225 rows, 10 projects,
-artifact `nexra-backup-36720332709` (676,388 bytes, kept 30 days); issues #75 and #77 closed. **Still to do:** the
-restore drill (runbook §6.4) on the operator's machine, which closes A2-05 and A6-01; for a Windows PC without WSL,
-`scripts/backup/restore-drill.ps1` and runbook §6.4a (a draft PR; tested under PowerShell 7 on Linux by `test-local.sh`,
-not yet on Windows). Fix **F3 — spending controls** (A4-01, A4-02), a
+artifact `nexra-backup-36720332709` (676,388 bytes, kept 30 days); issues #75 and #77 closed. **Restore drill passed (1 Oct
+2026)** on the operator's Windows PC (non-admin PowerShell, PostgreSQL 17, `scripts/backup/restore-drill.ps1` at
+`596aeb9`, runbook §6.4a) on backup `nexra-backup-36740624220`: 32 tables, 1,226 rows, every row count equal to the
+manifest — A2-05 and A6-01 closed. The first two Windows attempts found a pipe hang (PR #93) and a missing
+`supabase_admin` role (PR #94), both fixed and covered by `test-local.sh`. Fix **F3 — spending controls** (A4-01, A4-02), a
 draft PR: every control that queues or runs a paid agent run, and both crawl buttons, open a confirmation first (the
 task, project and record; today's cap usage, read by the new read-only `GET /api/agent-runs/daily-usage`); Queue
 labels start with "Queue"; a queued run can be cancelled (confirmed) through the existing cancel action. No change to

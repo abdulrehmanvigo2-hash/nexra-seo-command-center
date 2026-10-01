@@ -329,6 +329,8 @@ characters or more; every database error line is also redacted the same way befo
 | 30 Sep 2026 11:46 | [36710567750](https://github.com/abdulrehmanvigo2-hash/nexra-seo-command-center/actions/runs/36710567750), manual, `212caa9` | **Failed** in about 30 s at the connection-string check, before any connection: the host was not `*.pooler.supabase.com` (the direct string again). Nothing of the value was printed; issue #77 opened. The password had been reset after the first run's leak. |
 | 30 Sep 2026 13:15 | [36720332709](https://github.com/abdulrehmanvigo2-hash/nexra-seo-command-center/actions/runs/36720332709), manual, `212caa9` | **Green**, 1 min 12 s (dump, verify and encrypt 44 s), after the secret was re-entered from the Session pooler (`aws-0-ap-southeast-1.pooler.supabase.com:5432`, user `postgres.<ref>`). Summary: `nexra-backup-20260930T131550Z.tar.age` (676,200 bytes); 32 tables, 1,225 rows, 10 projects; server 170006 (PostgreSQL 17.6). The dump listed the projects, runs and migration-history tables. Artifact `nexra-backup-36720332709`, 676,388 bytes, kept until 30 Oct. Issues #75 and #77 closed. **Not yet done:** the restore drill (6.4) on the operator's machine. |
 | 30 Sep 2026 15:57 | [36740624220](https://github.com/abdulrehmanvigo2-hash/nexra-seo-command-center/actions/runs/36740624220), manual, `33b27a5` | **Green**, 1 min 30 s (dump, verify and encrypt 59 s). The backup before F6 (the legacy crawl subsystem retired). Summary: `nexra-backup-20260930T155743Z.tar.age` (676,200 bytes); 32 tables, 1,226 rows, 10 projects; server 170006 — against production at the time, 27 non-legacy tables (1,091 rows) plus the five legacy tables (135 rows: `crawls` 9, `crawl_pages` 43, `crawl_urls` 43, `crawl_page_signals` 40, `crawl_links` 0), so the manifest's counts and the `public` dump hold all five. Artifact `nexra-backup-36740624220`, 676,388 bytes, kept until 30 Oct 2026: the only copy of those 135 rows after migration `20261013120000`. |
+| 1 Oct 2026 05:01 | [36817821484](https://github.com/abdulrehmanvigo2-hash/nexra-seo-command-center/actions/runs/36817821484), manual, `fd3c5c5` | **Green**, 1 min 21 s; run by hand because no scheduled run had happened at 03:17 UTC (Phase 0 audit §I). Artifact `nexra-backup-36817821484`, 666,148 bytes, kept until 31 Oct. |
+| 1 Oct 2026 | **Restore drill** (6.4a), Windows | **Passed** on the operator's Windows PC: non-administrator PowerShell, PostgreSQL 17, `restore-drill.ps1` at `master` `596aeb9`, on artifact `nexra-backup-36740624220`: `RESTORE DRILL: OK - 32 tables, 1226 rows, every row count equals the manifest; 1 auth users listed; backup 20260930T155743Z, server 170006, restored on PostgreSQL 17`. Two earlier attempts the same day found two drill bugs, both fixed before this pass: a hang after `decrypted` (PR #93) and `role "supabase_admin" does not exist` (PR #94). Closes audit A2-05 and A6-01. |
 
 ### 6.3 Routine
 
@@ -483,7 +485,7 @@ writes to files, never a pipe.
   holding its output. The old pipe call waited until the child let go; the new console call
   returned in 0.1 s. Linux's real `pg_ctl` detaches from its output, so the hang itself never
   happens there.
-- Not run on Windows itself:
+- Not run on Windows before 1 Oct (now covered by the operator's passing run, below):
   - Windows PowerShell 5.1 (the script is written for it);
   - the EDB installer's `C:\Program Files\PostgreSQL\17\bin` lookup and `winget`'s `age`
     link;
@@ -492,7 +494,12 @@ writes to files, never a pipe.
     shell;
   - `Start-Process` output files in Windows PowerShell 5.1, and `taskkill` on a timeout.
 
-  If the first Windows run fails, send the FAIL line (it never holds the key).
+  **Tested on Windows (1 Oct 2026):** the drill passed on the operator's Windows PC — Windows PowerShell
+  started from PowerShell 7, a non-administrator shell, the EDB PostgreSQL 17 install with its own service on
+  5432, `winget`'s age — on the real backup `36740624220` (32 tables, 1,226 rows; *Run history*, 6.2). That run
+  covered the items above except the timeout path (`taskkill`), which stays tested on Linux only.
+
+  If a later Windows run fails, send the FAIL line (it never holds the key).
 
 ### 6.5 Restoring production after a loss
 
