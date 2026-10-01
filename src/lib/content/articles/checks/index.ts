@@ -1,6 +1,6 @@
 import "server-only";
 
-import { agentRunService } from "@/lib/agent-runs";
+import { agentRunService, evidencePackReadersForRuntime } from "@/lib/agent-runs";
 import { unavailableArticleCheckStore } from "@/lib/content/articles/checks/contract";
 import { createArticleCheckService, type ArticleCheckService } from "@/lib/content/articles/checks/service";
 import type { ArticleChecksDatabase } from "@/lib/content/articles/checks/supabase/schema";
@@ -16,7 +16,8 @@ import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supa
  * the same server-only client as the articles and written only through its
  * one database function. With the fixture roster there is nowhere to keep
  * them, and every call answers `unavailable`. Research & Evidence runs are
- * read through the agent-run service. Nothing in this module can reach a
+ * read through the agent-run service, and the evidence pack (for the carry's
+ * fingerprint) through the runtime's own readers. Nothing in this module can reach a
  * repository, a website or a model.
  */
 
@@ -34,6 +35,8 @@ function configuredService(): ArticleCheckService {
         return result.ok ? result.run : null;
       },
     },
+    // Fix F8: a carry whose source rests on a record re-reads the same evidence pack a check reads, to compare.
+    evidencePack: evidencePackReadersForRuntime(),
   });
 }
 

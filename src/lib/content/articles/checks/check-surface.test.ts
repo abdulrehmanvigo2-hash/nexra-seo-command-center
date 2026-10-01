@@ -110,11 +110,24 @@ describe("migration", () => {
 
 describe("server surface", () => {
   test("the action confirms the operator first and takes no hash, text, status or result from the browser", () => {
-    assert.deepEqual([...ACTIONS.matchAll(/export async function (\w+)/g)].map((m) => m[1]), ["recordArticleCheckUnit"]);
+    // Fix F8 adds the carry and the confirmed fresh check, behind the same operator gate.
+    assert.deepEqual([...ACTIONS.matchAll(/export async function (\w+)/g)].map((m) => m[1]), ["recordArticleCheckUnit", "carryArticleCheckUnit", "freshArticleCheckUnit"]);
     assert.ok(ACTIONS.indexOf("getOperator()") < ACTIONS.indexOf("articleCheckService()"));
     assert.match(ACTIONS, /operatorId: operator\.id/);
     const signature = ACTIONS.slice(ACTIONS.indexOf("export async function recordArticleCheckUnit("), ACTIONS.indexOf("): Promise<"));
     assert.equal(/sha|hash|text|status|result|version_?id/i.test(signature), false, signature);
+  });
+
+  test("the carry and the fresh check confirm the operator first, take no hash, run or source from the browser, and the fresh check needs confirm: true (F8)", () => {
+    const gate = ACTIONS.slice(ACTIONS.indexOf("async function gated<T>("), ACTIONS.indexOf("export async function carryArticleCheckUnit("));
+    assert.ok(gate.indexOf("getOperator()") < gate.indexOf("await call("));
+    assert.match(gate, /operatorId: operator\.id/);
+    for (const name of ["carryArticleCheckUnit", "freshArticleCheckUnit"]) {
+      const start = ACTIONS.indexOf(`export async function ${name}(`) + `export async function ${name}(`.length;
+      const signature = ACTIONS.slice(start, ACTIONS.indexOf("): Promise<", start));
+      assert.equal(/sha|hash|text|status|result|run|source|version_?id/i.test(signature), false, signature);
+    }
+    assert.match(ACTIONS, /confirm === true \? articleCheckService\(\)\.fresh\(request\) : \{ ok: false, reason: "invalid" \}/);
   });
 
   test("the route is read-only and operator-only", () => {

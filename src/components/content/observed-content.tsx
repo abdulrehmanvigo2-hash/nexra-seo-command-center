@@ -530,7 +530,9 @@ export function ArticleDetailView({ projectId, projectName, articleId }: { proje
                             unit.counts.attested === null ? "" : ` · ${unit.counts.attested} attested`
                           }`}
                     </TableCell>
-                    <TableCell className="font-mono text-[11px]">{unit.runId === null ? "—" : unit.runId.slice(0, 8)}</TableCell>
+                    <TableCell className="font-mono text-[11px]">
+                      {unit.runId === null ? "—" : unit.carried !== null ? <span className="font-sans text-accent">{unit.carried}</span> : unit.runId.slice(0, 8)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

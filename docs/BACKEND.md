@@ -1621,6 +1621,33 @@ unnumbered lines, coverage complete), where the earlier unit 0 result
 classified 9 of 8 with one unnumbered line. The malformed-answer path
 (`failed` / `coverage-incomplete`) is covered by the automated tests only.
 
+### Check-result carry-forward and checker instructions v3 (fix F8)
+
+Migration `20261014120000_check_unit_carry_forward.sql` (not applied until separately approved). A passed check result
+may be carried onto the current version's unit with identical text, instead of a new run, when:
+
+- the source passed on an earlier version of the same article and was checked by its own run (a carried row is never
+  a source), with the same unit SHA-256, key and kind;
+- the source run recorded the checker instructions' SHA-256 in its evidence summary (`instructionsSha256`), equal to
+  the hash of the instructions the server checks with now;
+- and either the source holds no SUPPORTED statement (basis `no-supported`), or the run recorded the evidence
+  fingerprint (`evidenceSha256`: the SHA-256 of the evidence-pack text without its "Read from Google at" line) and the
+  evidence read now has the same one (basis `evidence-unchanged`).
+
+Runs before F8 recorded neither hash, so no existing result can be carried. The service decides the source
+(`checks/carry.ts`) and re-reads the evidence pack only when the source rests on a record; the database function
+`nexra_article_check_unit_carry` re-checks every rule under the article's lock and never says which failed. A carried
+row names its source unit, version, basis and hashes; the screens show "Carried from vN, run X" on the unit and the
+Studio detail; an approval lists its carried units (`carried_units`, filled by trigger); the proposal preview adds a
+CARRIED CHECK RESULTS section only when there is one. `nexra_article_check_unit_fresh` clears a carried unit of an
+unapproved current version (failed, reason `fresh-check-requested`, the carry kept in the result), returning a checked
+article to drafting, so the normal path checks it with a new run. Server Actions `carryArticleCheckUnit` and
+`freshArticleCheckUnit` (the latter with `confirm: true`), operator-gated and limited like the record.
+
+Instructions v3 (`ARTICLE_CHECK_UNIT_INSTRUCTIONS`, `6299e783…`) are v2 (`ARTICLE_CHECK_UNIT_INSTRUCTIONS_V2`,
+`8788932b…`) plus one sentence after the EDITORIAL sorting sentence: an article's own title, meta description, excerpt,
+headings and labels describing what it covers are EDITORIAL; a checkable claim about the site is still a statement.
+
 ### Article approval (Stage 5, Complete Article Assembly, milestone C5)
 
 An operator approves the article's current, exact version — and only when

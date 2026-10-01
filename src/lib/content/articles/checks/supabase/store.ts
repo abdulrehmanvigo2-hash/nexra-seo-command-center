@@ -1,11 +1,13 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ArticleCheckStore, RecordUnitOutcome, StoredArticleVersion } from "@/lib/content/articles/checks/contract";
+import type { ArticleCheckStore, CarryUnitOutcome, FreshUnitOutcome, RecordUnitOutcome, StoredArticleVersion } from "@/lib/content/articles/checks/contract";
 import {
   CHECK_ARTICLE_READ_COLUMNS,
   CHECK_UNIT_READ_COLUMNS,
   CHECK_VERSION_READ_COLUMNS,
+  carryResultToOutcome,
+  freshResultToOutcome,
   recordResultToOutcome,
   unitRowToRecord,
   type ArticleChecksDatabase,
@@ -94,6 +96,54 @@ export function createSupabaseArticleCheckStore(client: SupabaseClient<ArticleCh
       });
       if (error) throw new ArticleStoreError("record article check unit", error);
       return recordResultToOutcome(data);
+    },
+
+    // Every version's rows: at most 150 units a version, read in version order.
+    async listArticleUnitRecords(articleId) {
+      const { data, error } = await client
+        .from("nexra_article_check_units")
+        .select(CHECK_UNIT_READ_COLUMNS)
+        .eq("article_id", articleId)
+        .order("article_version", { ascending: true })
+        .order("unit_index", { ascending: true })
+        .limit(5000);
+      if (error) throw new ArticleStoreError("list the article's check units", error);
+      return data.map(unitRowToRecord);
+    },
+
+    // Fix F8: one function each, one transaction under the parent article's row lock.
+    async carry(input): Promise<CarryUnitOutcome> {
+      const { data, error } = await client.rpc("nexra_article_check_unit_carry", {
+        p_project_id: input.projectId,
+        p_article_id: input.articleId,
+        p_article_version: input.articleVersion,
+        p_article_version_id: input.articleVersionId,
+        p_unit_index: input.unitIndex,
+        p_unit_kind: input.unitKind,
+        p_unit_key: input.unitKey,
+        p_part: input.part,
+        p_part_count: input.partCount,
+        p_unit_count: input.unitCount,
+        p_unit_sha256: input.unitSha256,
+        p_source_unit_id: input.sourceUnitId,
+        p_instructions_sha256: input.instructionsSha256,
+        p_evidence_sha256: input.evidenceSha256,
+        p_recorded_by: input.recordedBy,
+      });
+      if (error) throw new ArticleStoreError("carry article check unit", error);
+      return carryResultToOutcome(data);
+    },
+
+    async fresh(input): Promise<FreshUnitOutcome> {
+      const { data, error } = await client.rpc("nexra_article_check_unit_fresh", {
+        p_project_id: input.projectId,
+        p_article_id: input.articleId,
+        p_article_version_id: input.articleVersionId,
+        p_unit_index: input.unitIndex,
+        p_recorded_by: input.recordedBy,
+      });
+      if (error) throw new ArticleStoreError("clear carried article check unit", error);
+      return freshResultToOutcome(data);
     },
   };
 }

@@ -175,13 +175,38 @@ Editor (or run with the Supabase CLI against a linked project):
 35. `20261013120000_retire_legacy_crawl_subsystem.sql` — the legacy crawl
     subsystem retired (fix F6, audit A0-02, A0-03, A2-03) — applied to
     production and recorded on 30 Sep
+36. `20261014120000_check_unit_carry_forward.sql` — check-result
+    carry-forward and the fresh check (fix F8, audit A5-02, A3-03) — **not
+    applied**
 
-All thirty-five are applied to production and recorded in its migration
-history (36 versions). The history differs from the files in eight places —
+The first thirty-five are applied to production and recorded in its migration
+history (36 versions); the thirty-sixth waits for its own approval. The history differs from the files in eight places —
 renumbered, unrecorded or legacy rows, the schema identical to the repository
 in every case — listed and left as they are in `docs/RUNBOOK.md` §1.5.
 
 ### The legacy crawl subsystem retired (fix F6, audit A0-02, A0-03, A2-03)
+
+`20261014120000_check_unit_carry_forward.sql` (fix F8; SHA-256
+`51fe6e69b40974dd9a644bb7c9a35381d53d2f4218f750e4d3cb9e06b1489639`) lets a
+passed article check result be carried onto a later version's identical unit
+instead of a new run. It adds five nullable carry columns to
+`nexra_article_check_units` (source unit, source version, basis, the
+instructions hash and, for `evidence-unchanged`, the evidence fingerprint)
+with a consistency check; replaces `nexra_article_check_units_guard_update`
+(the original rules word for word, plus: the carry columns never change except
+when a fresh check clears them); adds the BEFORE INSERT trigger
+`nexra_article_check_units_check_carry` (a carried row only through the carry
+function, from a valid source); two `security definer` functions,
+`nexra_article_check_unit_carry` and `nexra_article_check_unit_fresh`, EXECUTE
+for `service_role` only; and `nexra_article_approvals.carried_units` (default
+`[]`), filled on insert by `nexra_article_approvals_fill_carried`. A source must
+be a passed, run-checked unit of an earlier version of the same article with
+the same unit hash, key and kind, whose run recorded the current instructions
+hash, and either holds no SUPPORTED statement or recorded the same evidence
+fingerprint; runs before F8 recorded neither hash, so no existing result can be
+carried. The record and approve functions, every existing row and grant are
+unchanged (harness `carry-upgrade`). Harness suites `carry` (47) and
+`carry-upgrade` (10); `c4` and `attested` now pin the schema before it.
 
 `20261013120000_retire_legacy_crawl_subsystem.sql` drops the five unprefixed
 tables no file of this repository created or used — `crawls`, `crawl_pages`,

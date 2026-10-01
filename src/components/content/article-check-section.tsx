@@ -1,10 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { recordArticleCheckUnit, type RecordArticleCheckUnitActionResult } from "@/app/(app)/projects/article-check-actions";
+import {
+  carryArticleCheckUnit,
+  freshArticleCheckUnit,
+  recordArticleCheckUnit,
+  type CarryArticleCheckUnitActionResult,
+  type FreshArticleCheckUnitActionResult,
+  type RecordArticleCheckUnitActionResult,
+} from "@/app/(app)/projects/article-check-actions";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CARRY_BASIS_COPY, CARRY_REFUSAL_COPY, carriedLabel } from "@/lib/content/articles/checks/carry-copy";
 import { offersRecordUnit } from "@/lib/content/articles/checks/eligibility";
 import { MAX_UNIT_OBSERVATIONS } from "@/lib/content/articles/checks/result";
 import { ARTICLE_CHECK_UNIT, articleCheckRequest } from "@/lib/crawl/review-request";
@@ -70,6 +78,7 @@ const FAILURE_LABEL = {
   "run-cancelled": "the run was cancelled",
   "output-malformed": "the answer was not in the check's fixed form",
   "coverage-incomplete": "the answer did not classify each numbered statement exactly once",
+  "fresh-check-requested": "a fresh check was requested on a carried result",
 } as const;
 
 const REFUSAL_MESSAGE: Readonly<Record<NonNullable<ArticleVersionChecks["refusal"]>, string>> = {
@@ -150,7 +159,9 @@ export function ArticleCheckSection({
       </p>
       <p className="text-xs text-fg-subtle">
         The version is checked in bounded units, one Research &amp; Evidence run per unit, against the records this product holds.
-        Results belong to this exact version only and never carry to a later one.{" "}
+        Results belong to this exact version. A later version&apos;s identical unit may carry an earlier pass instead of a new run —
+        only under the same checker instructions, and, when the pass rests on a record, only while the evidence is unchanged — and a
+        carried result is always marked as carried.{" "}
         {isCurrent
           ? "When every unit of the current version passes, the article is marked Checked — not approved."
           : `This is an earlier version; its results are history. Only version ${article.currentVersion}'s units can mark the article Checked.`}
@@ -252,10 +263,23 @@ function UnitRow({ unit, active, onSelect }: { unit: ArticleCheckUnitView; activ
         ) : (
           <Badge tone={meta.tone}>{meta.label}</Badge>
         )}
+        {unit.record?.carriedFrom && (
+          <span className="mt-0.5 block">
+            <Badge tone="accent">Carried</Badge>
+          </span>
+        )}
       </td>
       <td className="py-1.5 pr-2 align-top text-fg-muted">
         {countsLine(unit.record?.result ?? null)}
-        {unit.record !== null && <span className="block text-[11px] text-fg-subtle">Run {unit.record.checkedByRunId}</span>}
+        {unit.record !== null &&
+          (unit.record.carriedFrom ? (
+            <span className="block text-[11px] text-accent">{carriedLabel({ fromVersion: unit.record.carriedFrom.version, runId: unit.record.checkedByRunId })}</span>
+          ) : (
+            <span className="block text-[11px] text-fg-subtle">Run {unit.record.checkedByRunId}</span>
+          ))}
+        {unit.record === null && unit.carryOffer?.available && (
+          <span className="block text-[11px] text-fg-subtle">An identical unit passed on v{unit.carryOffer.fromVersion}: it can be carried</span>
+        )}
       </td>
       <td className="py-1.5 align-top text-right">
         <Button variant="ghost" onClick={onSelect} aria-pressed={active}>
@@ -263,6 +287,158 @@ function UnitRow({ unit, active, onSelect }: { unit: ArticleCheckUnitView; activ
         </Button>
       </td>
     </tr>
+  );
+}
+
+const CARRY_FAILURE: Readonly<Record<Exclude<CarryArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
+  unauthorized: "Your session has ended. Reload the page to sign in again.",
+  "rate-limited": "Too many requests. Wait a moment and try again.",
+  invalid: "This unit cannot be carried: its identifiers are not what the server expects.",
+  unavailable: "Article checks are not persisted on this deployment, so nothing can be carried.",
+  "not-current": "Only an unapproved article's current version can carry a result.",
+  "already-recorded": "This unit already has a recorded check on this version, so nothing was carried.",
+  unit: "This unit could not be resolved on the server from the stored version, so nothing was carried.",
+  "not-carryable": "No earlier pass of this exact unit can be carried now.",
+  "evidence-unread": "The evidence could not be re-read to compare it, so nothing was carried. Check the unit with a new run instead.",
+  refused: "The database refused the carry on one of its own checks. Nothing was written.",
+  failed: "The carry could not be completed. Nothing is known to have been written.",
+};
+
+const FRESH_FAILURE: Readonly<Record<Exclude<FreshArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
+  unauthorized: "Your session has ended. Reload the page to sign in again.",
+  "rate-limited": "Too many requests. Wait a moment and try again.",
+  invalid: "This unit cannot be cleared: its identifiers are not what the server expects.",
+  unavailable: "Article checks are not persisted on this deployment.",
+  "not-found": "This article was not found.",
+  "version-not-found": "This version was not found.",
+  refused: "The database refused: only a carried unit of an unapproved article's current version can be cleared. Nothing was written.",
+  failed: "The fresh check could not be requested. Nothing is known to have been written.",
+};
+
+/** Fix F8: carry an earlier pass onto an unrecorded unit, or clear a carried one for a fresh check (confirmed first). */
+function CarryControls({
+  projectId,
+  article,
+  checks,
+  unit,
+  onChanged,
+}: {
+  projectId: string;
+  article: { readonly id: string; readonly status: string; readonly currentVersion: number };
+  checks: ArticleVersionChecks;
+  unit: ArticleCheckUnitView;
+  onChanged: (checks: ArticleVersionChecks, message: string, articleChanged: boolean) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const editable = article.status !== "archived" && article.status !== "approved" && checks.version === article.currentVersion;
+  const carried = unit.record?.carriedFrom ?? null;
+  const offer = unit.record === null ? (unit.carryOffer ?? null) : null;
+
+  async function carry() {
+    if (busy) return;
+    setBusy(true);
+    setFailure(null);
+    try {
+      const result = await carryArticleCheckUnit(projectId, checks.articleId, checks.version, unit.index);
+      if (result.ok) {
+        onChanged(
+          result.checks,
+          `Unit ${unit.index}: ${carriedLabel({ fromVersion: result.record.carriedFrom?.version ?? 0, runId: result.record.checkedByRunId })}${
+            result.articleStatusAdvanced ? "; every unit of the current version passed, so the article is now Checked (not approved)" : ""
+          }. No run was made.`,
+          result.articleStatusAdvanced,
+        );
+      } else {
+        setFailure(result.reason === "not-carryable" ? `${CARRY_FAILURE["not-carryable"]} ${CARRY_REFUSAL_COPY[result.refusal]}` : CARRY_FAILURE[result.reason]);
+      }
+    } catch {
+      setFailure(CARRY_FAILURE.failed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function fresh() {
+    if (busy) return;
+    setBusy(true);
+    setFailure(null);
+    try {
+      const result = await freshArticleCheckUnit(projectId, checks.articleId, checks.version, unit.index, true);
+      if (result.ok) {
+        onChanged(
+          result.checks,
+          `Unit ${unit.index}: the carried result was cleared; check it with a new run${result.articleStatusReverted ? ". The article is back to Drafting until every unit passes again" : ""}.`,
+          result.articleStatusReverted,
+        );
+      } else {
+        setFailure(FRESH_FAILURE[result.reason]);
+      }
+    } catch {
+      setFailure(FRESH_FAILURE.failed);
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  }
+
+  if (carried !== null && unit.record !== null) {
+    return (
+      <div className="space-y-1 rounded border border-accent/40 bg-surface-raised px-3 py-2 text-xs" role="note">
+        <p className="font-medium text-fg">{carriedLabel({ fromVersion: carried.version, runId: unit.record.checkedByRunId })}</p>
+        <p className="text-fg-muted">
+          This result was not checked on version {checks.version}: it is version {carried.version}&apos;s pass of the identical unit (unit {carried.unitId.slice(0, 8)}), carried
+          because {CARRY_BASIS_COPY[carried.basis]}, under checker instructions {carried.instructionsSha256.slice(0, 12)}…
+          {carried.evidenceSha256 ? ` and evidence ${carried.evidenceSha256.slice(0, 12)}…` : ""}.
+        </p>
+        {editable && !confirming && (
+          <Button variant="secondary" onClick={() => setConfirming(true)} disabled={busy}>
+            Check again (fresh)
+          </Button>
+        )}
+        {editable && confirming && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-fg-muted">
+              Clear the carried result? The unit becomes unchecked-failed and needs a new paid run{article.status === "checked" ? "; the article returns to Drafting" : ""}.
+            </span>
+            <Button variant="primary" onClick={() => void fresh()} disabled={busy}>
+              {busy ? "Clearing…" : "Clear and check fresh"}
+            </Button>
+            <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+        )}
+        {failure && <p className="text-critical" role="status">{failure}</p>}
+      </div>
+    );
+  }
+
+  if (offer === null || !editable) return null;
+  if (!offer.available) {
+    return (
+      <p className="text-xs text-fg-subtle" role="note">
+        An identical unit passed on version {offer.fromVersion}, but it is not carried: {CARRY_REFUSAL_COPY[offer.reason]} Check it with a new run.
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-1 border-l-2 border-border pl-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="secondary" icon="check" onClick={() => void carry()} disabled={busy}>
+          {busy ? "Carrying…" : `Carry the v${offer.fromVersion} pass`}
+        </Button>
+        <span className="text-fg-subtle">
+          Version {offer.fromVersion} passed this exact unit (run {offer.runId.slice(0, 8)}).{" "}
+          {offer.basis === "no-supported"
+            ? "It holds no SUPPORTED statement, so it rests on no record."
+            : "It rests on a record: the evidence is re-read now and the carry is refused if it changed."}{" "}
+          No run is made; the unit is marked as carried.
+        </span>
+      </div>
+      {failure && <p className="text-critical" role="status">{failure}</p>}
+    </div>
   );
 }
 
@@ -287,7 +463,7 @@ function UnitCheck({
   onRecorded,
 }: {
   projectId: string;
-  article: { readonly id: string; readonly status: string };
+  article: { readonly id: string; readonly status: string; readonly currentVersion: number };
   checks: ArticleVersionChecks;
   unit: ArticleCheckUnitView;
   onRecorded: (checks: ArticleVersionChecks, message: string, advanced: boolean) => void;
@@ -349,6 +525,7 @@ function UnitCheck({
         </span>
       </div>
 
+      <CarryControls projectId={projectId} article={article} checks={checks} unit={unit} onChanged={onRecorded} />
       {unit.record !== null && unit.record.result !== null && <UnitResult result={unit.record.result} />}
       {unit.record !== null && unit.record.status === "pending" && (
         <p className="text-xs text-fg-muted">
@@ -393,6 +570,11 @@ function UnitResult({ result }: { result: ArticleCheckUnitResult }) {
           Check failed — {FAILURE_LABEL[result.reason]} (run {result.checkedByRunId}, recorded {stamp(result.recordedAt)}). This is not a verdict on the
           content; the unit can be checked again with a new run.
         </p>
+        {result.carriedFrom && (
+          <p className="text-xs text-fg-subtle">
+            The cleared result had been {carriedLabel({ fromVersion: result.carriedFrom.version, runId: result.checkedByRunId }).toLowerCase()} ({CARRY_BASIS_COPY[result.carriedFrom.basis]}).
+          </p>
+        )}
         {defect && (
           <>
             <p className="text-xs text-fg-subtle">

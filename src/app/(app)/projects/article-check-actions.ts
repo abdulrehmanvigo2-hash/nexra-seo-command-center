@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getOperator } from "@/lib/auth/session";
 import { articleCheckService } from "@/lib/content/articles/checks";
-import type { RecordUnitResult } from "@/lib/content/articles/checks/service";
+import type { CarryUnitResult, FreshUnitResult, RecordUnitResult } from "@/lib/content/articles/checks/service";
 import { appRateLimiter } from "@/lib/security/app-rate-limit";
 
 /**
@@ -71,5 +71,71 @@ export async function recordArticleCheckUnit(
   }
 
   if (result.ok && result.recorded) revalidatePath(`/projects/${projectId}`);
+  return result;
+}
+
+/**
+ * Fix F8: carries an earlier pass of the identical unit onto the current
+ * version (no run, no model call), or clears a carried unit so a fresh run
+ * may check it. Same gate as the record: operator, argument types, one write
+ * in flight, the shared per-operator limit; the service decides the source,
+ * the hashes and the evidence, and the database re-checks every rule. A fresh
+ * check needs the explicit confirmation the screen asks for (`confirm: true`).
+ */
+
+type CarryActionGate = { readonly ok: false; readonly reason: "unauthorized" | "invalid" | "failed" } | { readonly ok: false; readonly reason: "rate-limited"; readonly retryAfterSeconds: number };
+
+export type CarryArticleCheckUnitActionResult = CarryUnitResult | CarryActionGate;
+export type FreshArticleCheckUnitActionResult = FreshUnitResult | CarryActionGate;
+
+async function gated<T>(
+  name: string,
+  args: { readonly projectId: unknown; readonly articleId: unknown; readonly articleVersion: unknown; readonly unitIndex: unknown },
+  call: (request: { projectId: string; articleId: string; articleVersion: number; unitIndex: number; operatorId: string }) => Promise<T>,
+): Promise<T | CarryActionGate> {
+  const operator = await getOperator();
+  if (!operator) return { ok: false, reason: "unauthorized" };
+  const { projectId, articleId, articleVersion, unitIndex } = args;
+  if (typeof projectId !== "string" || typeof articleId !== "string" || typeof articleVersion !== "number" || typeof unitIndex !== "number") {
+    return { ok: false, reason: "invalid" };
+  }
+  if (inFlight.has(operator.id)) return { ok: false, reason: "rate-limited", retryAfterSeconds: 1 };
+  inFlight.add(operator.id);
+  try {
+    const allowance = await appRateLimiter("articles.check-record", RECORDS).consume(operator.id);
+    if (!allowance.allowed) {
+      return { ok: false, reason: "rate-limited", retryAfterSeconds: Math.max(1, Math.ceil(allowance.retryAfterMs / 1_000)) };
+    }
+    return await call({ projectId, articleId, articleVersion, unitIndex, operatorId: operator.id });
+  } catch (error) {
+    console.error(`${name}:`, error instanceof Error ? `${error.name}: ${error.message}` : "unknown error");
+    return { ok: false, reason: "failed" };
+  } finally {
+    inFlight.delete(operator.id);
+  }
+}
+
+export async function carryArticleCheckUnit(
+  projectId: unknown,
+  articleId: unknown,
+  articleVersion: unknown,
+  unitIndex: unknown,
+): Promise<CarryArticleCheckUnitActionResult> {
+  const result = await gated("carryArticleCheckUnit", { projectId, articleId, articleVersion, unitIndex }, (request) => articleCheckService().carry(request));
+  if (result.ok) revalidatePath(`/projects/${String(projectId)}`);
+  return result;
+}
+
+export async function freshArticleCheckUnit(
+  projectId: unknown,
+  articleId: unknown,
+  articleVersion: unknown,
+  unitIndex: unknown,
+  confirm: unknown,
+): Promise<FreshArticleCheckUnitActionResult> {
+  const result = await gated("freshArticleCheckUnit", { projectId, articleId, articleVersion, unitIndex }, async (request): Promise<FreshUnitResult> =>
+    confirm === true ? articleCheckService().fresh(request) : { ok: false, reason: "invalid" },
+  );
+  if (result.ok) revalidatePath(`/projects/${String(projectId)}`);
   return result;
 }

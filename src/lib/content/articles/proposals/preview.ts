@@ -38,10 +38,17 @@
  * none gets format 1, byte for byte as before (the verification proposal's
  * preview hash is pinned in the tests).
  *
+ * CARRIED CHECK RESULTS (fix F8). When the approval names check results
+ * carried from an earlier version, a section lists each one — unit, source
+ * version, run, source unit and basis — after the completeness report, in
+ * either format. An approval with none adds nothing: every preview recorded
+ * before F8 keeps every byte.
+ *
  * Nothing is rendered as TSX, stored or sent. Pure.
  */
 
 import { hasArticlePlaceholder } from "@/lib/content/articles/approvals/eligibility";
+import { CARRY_BASIS_COPY, carriedLabel } from "@/lib/content/articles/checks/carry-copy";
 import { attestedParagraphs, labelledParagraph } from "@/lib/content/articles/attestations";
 import { articleCanonicalFormat, readCanonicalArticle } from "@/lib/content/articles/canonical";
 import { liveSlugOutcome } from "@/lib/content/articles/proposals/live-slugs";
@@ -123,6 +130,20 @@ function completenessLines(report: WebsiteCompletenessReport): string[] {
   ];
 }
 
+/** The approval's carried check results (F8), in unit order; no line at all when there is none. */
+function carriedLines(binding: ArticleProposalBinding): string[] {
+  const carried = [...(binding.carriedUnits ?? [])].sort((a, b) => a.unitIndex - b.unitIndex);
+  if (carried.length === 0) return [];
+  return [
+    `CARRIED CHECK RESULTS (${carried.length}) — passed on an earlier version's identical unit and carried, not checked again on this version`,
+    ...carried.map(
+      (unit) =>
+        `Unit ${unit.unitIndex} (${unit.unitKey}): ${carriedLabel({ fromVersion: unit.fromVersion, runId: unit.runId })} — run ${unit.runId}, source unit ${unit.fromUnitId}; ${CARRY_BASIS_COPY[unit.basis]}`,
+    ),
+    "",
+  ];
+}
+
 /** The preview document for an eligible proposal's binding and the approved stored text. */
 export function buildArticleProposalPreview(input: ArticleProposalPreviewInput): ArticleProposalPreviewResult {
   const { binding, canonicalContent } = input;
@@ -171,6 +192,7 @@ export function buildArticleProposalPreview(input: ArticleProposalPreviewInput):
     "",
     ...completenessLines(websiteCompleteness(content)),
     "",
+    ...carriedLines(binding),
     ...(attested.length > 0
       ? [
           `ATTESTED PARAGRAPHS (${attested.length}) — operator-attested, not checked against the records; each shown with its label`,

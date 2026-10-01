@@ -36,7 +36,8 @@ import "server-only";
 import type { GroundingSource } from "@/lib/agent-runs/ai-executor";
 import { readCanonicalArticle } from "@/lib/content/articles/canonical";
 import type { ArticleCheckStore } from "@/lib/content/articles/checks/contract";
-import { ARTICLE_CHECK_LIMITS_NOTE, ARTICLE_CHECK_SOURCE } from "@/lib/content/article-check-prompt";
+import { ARTICLE_CHECK_LIMITS_NOTE, ARTICLE_CHECK_SOURCE, ARTICLE_CHECK_UNIT_INSTRUCTIONS } from "@/lib/content/article-check-prompt";
+import { evidenceFingerprint } from "@/lib/content/articles/checks/carry";
 import { unitSha256 } from "@/lib/content/articles/checks/unit-hash";
 import { articleCheckPlan, MAX_ARTICLE_UNITS } from "@/lib/content/articles/checks/units";
 import { recordPathsOf, searchWindowOf } from "@/lib/content/drafts/fact-check-grounding";
@@ -105,6 +106,14 @@ export type ArticleCheckGrounding = {
     readonly searchWindow: string | null;
     readonly recordPaths: readonly string[];
     readonly records: EvidencePackGrounding["summary"];
+    /**
+     * Fix F8: the SHA-256 of the checker instructions this run checks with, and
+     * the evidence fingerprint of the records it read (`evidenceFingerprint`).
+     * A passed result may be carried to a later identical unit only when both
+     * were recorded here and still match; earlier runs recorded neither.
+     */
+    readonly instructionsSha256: string;
+    readonly evidenceSha256: string;
     readonly bytes: number;
   };
   readonly source: GroundingSource;
@@ -207,6 +216,9 @@ export async function readArticleCheckGrounding(
 
 const encoder = new TextEncoder();
 
+/** The SHA-256 of the checker instructions every new check runs with (version 3 since fix F8). */
+export const ARTICLE_CHECK_INSTRUCTIONS_SHA256 = utf8Sha256(ARTICLE_CHECK_UNIT_INSTRUCTIONS);
+
 /** Wraps the quoted unit and the records into one block, each under the heading that says what it is. */
 export function formatArticleCheckGrounding(resolved: ResolvedUnit, records: EvidencePackGrounding): ArticleCheckGrounding {
   const { article, version, units, unit, sha256 } = resolved;
@@ -264,6 +276,8 @@ export function formatArticleCheckGrounding(resolved: ResolvedUnit, records: Evi
       searchWindow,
       recordPaths,
       records: { ...records.summary },
+      instructionsSha256: ARTICLE_CHECK_INSTRUCTIONS_SHA256,
+      evidenceSha256: evidenceFingerprint(records.text),
       bytes: encoder.encode(text).length,
     },
     source: ARTICLE_CHECK_SOURCE,

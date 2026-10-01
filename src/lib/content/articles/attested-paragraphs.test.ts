@@ -5,8 +5,8 @@ import { describe, test } from "node:test";
 
 import {
   ARTICLE_CHECK_SECTIONS,
-  ARTICLE_CHECK_UNIT_INSTRUCTIONS,
   ARTICLE_CHECK_UNIT_INSTRUCTIONS_V1,
+  ARTICLE_CHECK_UNIT_INSTRUCTIONS_V2,
   ATTESTED_RULE,
 } from "@/lib/content/article-check-prompt";
 import { approvalBlockMessage, articleApprovalEligibility } from "@/lib/content/articles/approvals/eligibility";
@@ -294,13 +294,14 @@ function verdictOf(text: string, statements: { n: number; attested?: "experience
 
 describe("the checker's seventh heading", () => {
   test("instructions version 2 is version 1 plus the ATTESTED rule and the seven-heading form, and hash-pinned", () => {
-    const back = ARTICLE_CHECK_UNIT_INSTRUCTIONS.replace(` ${ATTESTED_RULE}`, "")
+    // Fix F8 made version 3 current; version 2 is kept, word for word, under its own name.
+    const back = ARTICLE_CHECK_UNIT_INSTRUCTIONS_V2.replace(` ${ATTESTED_RULE}`, "")
       .replace("exactly seven sections, headed SUPPORTED, PARTIAL, UNSUPPORTED, UNVERIFIABLE, EDITORIAL, ATTESTED, and SUMMARY", "exactly six sections, headed SUPPORTED, PARTIAL, UNSUPPORTED, UNVERIFIABLE, EDITORIAL, and SUMMARY")
       .replace("outside the seven sections", "outside the six sections");
     assert.equal(back, ARTICLE_CHECK_UNIT_INSTRUCTIONS_V1, "every other sentence word for word");
-    assert.ok(ARTICLE_CHECK_UNIT_INSTRUCTIONS.includes("Keep the whole answer under 1,800 characters."), "the length rule is kept");
+    assert.ok(ARTICLE_CHECK_UNIT_INSTRUCTIONS_V2.includes("Keep the whole answer under 1,800 characters."), "the length rule is kept");
     assert.deepEqual(ARTICLE_CHECK_SECTIONS, ["SUPPORTED", "PARTIAL", "UNSUPPORTED", "UNVERIFIABLE", "EDITORIAL", "ATTESTED", "SUMMARY"]);
-    assert.equal(utf8Sha256(ARTICLE_CHECK_UNIT_INSTRUCTIONS), "8788932b34dad3f17a92ffcc6dbac7de4bab9121ac445e7f270dbd2db84a91c7");
+    assert.equal(utf8Sha256(ARTICLE_CHECK_UNIT_INSTRUCTIONS_V2), "8788932b34dad3f17a92ffcc6dbac7de4bab9121ac445e7f270dbd2db84a91c7");
   });
 
   test("the parser reads ATTESTED under the seven headings; a six-heading answer still parses the old way", () => {

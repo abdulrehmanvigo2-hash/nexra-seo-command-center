@@ -32,6 +32,21 @@ export type ArticleApproval = {
   readonly attestedCount: number;
   /** The operator's attestation tick for this approval: true exactly when the count is positive. */
   readonly attestedConfirmed: boolean;
+  /**
+   * Fix F8: the approved version's check results that were carried from an earlier version, as the database recorded
+   * them on the approval (`carried_units`). Absent or empty: every unit was checked on this version by its own run —
+   * which holds for every approval recorded before 20261014120000.
+   */
+  readonly carriedUnits?: readonly ArticleApprovalCarriedUnit[];
+};
+
+export type ArticleApprovalCarriedUnit = {
+  readonly unitIndex: number;
+  readonly unitKey: string;
+  readonly fromVersion: number;
+  readonly fromUnitId: string;
+  readonly runId: string;
+  readonly basis: "no-supported" | "evidence-unchanged";
 };
 
 /**
