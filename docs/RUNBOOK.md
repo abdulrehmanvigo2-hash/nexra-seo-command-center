@@ -123,6 +123,16 @@ back leaves nothing to repair: fix the cause and apply again.
   exactly to their files. A CLI `migration list` therefore shows unmatched versions, which is expected, and `db push`
   against production would try to apply files again — never run `db push` or `db reset` against production.
 
+### 1.6 Migration version convention
+
+**Each new migration = the previous version + 1 day at `120000`; versions are a sequence, not wall-clock dates.**
+Since `20261004120000` every migration has taken the newest existing version and added one day
+(`20261015120000` → `20261016120000`), whatever the calendar says — the F0 schema was written on 1 Oct 2026 as
+`20261016120000`. Migrations apply in filename order, the harness pins "the schema before version X" by that order,
+and the production preflight checks that the newest recorded version is the one expected, so a version lower than
+an applied one would sort into the past. Never date a new file to today if that is earlier than the newest file;
+take the newest version and add a day (operator decision, 1 Oct 2026, PR #97).
+
 ---
 
 ## 2. Deployments
@@ -568,3 +578,91 @@ checkpoint under its own approval (`CLAUDE.md` §6).
    records.
 6. **Confirm read-only** that `nexra_article_publication_live_articles('nexra-agency-website')` lists the new slug,
    its article, the proposed version and that version's keywords.
+
+---
+
+## 8. DataForSEO keyword snapshot (F0)
+
+The design is `docs/roadmap/F0-dataforseo-keyword-snapshot.md`; the schema is migration `20261016120000`
+(`nexra_provider_runs`, `nexra_provider_requests`, `nexra_keyword_metrics`; five functions, among them
+`nexra_provider_metrics_record`); the code is `src/lib/providers/dataforseo` (config, client, parsers, estimate),
+`src/lib/keyword-snapshots` (service, store, routes) and the *Provider estimates* section on Keyword Intelligence.
+Every figure it stores is a provider's estimate, labelled so on screen, never observed data; no agent reads it.
+
+### 8.1 The variables (Vercel: Sensitive, Production only)
+
+| Variable | What | Rule |
+|---|---|---|
+| `DATAFORSEO_LOGIN` | The account's API login | Secret. Vercel **Sensitive**, **Production** only, so a preview build holds no credential. Never a `NEXT_PUBLIC_` prefix (the config refuses one). |
+| `DATAFORSEO_PASSWORD` | The account's API password | As above. The two are set together: one without the other is a configuration error that names the variable. |
+| `DATAFORSEO_MODE` | Which API the server calls | **Unset, empty or anything but exactly `live` = the sandbox** (free, dummy data, recorded and labelled as such). Only `live` calls `api.dataforseo.com`. |
+| `DATAFORSEO_DAILY_CAP_USD` | The daily cap for live calls, in US dollars | Unset = `1.00` (decision Q3). Above `5.00`, negative or unparsable refuses every run (the database refuses any cap above 5.00 too). |
+
+The values are never pasted into chat, a log, a doc or the repository (which is public). With both credentials
+empty the product reads "Not set up yet" and nothing else changes.
+
+### 8.2 Changing the mode: variable, redeploy, check
+
+A Vercel variable changes nothing until the next deployment. The sequence for every mode change:
+
+1. Set `DATAFORSEO_MODE` (unset for the sandbox; exactly `live` for the paid API) in the Production environment.
+2. Redeploy production (the current `master`), then confirm the deployment by §2.1.
+3. Open Keyword Intelligence → Keywords; the *Provider estimates* footer names the mode the deployment is in and the
+   cap. The Fetch confirmation names it again ("LIVE — charges the DataForSEO balance" or "Sandbox — free, dummy
+   data").
+4. After the first run in the new mode, confirm read-only that the newest `nexra_provider_runs` row has the expected
+   `mode` and `api_host`.
+
+### 8.3 The $1.00 cap, and what to do when it is hit
+
+The cap is global per UTC day and counts live runs only: the sum over today's live runs of
+`coalesce(cost_usd, estimate_usd) + unknown_cost_usd` — a finished run at its recorded cost, an open run at its
+estimate, and timed-out calls at their estimate because the provider may have charged them. The reserve function
+takes an advisory lock on the day, so two reservations at once cannot both pass. A sandbox run costs 0 and is never
+counted.
+
+When it is hit the request answers **429 `cap-reached`** with a Retry-After until midnight UTC; nothing is sent to
+the provider and no run row is created. The screen says "Daily provider cap reached ($X of $Y used today); resets at
+midnight UTC". What to do: nothing — wait for midnight UTC. Never edit a run row (the guards refuse it anyway), and
+raise the cap only by a deliberate change to `DATAFORSEO_DAILY_CAP_USD` under §6 of CLAUDE.md, never above the
+$5.00 ceiling. A cap above the ceiling refuses every run rather than being clamped.
+
+### 8.4 Verifying a run (read-only)
+
+After a fetch, in the SQL editor as read-only `SELECT`s only:
+
+- `nexra_provider_runs`: the newest row for the project — `mode`, `api_host`, `status` (`completed`; `partial` with
+  an `error_code` of `incomplete` or `deadline` names missing calls; `failed` with `provider-refused` means the
+  credentials were refused and nothing was charged), `estimate_usd`, `cost_usd`, `unknown_cost_usd`, `finished_at`.
+- `nexra_provider_requests` for that run: eleven rows for a full run (seq 0 the overview, seq 1–10 one per seed; a
+  resume adds seqs 11–20 with `params->>'retry_of'`), each with its `outcome`, the provider's `cost_usd` and
+  `provider_task_id`, and `response_sha256`. `params` never holds a credential (the function refuses one).
+- `nexra_keyword_metrics` for that run: up to 10 seed rows and 20 related rows per seed, every row with `provider`,
+  `mode`, `location_code` 2840, `language_code` `en` and `fetched_at`. A null figure is "not given", never 0.
+- For a live run, set `cost_usd` against the DataForSEO dashboard's figure for the day and record any difference in
+  CLAUDE.md §0 before anything is built on the data.
+
+On screen: the run's mode badge, its status, the label "Provider estimate — DataForSEO, <date>, United States /
+English — not observed" and the table. A sandbox run shows "Sandbox — dummy data, not real".
+
+### 8.5 The live steps, in order, each under its own approval
+
+1. **Apply migration `20261016120000`** to production by §1 and record it; verify read-only (the three tables with
+   RLS on and no policies, `service_role` SELECT only, the five functions `security definer` with EXECUTE for
+   `service_role` only, every guard trigger enabled).
+2. The DataForSEO account exists (created and email-verified). **Not topped up** at this step.
+3. The operator sets `DATAFORSEO_LOGIN` and `DATAFORSEO_PASSWORD` (Sensitive, Production only), leaves
+   `DATAFORSEO_MODE` unset, and redeploys (§8.2). The sandbox needs the ordinary credentials and charges nothing.
+4. **One sandbox run in production** from the screen, through the confirmation. Verify by §8.4: `sandbox` /
+   `sandbox.dataforseo.com`, cost 0, eleven request rows, metric rows present, the badge on screen, nothing counted
+   against the cap, no credential in any log line.
+5. **The $50 top-up** — only after step 4 passes, with the operator's approval. Confirm the current Labs prices on
+   DataForSEO's pricing page at the same time; the estimate in the design note (≈ $0.16 a run) is re-checked before
+   step 7.
+6. The operator sets `DATAFORSEO_MODE=live` and redeploys (§8.2). The Fetch confirmation now shows the LIVE warning.
+7. **One live run** with the ten seeds, through the confirmation. Verify by §8.4 and set the recorded cost against the
+   DataForSEO dashboard.
+8. Record the outcome (run id, cost, the dashboard's figure) in CLAUDE.md §0.
+
+A partial run is resumed only from the screen's *Resume…* through the same confirmation (decision Q4); nothing
+resumes on its own, and no live call is ever retried by the system.

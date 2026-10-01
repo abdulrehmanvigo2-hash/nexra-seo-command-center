@@ -176,7 +176,7 @@ create table public.nexra_keyword_metrics (
 --   nexra_provider_request_record(p_run, p_seq, p_endpoint, p_params, p_outcome, p_status_code,
 --                                 p_task_id, p_cost, p_items, p_sha256, p_sent_at, p_received_at)
 --     -> 'recorded' | 'exists' | 'run-not-found' | 'run-not-open'
---   nexra_keyword_metrics_record(p_run, p_request, p_rows jsonb)   -- one set, validated row by row
+--   nexra_provider_metrics_record(p_run, p_request, p_rows jsonb)  -- one set, validated row by row (named nexra_keyword_metrics_record in the first draft)
 --     -> 'recorded' | 'exists' | 'run-not-found' | 'request-not-found' | 'invalid-row'
 --   nexra_provider_run_finish(p_run, p_status, p_cost, p_unknown_cost, p_error_code)
 --     -> 'finished' | 'run-not-found' | 'run-not-open'      (p_status in completed | partial | failed)
@@ -325,7 +325,7 @@ On **Keyword Intelligence**, a new section *Provider estimates* beneath the obse
 | # | Title | Files | Migration? | Needs the operator's approval for |
 |---|---|---|---|---|
 | 1 | F0 design note (this file) | `docs/roadmap/F0-dataforseo-keyword-snapshot.md` | no | the design and the decisions above |
-| 2 | Provider snapshot schema | `supabase/migrations/<version>_provider_keyword_snapshot.sql`, harness suites, `supabase/README.md` | **yes** (the file only) | the merge; later the **production apply**, as its own step (§6 of CLAUDE.md) |
+| 2 | Provider snapshot schema | `supabase/migrations/20261016120000_provider_snapshot.sql` (merged as PR #97; the metrics function is `nexra_provider_metrics_record` — both names changed from this note's first draft so two existing test pins hold), harness suites, `supabase/README.md` | **yes** (the file only) | the merge; later the **production apply**, as its own step (§6 of CLAUDE.md) |
 | 3 | DataForSEO config, client, parsers and estimate | `src/lib/providers/dataforseo/*` (config, client, parse, estimate, the seed constant, tests, sandbox fixtures), `.env.example` | no | the merge (no route, no network path reachable from the app yet) |
 | 4 | Keyword snapshot service and routes | `src/lib/keyword-snapshots/*` (contract, service, Supabase store, tests), `src/app/api/keyword-snapshots/*` (POST run, POST resume, GET list, GET daily-usage) | no | the merge |
 | 5 | Provider estimates on Keyword Intelligence | the section, the F3 dialog wiring, presenter and tests | no | the merge |
