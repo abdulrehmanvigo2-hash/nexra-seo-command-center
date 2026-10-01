@@ -256,7 +256,7 @@ database outside Supabase.
 | Checks before storing | `public.projects` holds at least one row, and the dump lists the projects, runs and migration-history tables; any failure fails the job |
 | Encryption | [age](https://age-encryption.org), to the operator's public key; the private key is never in GitHub, Vercel, Supabase or a Claude session |
 | Stored | as a GitHub Actions artifact of this private repository, one per run, kept **30 days** (`nexra-backup-<run id>`, containing `nexra-backup-<UTC>.tar.age`) |
-| Code | `scripts/backup/backup.sh` (dump, verify, encrypt), `scripts/backup/restore-drill.sh` (6.4), `scripts/backup/test-local.sh` (the whole cycle against a local database) |
+| Code | `scripts/backup/backup.sh` (dump, verify, encrypt), `scripts/backup/restore-drill.sh` (6.4, Linux / WSL), `scripts/backup/restore-drill.ps1` (6.4a, Windows), `scripts/backup/test-local.sh` (the whole cycle against a local database) |
 
 Inside the encrypted file: `db.dump` (`pg_dump` custom format), `auth-users.csv`, and
 `manifest.txt` (the time, the server and `pg_dump` versions, each table's row count and each
@@ -332,7 +332,7 @@ characters or more; every database error line is also redacted the same way befo
   read the failing step (the script says what failed and never prints the URL), fix the cause,
   run it by hand, and close the issue.
 - **Monthly:** download the newest artifact and keep it offline next to the key. Run the drill
-  (6.4) on it, and note the date and result in CLAUDE.md §0.
+  (6.4, or 6.4a on Windows) on it, and note the date and result in CLAUDE.md §0.
 
 ### 6.4 Restore drill (local, throwaway)
 
@@ -360,6 +360,109 @@ Proves a backup opens and restores, without touching any hosted database.
 database from the migrations, backs it up, runs the drill, and tries the refusals (wrong key,
 tampered file, missing settings, too few projects, an unreachable database with a password in
 its URL).
+
+### 6.4a Restore drill on Windows (PowerShell, no WSL)
+
+The same drill for a Windows 10 or 11 PC. It takes about ten minutes the first time and two
+minutes after that. It never connects to production: it starts its own small, temporary
+database on your PC, checks the backup in it, and deletes it.
+
+**Once: install two programs.** Open **PowerShell** (Start menu → type `PowerShell` → open
+it; *not* "Run as administrator").
+
+1. **PostgreSQL 17:**
+
+   ```powershell
+   winget install --exact --id PostgreSQL.PostgreSQL.17 --interactive
+   ```
+
+   The installer window opens. Click **Next** and keep the defaults, except:
+   - **Select Components:** keep ✅ **PostgreSQL Server** and ✅ **Command Line Tools**.
+     **Untick** ☐ **pgAdmin 4** and ☐ **Stack Builder** (not needed).
+   - **Password:** type any new password and keep it somewhere. It is only for the copy of
+     PostgreSQL on your PC. It is **not** the Supabase password, and the drill does not use
+     it.
+   - **Port** 5432, **Locale** default: leave them as they are.
+   - On the last page, **untick** "Launch Stack Builder at exit", then **Finish**.
+
+   The installer also starts a PostgreSQL service that runs when Windows starts. The drill
+   does not use it. To stop it starting by itself, run this in an administrator PowerShell
+   (optional): `Set-Service postgresql-x64-17 -StartupType Manual`.
+2. **age** (opens the backup):
+
+   ```powershell
+   winget install --exact --id FiloSottile.age
+   ```
+
+3. **Close PowerShell and open a new window**, so it finds the new programs.
+
+`tar` is already part of Windows 10 and 11. If anything is missing, the script says so and
+prints the `winget` line to run.
+
+**Each drill (monthly, 6.3):**
+
+1. **Download the backup.** On GitHub, signed in: the repository → **Actions** → **Nightly
+   backup** (left) → the newest run with a green tick → scroll down to **Artifacts** → click
+   **nexra-backup-…**. A file `nexra-backup-<number>.zip` lands in your **Downloads**
+   folder. Leave it zipped; the script opens it.
+2. **Have the key file ready.** This is `nexra-backup.key` from 6.2, step 1. If you keep it only
+   in your password manager, save it as a plain text file for the drill, for example
+   `C:\Users\<you>\Documents\nexra-backup.key`, and delete that file afterwards.
+3. **Get the script.**
+   - If you have the repository on your PC, it is `scripts\backup\restore-drill.ps1`.
+   - Otherwise, on GitHub open `scripts/backup/restore-drill.ps1` on `master`, click
+     **Download raw file**, and save it in **Downloads**.
+4. **Run it** in PowerShell, with your own file names (the run number and your key's path):
+
+   ```powershell
+   cd $HOME\Downloads
+   powershell -ExecutionPolicy Bypass -File .\restore-drill.ps1 -Backup .\nexra-backup-36720332709.zip -KeyFile C:\Users\<you>\Documents\nexra-backup.key
+   ```
+
+   `-ExecutionPolicy Bypass` lets this one script run without changing any Windows setting.
+5. **Read the last lines.**
+   - `RESTORE DRILL: OK - N tables, … every row count equals the manifest` (green) is a
+     pass. Note the date and the result in CLAUDE.md §0, or tell Claude to.
+   - `RESTORE DRILL: FAIL - …` (red) says what failed. Common ones:
+     - *decryption (wrong key, or a damaged file)*: the wrong key file, or a broken download.
+       Download again.
+     - *prerequisites missing*: run the `winget` line it prints, then open a new PowerShell.
+     - *tables differ from the manifest*: the backup did not restore completely. Keep the zip,
+       and report it.
+   - The last line, `cleaned up: throwaway database and decrypted files deleted`, means
+     nothing was left behind. Delete the zip yourself if you do not keep it as the monthly
+     offline copy (6.3).
+
+What it does, step by step:
+1. It checks the programs.
+2. It unzips the artifact and decrypts the `.tar.age` with age into a new folder in
+   `%TEMP%`, readable by your Windows user only.
+3. It checks every file against the manifest's SHA-256.
+4. It creates a throwaway PostgreSQL there, listening on `127.0.0.1` only, on a free port,
+   with a random password made for this run.
+5. It creates the roles the dump names, without login, and restores in one transaction.
+6. It compares every table's row count with the manifest.
+7. It stops the database and deletes the folder.
+
+It never prints the key. Add `-Keep` to keep the stopped folder for inspection: it then holds
+the **decrypted** backup, so delete it when done.
+
+**What was tested, and what was not.**
+- `scripts/backup/test-local.sh` runs the script under PowerShell 7 on Linux, on a real
+  backup. It checks:
+  - a pass on both the `.tar.age` and the downloaded `.zip`;
+  - the wrong key, a tampered file, a missing key file and a missing PostgreSQL each end in
+    one FAIL line;
+  - the key is never printed, and no temporary folder is left.
+- A doctored manifest was also checked by hand: it gives the row-count FAIL.
+- Not run on Windows itself:
+  - Windows PowerShell 5.1 (the script is written for it);
+  - the EDB installer's `C:\Program Files\PostgreSQL\17\bin` lookup and `winget`'s `age`
+    link;
+  - the `icacls` lock on the folder;
+  - `initdb` and `pg_ctl` on Windows paths.
+
+  If the first Windows run fails, send the FAIL line (it never holds the key).
 
 ### 6.5 Restoring production after a loss
 

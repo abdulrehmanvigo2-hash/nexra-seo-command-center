@@ -110,6 +110,38 @@ grep -q " auth " <<< "$("$PG_BIN/pg_restore" --list "$WORK/peek/db.dump")" && fa
 # --- 3. The restore drill --------------------------------------------------------------
 if DRILL="$(bash "$HERE/restore-drill.sh" "$FILE" "$WORK/drill.key" 2>&1)"; then pass "drill: $DRILL"; else fail "drill failed: $DRILL"; fi
 
+# --- 3b. The Windows drill (restore-drill.ps1), when PowerShell is installed --------------
+# The same backup through the PowerShell script, run as the server's OS user (initdb refuses
+# root): a pass, then the wrong key, a tampered file and a missing key, each one FAIL line.
+if command -v pwsh >/dev/null; then
+  PSD="$WORK/ps"; mkdir "$PSD"; cp "$FILE" "$WORK/drill.key" "$WORK/other.key" "$PSD/"
+  (cd "$PSD" && zip -q -0 artifact.zip "$(basename "$FILE")") 2>/dev/null || true
+  cp "$PSD/$(basename "$FILE")" "$PSD/tampered.tar.age"; printf 'x' | dd of="$PSD/tampered.tar.age" bs=1 seek=300 conv=notrunc 2>/dev/null
+  if [ "$(id -u)" = "0" ]; then chown -R postgres "$PSD"; fi
+  psdrill() { as_server pwsh -NoProfile -NonInteractive -File "$HERE/restore-drill.ps1" -PgBin "$PG_BIN" -TestMinimumMajor "$("$PG_BIN/postgres" --version | sed -E 's/.* ([0-9]+)(\.[0-9]+)*.*/\1/')" "$@" 2>&1; }
+  KEY_TEXT="$(grep -v '^#' "$WORK/drill.key")"
+  if OUTPS="$(psdrill -Backup "$PSD/$(basename "$FILE")" -KeyFile "$PSD/drill.key")" && grep -q "RESTORE DRILL: OK" <<< "$OUTPS"; then
+    pass "ps1 drill (.tar.age): $(grep 'RESTORE DRILL' <<< "$OUTPS")"
+  else fail "ps1 drill: $OUTPS"; fi
+  grep -qF -- "$KEY_TEXT" <<< "$OUTPS" && fail "ps1 drill printed the key" || pass "ps1 drill never printed the key"
+  ls -d "${TMPDIR:-/tmp}"/nexra-drill-* >/dev/null 2>&1 && fail "ps1 drill left its temporary folder" || pass "ps1 drill deleted its temporary folder"
+  if [ -f "$PSD/artifact.zip" ]; then
+    OUTPS="$(psdrill -Backup "$PSD/artifact.zip" -KeyFile "$PSD/drill.key")" && grep -q "RESTORE DRILL: OK" <<< "$OUTPS" \
+      && pass "ps1 drill (the downloaded .zip)" || fail "ps1 drill on the zip: $OUTPS"
+  fi
+  OUTPS="$(psdrill -Backup "$PSD/$(basename "$FILE")" -KeyFile "$PSD/other.key")" && fail "ps1: decrypted with the wrong key" \
+    || { grep -q "RESTORE DRILL: FAIL - decryption" <<< "$OUTPS" && pass "ps1: the wrong key cannot decrypt (one FAIL line)" || fail "ps1 wrong key: $OUTPS"; }
+  OUTPS="$(psdrill -Backup "$PSD/tampered.tar.age" -KeyFile "$PSD/drill.key")" && fail "ps1: a tampered file restored" \
+    || { grep -q "RESTORE DRILL: FAIL" <<< "$OUTPS" && pass "ps1: a tampered file is refused" || fail "ps1 tampered: $OUTPS"; }
+  OUTPS="$(psdrill -Backup "$PSD/$(basename "$FILE")" -KeyFile "$PSD/nowhere.key")" && fail "ps1: ran without a key" \
+    || { grep -q "RESTORE DRILL: FAIL - the key file was not found" <<< "$OUTPS" && pass "ps1: a missing key file is refused" || fail "ps1 missing key: $OUTPS"; }
+  OUTPS="$(as_server pwsh -NoProfile -NonInteractive -File "$HERE/restore-drill.ps1" -Backup "$PSD/$(basename "$FILE")" -KeyFile "$PSD/drill.key" -PgBin "$WORK/nowhere" 2>&1)" && fail "ps1: ran without PostgreSQL" \
+    || { grep -q "winget install --exact --id PostgreSQL.PostgreSQL.17" <<< "$OUTPS" && pass "ps1: missing PostgreSQL names the winget command" || fail "ps1 missing PostgreSQL: $OUTPS"; }
+  ls -d "${TMPDIR:-/tmp}"/nexra-drill-* >/dev/null 2>&1 && fail "ps1 refusals left a temporary folder" || pass "ps1 refusals left no temporary folder"
+else
+  echo "SKIP  ps1 drill: pwsh is not installed"
+fi
+
 # --- 4. Refusals ------------------------------------------------------------------------
 bash "$HERE/restore-drill.sh" "$FILE" "$WORK/other.key" >/dev/null 2>&1 && fail "decrypted with the wrong key" || pass "the wrong key cannot decrypt"
 cp "$FILE" "$WORK/tampered.age"; printf 'x' | dd of="$WORK/tampered.age" bs=1 seek=300 conv=notrunc 2>/dev/null
