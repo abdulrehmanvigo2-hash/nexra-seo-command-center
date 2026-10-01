@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { Icon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { SectionHeader } from "@/components/ui/section-header";
 import { CoverageBanner } from "@/components/technical/live-views";
-import type { EdgeRow, PageDetailView } from "@/lib/crawl/page-detail";
+import { urlBreakParts, type EdgeRow, type PageDetailView } from "@/lib/crawl/page-detail";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 
 /**
@@ -34,6 +35,20 @@ export function PageDetailNotice({ title, description }: { title: string; descri
         <EmptyState icon="inbox" title={title} description={description} />
       </Panel>
     </div>
+  );
+}
+
+/** A URL that wraps only after its separators; one unbroken run longer than the line still wraps (fix F7, A4-11). */
+function UrlText({ value }: { value: string }) {
+  return (
+    <span className="font-mono text-[12px]">
+      {urlBreakParts(value).map((part, index) => (
+        <Fragment key={index}>
+          {part}
+          <wbr />
+        </Fragment>
+      ))}
+    </span>
   );
 }
 
@@ -92,7 +107,7 @@ export function LivePageDetail({ view }: { view: PageDetailView }) {
                   <div key={fact.label} className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-3 py-1.5 text-sm">
                     <dt className="text-fg-muted">{fact.label}</dt>
                     <dd className="break-words text-fg" title={fact.title}>
-                      {fact.value}
+                      {fact.url ? <UrlText value={fact.value} /> : fact.value}
                     </dd>
                   </div>
                 ))}

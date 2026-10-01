@@ -186,16 +186,7 @@ export function ProjectCompetitors({
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-fg">
-                    {measured?.competitorId ? (
-                      <Link
-                        href={`/competitors/${measured.competitorId}`}
-                        className="transition-colors hover:text-accent"
-                      >
-                        {competitor.name}
-                      </Link>
-                    ) : (
-                      competitor.name
-                    )}
+                    {competitor.name}
                     {measured && (
                       <Badge
                         tone={THREAT_META[measured.threatLevel].tone}

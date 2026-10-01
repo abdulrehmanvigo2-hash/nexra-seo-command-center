@@ -104,12 +104,24 @@ back leaves nothing to repair: fix the cause and apply again.
   that also checks the row's text hash equals the file — never re-execute it.
 - A history row with no applied schema: do not delete it without the operator's decision;
   report it.
-- **Known mismatch, left as is (decision Q10):** the articles migration is the repository file
-  `20260923120000_create_articles.sql` but is recorded in production as `20260923043554`
-  (`create_articles`). The schema is correct; only the version differs. Do not repair or rename
-  it. A CLI `migration list` shows the two versions unmatched; that is expected. Anyone running
-  `db push` against production would try to apply `20260923120000` again — never run `db push`
-  or `db reset` against production.
+- **Known differences between the history and the files, left as they are** (audit A0-01, verified by A2-01, 30
+  Sep 2026). The schema in production is the repository's in every case; only the record differs. Do not repair,
+  rename or delete any of these rows without the operator's decision under §6, and never re-execute a migration:
+
+  | # | Production history | Repository file | What it is |
+  |---|---|---|---|
+  | 1 | `20260919120000 create_crawls` | — | The legacy, unprefixed crawl subsystem (not this repository's). Its objects were dropped by `20261013120000` (F6); the row stays as history. |
+  | 2 | `20260920120000 create_crawl_pages` | `20260920120000_create_crawls.sql` | Same version, different content: the row is the legacy subsystem's; the file (this product's `nexra_crawls`, `nexra_crawl_pages`, `nexra_crawl_links`) was applied with no row of its own. Its objects are identical to the file. |
+  | 3 | `20260921120000 create_crawl_page_signals` | — | Legacy subsystem, as #1 (objects dropped by F6). |
+  | 4 | — | `20260920120100_grant_crawls_to_service_role.sql` | Applied, never recorded; its grants are present. |
+  | 5 | `20260922111302`, `20260922111312`, `20260922133139`, `20260922133152`, `20260922172606` | `20260922120000`, `…120100`, `…130000`, `…130100`, `…140000` (content drafts) | Renumbered. Tables, constraints, indexes, triggers and grants identical; three functions differ from the files in whitespace and comments only. |
+  | 6 | `20260923043554 create_articles` | `20260923120000_create_articles.sql` | Renumbered (decision Q10). Every article object hash-identical. |
+  | 7 | `20260923180000` (no statement text) | `20260923180000_create_article_check_units.sql` | Recorded by `migration repair`, text absent; objects identical. |
+  | 8 | `20260924120000` (no statement text) | `20260924120000_create_article_approvals.sql` | As #7. |
+
+  Every version from `20260925120000` on matches its file; the single-statement rows from `20261005120000` on hash
+  exactly to their files. A CLI `migration list` therefore shows unmatched versions, which is expected, and `db push`
+  against production would try to apply files again — never run `db push` or `db reset` against production.
 
 ---
 

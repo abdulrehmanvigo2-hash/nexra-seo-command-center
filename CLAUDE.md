@@ -1604,8 +1604,15 @@ only copy of those rows); re-verified unused read-only; migration `2026101312000
 (fails closed on any other row count, no CASCADE) merged as PR #83 (`5eaaf0b`) and **applied to production and recorded
 on 30 Sep** (SHA-256 `cc638640…154888`; 36 history rows; `crawls`, `crawl_pages`, `crawl_urls`, `crawl_page_signals`,
 `crawl_links` and their four functions gone; every other row count, relation, function, trigger, constraint and the V4 /
-V6 hashes unchanged). `/api/health` was not readable from the session; its database read answers. Each further step
-starts only with explicit approval. Earlier: the Project Manager task workflow (branch
+V6 hashes unchanged). `/api/health` was not readable from the session; its database read answers; the operator
+confirmed it in the browser (16:16 UTC: ok, reachable). Docs merged as PR #84 (`2ba4744`). Fix **F7 — cleanup**
+(A0-06/A4-08, A4-04, A4-05, A4-06, A4-07, A4-11, A6-04, A2-01 docs), a draft PR, no migration: `/dev/data` and
+`/dev/ui` removed; Run SEO Analysis, the header search and the fixture workspace switcher removed, the notifications
+text made true; seven page subtitles name only what their screens read; two dead fixture links made text; the article
+and technical page details state a failed read in place; URL facts break at separators and the "Opens on" select no
+longer clips; Search Console's empty earlier window is `comparison-no-data`, not "could not be read"; README rewritten;
+the runbook lists all eight migration-history differences; publishing Level 2 (with a reviewer role) and enforced
+branch protection added to the post-V1 backlog. Each further step starts only with explicit approval. Earlier: the Project Manager task workflow (branch
 `claude/project-manager-task-workflow` from `master` `3121ff3`, the PR #19 merge) was merged as
 PR #20 (`47fae75d…`); migration `20261004120000_agent_task_workflow.sql` is applied and recorded in
 production; PR #21 (`073bf85e…`) made a handoff-queued run restore into its review panel; PR #22

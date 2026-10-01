@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { LivePageDetail, PageDetailNotice } from "@/components/technical/live-page-detail";
+import { logFailure } from "@/lib/agent-runs/http";
 import { getOperator } from "@/lib/auth/session";
 import { crawlLimiter, crawlService } from "@/lib/crawl";
 import { presentPageDetail } from "@/lib/crawl/page-detail";
@@ -38,7 +39,14 @@ export default async function TechnicalPageDetailPage({ params }: PageParams) {
     return <PageDetailNotice title="Too many reads in a short time" description="Wait a moment and reload. Nothing is shown in place of the page's records." />;
   }
 
-  const detail = await crawlService().getCrawlPageDetail(id.toLowerCase());
+  let detail: Awaited<ReturnType<ReturnType<typeof crawlService>["getCrawlPageDetail"]>>;
+  try {
+    detail = await crawlService().getCrawlPageDetail(id.toLowerCase());
+  } catch (error) {
+    // The error's name only; the notice names no cause (fix F7, audit A4-07).
+    logFailure("technical page detail", error);
+    return <PageDetailNotice title="The crawl records could not be read" description="The page's crawl records could not be read just now. Reload in a moment. Nothing is shown in their place." />;
+  }
   if (detail.status === "unavailable") {
     return <PageDetailNotice title="Crawls are not stored on this deployment" description="There is no recorded page to show. Nothing is shown in its place." />;
   }

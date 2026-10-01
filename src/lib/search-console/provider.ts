@@ -149,10 +149,11 @@ export function createSearchConsoleProvider(options: {
 
   const stamp = () => new Date(now()).toISOString();
 
-  const report = (error: unknown) => {
-    // Kind and status only: never a Google response body, never a token.
+  const report = (error: unknown, read?: string) => {
+    // Kind and status only: never a Google response body, never a token. A report read names its window and
+    // dimensions, so a failed earlier-window read can be told from the current one (fix F7, A6-04).
     log(
-      `search-console: ${error instanceof SearchConsoleProviderError ? error.message : error instanceof Error ? error.name : "unknown error"}`,
+      `search-console: ${error instanceof SearchConsoleProviderError ? error.message : error instanceof Error ? error.name : "unknown error"}${read ? ` (${read})` : ""}`,
     );
   };
 
@@ -218,7 +219,7 @@ export function createSearchConsoleProvider(options: {
       }));
       return { ok: true, ...read.value, property, stale: read.stale };
     } catch (error) {
-      report(error);
+      report(error, `window ${window.startDate}..${window.endDate}, ${dimensions.length === 0 ? "totals" : dimensions.join(" x ")}`);
       return { ok: false, failure: failureFrom(error, property) };
     }
   }
@@ -281,7 +282,8 @@ export async function getSearchConsoleReport(
   const partial: SearchConsolePartial[] = [];
   let previousTotals: SearchPerformance | null = null;
   if (!windows.previous) partial.push("comparison-beyond-retention");
-  else if (!previous?.ok || previous.value === null) partial.push("comparison-unavailable");
+  else if (!previous?.ok) partial.push("comparison-unavailable");
+  else if (previous.value === null) partial.push("comparison-no-data");
   else previousTotals = previous.value;
   if (!queries.ok) partial.push("queries-unavailable");
   if (!pages.ok) partial.push("pages-unavailable");

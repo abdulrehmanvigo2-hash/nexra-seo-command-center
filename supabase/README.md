@@ -177,9 +177,9 @@ Editor (or run with the Supabase CLI against a linked project):
     production and recorded on 30 Sep
 
 All thirty-five are applied to production and recorded in its migration
-history (36 versions: the articles migration is recorded under
-`20260923043554`, and that mismatch is left untouched, see CLAUDE.md §0 and
-`docs/RUNBOOK.md`).
+history (36 versions). The history differs from the files in eight places —
+renumbered, unrecorded or legacy rows, the schema identical to the repository
+in every case — listed and left as they are in `docs/RUNBOOK.md` §1.5.
 
 ### The legacy crawl subsystem retired (fix F6, audit A0-02, A0-03, A2-03)
 

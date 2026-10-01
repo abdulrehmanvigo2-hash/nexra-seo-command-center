@@ -313,7 +313,8 @@ describe("the screens", () => {
     const order = ["isArticleId(articleId)", "await getOperator()", "articleService().getWorkspace(project.id)"].map((s) => DETAIL.indexOf(s));
     assert.ok(order.every((i, n) => i > 0 && (n === 0 || i > order[n - 1])), `order ${order}`);
     assert.doesNotMatch(DETAIL, /generateStaticParams/);
-    assert.match(DETAIL, /notFound\(\);\n\}\n?$/);
+    // An article no stored project holds is not found (since F7 the reads are wrapped, so the page ends in the view).
+    assert.match(DETAIL, /if \(found === null\) notFound\(\);\n  return <ArticleDetailView projectId=\{found\.id\}/);
   });
 
   test("the sidebar note names Content as observed", () => {

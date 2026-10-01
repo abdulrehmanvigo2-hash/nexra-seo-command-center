@@ -381,6 +381,24 @@ type DetailData =
       readonly proposal: Read<ArticleProposalStateView>;
     };
 
+/**
+ * The article page's own notice, when the server could not read the records it
+ * needs to find the article (fix F7, audit A4-07): stated in place, with the
+ * shell kept, rather than the generic error screen.
+ */
+export function ArticleDetailNotice({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="space-y-4">
+      <Link href="/content" className="inline-flex items-center gap-1.5 text-xs text-fg-muted hover:text-fg">
+        Content Studio
+      </Link>
+      <Panel>
+        <EmptyState icon="content" title={title} description={description} />
+      </Panel>
+    </div>
+  );
+}
+
 export function ArticleDetailView({ projectId, projectName, articleId }: { projectId: string; projectName: string; articleId: string }) {
   const [data, setData] = useState<DetailData>({ status: "loading" });
   useEffect(() => {

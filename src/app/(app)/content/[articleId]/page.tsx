@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ArticleDetailView } from "@/components/content/observed-content";
+import { ArticleDetailNotice, ArticleDetailView } from "@/components/content/observed-content";
+import { logFailure } from "@/lib/agent-runs/http";
 import { getOperator } from "@/lib/auth/session";
 import { articleService } from "@/lib/content/articles";
 import { isArticleId } from "@/lib/content/studio";
@@ -39,15 +40,24 @@ export default async function ArticleDetailPage({ params, searchParams }: PagePa
   if (!operator) notFound();
 
   const wanted = (await searchParams).project;
-  const roster = projectOptionsFrom(await projectRepository.listProjects());
-  const ordered =
-    typeof wanted === "string" && isStorableProjectId(wanted) ? [...roster.filter((p) => p.id === wanted), ...roster.filter((p) => p.id !== wanted)] : [...roster];
+  let found: { id: string; name: string } | null = null;
+  try {
+    const roster = projectOptionsFrom(await projectRepository.listProjects());
+    const ordered =
+      typeof wanted === "string" && isStorableProjectId(wanted) ? [...roster.filter((p) => p.id === wanted), ...roster.filter((p) => p.id !== wanted)] : [...roster];
 
-  for (const project of ordered) {
-    const workspace = await articleService().getWorkspace(project.id);
-    if (!workspace.ok) continue;
-    if (!workspace.workspace.articles.some((history) => history.article.id === articleId)) continue;
-    return <ArticleDetailView projectId={project.id} projectName={project.name} articleId={articleId} />;
+    for (const project of ordered) {
+      const workspace = await articleService().getWorkspace(project.id);
+      if (!workspace.ok) continue;
+      if (!workspace.workspace.articles.some((history) => history.article.id === articleId)) continue;
+      found = project;
+      break;
+    }
+  } catch (error) {
+    // The error's name only; the notice names no cause (fix F7, audit A4-07).
+    logFailure("article detail", error);
+    return <ArticleDetailNotice title="The article's records could not be read" description="The stored projects or articles could not be read just now. Reload in a moment. Nothing is shown in their place." />;
   }
-  notFound();
+  if (found === null) notFound();
+  return <ArticleDetailView projectId={found.id} projectName={found.name} articleId={articleId} />;
 }

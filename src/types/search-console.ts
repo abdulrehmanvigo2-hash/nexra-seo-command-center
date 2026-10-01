@@ -51,8 +51,10 @@ export type SearchQueryPageRow = SearchPerformance & {
 export type SearchConsolePartial =
   /** The previous window reaches past the 16 months Search Console keeps. */
   | "comparison-beyond-retention"
-  /** The previous window could not be read, so there is no comparison. */
+  /** The previous window could not be read (the request failed), so there is no comparison. */
   | "comparison-unavailable"
+  /** The previous window was read and Google reported no data in it yet, so there is no comparison (fix F7, A6-04). */
+  | "comparison-no-data"
   /** Top queries could not be read. */
   | "queries-unavailable"
   /** Top pages could not be read. */

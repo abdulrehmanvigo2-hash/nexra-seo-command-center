@@ -186,7 +186,9 @@ function header(report: ConnectedReport): string {
     report.previousWindow === null
       ? report.partial.includes("comparison-beyond-retention")
         ? `${NOT_ESTABLISHED} (the previous window reaches past the 16 months Search Console keeps)`
-        : `${NOT_ESTABLISHED} (the previous window could not be read)`
+        : report.partial.includes("comparison-no-data")
+          ? `${NOT_ESTABLISHED} (Google reported no data for the previous window yet; not a failed read, and not zero)`
+          : `${NOT_ESTABLISHED} (the previous window could not be read)`
       : windowText(report.previousWindow);
   return [
     "SEARCH CONSOLE (read by this product from Google Search Console; read-only)",

@@ -20,7 +20,17 @@ import type { CrawlLink } from "@/types/crawl";
 
 export const UNKNOWN = "—";
 
-export type Fact = { readonly label: string; readonly value: string; readonly title?: string };
+/** `url`: the value is a URL (or a chain of them) and may break only after its separators (fix F7, audit A4-11). */
+export type Fact = { readonly label: string; readonly value: string; readonly title?: string; readonly url?: true };
+
+/**
+ * A URL cut into pieces that end at `/`, `?`, `&` or `=`, so a line may break
+ * between them (a `<wbr>`) rather than in the middle of a word. Joined, the
+ * pieces are the value exactly.
+ */
+export function urlBreakParts(value: string): readonly string[] {
+  return value.match(/[^/?&=]*(?:[/?&=]+|$)/g)?.filter((part) => part !== "") ?? [value];
+}
 export type FactGroup = { readonly id: string; readonly title: string; readonly note: string; readonly facts: readonly Fact[] };
 export type EdgeRow = { readonly key: string; readonly url: string; readonly path: string; readonly anchor: string; readonly internal: boolean; readonly rel: string | null };
 export type PageFindingRow = {
@@ -77,9 +87,9 @@ export function presentPageDetail(detail: Extract<CrawlPageDetail, { status: "fo
     facts: [
       { label: "Fetch", value: page.fetchState === "budget-skipped" ? "not reached (budget)" : page.fetchState },
       { label: "HTTP status", value: num(page.httpStatus) },
-      { label: "Final URL", value: text(page.finalUrl) },
+      { label: "Final URL", value: text(page.finalUrl), url: true },
       { label: "Redirect hops", value: fetched || page.redirectHops > 0 ? String(page.redirectHops) : UNKNOWN },
-      { label: "Redirect chain", value: page.redirectChain.length === 0 ? "none recorded" : page.redirectChain.join(" → ") },
+      { label: "Redirect chain", value: page.redirectChain.length === 0 ? "none recorded" : page.redirectChain.join(" → "), url: true },
       { label: "Content type", value: text(page.contentType) },
       { label: "Server response, crawler-measured", value: num(page.responseMs, " ms") },
     ],
@@ -94,8 +104,8 @@ export function presentPageDetail(detail: Extract<CrawlPageDetail, { status: "fo
       { label: "Declares noindex", value: bool(page.robotsNoindex) },
       { label: "Declares nofollow", value: bool(page.robotsNofollow) },
       { label: "robots.txt allows", value: bool(page.robotsTxtAllowed) },
-      { label: "Canonical (as written)", value: text(page.canonicalHref) },
-      { label: "Canonical (resolved)", value: text(page.canonicalResolved) },
+      { label: "Canonical (as written)", value: text(page.canonicalHref), url: true },
+      { label: "Canonical (resolved)", value: text(page.canonicalResolved), url: true },
       { label: "Canonical is this URL", value: bool(page.canonicalIsSelf) },
       { label: "Listed in the sitemap", value: bool(page.inSitemap) },
     ],
@@ -114,7 +124,7 @@ export function presentPageDetail(detail: Extract<CrawlPageDetail, { status: "fo
       { label: "hreflang (malformed)", value: page.hreflangCount === null ? UNKNOWN : `${page.hreflangCount} (${num(page.hreflangMalformed)})` },
       { label: "Open Graph tags", value: num(page.ogTagCount) },
       { label: "og:title", value: text(page.ogTitle) },
-      { label: "og:image", value: text(page.ogImage) },
+      { label: "og:image", value: text(page.ogImage), url: true },
       { label: "Twitter card", value: text(page.twitterCard) },
       { label: "Images (without alt)", value: page.imageCount === null ? UNKNOWN : `${page.imageCount} (${num(page.imagesWithoutAlt)})` },
       { label: "Detected structured data types", value: page.schemaTypes.length === 0 ? (fetched ? "none detected" : UNKNOWN) : page.schemaTypes.join(", ") },
