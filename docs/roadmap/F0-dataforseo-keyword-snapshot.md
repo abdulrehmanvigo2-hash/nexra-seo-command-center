@@ -53,6 +53,13 @@ operator has confirmed the current figures. The account needs a $50 minimum top-
 | Worst case under the code's own limits | `limit` 20 and `depth` 1 are constants; each paid call is made at most once (a timeout is counted as charged) | ≈ $0.16 |
 | Worst case if those limits failed | `limit` 50: ≈ $0.19; the whole run repeated once: ≈ $0.32 | stopped by the daily cap in any case |
 
+**Prices confirmed by the first live run (2 Oct 2026, run `b50f8fa7…`):** actual ≈ **$0.012 per call + ~$0.0001 per
+item returned** — at or below the figures assumed above. The run cost $0.1371 against the $0.1572 estimate, because the
+per-item part is charged on items *returned* and most related calls returned far fewer than 20. **The estimate is an
+upper bound**, by design. **Three of the ten seeds had no provider data** — *AI dead lead reactivation*, *reactivate old
+CRM leads*, *appointment booking automation* (no overview row, 0 related items) — and the product recorded nothing for
+them, as designed. **M1 must treat a seed with no provider data as "no estimate available", never as "no demand".**
+
 The Phase 0 audit estimated ≈ $0.25 for F0; that figure included a separate difficulty call, which this design
 drops because the overview endpoint returns difficulty. Either figure sits well under the $1.00 cap.
 

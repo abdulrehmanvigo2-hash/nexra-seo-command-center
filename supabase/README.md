@@ -181,11 +181,15 @@ Editor (or run with the Supabase CLI against a linked project):
 37. `20261015120000_live_articles_read.sql` — the live articles read from the
     records (fix F9, audit A5-01) — applied to production and recorded on 1 Oct
 38. `20261016120000_provider_snapshot.sql` — the F0 provider keyword
-    snapshot schema (`docs/roadmap/F0-dataforseo-keyword-snapshot.md`) — **not
-    yet applied to production** (its own approval, after PR 2 of F0 merges)
+    snapshot schema (`docs/roadmap/F0-dataforseo-keyword-snapshot.md`) —
+    applied to production and recorded on 2 Oct 2026 (SHA-256
+    `518cfe62…d21719`, one hash-checked transaction after a manual backup,
+    then `NOTIFY pgrst`; verified read-only: 39 history rows, RLS on with no
+    policies, `service_role` SELECT only, the five functions `security
+    definer` with EXECUTE for `service_role` only, 12 guard triggers enabled)
 
-The first thirty-seven are applied to production and recorded in its migration
-history (38 versions); the thirty-eighth is not.
+All thirty-eight are applied to production and recorded in its migration
+history (39 versions).
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:

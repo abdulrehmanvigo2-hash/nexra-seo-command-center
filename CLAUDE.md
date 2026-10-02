@@ -1565,6 +1565,21 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
+**F0 — DataForSEO keyword snapshot: LIVE (2 Oct 2026).** The six PRs (#96 design note, #97 schema, #98 provider
+layer, #99 service and routes, #100 the *Provider estimates* section, #101 docs) and the follow-up #102 (a resumed run
+can finish `completed`) are merged. Migration `20261016120000_provider_snapshot.sql` (SHA-256 `518cfe62…d21719`) was
+**applied to production and recorded on 2 Oct** by the §1.2 method after a manual backup (run `36995737035`): 39 history
+rows; the three tables RLS on with no policies, `service_role` SELECT only; the five functions `security definer` with
+EXECUTE for `service_role` only; 12 of 12 guard triggers enabled; tables empty at apply. The operator then set the two
+credentials in Vercel (Sensitive, Production only). Four sandbox runs failed with HTTP 401 (`provider-refused`, nothing
+charged) — a wrong credential value on the Vercel side, the code unchanged; re-entering the values and redeploying fixed
+it. **Sandbox run `9598361a…` passed** (completed, 11 calls, cost 0, 10 dummy rows, nothing counted against the cap).
+After the $50 top-up and `DATAFORSEO_MODE=live`, **live run `b50f8fa7…` on 2 Oct 14:06 UTC completed in 13.6 s: 11
+calls, cost $0.1371 (estimate $0.1572), 41 metric rows (7 seed + 34 related)**; three seeds have no provider data
+(*AI dead lead reactivation*, *reactivate old CRM leads*, *appointment booking automation*). Expected DataForSEO balance
+$51.0000 − $0.1371 = **$50.8629**; the dashboard shows **$50.86284 — matches** (the $0.00006 difference is the four-decimal
+rounding of the stored costs). Today's live spend by the cap rule: $0.1371 of $1.00.
+
 **Current work:** the full audit (A0–A6) is complete and merged (PR #68–#73; `docs/audit/SUMMARY.md`). Fix **F1 —
 free daily backup** (audit A2-05, A6-01; the operator chose to stay on the Supabase Free plan): a nightly GitHub
 Actions job, `.github/workflows/backup.yml`, reads production read-only through the session pooler, dumps the
@@ -1956,6 +1971,11 @@ overwrite live content.
 - Article `1003104c-6b25-456f-9304-eefa2ba88e7d` is `approved` at Version 6 (`5ae7594d…`, all 7 units passed,
   approval `98195295…` with the attestation ticked) and **published** on 30 Sep (6.11: nexra-ai PR #9, merge
   `9a69c8c`, `/blog/ai-dead-lead-reactivation`); its proposal `ea85edb0…` stays as the record of that intent.
+- Migration `20261016120000_provider_snapshot.sql` (F0) is applied to production and recorded (2 Oct): provider runs,
+  requests and keyword metrics are append-only records with provenance; every figure is a provider's estimate, labelled
+  so, never observed data; no agent reads them. Live calls are operator-triggered only, behind the F3 confirmation and a
+  $1.00 daily cap enforced in the database (ceiling $5.00); a sandbox run costs 0 and is never counted. One live run exists
+  (`b50f8fa7…`, $0.1371). The DataForSEO credentials live in Vercel only (Sensitive, Production).
 - Migration `20261015120000_live_articles_read.sql` (F9) is applied to production and recorded (1 Oct): the application
   reads the live slugs and their keywords from the database (`nexra_article_publication_live_articles`, `service_role`
   only); it keeps no list in code, and an unread list blocks a proposal (`live-articles-unread`).
@@ -2402,6 +2422,8 @@ control, and the one V1 write was made from a Claude Code session under the lean
   environments (the `backup` environment's deployment-branch rule and secrets on a private repository need a paid
   plan on GitHub's current terms); enforced branch protection (the item above, which Pro would allow); and that
   Vercel's Git connection and the session tooling keep their access.
+- **F0 follow-up: record DataForSEO's body `status_code` on an HTTP 401** (40101 wrong login/password vs 40104 account
+  not verified), so the screen can say which; today a 401 is recorded with no body and reads "refused the credentials".
 - **Backup heartbeat (operator decision, 1 Oct; design later).** A missed scheduled backup is silent today (no
   scheduled run on 1 Oct; Phase 0 audit §I). Add a dead-man check through Healthchecks.io's free plan: the backup job
   pings a check URL at its end (success only), and Healthchecks alerts the operator after 26 hours without a ping.

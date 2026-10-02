@@ -645,6 +645,19 @@ After a fetch, in the SQL editor as read-only `SELECT`s only:
 On screen: the run's mode badge, its status, the label "Provider estimate — DataForSEO, <date>, United States /
 English — not observed" and the table. A sandbox run shows "Sandbox — dummy data, not real".
 
+### 8.4a Run history
+
+| Date (UTC) | Run | What happened |
+|---|---|---|
+| 2 Oct 2026 11:12, 11:25, 13:21, 13:23 | `df73ba33`, `710778ef`, `fe58d6fd`, `572e1fc5` (sandbox) | **Failed**, each at its first call with HTTP 401 → `provider-refused`; nothing charged, no metric row. **Cause: a wrong credential value in Vercel** (the website password where the API password belongs, or a stray character) — the owner's side; the code, the host and the header were right. Fixed by re-entering both values in Vercel and redeploying. |
+| 2 Oct 2026 13:41 | `9598361a` (sandbox) | **Passed**: completed in 13 s, 11 calls, cost 0, 10 dummy metric rows (the sandbox answers a fixed sample, so no seed row), nothing counted against the cap. |
+| 2 Oct 2026 14:06 | `b50f8fa7` (**live**) | **Passed**: completed in 13.6 s, 11 calls, cost **$0.1371** (estimate $0.1572), 41 metric rows (7 seed + 34 related); three seeds without provider data. Expected balance $50.8629; the DataForSEO dashboard showed $50.86284 — a match within the four-decimal rounding. |
+
+**Lesson:** when a run reads "refused the credentials", test the values in a browser first — a `GET
+https://api.dataforseo.com/v3/appendix/user_data` with the API login and API password as Basic auth answers 200 with
+the account's figures, or 401 if the values are wrong — before suspecting the code. The API password is not the
+website password; it is shown in the dashboard's API Access page (or sent by e-mail from there).
+
 ### 8.5 The live steps, in order, each under its own approval
 
 1. **Apply migration `20261016120000`** to production by §1 and record it; verify read-only (the three tables with
