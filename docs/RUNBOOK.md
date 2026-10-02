@@ -565,6 +565,9 @@ checkpoint under its own approval (`CLAUDE.md` §6).
    - check every component name the renderer imports;
    - list the template's own live slugs.
    The renderer refuses any file whose hash differs (`registry-changed`, `live-article-changed`).
+   Done for article 2: `nexra-ai-blog-tsx/3` at `356f38f8` (`template.ts`), pinned at `main` as it stood on 2 Oct — two
+   merges after the first article's `9a69c8c` (PR #10, the organisation schema; PR #11, edits to the follow-up article),
+   so a pin at `9a69c8c` would have been refused against `main`. Check `main` has not moved again before rendering.
 3. **Choose the cross-link** for the new article. Today it is mandatory and targets the one pinned live article. A
    rendered article writes its paragraphs as string literals, so it cannot be a cross-link source until the renderer
    can target it (A5-01 item 3).
