@@ -268,6 +268,16 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "evidence-extract": {
+        // M4: the mock executor reads no outside page and extracts nothing. Its answer is not in the
+        // unit format and the database refuses units from a simulated run, so nothing it writes can
+        // become evidence.
+        const metadata: JsonObject = { simulated: true, grounded: false, taskType: task.taskType, attempt: task.attempt };
+        return {
+          summary: `Simulated evidence extraction by ${subject}. The mock executor read no outside page and extracted nothing; this is placeholder output, never evidence.`,
+          metadata,
+        };
+      }
       case "keyword-research": {
         const seeds = Array.isArray(task.input.seedKeywords) ? task.input.seedKeywords.length : 0;
         const metadata: JsonObject = {

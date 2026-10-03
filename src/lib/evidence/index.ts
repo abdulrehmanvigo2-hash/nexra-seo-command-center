@@ -3,7 +3,8 @@ import "server-only";
 import { DEFAULT_USER_AGENT, readCrawlConfig } from "@/lib/crawl/config";
 import { createEvidenceService, type EvidenceService } from "@/lib/evidence/service";
 import { fetchSource } from "@/lib/evidence/fetch";
-import { unavailableEvidenceStore } from "@/lib/evidence/store-contract";
+import { EvidenceStoreNotSetUpError, unavailableEvidenceStore, type EvidenceStore } from "@/lib/evidence/store-contract";
+import type { SourceForExtraction } from "@/lib/evidence/extract";
 import type { EvidenceDatabase } from "@/lib/evidence/supabase/schema";
 import { createSupabaseEvidenceStore } from "@/lib/evidence/supabase/store";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
@@ -18,6 +19,23 @@ import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supa
  */
 
 let service: EvidenceService | null = null;
+let store: EvidenceStore | null = null;
+
+function evidenceStore(): EvidenceStore {
+  const inSupabase = selectProjectDataSource(process.env) === "supabase";
+  store ??= inSupabase ? createSupabaseEvidenceStore(createSupabaseServerClient<EvidenceDatabase>(readSupabaseServerConfig(process.env))) : unavailableEvidenceStore;
+  return store;
+}
+
+/** The extraction's grounding reader: one source's text and topic; a database without the tables reads as nothing. */
+export async function evidenceSourceForExtraction(projectId: string, sourceId: string): Promise<SourceForExtraction | null> {
+  try {
+    return await evidenceStore().sourceForExtraction(projectId, sourceId);
+  } catch (error) {
+    if (error instanceof EvidenceStoreNotSetUpError) return null;
+    throw error;
+  }
+}
 
 function userAgent(): string {
   try {
@@ -28,8 +46,7 @@ function userAgent(): string {
 }
 
 export function evidenceService(): EvidenceService {
-  const inSupabase = selectProjectDataSource(process.env) === "supabase";
-  service ??= createEvidenceService(inSupabase ? createSupabaseEvidenceStore(createSupabaseServerClient<EvidenceDatabase>(readSupabaseServerConfig(process.env))) : unavailableEvidenceStore, {
+  service ??= createEvidenceService(evidenceStore(), {
     fetch: (url) => fetchSource(url, { userAgent: userAgent() }),
   });
   return service;

@@ -84,3 +84,54 @@ export function describeFetchState(state: SourceFetchState): string {
       return "Could not be reached";
   }
 }
+
+export const UNIT_READ_LIMIT = 200;
+
+export type EvidenceUnit = {
+  readonly id: string;
+  readonly projectId: string;
+  readonly opportunityId: string;
+  readonly sourceId: string;
+  readonly runId: string;
+  readonly position: number;
+  readonly claim: string;
+  readonly quote: string;
+  readonly runVerdict: "supported" | "needs-review" | "unsupported";
+  /** Computed by the database: the quote, whitespace collapsed, is in the stored page text, word for word. */
+  readonly quoteFound: boolean;
+  readonly status: "supported" | "needs-review" | "unsupported";
+  readonly decision: "pending" | "admitted" | "rejected";
+  readonly decidedAt: string | null;
+  readonly recordedAt: string;
+};
+
+/** Whether the owner may admit a unit: the database's rule, repeated for the screen. */
+export function isAdmissible(unit: Pick<EvidenceUnit, "status" | "quoteFound" | "decision">): boolean {
+  return unit.decision === "pending" && unit.status === "supported" && unit.quoteFound;
+}
+
+export type RecordUnitsRequest = { readonly ok: true; readonly projectId: string; readonly sourceId: string; readonly runId: string } | { readonly ok: false; readonly error: "bad-request" };
+
+/** POST /api/evidence/units { project, source, run } — record a completed extraction run's units. */
+export function parseRecordUnitsRequest(body: unknown): RecordUnitsRequest {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return { ok: false, error: "bad-request" };
+  const { project, source, run } = body as Record<string, unknown>;
+  if (Object.keys(body).some((key) => !["project", "source", "run"].includes(key))) return { ok: false, error: "bad-request" };
+  if (!isSnapshotProjectId(project) || !isRunId(source) || !isRunId(run)) return { ok: false, error: "bad-request" };
+  return { ok: true, projectId: project, sourceId: source.toLowerCase(), runId: run.toLowerCase() };
+}
+
+export type DecideRequest = { readonly ok: true; readonly projectId: string; readonly decision: "admitted" | "rejected" } | { readonly ok: false; readonly error: "bad-request" };
+
+/** POST /api/evidence/units/<unitId> { project, decision } — the owner's admit or reject. */
+export function parseDecideRequest(body: unknown): DecideRequest {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return { ok: false, error: "bad-request" };
+  const { project, decision } = body as Record<string, unknown>;
+  if (Object.keys(body).some((key) => key !== "project" && key !== "decision")) return { ok: false, error: "bad-request" };
+  if (!isSnapshotProjectId(project) || (decision !== "admitted" && decision !== "rejected")) return { ok: false, error: "bad-request" };
+  return { ok: true, projectId: project, decision };
+}
+
+export function evidenceUnitsUrl(projectId: string, sourceId: string): string {
+  return `/api/evidence/units?${new URLSearchParams({ project: projectId, source: sourceId }).toString()}`;
+}

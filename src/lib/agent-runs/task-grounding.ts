@@ -42,6 +42,10 @@ import { formatFindingHistoryGrounding, type FindingHistoryInput } from "@/lib/c
 import type { FindingHistoryRead } from "@/lib/crawl/service";
 import { formatCuratedKeywordGrounding, type CuratedKeywordRead } from "@/lib/keywords/grounding";
 import type { ListKeywordsResult } from "@/lib/keywords/service";
+import { EVIDENCE_SOURCE, formatSourceGrounding, type SourceForExtraction } from "@/lib/evidence/extract";
+
+/** M4: one stored outside source with its text and topic, by project and id; null when not the project's or holding no text. */
+export type EvidenceSourceReader = (projectId: string, sourceId: string) => Promise<SourceForExtraction | null>;
 
 /**
  * Which evidence a task is allowed to see, decided by what its task type
@@ -166,6 +170,8 @@ export type TaskGroundingReaders = {
   readonly findingHistory?: FindingHistoryReader;
   /** 6.5 `keyword-opportunity-review`, after the Search Console blocks: the curated keywords. Absent is stated as not kept. */
   readonly curatedKeywords?: CuratedKeywordReader;
+  /** M4 `evidence-source` tasks: one outside source's stored text. Absent refuses the attempt (the records are not kept). */
+  readonly evidenceSources?: EvidenceSourceReader;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -566,6 +572,25 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
             source: result.grounding.source,
           },
         };
+      }
+
+      case "evidence-source": {
+        // M4: one outside page this product fetched for the run's own project. A source that is not the project's,
+        // holds no text, or cannot be read refuses the attempt before any provider is reached.
+        if (!readers.evidenceSources) return { ok: false, reason: "evidence-not-kept" };
+        const sourceId = typeof task.input.sourceId === "string" ? task.input.sourceId : "";
+        const source = await readers.evidenceSources(task.project.id, sourceId);
+        if (source === null) return { ok: false, reason: "source-not-readable" };
+        const text = formatSourceGrounding(source);
+        const summary: JsonObject = {
+          source: "evidence-source",
+          sourceId: source.source.id,
+          opportunityId: source.source.opportunityId,
+          textSha256: source.source.textSha256,
+          textChars: source.source.textChars,
+          bytes: Buffer.byteLength(text, "utf8"),
+        };
+        return { ok: true, grounding: { text, summary, source: EVIDENCE_SOURCE } };
       }
 
       case "competitor-comparison": {

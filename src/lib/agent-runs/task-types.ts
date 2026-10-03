@@ -21,6 +21,7 @@ import {
 } from "@/lib/agent-runs/second-tasks";
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
+import { EVIDENCE_EXTRACT_INSTRUCTIONS } from "@/lib/evidence/extract";
 import { ARTICLE_CHECK_UNIT_INSTRUCTIONS } from "@/lib/content/article-check-prompt";
 import { MAX_SECTION_INDEX, SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
 import { FACT_CHECK_INSTRUCTIONS } from "@/lib/content/drafts/fact-check-grounding";
@@ -113,6 +114,10 @@ export type TaskTypeDefinition = {
    * own project — intentions to act, each with its status, priority, owner
    * and what became of its newest handoff, titles screened and quoted as
    * data — and never a source reference or a measurement.
+   * `evidence-source` tasks (M4) are given one outside page this product
+   * fetched and stored for an accepted opportunity — its visible text, quoted
+   * as a third party's data — and the opportunity's topic; the reader refuses
+   * a source that is not the project's or holds no text.
    */
   readonly evidence:
     | "none"
@@ -127,7 +132,8 @@ export type TaskTypeDefinition = {
     | "crawl-links"
     | "draft-version"
     | "article-unit"
-    | "task";
+    | "task"
+    | "evidence-source";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -902,6 +908,31 @@ const internalLinkReview: TaskTypeDefinition = {
   parseInput: parseCrawlIdInput,
 };
 
+// ---------------------------------------------------------------------------
+// M4: research and evidence with outside sources.
+// ---------------------------------------------------------------------------
+
+/** Research & Evidence: the claims one stored outside page makes, each with a quote copied from it. */
+const evidenceExtract: TaskTypeDefinition = {
+  id: "evidence-extract",
+  label: "Evidence extraction",
+  description:
+    "List the factual claims one outside page fetched for an accepted opportunity makes on its topic, each with a quote copied word for word; an operator admits or rejects each.",
+  agents: ["research-evidence"],
+  policy: "read-only",
+  evidence: "evidence-source",
+  instructions: EVIDENCE_EXTRACT_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const shape = objectWithOnly(input, ["sourceId"]);
+    if (!shape.ok) return shape;
+    const { sourceId } = shape.value;
+    if (typeof sourceId !== "string" || !UUID.test(sourceId)) {
+      return { ok: false, error: "sourceId must be the id of an outside source this project recorded." };
+    }
+    return { ok: true, value: { sourceId: sourceId.toLowerCase() } };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -930,6 +961,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   competitorPageGapReview,
   schemaEntityReview,
   internalLinkReview,
+  evidenceExtract,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {
