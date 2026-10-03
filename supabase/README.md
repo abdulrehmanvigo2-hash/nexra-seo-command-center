@@ -190,7 +190,11 @@ Editor (or run with the Supabase CLI against a linked project):
 39. `20261017120000_live_slug_ai_sdr_tool.sql` — `ai-sdr-tool` recorded as the
     second slug published after the template pin, owned by article
     `6f50f8cb…` (runbook §7, step 5; nexra-ai PR #12, merge `ab5f10d`,
-    published 3 Oct 2026) — **not yet applied** to production
+    published 3 Oct 2026) — applied to production and recorded on 3 Oct 2026
+    (SHA-256 `29f315b8…c4f48`, one hash-checked transaction after manual
+    backup run `37091449651`; verified read-only: 40 history rows, the
+    live-articles read lists `ai-sdr-tool` → `6f50f8cb…` v2 with its four
+    keywords, every row count and fingerprint unchanged)
 
 All thirty-eight are applied to production and recorded in its migration
 history (39 versions).
