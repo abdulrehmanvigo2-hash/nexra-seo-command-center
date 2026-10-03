@@ -123,7 +123,8 @@ function nonEmptyLines(lines: readonly string[]): readonly string[] {
 
 /** A tag that names a record, ending the line apart from presentation, as the Writer's contract has it. */
 const TAG_TAIL = "(?:[*_]+)?[.,;:!?]?(?:[*_]+)?\\s*$";
-const RECORD_TAG = new RegExp(`\\[(crawl \\/[^\\]\\s]*|search console [^\\]]+)\\]${TAG_TAIL}`, "i");
+// M4: `[evidence E<n>]` names an admitted outside unit; only an article check given such units can verify one.
+const RECORD_TAG = new RegExp(`\\[(crawl \\/[^\\]\\s]*|search console [^\\]]+|evidence E\\d{1,2})\\]${TAG_TAIL}`, "i");
 const QUOTED = /["“”]([^"“”]+)["“”]/;
 const NOTE_SEPARATOR = /\s+[—–-]\s+/;
 
@@ -212,6 +213,8 @@ export type FactCheckEvidence = {
   readonly crawlId: string;
   readonly searchWindow: string | null;
   readonly recordPaths: readonly string[];
+  /** M4: the admitted outside units an article check was given (`E1` upward); absent or empty, no evidence tag names anything. */
+  readonly admittedUnits?: readonly string[];
 };
 
 function normaliseTag(tag: string): string {
@@ -227,6 +230,10 @@ export function tagNamesRecord(evidence: string, records: FactCheckEvidence): bo
   }
   if (tag.startsWith("search console ")) {
     return records.searchWindow !== null && normaliseTag(`search console ${records.searchWindow}`) === tag;
+  }
+  if (tag.startsWith("evidence ")) {
+    const label = tag.slice("evidence ".length).trim();
+    return (records.admittedUnits ?? []).some((known) => known.toLowerCase() === label);
   }
   return false;
 }

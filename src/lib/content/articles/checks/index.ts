@@ -37,6 +37,8 @@ function configuredService(): ArticleCheckService {
     },
     // Fix F8: a carry whose source rests on a record re-reads the same evidence pack a check reads, to compare.
     evidencePack: evidencePackReadersForRuntime(),
+    // M4: and the admitted outside units linked to the article, as checker v4's grounding reads them.
+    admittedEvidence: async (projectId, articleId) => (await import("@/lib/evidence")).admittedEvidenceForArticle(projectId, articleId),
   });
 }
 

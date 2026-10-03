@@ -58,6 +58,8 @@ export type EvidenceDatabase = {
       nexra_serp_results: ReadOnly<{ id: string; project_id: string; opportunity_id: string; result_type: string; url: string | null }>;
       nexra_opportunities: ReadOnly<{ id: string; project_id: string; cluster_id: string; title: string }>;
       nexra_topic_clusters: ReadOnly<{ id: string; primary_keyword: string }>;
+      nexra_agent_task_events: ReadOnly<{ task_id: string; project_id: string; event_type: string; article_id: string | null; seq: number }>;
+      nexra_agent_tasks: ReadOnly<{ id: string; project_id: string; source_kind: string; source_ref: string }>;
       agent_runs: ReadOnly<{ id: string; project_id: string; agent_id: string; task_type: string; status: string; executor: string | null; input: unknown; result_summary: string | null }>;
     };
     Views: { [_ in never]: never };

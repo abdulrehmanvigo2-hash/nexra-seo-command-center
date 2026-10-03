@@ -21,6 +21,7 @@ import "server-only";
  */
 
 import { carryDecision, evidenceFingerprint, sourceRunHashes, type SourceRunHashes } from "@/lib/content/articles/checks/carry";
+import { checkEvidenceText, formatAdmittedBlock, type AdmittedUnit } from "@/lib/evidence/admitted";
 import type { CarryRefusal } from "@/lib/content/articles/checks/carry-copy";
 import type { ArticleCheckStore, CarryUnitOutcome, FreshUnitOutcome, RecordUnitOutcome } from "@/lib/content/articles/checks/contract";
 import { articleCheckRunDisposition, type ArticleCheckRunRefusal } from "@/lib/content/articles/checks/eligibility";
@@ -130,8 +131,10 @@ export function createArticleCheckService(dependencies: {
   readonly runs: ArticleCheckRunReader;
   /** The Research & Evidence pack readers (fix F8: the carry compares the evidence fingerprint). Absent: a carry that needs the evidence is refused. */
   readonly evidencePack?: EvidencePackReaders;
+  /** M4: the admitted outside units linked to an article, for the carry fingerprint (the grounding reads the same). */
+  readonly admittedEvidence?: (projectId: string, articleId: string) => Promise<readonly AdmittedUnit[]>;
 }): ArticleCheckService {
-  const { store, runs, evidencePack } = dependencies;
+  const { store, runs, evidencePack, admittedEvidence } = dependencies;
 
   /** The earlier versions' rows and their source runs' hashes, for the units of one version (fix F8). */
   async function carryContext(articleId: string, version: number, targets: readonly { readonly unit: ArticleCheckUnit; readonly sha256: string }[]) {
@@ -380,7 +383,8 @@ export function createArticleCheckService(dependencies: {
         if (evidencePack === undefined) return { ok: false, reason: "evidence-unread", refusal: "no-reader" };
         const records = await readEvidencePackGrounding(evidencePack, { projectId });
         if (!records.ok) return { ok: false, reason: "evidence-unread", refusal: records.reason };
-        evidenceSha256 = evidenceFingerprint(records.grounding.text);
+        const admitted = admittedEvidence === undefined ? [] : await admittedEvidence(projectId, articleId);
+        evidenceSha256 = evidenceFingerprint(checkEvidenceText(records.grounding.text, formatAdmittedBlock(admitted)));
         decision = carryDecision({ target, earlier, runs: hashes, instructionsSha256: ARTICLE_CHECK_INSTRUCTIONS_SHA256, evidenceSha256 });
         if (!decision.ok) return { ok: false, reason: "not-carryable", refusal: decision.reason };
       }

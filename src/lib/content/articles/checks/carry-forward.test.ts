@@ -4,8 +4,9 @@ import { describe, test } from "node:test";
 import type { AgentRun } from "../../../../types/agent-run.ts";
 import type { ArticleCheckUnitRecord } from "../../../../types/content-article-check.ts";
 import {
-  ARTICLE_CHECK_UNIT_INSTRUCTIONS,
   ARTICLE_CHECK_UNIT_INSTRUCTIONS_V2,
+  // M4: version 4 is current; version 3's own pins stay, on its own text.
+  ARTICLE_CHECK_UNIT_INSTRUCTIONS_V3 as ARTICLE_CHECK_UNIT_INSTRUCTIONS,
   SELF_DESCRIPTION_RULE,
 } from "../../article-check-prompt.ts";
 import { readEvidencePackGrounding } from "../../../research/evidence-pack.ts";
@@ -32,6 +33,8 @@ import { answer, ARTICLE_ID, article, checkRun, content, evidencePack, memoryChe
 
 const V2_SHA256 = "8788932b34dad3f17a92ffcc6dbac7de4bab9121ac445e7f270dbd2db84a91c7";
 const V3_SHA256 = "6299e78325deb3cb116ac92cdba7d8f9b9eec7b0b1f9a324ff668353e6309136";
+/** M4: the hash new runs record since checker version 4 (pinned in src/lib/evidence/checker-v4.test.ts). */
+const CURRENT_SHA256 = "ae79553331452dba8896011007bce0d90ee9e621988c9a589c5d768508ce678f";
 const MIGRATION = readFileSync(new URL("../../../../../supabase/migrations/20261014120000_check_unit_carry_forward.sql", import.meta.url), "utf8");
 const read = (path: string) => readFileSync(new URL(`../../../../${path}`, import.meta.url), "utf8");
 
@@ -39,7 +42,7 @@ describe("checker instructions version 3", () => {
   test("version 3 is version 2 plus one sentence, and both are hash-pinned", () => {
     assert.equal(utf8Sha256(ARTICLE_CHECK_UNIT_INSTRUCTIONS_V2), V2_SHA256, "version 2 is kept word for word");
     assert.equal(utf8Sha256(ARTICLE_CHECK_UNIT_INSTRUCTIONS), V3_SHA256);
-    assert.equal(ARTICLE_CHECK_INSTRUCTIONS_SHA256, V3_SHA256, "new runs record the version 3 hash");
+    assert.equal(ARTICLE_CHECK_INSTRUCTIONS_SHA256, CURRENT_SHA256, "new runs record the current (M4: version 4) hash");
     assert.equal(ARTICLE_CHECK_UNIT_INSTRUCTIONS.replace(` ${SELF_DESCRIPTION_RULE}`, ""), ARTICLE_CHECK_UNIT_INSTRUCTIONS_V2);
     assert.equal(ARTICLE_CHECK_UNIT_INSTRUCTIONS.split(SELF_DESCRIPTION_RULE).length, 2, "the rule appears once");
   });
@@ -62,7 +65,7 @@ describe("what a check run records (the summary in its metadata)", () => {
     const records = await readEvidencePackGrounding(evidencePack(), { projectId: PROJECT_ID });
     assert.ok(records.ok);
     const grounding = formatArticleCheckGrounding(resolved.resolved, records.grounding);
-    assert.equal(grounding.summary.instructionsSha256, V3_SHA256);
+    assert.equal(grounding.summary.instructionsSha256, CURRENT_SHA256);
     assert.equal(grounding.summary.evidenceSha256, evidenceFingerprint(records.grounding.text));
   });
 
@@ -183,7 +186,7 @@ describe("carrying through the service", () => {
   async function setup(options: { evidenceSha256?: string; instructionsSha256?: string } = {}) {
     const runs: AgentRun[] = [];
     const store = memoryCheckStore({ articles: [article({ currentVersion: 1 })], versions: [V1], runs });
-    const evidence = { instructionsSha256: options.instructionsSha256 ?? V3_SHA256, evidenceSha256: options.evidenceSha256 ?? (await fingerprint()) };
+    const evidence = { instructionsSha256: options.instructionsSha256 ?? CURRENT_SHA256, evidenceSha256: options.evidenceSha256 ?? (await fingerprint()) };
     const service = createArticleCheckService({
       store,
       runs: { getById: async (id) => runs.find((run) => run.id === id) ?? null },
@@ -218,7 +221,7 @@ describe("carrying through the service", () => {
       assert.ok(last.ok, JSON.stringify(last));
       assert.equal(last.record.carriedFrom?.version, 1);
       assert.equal(last.record.carriedFrom?.basis, unit.index === 3 ? "no-supported" : "evidence-unchanged");
-      assert.equal(last.record.carriedFrom?.instructionsSha256, V3_SHA256);
+      assert.equal(last.record.carriedFrom?.instructionsSha256, CURRENT_SHA256);
       assert.equal(last.record.carriedFrom?.evidenceSha256 === null, unit.index === 3);
     }
     assert.equal(runs.length, runCount, "no run was made");

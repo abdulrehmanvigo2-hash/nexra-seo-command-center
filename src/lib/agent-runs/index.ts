@@ -216,7 +216,12 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // The Research & Evidence article check reads one article version by
         // project, id and number, regenerates its check units from the stored
         // text, and re-reads the pack through the same readers. Reads only.
-        articleCheck: { checks: articleCheckStoreForRuntime(), evidencePack: evidencePackReaders },
+        articleCheck: {
+          checks: articleCheckStoreForRuntime(),
+          evidencePack: evidencePackReaders,
+          // M4, checker v4: admitted outside units linked to the article, imported on use (module graph acyclic).
+          admittedEvidence: async (projectId, articleId) => (await import("@/lib/evidence")).admittedEvidenceForArticle(projectId, articleId),
+        },
         // The Project Manager's plan review reads the run's own project's
         // tasks (the one bounded read), each open task's history, and the
         // run its newest handoff linked, from the same store the runtime
