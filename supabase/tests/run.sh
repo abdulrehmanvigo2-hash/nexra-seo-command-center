@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade serp serp-upgrade
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -40,12 +40,13 @@ PINNED_KEYWORDS_MIGRATION="$MIGRATIONS/20261020120000_pinned_article_keywords.sq
 OPPORTUNITIES_MIGRATION="$MIGRATIONS/20261021120000_opportunities.sql"
 CALENDAR_MIGRATION="$MIGRATIONS/20261022120000_content_calendar.sql"
 PUBLICATIONS_MIGRATION="$MIGRATIONS/20261023120000_article_publications.sql"
+SERP_MIGRATION="$MIGRATIONS/20261024120000_serp_results.sql"
 GRANTS_MIGRATION="$MIGRATIONS/20261012120000_revoke_surplus_grants.sql"
 LEGACY_MIGRATION="$MIGRATIONS/20261013120000_retire_legacy_crawl_subsystem.sql"
 CARRY_MIGRATION="$MIGRATIONS/20261014120000_check_unit_carry_forward.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [live-slug-3]=22 [live-slug-3-upgrade]=12 [topic-maps]=64 [topic-maps-upgrade]=7 [pinned-keywords]=14 [pinned-keywords-upgrade]=8 [opportunities]=50 [opportunities-upgrade]=9 [calendar]=35 [calendar-upgrade]=10 [publications]=72 [publications-upgrade]=8 [provider]=163)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [live-slug-3]=22 [live-slug-3-upgrade]=12 [topic-maps]=64 [topic-maps-upgrade]=7 [pinned-keywords]=14 [pinned-keywords-upgrade]=8 [opportunities]=50 [opportunities-upgrade]=9 [calendar]=35 [calendar-upgrade]=10 [publications]=72 [publications-upgrade]=8 [provider]=163 [serp]=66 [serp-upgrade]=12)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -744,17 +745,28 @@ suite_publications_upgrade() {
   run_sql_suite publications-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/publications/upgrade-before.sql" "$PUBLICATIONS_MIGRATION" "$HERE/publications/upgrade-after.sql"
 }
 
+# M4 SERP results (migration 20261024120000): the kind and the opportunity, the keyword chosen in the database, the shared
+# cap, the endpoint by kind, one planned call, the results set, the guards.
+suite_serp() {
+  fresh_db
+  run_sql_suite serp "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/provider/setup.sql" "$HERE/topic-maps/setup.sql" "$HERE/opportunities/setup.sql" "$HERE/serp/setup.sql" "$HERE/serp/tests.sql"
+}
+suite_serp_upgrade() {
+  fresh_db "$SERP_MIGRATION"
+  run_sql_suite serp-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/provider/setup.sql" "$HERE/topic-maps/setup.sql" "$HERE/serp/upgrade-before.sql" "$SERP_MIGRATION" "$HERE/serp/upgrade-after.sql"
+}
+
 # F0 provider keyword snapshot (migration 20261016120000): the three tables and their security, reserve against the daily
 # cap (the $5.00 ceiling, sandbox never counted), request and metric records, finish, resume (Q4), the guards, isolation.
 suite_provider() {
-  fresh_db
+  fresh_db "$SERP_MIGRATION"
   run_sql_suite provider "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/provider/setup.sql" "$HERE/provider/tests.sql"
 }
 
 # Two sessions reserve at once: the day's advisory lock serialises them, so two reservations never both pass the cap;
 # two on one project never both open; two records of one seq never both write.
 suite_provider_races() {
-  fresh_db
+  fresh_db "$SERP_MIGRATION"
   "${PSQL[@]}" -f "$HERE/c4/setup.sql" -f "$HERE/gsc/setup.sql" -f "$HERE/provider/setup.sql" >/dev/null
   local o="->>'outcome'" rows a
   race "select t.reserve('halcyon-fintech', 'live', 0.6, 1.00)$o" "select t.reserve('verdant-home', 'live', 0.6, 1.00)$o"
@@ -781,7 +793,7 @@ suite_provider_races() {
     "$([ "$R1" = recorded ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/0.0130" ]; echo $?)"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade serp serp-upgrade)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -813,6 +825,7 @@ for s in "${SUITES[@]}"; do
     opportunities) suite_opportunities ;; opportunities-upgrade) suite_opportunities_upgrade ;;
     calendar) suite_calendar ;; calendar-upgrade) suite_calendar_upgrade ;;
     publications) suite_publications ;; publications-upgrade) suite_publications_upgrade ;;
+    serp) suite_serp ;; serp-upgrade) suite_serp_upgrade ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

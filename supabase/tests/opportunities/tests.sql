@@ -113,7 +113,7 @@ begin
     select project_id, map_id, cluster_id, 'expand', 'x', score, rules_version, priority, signals, task_id, accepted_by from public.nexra_opportunities limit 1$q$) = '23514', 'F a direct insert: refused (23514)');
   perform t.ok(t.err(format('update public.nexra_opportunities set title = %L where id = %L', 'y', o)) = '23514', 'F an update: refused (23514)');
   perform t.ok(t.err(format('delete from public.nexra_opportunities where id = %L', o)) = '23514', 'F a delete: refused (23514)');
-  perform t.ok(t.err('truncate public.nexra_opportunities') = '23514', 'F a truncate: refused (23514)');
+  perform t.ok(t.err('truncate public.nexra_opportunities') in ('23514', '0A000'), 'F a truncate: refused (23514, or 0A000 once SERP runs reference the table, 20261024120000)');
 end $$;
 
 set role service_role;

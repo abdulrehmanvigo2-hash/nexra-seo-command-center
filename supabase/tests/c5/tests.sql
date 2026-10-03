@@ -212,6 +212,7 @@ begin
              'nexra_provider_metrics_record(uuid,uuid,jsonb)',
              'nexra_provider_request_record(uuid,smallint,text,jsonb,text,integer,text,numeric,integer,text,timestamp with time zone,timestamp with time zone)',
              'nexra_provider_run_finish(uuid,text,numeric,numeric,text)','nexra_provider_run_reserve(text,text[],integer,text,text,text,numeric,numeric,uuid)','nexra_provider_run_resume(uuid,numeric,numeric,uuid)',
+             'nexra_provider_serp_record(uuid,uuid,jsonb)','nexra_provider_serp_reserve(text,uuid,integer,text,text,text,numeric,numeric,uuid)',
              'nexra_search_console_query_pages_record(text,text,text,date,date,jsonb,timestamp with time zone)',
              'nexra_search_console_snapshot_record(text,text,text,date,date,text,bigint,bigint,numeric,numeric,jsonb,jsonb,text[],timestamp with time zone)',
              'nexra_topic_map_approve(text,uuid,uuid)','nexra_topic_map_record(text,jsonb,uuid)',
