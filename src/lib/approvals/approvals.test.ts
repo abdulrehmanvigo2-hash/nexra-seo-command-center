@@ -122,7 +122,7 @@ describe("the migration and its scope", () => {
     for (const outcome of ["approval-not-found", "refused", "action-mismatch", "digest-mismatch", "used", "expired", "superseded", "consumed"]) assert.match(sql, new RegExp(`'outcome', '${outcome}'`));
   });
 
-  test("no consumer yet: no route, action or agent-run module imports the approvals module", async () => {
+  test("one consumer: only the P-L2 publisher imports the approvals module (its digest); no route, action or agent-run module does", async () => {
     const { readdir } = await import("node:fs/promises");
     const { join } = await import("node:path");
     const root = new URL("../../", import.meta.url).pathname;
@@ -137,6 +137,9 @@ describe("the migration and its scope", () => {
       }
     }
     await walk(root);
-    assert.deepEqual(offenders, []);
+    // P-L2 (docs/roadmap/P-L2-publishing.md): the publisher binds a request with approvalPayloadSha256; the database's
+    // request and start functions record and consume the approval. Nothing else may import this module.
+    const allowed = ["/lib/publishing/index.ts", "/lib/publishing/publishing.test.ts"];
+    assert.deepEqual(offenders.filter((path) => !allowed.some((end) => path.endsWith(end))), []);
   });
 });
