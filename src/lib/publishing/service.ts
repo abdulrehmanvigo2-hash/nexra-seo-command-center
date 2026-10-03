@@ -71,7 +71,11 @@ export type PublishResult =
   | { readonly status: StartRefusal; readonly reason?: string }
   | { readonly status: "failed"; readonly code: string; readonly during: string; readonly publication: Publication }
   | { readonly status: "waiting"; readonly waitingFor: "checks" | "owner-merge" | "live"; readonly publication: Publication }
-  | { readonly status: "live"; readonly publication: Publication };
+  | { readonly status: "live" | "abandoned"; readonly publication: Publication };
+
+export type AbandonResult =
+  | { readonly status: "abandoned"; readonly publication: Publication }
+  | { readonly status: "not-set-up" | "publication-not-found" | "out-of-order" };
 
 /** A request whose approval can still be consumed: unused, unexpired and its article's newest request. */
 export function isReadyToPublish(entry: PublicationWithApproval, all: readonly PublicationWithApproval[], now: number): boolean {
@@ -328,6 +332,22 @@ export function createPublishingService(deps: PublisherDependencies) {
       return result;
     },
 
+    /**
+     * An operator's decision that a publication that never merged — its pull request closed, its head moved, its checks
+     * failing — will not continue. Records `abandoned` (the database allows it from publishing or pull-request-open
+     * only); the article may then be requested again. Nothing is sent to GitHub: the owner closes the pull request there.
+     */
+    async abandon(publicationId: string, operatorId: string): Promise<AbandonResult> {
+      if (!store.storesPublications) return { status: "not-set-up" };
+      return guarded(async (): Promise<AbandonResult> => {
+        const entry = await store.get(publicationId);
+        if (entry === null) return { status: "publication-not-found" };
+        const step = await store.progress(entry.publication.projectId, publicationId, { step: "abandon" }, operatorId);
+        if (step.status === "recorded" || step.status === "same") return { status: "abandoned", publication: step.publication };
+        return { status: step.status === "publication-not-found" ? "publication-not-found" : "out-of-order" };
+      });
+    },
+
     /** One press: publish, or continue from the last recorded step. */
     async publish(publicationId: string, operatorId: string): Promise<PublishResult> {
       if (mode === "off") return { status: "publishing-off" };
@@ -348,7 +368,7 @@ export function createPublishingService(deps: PublisherDependencies) {
           publication = started.publication;
         }
 
-        if (publication.status === "live") return { status: "live", publication };
+        if (publication.status === "live" || publication.status === "abandoned") return { status: publication.status, publication };
         return advance(publication, operatorId);
       });
       return result;

@@ -16,7 +16,7 @@ export function readPublishMode(env: Readonly<Record<string, string | undefined>
   return value === "dry-run" || value === "merge" ? value : "off";
 }
 
-export const PUBLICATION_STATUSES = ["requested", "publishing", "pull-request-open", "merged", "live"] as const;
+export const PUBLICATION_STATUSES = ["requested", "publishing", "pull-request-open", "merged", "live", "abandoned"] as const;
 export type PublicationStatus = (typeof PUBLICATION_STATUSES)[number];
 
 export const PUBLICATION_STATUS_LABEL: Readonly<Record<PublicationStatus, string>> = {
@@ -25,6 +25,7 @@ export const PUBLICATION_STATUS_LABEL: Readonly<Record<PublicationStatus, string
   "pull-request-open": "Pull request open",
   merged: "Merged",
   live: "Live",
+  abandoned: "Abandoned",
 };
 
 /** The website's public origin: the live check reads `<origin>/blog/<slug>`; the canonical is on www. */
@@ -279,7 +280,12 @@ export function parsePublicationRequest(value: unknown): ParsedRequest {
   return { ok: true, projectId: body.project, articleId: body.articleId, publishedOn: body.publishedOn, crossLinkAnchor: null };
 }
 
-/** `POST /api/publications/<id> { action: "publish" }` — publish, or continue from the last recorded step. */
-export function parsePublishAction(value: unknown): { readonly ok: true } | { readonly ok: false } {
-  return value !== null && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).action === "publish" ? { ok: true } : { ok: false };
+/**
+ * `POST /api/publications/<id> { action: "publish" }` — publish, or continue from the last recorded step;
+ * `{ action: "abandon" }` — an operator's decision that a publication that never merged will not continue.
+ */
+export function parsePublishAction(value: unknown): { readonly ok: true; readonly action: "publish" | "abandon" } | { readonly ok: false } {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return { ok: false };
+  const action = (value as Record<string, unknown>).action;
+  return action === "publish" || action === "abandon" ? { ok: true, action } : { ok: false };
 }
