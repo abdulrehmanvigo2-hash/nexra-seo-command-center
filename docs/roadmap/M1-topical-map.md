@@ -5,6 +5,11 @@ order F0 → M1 → M2 → M3 → …). The goal, from the brief: turn stored ke
 Topic → Cluster → Primary keyword → Supporting keywords → Search intent → Existing page → Candidate page → Evidence —
 with observed data kept apart from anything derived, and an approval before a map becomes planned work.
 
+**Status (3 Oct 2026): LIVE.** PR #111–#116 merged (`master` `aad235e`); migration `20261019120000` applied to
+production and recorded (42 history rows, backup run `37118598679`, SHA-256 `e0f56ebb…0e69`). The first topic map
+(`2213a93d…`) was approved by the owner on 3 Oct 2026: 10 clusters, 3 covered, 0 partial, 7 gaps. M2 follows
+(`docs/roadmap/M2-opportunities.md`).
+
 ## Decisions (operator, 3 Oct 2026)
 
 - **Q1 — Data:** build over the 41 F0 rows now (run `b50f8fa7…`); operator-chosen seeds for later runs are PR 6.

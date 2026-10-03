@@ -618,7 +618,7 @@ Search Console indexing requested). Rendered files: `app/blog/ai-sdr-tool/page.t
 `072bb1d1…`, the follow-up article with one link in its "what it does" section `51669948…`. Step 5 is migration
 `20261017120000`; step 6 follows its apply.
 Proposal `870a1af6…` was found `withdrawn` on 3 Oct (an accidental click); the operator re-records a proposal for
-version 2 — PLACEHOLDER: new proposal id `________…`, recorded ____ Oct 2026 (to be confirmed by the operator).
+version 2 — new proposal `2b8b07d1…`, recorded 3 Oct 2026 11:16 UTC (read in production).
 
 **Article 3 — `missed-call-text-back` (published 3 Oct 2026).** Steps 1–4 as recorded: template `/4` at nexra-ai
 `ab5f10d` (PR #109); article `339c9b60-7f4c-4c6b-8692-1bb7b9cdfc52` version 2 (content SHA-256 `0a076a01…8bae0`;

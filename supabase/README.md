@@ -208,10 +208,16 @@ Editor (or run with the Supabase CLI against a linked project):
     `nexra_topic_clusters` and `nexra_topic_cluster_keywords` (append-only,
     guarded; RLS on, no policies; `service_role` SELECT and EXECUTE on the two
     functions `nexra_topic_map_record` and `nexra_topic_map_approve` only;
-    `docs/roadmap/M1-topical-map.md`) — **not yet applied** to production
+    `docs/roadmap/M1-topical-map.md`) — applied to production and recorded on
+    3 Oct 2026 (SHA-256 `e0f56ebb…0e69`, one hash-checked transaction after
+    manual backup run `37118598679`, then `NOTIFY pgrst`; verified read-only:
+    42 history rows, the three tables empty at apply with RLS on and no
+    policies, `service_role` SELECT only, the two functions `security definer`
+    with EXECUTE for `service_role` only, 12 of 12 guard triggers enabled,
+    every other row count unchanged)
 
-All thirty-eight are applied to production and recorded in its migration
-history (39 versions).
+All forty-one are applied to production and recorded in its migration
+history (42 versions).
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:
