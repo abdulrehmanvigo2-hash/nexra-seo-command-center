@@ -65,6 +65,11 @@ test("one chooser per evidence kind; the nine 6.5/6.6 tasks each get a chooser o
     assert.match(t.elsewhere ?? "", /project screen/, taskType);
     assert.equal(queueRequest("nexra-agency", agent, t, EMPTY_SELECTION).ok, false, taskType);
   }
+  // M4: an extraction names a fetched source, chosen on the Evidence tab.
+  const extract = find("research-evidence", "evidence-extract");
+  assert.equal(extract.chooser, "elsewhere");
+  assert.match(extract.elsewhere ?? "", /Evidence tab/);
+  assert.equal(queueRequest("nexra-agency", "research-evidence", extract, EMPTY_SELECTION).ok, false);
   assert.deepEqual(RANGE_CHOICES.map((r) => r.id), ["7d", "30d", "3m", "6m", "12m"]);
 });
 

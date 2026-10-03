@@ -1,4 +1,5 @@
-import type { EvidenceSource } from "@/lib/evidence/contract";
+import type { EvidenceSource, EvidenceUnit } from "@/lib/evidence/contract";
+import type { ExtractedUnit, SourceForExtraction } from "@/lib/evidence/extract";
 import type { FetchedSource } from "@/lib/evidence/fetch";
 
 /**
@@ -10,6 +11,17 @@ import type { FetchedSource } from "@/lib/evidence/fetch";
 export type RecordSourceOutcome =
   | { readonly status: "recorded"; readonly source: EvidenceSource }
   | { readonly status: "project-not-found" | "opportunity-not-found" | "serp-result-not-found" | "source-limit" };
+
+export type ExtractRun = { readonly id: string; readonly projectId: string; readonly agentId: string; readonly taskType: string; readonly status: string; readonly executor: string | null; readonly sourceId: string | null; readonly summary: string | null };
+
+export type RecordUnitsOutcome =
+  | { readonly status: "recorded"; readonly units: number; readonly found: number; readonly supported: number }
+  | { readonly status: "source-not-found" | "source-not-fetched" | "run-not-accepted" | "exists" | "invalid-unit" };
+
+export type DecideOutcome =
+  | { readonly status: "admitted" | "rejected"; readonly unit: EvidenceUnit }
+  | { readonly status: "already-decided"; readonly unit: EvidenceUnit }
+  | { readonly status: "not-admissible" | "unit-not-found" };
 
 export class EvidenceStoreNotSetUpError extends Error {
   constructor(operation: string) {
@@ -26,6 +38,13 @@ export type EvidenceStore = {
   sourcesToday(opportunityId: string, at: Date): Promise<number>;
   recordSource(input: { readonly projectId: string; readonly opportunityId: string; readonly serpResultId: string | null; readonly fetched: FetchedSource; readonly operatorId: string }): Promise<RecordSourceOutcome>;
   listSources(projectId: string, opportunityId: string, limit: number): Promise<readonly EvidenceSource[]>;
+  /** One source with its stored text and its opportunity's topic, for the extraction's grounding; null when not the project's or holding no text. */
+  sourceForExtraction(projectId: string, sourceId: string): Promise<SourceForExtraction | null>;
+  /** One agent run of the project, as the record step reads it. */
+  extractRun(projectId: string, runId: string): Promise<ExtractRun | null>;
+  recordUnits(projectId: string, sourceId: string, runId: string, units: readonly ExtractedUnit[], operatorId: string): Promise<RecordUnitsOutcome>;
+  listUnits(projectId: string, sourceId: string, limit: number): Promise<readonly EvidenceUnit[]>;
+  decideUnit(projectId: string, unitId: string, decision: "admitted" | "rejected", operatorId: string): Promise<DecideOutcome>;
 };
 
 export const unavailableEvidenceStore: EvidenceStore = {
@@ -41,5 +60,20 @@ export const unavailableEvidenceStore: EvidenceStore = {
   },
   async listSources() {
     return [];
+  },
+  async sourceForExtraction() {
+    return null;
+  },
+  async extractRun() {
+    return null;
+  },
+  async recordUnits() {
+    return { status: "source-not-found" };
+  },
+  async listUnits() {
+    return [];
+  },
+  async decideUnit() {
+    return { status: "unit-not-found" };
   },
 };

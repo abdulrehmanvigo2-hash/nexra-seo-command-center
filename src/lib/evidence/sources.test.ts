@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { describeFetchState, isOutsideUrl, parseSourceFetchRequest, PREVIEW_CHARS, type EvidenceSource } from "@/lib/evidence/contract";
 import { fetchSource, sourceHostScope, type FetchedSource } from "@/lib/evidence/fetch";
 import { createEvidenceService } from "@/lib/evidence/service";
-import type { EvidenceStore } from "@/lib/evidence/store-contract";
+import { unavailableEvidenceStore, type EvidenceStore } from "@/lib/evidence/store-contract";
 import { sourceRowToSource } from "@/lib/evidence/supabase/schema";
 import { capText, extractPageText, MAX_TEXT_CHARS } from "@/lib/evidence/text";
 
@@ -115,6 +115,7 @@ describe("the sources service", () => {
   function store(overrides: Partial<EvidenceStore> = {}) {
     const recorded: unknown[] = [];
     const base: EvidenceStore = {
+      ...unavailableEvidenceStore,
       storesEvidence: true,
       async serpResultUrl(_p, _o, id) { return id === SERP ? "https://alpha.example/guide" : null; },
       async sourcesToday() { return 0; },

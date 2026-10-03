@@ -241,6 +241,8 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         // (decision Q5), through the keyword service. Imported on use: the
         // keyword module reaches the task service, which reaches this one.
         curatedKeywords: async (projectId) => (await import("@/lib/keywords")).keywordService().listKeywords(projectId, null),
+        // M4: one stored outside source's text, imported on use (as the keyword service, to keep the module graph acyclic).
+        evidenceSources: async (projectId, sourceId) => (await import("@/lib/evidence")).evidenceSourceForExtraction(projectId, sourceId),
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

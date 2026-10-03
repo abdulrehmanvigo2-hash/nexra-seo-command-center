@@ -2,7 +2,17 @@ import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { EvidenceStoreNotSetUpError, type EvidenceStore } from "@/lib/evidence/store-contract";
-import { EVIDENCE_NOT_SET_UP_CODES, recordSourceResultToOutcome, SOURCE_READ_COLUMNS, sourceRowToSource, type EvidenceDatabase } from "@/lib/evidence/supabase/schema";
+import {
+  decideResultToOutcome,
+  EVIDENCE_NOT_SET_UP_CODES,
+  recordSourceResultToOutcome,
+  recordUnitsResultToOutcome,
+  SOURCE_READ_COLUMNS,
+  sourceRowToSource,
+  UNIT_READ_COLUMNS,
+  unitRowToUnit,
+  type EvidenceDatabase,
+} from "@/lib/evidence/supabase/schema";
 
 /**
  * The evidence store over migration 20261025120000. A database without it answers every call with
@@ -60,6 +70,48 @@ export function createSupabaseEvidenceStore(client: SupabaseClient<EvidenceDatab
       const { data, error } = await client.from("nexra_evidence_sources").select(SOURCE_READ_COLUMNS).eq("project_id", projectId).eq("opportunity_id", opportunityId).order("fetched_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
       if (error) refuseEvidence("list sources", error);
       return (data ?? []).map(sourceRowToSource);
+    },
+
+    async sourceForExtraction(projectId, sourceId) {
+      const { data, error } = await client.from("nexra_evidence_sources").select(SOURCE_READ_COLUMNS).eq("id", sourceId).eq("project_id", projectId).maybeSingle();
+      if (error) refuseEvidence("read source", error);
+      if (data === null || data.page_text === null) return null;
+      const opportunity = await client.from("nexra_opportunities").select("id, project_id, cluster_id, title").eq("id", data.opportunity_id).eq("project_id", projectId).maybeSingle();
+      if (opportunity.error) refuseEvidence("read opportunity", opportunity.error);
+      if (opportunity.data === null) return null;
+      const cluster = await client.from("nexra_topic_clusters").select("id, primary_keyword").eq("id", opportunity.data.cluster_id).maybeSingle();
+      if (cluster.error) refuseEvidence("read cluster", cluster.error);
+      const topic = cluster.data === null ? opportunity.data.title : `${opportunity.data.title} — ${cluster.data.primary_keyword}`;
+      return { source: sourceRowToSource(data), text: data.page_text, topic };
+    },
+
+    async extractRun(projectId, runId) {
+      const { data, error } = await client.from("agent_runs").select("id, project_id, agent_id, task_type, status, executor, input, result_summary").eq("id", runId).eq("project_id", projectId).maybeSingle();
+      if (error) refuseEvidence("read run", error);
+      if (data === null) return null;
+      const input = typeof data.input === "object" && data.input !== null ? (data.input as Record<string, unknown>) : {};
+      return {
+        id: data.id, projectId: data.project_id, agentId: data.agent_id, taskType: data.task_type, status: data.status, executor: data.executor,
+        sourceId: typeof input.sourceId === "string" ? input.sourceId : null, summary: data.result_summary,
+      };
+    },
+
+    async recordUnits(projectId, sourceId, runId, units, operatorId) {
+      const { data, error } = await client.rpc("nexra_evidence_units_record", { p_project_id: projectId, p_source_id: sourceId, p_run_id: runId, p_units: units, p_operator: operatorId });
+      if (error) refuseEvidence("record units", error);
+      return recordUnitsResultToOutcome(data);
+    },
+
+    async listUnits(projectId, sourceId, limit) {
+      const { data, error } = await client.from("nexra_evidence_units").select(UNIT_READ_COLUMNS).eq("project_id", projectId).eq("source_id", sourceId).order("recorded_at", { ascending: false }).order("position", { ascending: true }).limit(limit);
+      if (error) refuseEvidence("list units", error);
+      return (data ?? []).map(unitRowToUnit);
+    },
+
+    async decideUnit(projectId, unitId, decision, operatorId) {
+      const { data, error } = await client.rpc("nexra_evidence_unit_decide", { p_project_id: projectId, p_unit_id: unitId, p_decision: decision, p_operator: operatorId });
+      if (error) refuseEvidence("decide unit", error);
+      return decideResultToOutcome(data);
     },
   };
 }

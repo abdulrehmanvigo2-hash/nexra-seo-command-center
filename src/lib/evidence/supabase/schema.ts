@@ -1,6 +1,6 @@
-import { PREVIEW_CHARS, type EvidenceSource } from "@/lib/evidence/contract";
+import { PREVIEW_CHARS, type EvidenceSource, type EvidenceUnit } from "@/lib/evidence/contract";
 import type { SourceFetchState } from "@/lib/evidence/fetch";
-import type { RecordSourceOutcome } from "@/lib/evidence/store-contract";
+import type { DecideOutcome, RecordSourceOutcome, RecordUnitsOutcome } from "@/lib/evidence/store-contract";
 
 /** The evidence tables' shapes (migration 20261025120000) and their translation; a row that does not match is refused. */
 
@@ -56,6 +56,9 @@ export type EvidenceDatabase = {
       nexra_evidence_sources: ReadOnly<EvidenceSourceRow>;
       nexra_evidence_units: ReadOnly<EvidenceUnitRow>;
       nexra_serp_results: ReadOnly<{ id: string; project_id: string; opportunity_id: string; result_type: string; url: string | null }>;
+      nexra_opportunities: ReadOnly<{ id: string; project_id: string; cluster_id: string; title: string }>;
+      nexra_topic_clusters: ReadOnly<{ id: string; primary_keyword: string }>;
+      agent_runs: ReadOnly<{ id: string; project_id: string; agent_id: string; task_type: string; status: string; executor: string | null; input: unknown; result_summary: string | null }>;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -130,5 +133,75 @@ export function recordSourceResultToOutcome(data: unknown): RecordSourceOutcome 
       return { status: result.outcome };
     default:
       throw new EvidenceRowError(`the source record function answered "${String(result.outcome)}", which this product does not recognise.`);
+  }
+}
+
+export const UNIT_READ_COLUMNS = "id, project_id, opportunity_id, source_id, run_id, position, claim, quote, run_verdict, quote_found, status, decision, decided_by, decided_at, recorded_by, recorded_at";
+
+const VERDICTS = ["supported", "needs-review", "unsupported"] as const;
+
+export function unitRowToUnit(value: unknown): EvidenceUnit {
+  const row = record(value, "a unit row");
+  const verdict = (key: string) => {
+    const v = text(row, key);
+    if (!(VERDICTS as readonly string[]).includes(v)) throw new EvidenceRowError(`${key} "${v}" is not recognised.`);
+    return v as (typeof VERDICTS)[number];
+  };
+  const decision = text(row, "decision");
+  if (decision !== "pending" && decision !== "admitted" && decision !== "rejected") throw new EvidenceRowError("decision is not recognised.");
+  if (typeof row.quote_found !== "boolean") throw new EvidenceRowError("quote_found is not a boolean.");
+  if (typeof row.position !== "number" || !Number.isInteger(row.position)) throw new EvidenceRowError("position is not a whole number.");
+  return {
+    id: text(row, "id"),
+    projectId: text(row, "project_id"),
+    opportunityId: text(row, "opportunity_id"),
+    sourceId: text(row, "source_id"),
+    runId: text(row, "run_id"),
+    position: row.position,
+    claim: text(row, "claim"),
+    quote: text(row, "quote"),
+    runVerdict: verdict("run_verdict"),
+    quoteFound: row.quote_found,
+    status: verdict("status"),
+    decision,
+    decidedAt: optionalText(row, "decided_at"),
+    recordedAt: text(row, "recorded_at"),
+  };
+}
+
+function count(result: Record<string, unknown>, key: string): number {
+  const value = result[key];
+  if (typeof value !== "number" || !Number.isInteger(value)) throw new EvidenceRowError(`${key} is not a whole number.`);
+  return value;
+}
+
+export function recordUnitsResultToOutcome(data: unknown): RecordUnitsOutcome {
+  const result = record(data, "the units record answer");
+  switch (result.outcome) {
+    case "recorded":
+      return { status: "recorded", units: count(result, "units"), found: count(result, "found"), supported: count(result, "supported") };
+    case "source-not-found":
+    case "source-not-fetched":
+    case "run-not-accepted":
+    case "exists":
+    case "invalid-unit":
+      return { status: result.outcome };
+    default:
+      throw new EvidenceRowError(`the units record function answered "${String(result.outcome)}", which this product does not recognise.`);
+  }
+}
+
+export function decideResultToOutcome(data: unknown): DecideOutcome {
+  const result = record(data, "the decide answer");
+  switch (result.outcome) {
+    case "admitted":
+    case "rejected":
+    case "already-decided":
+      return { status: result.outcome, unit: unitRowToUnit(result.unit) };
+    case "not-admissible":
+    case "unit-not-found":
+      return { status: result.outcome };
+    default:
+      throw new EvidenceRowError(`the decide function answered "${String(result.outcome)}", which this product does not recognise.`);
   }
 }
