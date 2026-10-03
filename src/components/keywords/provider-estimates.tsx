@@ -5,18 +5,21 @@ import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Field, TextArea } from "@/components/ui/field";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import type { SnapshotRunView, SnapshotUsage } from "@/lib/keyword-snapshots/contract";
-import { keywordSnapshotResumeUrl, keywordSnapshotsUrl, keywordSnapshotUsageUrl } from "@/lib/keyword-snapshots/contract";
+import { describeSeedProblem, keywordSnapshotResumeUrl, keywordSnapshotsUrl, keywordSnapshotUsageUrl, seedsFromLines } from "@/lib/keyword-snapshots/contract";
 import {
+  DEFAULT_SEED_LINES,
   FETCH_LABEL,
   NEVER_OBSERVED_NOTE,
   NO_RUN_COPY,
   PROVIDER_ESTIMATE_LABEL,
   READ_FAILED,
   RESUME_LABEL,
+  SEEDS_NOTE,
   costLine,
   fetchConfirmation,
   figure,
@@ -34,7 +37,6 @@ import {
 } from "@/lib/keyword-snapshots/presenter";
 import type { ProviderMode } from "@/lib/providers/dataforseo/constants";
 import { estimateRun } from "@/lib/providers/dataforseo/estimate";
-import { SEED_TOPICS } from "@/lib/providers/dataforseo/constants";
 
 /**
  * *Provider estimates* on the Keyword Intelligence screen (F0, PR 5; design
@@ -70,7 +72,7 @@ export function ProviderEstimatesSection({ projectId }: { projectId: string }) {
       <PanelHeader
         eyebrow="Provider estimates"
         title="DataForSEO keyword estimates"
-        description="A provider's model estimates for the ten seed topics — search volume, cost per click, competition, difficulty and intent — recorded with their provenance. Not observed data: kept apart from the Search Console rows above."
+        description="A provider's model estimates for the seeds you choose (1 to 10) — search volume, cost per click, competition, difficulty and intent — recorded with their provenance. Not observed data: kept apart from the Search Console rows above."
         actions={state.status === "ready" ? <FetchControl projectId={projectId} mode={state.mode} onDone={reload} /> : undefined}
       />
       <PanelBody>
@@ -175,28 +177,42 @@ function useRunRequest(onDone: () => void) {
 function FetchControl({ projectId, mode, onDone }: { projectId: string; mode: ProviderMode; onDone: () => void }) {
   const { busy, note, send } = useRunRequest(onDone);
   const [open, setOpen] = useState(false);
+  const [lines, setLines] = useState(DEFAULT_SEED_LINES);
+  const parsed = seedsFromLines(lines);
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {note && (
-        <span className={note.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-muted"} role="status">
-          {note.text}
-        </span>
-      )}
-      <Button variant="primary" icon="search" onClick={() => setOpen(true)} disabled={busy} aria-busy={busy}>
-        {busy ? "Fetching…" : FETCH_LABEL}
-      </Button>
-      {open && (
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex w-full max-w-sm flex-col gap-1">
+        <Field label="Seeds" htmlFor="provider-seeds" error={parsed.ok ? undefined : describeSeedProblem(parsed.reason)} hint={parsed.ok ? `${parsed.seeds.length} seed${parsed.seeds.length === 1 ? "" : "s"}. ${SEEDS_NOTE}` : undefined}>
+          <TextArea id="provider-seeds" rows={10} value={lines} onChange={(event) => setLines(event.target.value)} disabled={busy} spellCheck={false} />
+        </Field>
+        {lines !== DEFAULT_SEED_LINES && (
+          <Button size="sm" variant="ghost" className="self-start" onClick={() => setLines(DEFAULT_SEED_LINES)} disabled={busy}>
+            Restore the default list
+          </Button>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {note && (
+          <span className={note.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-muted"} role="status">
+            {note.text}
+          </span>
+        )}
+        <Button variant="primary" icon="search" onClick={() => setOpen(true)} disabled={busy || !parsed.ok} aria-busy={busy}>
+          {busy ? "Fetching…" : FETCH_LABEL}
+        </Button>
+      </div>
+      {open && parsed.ok && (
         <SpendConfirmDialog
-          confirmation={fetchConfirmation(projectId, mode)}
+          confirmation={fetchConfirmation(projectId, mode, parsed.seeds)}
           projectId={null}
           busy={busy}
           onClose={() => setOpen(false)}
           onConfirm={() => {
             setOpen(false);
-            void send("/api/keyword-snapshots", { project: projectId });
+            void send("/api/keyword-snapshots", { project: projectId, seeds: parsed.seeds });
           }}
         >
-          <ProviderUsageBlock projectId={projectId} estimateUsd={mode === "live" ? estimateRun(SEED_TOPICS.length).usd : 0} mode={mode} />
+          <ProviderUsageBlock projectId={projectId} estimateUsd={mode === "live" ? estimateRun(parsed.seeds.length).usd : 0} mode={mode} />
         </SpendConfirmDialog>
       )}
     </div>

@@ -43,7 +43,7 @@ export const LOCATION_CODE = 2840;
 export const LANGUAGE_CODE = "en";
 export const LOCATION_LABEL = "United States / English";
 
-/** Decision Q1: the ten seed topics, fixed in code for F0. */
+/** Decision Q1: the ten seed topics of F0 — since M1 PR 6 the default list an operator may change per run. */
 export const SEED_TOPICS: readonly string[] = [
   "AI lead follow-up",
   "AI dead lead reactivation",

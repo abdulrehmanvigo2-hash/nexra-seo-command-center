@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import { estimateRun } from "../providers/dataforseo/estimate.ts";
 import { SEED_TOPICS } from "../providers/dataforseo/constants.ts";
 import type { KeywordMetric, ProviderRun, SnapshotRunView } from "./contract.ts";
 import {
@@ -12,6 +13,7 @@ import {
   READ_FAILED,
   SANDBOX_LABEL,
   costLine,
+  DEFAULT_SEED_LINES,
   fetchConfirmation,
   figure,
   modeBadge,
@@ -135,7 +137,7 @@ describe("the F3 confirmation (§5)", () => {
   test("fetch: the seeds, the location, the mode, the calls, the estimate, the project; the live label warns of the charge", () => {
     const live = fetchConfirmation("nexra-agency", "live");
     assert.equal(live.title, "Fetch provider estimates from DataForSEO (live)?");
-    assert.deepEqual(live.facts.map((fact) => fact.label), ["Seeds", "Location", "Mode", "Calls", "Estimate", "Project"]);
+    assert.deepEqual(live.facts.map((fact) => fact.label), ["Seeds (10)", "Location", "Mode", "Calls", "Estimate", "Project"]);
     assert.equal(live.facts[0].value, SEED_TOPICS.join("; "));
     assert.match(live.facts[1].value, /United States \/ English/);
     assert.match(live.facts[2].value, /LIVE — charges the DataForSEO balance/);
@@ -147,6 +149,16 @@ describe("the F3 confirmation (§5)", () => {
     assert.match(sandbox.facts[2].value, /Sandbox — free, dummy data/);
     assert.equal(sandbox.facts[4].value, "$0.00");
     assert.match(sandbox.consequence, /Nothing is charged/);
+  });
+
+  test("fetch with chosen seeds (M1 PR 6): the seeds it will send, the calls and the estimate follow the count", () => {
+    const chosen = fetchConfirmation("nexra-agency", "live", ["AI SDR", "missed call text back"]);
+    assert.equal(chosen.facts[0].label, "Seeds (2)");
+    assert.equal(chosen.facts[0].value, "AI SDR; missed call text back");
+    assert.match(chosen.facts[3].value, /^3 /);
+    assert.equal(chosen.facts[4].value.split(" ")[0], `$${estimateRun(2).usd.toFixed(2)}`);
+    assert.equal(fetchConfirmation("nexra-agency", "live", ["AI SDR"]).facts[0].label, "Seed");
+    assert.equal(DEFAULT_SEED_LINES.split("\n").length, 10);
   });
 
   test("resume: the missing calls only, with their estimate; the overview is added when every seed is missing", () => {

@@ -20,7 +20,7 @@ export const NOT_SET_UP_TITLE = "Not set up yet";
 export const NOT_SET_UP_COPY = "Provider estimates need the DataForSEO credentials on this deployment and the provider snapshot schema in its database. Nothing here is broken: the rest of the screen reads the stored Search Console rows as before.";
 export const NOT_CONFIGURED_COPY = "The provider snapshot schema is in place, but this deployment holds no DataForSEO credentials. Set them (server-side, never in the browser) and redeploy.";
 export const CAP_INVALID_COPY = "The daily cap variable is not a usable dollar amount, so every run is refused until it is corrected.";
-export const NO_RUN_COPY = "No provider snapshot recorded for this project. Fetch one to see DataForSEO's estimates for the ten seed topics — labelled as estimates, kept apart from the observed rows.";
+export const NO_RUN_COPY = "No provider snapshot recorded for this project. Fetch one to see DataForSEO's estimates for your seeds — labelled as estimates, kept apart from the observed rows.";
 export const FETCH_LABEL = "Fetch provider estimates…";
 export const RESUME_LABEL = "Resume…";
 export const NEVER_OBSERVED_NOTE = "Figures are DataForSEO's model estimates, never a measurement of this site; no agent reads them.";
@@ -109,13 +109,13 @@ export function providerUsageLines(state: ProviderUsageState, estimateUsd: numbe
   return { lines, warning };
 }
 
-/** The F3 confirmation for a fetch (§5): seeds, location, mode, calls, estimate. */
-export function fetchConfirmation(projectId: string, mode: ProviderMode): Confirmation {
-  const estimate = estimateRun(SEED_TOPICS.length);
+/** The F3 confirmation for a fetch (§5): the seeds it will send (M1 PR 6: the operator's, or the default list), location, mode, calls, estimate. */
+export function fetchConfirmation(projectId: string, mode: ProviderMode, seeds: readonly string[] = SEED_TOPICS): Confirmation {
+  const estimate = estimateRun(seeds.length);
   return {
     title: mode === "live" ? "Fetch provider estimates from DataForSEO (live)?" : "Fetch provider estimates from the DataForSEO sandbox?",
     facts: [
-      { label: "Seeds", value: SEED_TOPICS.join("; ") },
+      { label: seeds.length === 1 ? "Seed" : `Seeds (${seeds.length})`, value: seeds.join("; ") },
       { label: "Location", value: `${LOCATION_LABEL} (one location per run)` },
       { label: "Mode", value: mode === "live" ? "LIVE — charges the DataForSEO balance" : "Sandbox — free, dummy data" },
       { label: "Calls", value: `${estimate.calls} (one overview, one related-keywords call per seed, limit 20, depth 1)` },
@@ -183,3 +183,7 @@ export function runOutcome(httpStatus: number, body: unknown): { readonly text: 
   if (httpStatus === 404) return { text: "Not started: the project or run was not found.", tone: "warning" };
   return { text: "Not started: the request did not complete. Refresh to see the stored state.", tone: "warning" };
 }
+
+/** M1 PR 6: the seed field's starting text and its note. */
+export const DEFAULT_SEED_LINES = SEED_TOPICS.join("\n");
+export const SEEDS_NOTE = "One seed per line, 1 to 10. The estimate follows the count; the default list is the F0 set.";

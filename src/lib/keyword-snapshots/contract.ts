@@ -120,15 +120,63 @@ export function isRunId(value: unknown): value is string {
   return typeof value === "string" && UUID.test(value);
 }
 
-export type ParsedRunRequest = { readonly ok: true; readonly projectId: string } | { readonly ok: false; readonly error: "bad-request" };
+/** M1 PR 6: an operator may choose the seeds for one run — 1 to 10, each trimmed text of 1 to 200 characters, no two alike. */
+export const MAX_SEEDS = 10;
+export const SEED_MAX_LENGTH = 200;
 
-/** POST /api/keyword-snapshots { project } — the project only; the seeds are the server's constant. */
+export type ParsedSeeds = { readonly ok: true; readonly seeds: readonly string[] } | { readonly ok: false; readonly reason: "none" | "too-many" | "too-long" | "duplicate" | "not-text" };
+
+/**
+ * The seeds as the reserve function will take them: each trimmed, blanks
+ * dropped, then 1 to MAX_SEEDS, each at most SEED_MAX_LENGTH characters, and
+ * no two equal once case is ignored (the provider treats them alike). Shape
+ * only; the database checks the same rules again.
+ */
+export function parseSeeds(value: unknown): ParsedSeeds {
+  if (!Array.isArray(value)) return { ok: false, reason: "not-text" };
+  if (value.some((seed) => typeof seed !== "string")) return { ok: false, reason: "not-text" };
+  const seeds = (value as string[]).map((seed) => seed.trim()).filter((seed) => seed.length > 0);
+  if (seeds.length === 0) return { ok: false, reason: "none" };
+  if (seeds.length > MAX_SEEDS) return { ok: false, reason: "too-many" };
+  if (seeds.some((seed) => seed.length > SEED_MAX_LENGTH)) return { ok: false, reason: "too-long" };
+  if (new Set(seeds.map((seed) => seed.toLowerCase())).size !== seeds.length) return { ok: false, reason: "duplicate" };
+  return { ok: true, seeds };
+}
+
+/** The seeds typed one per line, as the screen's field holds them. */
+export function seedsFromLines(text: string): ParsedSeeds {
+  return parseSeeds(text.split(/\r?\n/));
+}
+
+export function describeSeedProblem(reason: Extract<ParsedSeeds, { ok: false }>["reason"]): string {
+  switch (reason) {
+    case "none":
+      return "Enter at least one seed.";
+    case "too-many":
+      return `At most ${MAX_SEEDS} seeds per run.`;
+    case "too-long":
+      return `Each seed is at most ${SEED_MAX_LENGTH} characters.`;
+    case "duplicate":
+      return "Each seed only once (case is ignored).";
+    case "not-text":
+      return "Seeds are text, one per line.";
+  }
+}
+
+export type ParsedRunRequest =
+  | { readonly ok: true; readonly projectId: string; readonly seeds: readonly string[] | null }
+  | { readonly ok: false; readonly error: "bad-request" };
+
+/** POST /api/keyword-snapshots { project, seeds? } — without seeds the server's default list is used. */
 export function parseRunRequest(body: unknown): ParsedRunRequest {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return { ok: false, error: "bad-request" };
-  const project = (body as { project?: unknown }).project;
+  const { project, seeds } = body as { project?: unknown; seeds?: unknown };
   const keys = Object.keys(body);
-  if (!isSnapshotProjectId(project) || keys.some((key) => key !== "project")) return { ok: false, error: "bad-request" };
-  return { ok: true, projectId: project };
+  if (!isSnapshotProjectId(project) || keys.some((key) => key !== "project" && key !== "seeds")) return { ok: false, error: "bad-request" };
+  if (!keys.includes("seeds")) return { ok: true, projectId: project, seeds: null };
+  const parsed = parseSeeds(seeds);
+  if (!parsed.ok) return { ok: false, error: "bad-request" };
+  return { ok: true, projectId: project, seeds: parsed.seeds };
 }
 
 export function keywordSnapshotsUrl(projectId: string): string {

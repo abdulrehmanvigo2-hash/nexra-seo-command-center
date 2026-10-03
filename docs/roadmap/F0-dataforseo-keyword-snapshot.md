@@ -25,7 +25,9 @@ refresh; no second location; no write to any external service except the DataFor
 | Q4 | Resume of a partial run | **Allowed in live mode, but only through the same F3 spend confirmation dialog** (the estimate for the missing calls shown, the operator confirms). Never automatic; the system never retries a live call on its own. |
 
 The seed list is fixed in code for F0 (a constant, tested); a different list is a later change under its own
-approval. The seeds are stored on every run row, so what was asked is always on record.
+approval. The seeds are stored on every run row, so what was asked is always on record. **Since M1 PR 6
+(`docs/roadmap/M1-topical-map.md`)** the operator may choose 1 to 10 seeds per run on the screen; the constant stays the
+default, and the confirmation shows the seeds and the estimate for their count.
 
 ---
 

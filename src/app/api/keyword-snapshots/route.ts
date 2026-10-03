@@ -11,11 +11,12 @@ import { projectRepository } from "@/lib/projects/repository";
  * Keyword snapshots (F0, PR 4): read a project's provider runs, or make one.
  *
  *   GET  /api/keyword-snapshots?project=<id>
- *   POST /api/keyword-snapshots   { project }
+ *   POST /api/keyword-snapshots   { project, seeds? }
  *
  * Operators only, confirmed with the Auth server here; the write from this
- * site's own pages only. The POST is the one paid action: the server takes
- * the seeds from its own constant, recomputes the estimate, reserves against
+ * site's own pages only. The POST is the one paid action: the operator may
+ * choose 1 to 10 seeds (M1 PR 6; the server's default list otherwise), the
+ * server recomputes the estimate, reserves against
  * the daily cap in the database and makes the calls one by one under a
  * deadline; what happened is on the run record. Nothing here runs an agent.
  */
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
   try {
     if ((await projectRepository.getProjectById(parsed.projectId)) === null) return errorResponse("project-not-found", 404);
     const started = Date.now();
-    const result = await keywordSnapshotService().run(parsed.projectId, operator.id);
+    const result = await keywordSnapshotService().run(parsed.projectId, operator.id, parsed.seeds);
     logEvent("info", "keyword-snapshot.run", {
       projectId: parsed.projectId,
       outcome: result.status,

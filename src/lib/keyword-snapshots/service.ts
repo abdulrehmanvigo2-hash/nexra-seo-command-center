@@ -55,7 +55,8 @@ export type ReadResult = { readonly status: "not-set-up" } | { readonly status: 
 export type UsageResult = { readonly status: "not-set-up" } | { readonly status: "read"; readonly usage: SnapshotUsage };
 
 export type KeywordSnapshotService = {
-  run(projectId: string, operatorId: string): Promise<RunResult>;
+  /** `seeds` are already parsed (`parseSeeds`); null or absent is the default list. */
+  run(projectId: string, operatorId: string, seeds?: readonly string[] | null): Promise<RunResult>;
   resume(runId: string, operatorId: string): Promise<RunResult>;
   read(projectId: string): Promise<ReadResult>;
   usage(projectId: string): Promise<UsageResult>;
@@ -196,7 +197,7 @@ export function createKeywordSnapshotService(store: SnapshotStore, options: Snap
   }
 
   return {
-    async run(projectId, operatorId) {
+    async run(projectId, operatorId, chosen = null) {
       const prepared = await prepare();
       if (prepared.status !== "ok") return prepared;
       const { config, capUsd } = prepared;
@@ -208,7 +209,7 @@ export function createKeywordSnapshotService(store: SnapshotStore, options: Snap
           const cost = open.mode === "sandbox" ? 0 : Math.round(earlier.filter((r) => r.outcome === "succeeded").reduce((sum, r) => sum + (r.costUsd ?? 0), 0) * 10_000) / 10_000;
           await store.finish({ runId: open.id, status: "failed", costUsd: cost, unknownCostUsd: open.unknownCostUsd, errorCode: "abandoned" });
         }
-        const seeds = SEED_TOPICS;
+        const seeds = chosen ?? SEED_TOPICS;
         const estimate = config.mode === "live" ? estimateRun(seeds.length).usd : 0;
         // The database raises on an estimate above the cap; answer the same refusal without the raise.
         if (estimate > capUsd) return { status: "cap-reached", spentUsd: await store.liveSpendToday(now()), capUsd, estimateUsd: estimate };
