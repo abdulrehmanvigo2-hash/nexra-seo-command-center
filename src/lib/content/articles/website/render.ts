@@ -127,6 +127,9 @@ export type ArticleRender = {
   readonly crossLink: RenderedFile;
 };
 
+/** Everything a render reads except the cross-link anchor. */
+type RenderCore = Omit<ArticleRenderInput, "crossLinkAnchor">;
+
 export type ArticleRenderResult = { readonly ok: true; readonly render: ArticleRender } | { readonly ok: false; readonly refusal: ArticleRenderRefusal };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -186,7 +189,7 @@ export function readingTimeFor(wordCount: number): string {
 /* The content: read, bound, checked                                           */
 /* -------------------------------------------------------------------------- */
 
-function checkBinding(input: ArticleRenderInput): void {
+function checkBinding(input: RenderCore): void {
   const { version, approval, template } = input;
   if (
     !UUID.test(version.articleId) ||
@@ -333,7 +336,7 @@ function bodyParagraph(key: string, text: string, links: Map<string, LinkSpan[]>
   ];
 }
 
-function renderPage(input: ArticleRenderInput, article: ValidatedArticleContent, links: Map<string, LinkSpan[]>): string {
+function renderPage(input: RenderCore, article: ValidatedArticleContent, links: Map<string, LinkSpan[]>): string {
   const { template, version, approval } = input;
   const bases = new Map(article.attestations.map((a) => [a.locator, a.basis] as const));
   const hasLinks = links.size > 0;
@@ -457,7 +460,7 @@ function renderPage(input: ArticleRenderInput, article: ValidatedArticleContent,
 /* b) The registry                                                             */
 /* -------------------------------------------------------------------------- */
 
-function renderRegistry(input: ArticleRenderInput, article: ValidatedArticleContent, readingTime: string): string {
+function renderRegistry(input: RenderCore, article: ValidatedArticleContent, readingTime: string): string {
   const { template, sources } = input;
   if (typeof sources.registry !== "string" || input.sha256(sources.registry) !== template.registry.sha256) refuse("registry-changed", template.registry.path);
   const lines = sources.registry.split("\n");
@@ -494,9 +497,10 @@ function renderCrossLink(input: ArticleRenderInput, route: string): string {
   }
   if (typeof sources.liveArticle !== "string" || input.sha256(sources.liveArticle) !== live.sha256) refuse("live-article-changed", live.path);
   const lines = sources.liveArticle.split("\n");
-  const open = lines.indexOf(live.reviveOpen);
-  const close = open < 0 ? -1 : lines.indexOf(live.sectionClose, open + 1);
-  if (open < 0 || close < 0) refuse("live-article-changed", live.path);
+  // Pinned at publish (P-L2): no fixed section — the whole article is searched, by the same paragraph rule.
+  const open = live.reviveOpen === null ? -1 : lines.indexOf(live.reviveOpen);
+  const close = live.reviveOpen === null ? lines.length : open < 0 ? -1 : lines.indexOf(live.sectionClose, open + 1);
+  if ((live.reviveOpen !== null && open < 0) || close < 0) refuse("live-article-changed", live.path);
 
   // Only lines of plain JSX text inside a <P>…</P> in the revive section are candidates.
   let inParagraph = false;
@@ -517,38 +521,68 @@ function renderCrossLink(input: ArticleRenderInput, route: string): string {
 
 /* -------------------------------------------------------------------------- */
 
-export function renderArticleWebsite(input: ArticleRenderInput): ArticleRenderResult {
-  try {
-    checkBinding(input);
-    const article = readContent(input.version.canonicalContent);
-    checkArticle(input.template, article, input.published, input.liveArticles, input.version.articleId);
-    const links = placeLinks(article);
-    const route = articleRoute(input.template, article.slug);
-    const wordCount = articleWordCount(article);
-    const readingTime = readingTimeFor(wordCount);
+/**
+ * P-L2: the render a publication writes, against a template pinned at publish (`pin.ts`). The same checks and the
+ * same bytes as `renderArticleWebsite`; the cross-link is optional — with no anchor the live article is not modified
+ * and only the new page and the registry are returned.
+ */
+export type PublishRenderInput = Omit<ArticleRenderInput, "crossLinkAnchor"> & { readonly crossLinkAnchor: string | null };
 
-    const page = renderPage(input, article, links);
-    const registry = renderRegistry(input, article, readingTime);
-    const crossLink = renderCrossLink(input, route);
-    const { template, sha256 } = input;
-    return {
-      ok: true,
-      render: {
-        templateId: template.id,
-        pinnedCommit: template.pinnedCommit,
-        slug: article.slug,
-        route,
-        published: input.published,
-        wordCount,
-        readingTime,
-        keywordPhrases: normalisedKeywords(article.keywords),
-        page: { path: articlePagePath(template, article.slug), kind: "new-file", content: page, sha256: sha256(page) },
-        registry: { path: template.registry.path, kind: "modify", content: registry, sha256: sha256(registry), baseSha256: template.registry.sha256 },
-        crossLink: { path: template.liveArticle.path, kind: "modify", content: crossLink, sha256: sha256(crossLink), baseSha256: template.liveArticle.sha256 },
-      },
-    };
+export type PublishRender = Omit<ArticleRender, "crossLink"> & {
+  readonly crossLink: RenderedFile | null;
+  /** The files to commit, in order: the page, the registry, then the cross-link when there is one. */
+  readonly files: readonly RenderedFile[];
+};
+
+export type PublishRenderResult = { readonly ok: true; readonly render: PublishRender } | { readonly ok: false; readonly refusal: ArticleRenderRefusal };
+
+export function renderArticleForPublish(input: PublishRenderInput): PublishRenderResult {
+  try {
+    const { render } = renderParts(input, input.crossLinkAnchor);
+    const crossLink = input.crossLinkAnchor === null ? null : render.crossLink;
+    return { ok: true, render: { ...render, crossLink, files: crossLink === null ? [render.page, render.registry] : [render.page, render.registry, crossLink] } };
   } catch (error) {
     if (error instanceof Refused) return { ok: false, refusal: error.refusal };
     throw error;
   }
 }
+
+function renderParts(input: RenderCore, anchor: string | null): { readonly render: ArticleRender } {
+  checkBinding(input);
+  const article = readContent(input.version.canonicalContent);
+  checkArticle(input.template, article, input.published, input.liveArticles, input.version.articleId);
+  const links = placeLinks(article);
+  const route = articleRoute(input.template, article.slug);
+  const wordCount = articleWordCount(article);
+  const readingTime = readingTimeFor(wordCount);
+
+  const page = renderPage(input, article, links);
+  const registry = renderRegistry(input, article, readingTime);
+  const crossLink = anchor === null ? "" : renderCrossLink({ ...input, crossLinkAnchor: anchor }, route);
+  const { template, sha256 } = input;
+  return {
+    render: {
+      templateId: template.id,
+      pinnedCommit: template.pinnedCommit,
+      slug: article.slug,
+      route,
+      published: input.published,
+      wordCount,
+      readingTime,
+      keywordPhrases: normalisedKeywords(article.keywords),
+      page: { path: articlePagePath(template, article.slug), kind: "new-file", content: page, sha256: sha256(page) },
+      registry: { path: template.registry.path, kind: "modify", content: registry, sha256: sha256(registry), baseSha256: template.registry.sha256 },
+      crossLink: { path: template.liveArticle.path, kind: "modify", content: crossLink, sha256: sha256(crossLink), baseSha256: template.liveArticle.sha256 },
+    },
+  };
+}
+
+export function renderArticleWebsite(input: ArticleRenderInput): ArticleRenderResult {
+  try {
+    return { ok: true, render: renderParts(input, input.crossLinkAnchor).render };
+  } catch (error) {
+    if (error instanceof Refused) return { ok: false, refusal: error.refusal };
+    throw error;
+  }
+}
+

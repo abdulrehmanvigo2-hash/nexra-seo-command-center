@@ -44,9 +44,10 @@ export type ArticleWebsiteTemplate = {
     /**
      * The exact line that opens the section the cross-link is placed in: the
      * revive section in `/2`; in `/3` the "what it does" section (the name
-     * is kept so `/2` is untouched).
+     * is kept so `/2` is untouched). Null when the pin is taken at publish
+     * (P-L2): the anchor may then be in any section of the article.
      */
-    readonly reviveOpen: string;
+    readonly reviveOpen: string | null;
     /** The exact line that closes a section. */
     readonly sectionClose: string;
     /** The live record's keywords, verbatim: the overlap check's live set (D7). */
