@@ -73,7 +73,7 @@ export function ArticlePublicationSection({ projectId, articleId }: { projectId:
   };
 
   const latest = load.status === "loaded" ? latestFor(load.entries, articleId) : null;
-  const inProgress = latest !== null && latest.publication.status !== "requested";
+  const inProgress = latest !== null && latest.publication.status !== "requested" && latest.publication.status !== "abandoned";
 
   return (
     <section className="space-y-3 rounded-panel border border-border p-4" aria-label="Publication">

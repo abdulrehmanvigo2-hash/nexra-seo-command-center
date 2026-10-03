@@ -6,6 +6,7 @@ import type { Publication } from "@/lib/publishing/contract";
 import {
   historyFacts,
   historyFor,
+  canAbandon,
   latestFor,
   listFromResponse,
   pageAction,
@@ -122,6 +123,7 @@ describe("the publish page", () => {
     assert.equal(at(view({ entry: { publication: publication(), approval: { ...open, usedAt: "2026-10-04T11:00:00Z" } } }))?.kind, "none");
     assert.deepEqual(at(view({ entry: { publication: publication({ status: "pull-request-open" }), approval: open } })), { kind: "check", reason: null });
     assert.deepEqual(at(view({ entry: { publication: publication({ status: "live" }), approval: open } })), { kind: "none", reason: null });
+    assert.equal(at(view({ entry: { publication: publication({ status: "abandoned" }), approval: open } }))?.kind, "none");
   });
 
   test("press answers in plain words", () => {
@@ -185,5 +187,22 @@ describe("publication history (PR 8)", () => {
     assert.match(read("components/content/article-publication-section.tsx"), /<PublicationHistory entries=\{load\.entries\} articleId=\{articleId\}/);
     assert.match(read("components/content/observed-content.tsx"), /<ArticlePublicationHistory projectId=\{projectId\} articleId=\{articleId\} \/>/);
     assert.doesNotMatch(read("components/publishing/publication-history.tsx"), /method: "POST"|<Button/);
+  });
+});
+
+describe("abandon on the page", () => {
+  test("an operator may abandon a started publication that never merged; a reviewer never", () => {
+    const view = (status: Publication["status"], role: string) =>
+      viewFromResponse(200, { mode: "merge", configured: true, role, entry: { publication: publication({ status }), approval: open }, preview: null }, NOW);
+    const can = (status: Publication["status"], role = "operator") => {
+      const load = view(status, role);
+      return load.status === "loaded" && canAbandon(load);
+    };
+    assert.equal(can("publishing"), true);
+    assert.equal(can("pull-request-open"), true);
+    for (const status of ["requested", "merged", "live", "abandoned"] as const) assert.equal(can(status), false, status);
+    assert.equal(can("pull-request-open", "reviewer"), false);
+    assert.deepEqual(standing(entry({ status: "abandoned" }, false), NOW), { label: "Abandoned", tone: "neutral" });
+    assert.match(publishOutcome(200, { status: "abandoned" }).text, /can be requested again/);
   });
 });

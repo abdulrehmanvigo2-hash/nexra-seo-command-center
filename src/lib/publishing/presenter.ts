@@ -61,6 +61,7 @@ export function publishPath(approvalId: string): string {
 export function standing(entry: PublicationEntry, now: number): { readonly label: string; readonly tone: "accent" | "positive" | "neutral" | "warning" } {
   const { publication, approval } = entry;
   if (publication.status === "live") return { label: "Live", tone: "positive" };
+  if (publication.status === "abandoned") return { label: "Abandoned", tone: "neutral" };
   if (publication.status !== "requested") return { label: PUBLICATION_STATUS_LABEL[publication.status], tone: "accent" };
   if (entry.ready) return { label: "Ready to publish", tone: "accent" };
   if (approval !== null && approval.usedAt === null && Date.parse(approval.expiresAt) <= now) return { label: "Expired — request again", tone: "warning" };
@@ -127,6 +128,7 @@ export function errorText(code: string): string {
 export function publishOutcome(status: number, body: unknown): { readonly text: string; readonly tone: "neutral" | "warning" | "positive" } {
   const b = isObject(body) ? body : {};
   if (status === 200 && b.status === "live") return { text: "Live: the page answers on the website.", tone: "positive" };
+  if (status === 200 && b.status === "abandoned") return { text: "Abandoned. Close its pull request on GitHub if it is still open; the article can be requested again.", tone: "neutral" };
   if (status === 200 && b.status === "waiting") {
     const waiting: Record<string, string> = {
       checks: "The pull request is open; its checks are still running. Press Check status again in a minute.",
@@ -199,10 +201,17 @@ export function viewFromResponse(status: number, body: unknown, readAt: number):
 
 export const STEPS = ["requested", "publishing", "pull-request-open", "merged", "live"] as const;
 
+/** An operator may abandon a publication that has started and never merged. */
+export function canAbandon(load: Extract<ViewLoad, { status: "loaded" }>): boolean {
+  const { status } = load.entry.publication;
+  return load.role === "operator" && (status === "publishing" || status === "pull-request-open");
+}
+
 /** What the page's one button is, if any. */
 export function pageAction(load: Extract<ViewLoad, { status: "loaded" }>, now: number = load.readAt): { readonly kind: "publish" | "check" | "none"; readonly reason: string | null } {
   const { publication, approval } = load.entry;
   if (publication.status === "live") return { kind: "none", reason: null };
+  if (publication.status === "abandoned") return { kind: "none", reason: "Abandoned: this publication will not continue. Request publication again from the article." };
   if (load.mode === "off") return { kind: "none", reason: MODE_EXPLANATION.off };
   if (!load.configured) return { kind: "none", reason: "The GitHub token is not configured on this deployment." };
   if (publication.status !== "requested") return { kind: "check", reason: null };

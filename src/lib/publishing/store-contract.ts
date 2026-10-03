@@ -45,7 +45,8 @@ export type ProgressStep =
   | { readonly step: "pull-request-open"; readonly branch: string; readonly pullRequestNumber: number; readonly pullRequestUrl: string; readonly headCommit: string }
   | { readonly step: "merged"; readonly mergeCommit: string }
   | { readonly step: "live" }
-  | { readonly step: "error"; readonly code: string; readonly during: string };
+  | { readonly step: "error"; readonly code: string; readonly during: string }
+  | { readonly step: "abandon" };
 
 export type ProgressOutcome =
   | { readonly status: "recorded" | "same"; readonly publication: Publication }
