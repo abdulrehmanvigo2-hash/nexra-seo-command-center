@@ -215,9 +215,15 @@ Editor (or run with the Supabase CLI against a linked project):
     policies, `service_role` SELECT only, the two functions `security definer`
     with EXECUTE for `service_role` only, 12 of 12 guard triggers enabled,
     every other row count unchanged)
+42. `20261020120000_pinned_article_keywords.sql` — M2: the live-articles read
+    returns, for the pinned template slug `ai-lead-follow-up-automation`, the
+    ten keywords the `/2` template pins (a repository test checks them against
+    the template); every other entry, the function's security and every
+    proposal, preview and render are unchanged
+    (`docs/roadmap/M2-opportunities.md`) — **not yet applied** to production
 
-All forty-one are applied to production and recorded in its migration
-history (42 versions).
+The first forty-one are applied to production and recorded in its migration
+history (42 versions); `20261020120000` is not yet applied.
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:

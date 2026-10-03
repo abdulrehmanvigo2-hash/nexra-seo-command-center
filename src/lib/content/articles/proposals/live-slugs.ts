@@ -30,7 +30,10 @@ export type LiveArticle = {
   readonly articleId: string | null;
   /** The version that article proposed for this slug; null when the records name none. */
   readonly articleVersion: number | null;
-  /** That version's keywords as stored; null when no version is named. */
+  /**
+   * That version's keywords as stored; null when no version is named. For the pinned template slug, the keywords its
+   * template pins (migration 20261020120000, M2); null before that migration is applied.
+   */
   readonly keywords: readonly string[] | null;
 };
 
