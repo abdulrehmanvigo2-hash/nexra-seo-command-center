@@ -155,7 +155,7 @@ const DRAFT_ROWS = [
 ];
 
 describe("the tabs (decision Q1)", () => {
-  test("Articles, Drafts, Pipeline and (M3) Calendar; the ten modelled tabs are hidden and a deep link to one opens Articles", () => {
+  test("Articles, Drafts, Pipeline, (M3) Calendar and (M4) Evidence; the ten modelled tabs are hidden and a deep link to one opens Articles", () => {
     assert.deepEqual(
       CONTENT_TABS.map((t) => [t.id, t.label]),
       [
@@ -163,6 +163,7 @@ describe("the tabs (decision Q1)", () => {
         ["drafts", "Drafts"],
         ["pipeline", "Pipeline"],
         ["calendar", "Calendar"],
+        ["evidence", "Evidence"],
       ],
     );
     assert.equal(HIDDEN_CONTENT_TABS.length, 10);

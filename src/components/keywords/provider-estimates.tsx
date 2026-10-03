@@ -131,7 +131,7 @@ function useProviderUsage(projectId: string, active: boolean): ProviderUsageStat
   return state;
 }
 
-function ProviderUsageBlock({ projectId, estimateUsd, mode }: { projectId: string; estimateUsd: number; mode: ProviderMode }) {
+export function ProviderUsageBlock({ projectId, estimateUsd, mode }: { projectId: string; estimateUsd: number; mode: ProviderMode }) {
   const usage = useProviderUsage(projectId, true);
   const shown = providerUsageLines(usage, estimateUsd, mode);
   return (

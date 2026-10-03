@@ -62,7 +62,7 @@ describe("the screen", () => {
   const studio = readFileSync(new URL("src/components/content/observed-content.tsx", root), "utf8");
 
   test("mounted as the Calendar tab on its own read, before the stored content's reads", () => {
-    assert.match(studio, /if \(tab === "calendar"\) return <ContentCalendar projectId=\{projectId\} \/>;\n  return <StudioRecordsTab/);
+    assert.match(studio, /if \(tab === "calendar"\) return <ContentCalendar projectId=\{projectId\} \/>;\n[\s\S]*?\n  return <StudioRecordsTab/);
     assert.match(component, /fetch\(calendarUrl\(projectId\)/);
     assert.match(component, /NOT_SET_UP_TITLE/);
   });

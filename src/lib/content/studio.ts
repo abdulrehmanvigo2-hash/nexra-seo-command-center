@@ -29,6 +29,8 @@ export const CONTENT_TABS = [
   { id: "pipeline", label: "Pipeline", icon: "workflow" },
   // M3: the content calendar, on its own read (`src/components/content/content-calendar.tsx`).
   { id: "calendar", label: "Calendar", icon: "calendar" },
+  // M4: outside sources and evidence units for an accepted opportunity (`src/components/content/evidence-tab.tsx`).
+  { id: "evidence", label: "Evidence", icon: "search" },
 ] as const;
 
 export type ContentTabId = (typeof CONTENT_TABS)[number]["id"];
