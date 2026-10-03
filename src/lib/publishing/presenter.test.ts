@@ -4,6 +4,8 @@ import { describe, test } from "node:test";
 
 import type { Publication } from "@/lib/publishing/contract";
 import {
+  historyFacts,
+  historyFor,
   latestFor,
   listFromResponse,
   pageAction,
@@ -153,5 +155,35 @@ describe("the screens' boundaries", () => {
     const panel = read("components/content/article-panel.tsx");
     assert.match(panel, /article\.status === "approved" && \(\s*<ArticlePublicationSection/);
     assert.match(read("components/dashboard/observed-command-center.tsx"), /<ReadyToPublish projectId=\{projectId\} \/>/);
+  });
+});
+
+describe("publication history (PR 8)", () => {
+  test("every request of the article, newest first; nothing of another article", () => {
+    const first = entry({ id: "e0000000-0000-4000-8000-000000000001", requestedAt: "2026-10-01T10:00:00Z" }, false);
+    const second = entry({ id: "e0000000-0000-4000-8000-000000000002", requestedAt: "2026-10-03T10:00:00Z", status: "live" }, false);
+    const other = entry({ id: "e0000000-0000-4000-8000-000000000003", articleId: "a0000000-0000-4000-8000-000000000099" }, true);
+    assert.deepEqual(historyFor([first, other, second], A).map((e) => e.publication.id), [second.publication.id, first.publication.id]);
+  });
+
+  test("the facts are only what was recorded", () => {
+    assert.deepEqual(historyFacts(publication()), ["version 2", "published date 2026-10-06", "no cross-link"]);
+    const files = [{ path: "lib/blog.ts", kind: "modify" as const, sha256: "1".repeat(64), baseSha256: "2".repeat(64) }];
+    assert.deepEqual(historyFacts(publication({ crossLinkAnchor: "x y", mode: "dry-run", baseCommit: "fde0faf".padEnd(40, "0"), files, mergeCommit: "ab5f10d".padEnd(40, "0") })), [
+      "version 2",
+      "published date 2026-10-06",
+      "with a cross-link",
+      "dry run",
+      "on main fde0faf0",
+      "1 file",
+      "merged as ab5f10d0",
+    ]);
+  });
+
+  test("the history is on the article panel's section and the article detail page, read only there", () => {
+    const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+    assert.match(read("components/content/article-publication-section.tsx"), /<PublicationHistory entries=\{load\.entries\} articleId=\{articleId\}/);
+    assert.match(read("components/content/observed-content.tsx"), /<ArticlePublicationHistory projectId=\{projectId\} articleId=\{articleId\} \/>/);
+    assert.doesNotMatch(read("components/publishing/publication-history.tsx"), /method: "POST"|<Button/);
   });
 });

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, TextInput } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
-import { formatFullDate, formatTimeUtc } from "@/lib/format";
+import { PublicationHistory } from "@/components/publishing/publication-history";
 import {
   MODE_EXPLANATION,
   MODE_LABEL,
@@ -16,7 +16,6 @@ import {
   listFromResponse,
   publishPath,
   requestOutcome,
-  standing,
   todayUtc,
   type ListLoad,
 } from "@/lib/publishing/presenter";
@@ -97,25 +96,7 @@ export function ArticlePublicationSection({ projectId, articleId }: { projectId:
       {load.status === "loaded" && (
         <>
           <p className="text-[12px] text-fg-subtle">{MODE_EXPLANATION[load.mode]}</p>
-          {latest === null ? (
-            <p className="text-[12px] text-fg-muted">No publication has been requested for this article.</p>
-          ) : (
-            (() => {
-              const shown = standing(latest, load.readAt);
-              return (
-                <div className="flex flex-wrap items-center gap-2 text-[12px]">
-                  <Badge tone={shown.tone}>{shown.label}</Badge>
-                  <span className="text-fg-muted">
-                    Requested {formatFullDate(latest.publication.requestedAt)} {formatTimeUtc(latest.publication.requestedAt)} · version {latest.publication.articleVersion} · published date{" "}
-                    {latest.publication.publishedOn}
-                  </span>
-                  <Link href={publishPath(latest.publication.approvalId)} className="font-medium text-accent hover:underline">
-                    Open publish page
-                  </Link>
-                </div>
-              );
-            })()
-          )}
+          <PublicationHistory entries={load.entries} articleId={articleId} readAt={load.readAt} />
           {!inProgress && (
             <Button size="sm" variant="secondary" disabled={busy} onClick={() => setDialog(true)}>
               Request publication…

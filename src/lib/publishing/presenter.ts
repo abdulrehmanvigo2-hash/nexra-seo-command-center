@@ -211,3 +211,24 @@ export function pageAction(load: Extract<ViewLoad, { status: "loaded" }>, now: n
   if (load.preview === null || load.preview.status !== "ready") return { kind: "none", reason: "The files could not be prepared; see above. Nothing can be published until they can." };
   return { kind: "publish", reason: null };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Publication history (PR 8)                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Every request of one article, newest first. */
+export function historyFor(entries: readonly PublicationEntry[], articleId: string): readonly PublicationEntry[] {
+  return entries
+    .filter((entry) => entry.publication.articleId === articleId)
+    .sort((a, b) => b.publication.requestedAt.localeCompare(a.publication.requestedAt) || b.publication.id.localeCompare(a.publication.id));
+}
+
+/** The facts of one request after its standing, each a short phrase; nothing that was not recorded. */
+export function historyFacts(publication: Publication): readonly string[] {
+  const facts = [`version ${publication.articleVersion}`, `published date ${publication.publishedOn}`, publication.crossLinkAnchor === null ? "no cross-link" : "with a cross-link"];
+  if (publication.mode !== null) facts.push(publication.mode === "merge" ? "merge mode" : "dry run");
+  if (publication.baseCommit !== null) facts.push(`on main ${shortId(publication.baseCommit)}`);
+  if (publication.files !== null) facts.push(`${publication.files.length} file${publication.files.length === 1 ? "" : "s"}`);
+  if (publication.mergeCommit !== null) facts.push(`merged as ${shortId(publication.mergeCommit)}`);
+  return facts;
+}
