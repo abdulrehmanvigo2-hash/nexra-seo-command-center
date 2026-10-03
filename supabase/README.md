@@ -264,10 +264,14 @@ Editor (or run with the Supabase CLI against a linked project):
     `service_role` only). The two live-slug list functions become `stable`
     and add each merged or live publication's slug and article, so the
     per-article live-slug migration ends (`docs/roadmap/P-L2-publishing.md`)
-    — **not yet applied** to production
+    — **applied to production and recorded on 3 Oct 2026** by the §1.2 method
+    after manual backup run `37136230527` (SHA-256 `c062f82d…0b5f07`; 46
+    history rows; the table empty, RLS on with no policies, `service_role`
+    SELECT only, 4 of 4 guard triggers enabled; the three functions EXECUTE for
+    `service_role` only; the live slugs and every row count unchanged)
 
-The first forty-four are applied to production and recorded in its migration
-history (45 versions); `20261023120000` is not yet applied.
+All forty-five are applied to production and recorded in its migration
+history (46 versions).
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:

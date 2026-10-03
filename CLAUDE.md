@@ -2473,9 +2473,17 @@ the pinned slug `ai-lead-follow-up-automation` reads its ten template keywords; 
 with no policies, `service_role` SELECT only, 4 of 4 guard triggers enabled; the accept, set-plan-date and
 link-article functions `security definer` with EXECUTE for `service_role` only; every other row count unchanged. No
 map was rebuilt or approved and no opportunity accepted by these steps (the owner rebuilds the map). **P-L2 —
-publishing Level 2 — is in progress** under `docs/roadmap/P-L2-publishing.md` (stacked draft PRs, none merged until
-approved), with the owner's decisions of 3 Oct: no email (a request appears as *Ready to publish* in the Command
-Center), `NEXRA_PUBLISH_MODE` default `off` (first live use `dry-run`), no reviewer by default.
+publishing Level 2 — is LIVE in code** (`docs/roadmap/P-L2-publishing.md`; PR #128–#136 merged 3 Oct, `master`
+`91da3ab`, its six deviations accepted by the owner), with the owner's decisions of 3 Oct: no email (a request appears
+as *Ready to publish* in the Command Center), `NEXRA_PUBLISH_MODE` default `off` (first live use `dry-run`, set by the
+owner), no reviewer by default. Migration `20261023120000_article_publications.sql` (SHA-256 `c062f82d…0b5f07`) was
+**applied to production and recorded on 3 Oct 2026** by the §1.2 method after manual backup run `37136230527` (local
+tampered-hash test first; one hash-checked transaction, then `NOTIFY pgrst`). Verified read-only: **46 history rows**;
+`nexra_article_publications` empty, RLS on with no policies, `service_role` SELECT only, 4 of 4 guard triggers enabled;
+the request, start and progress functions `security definer`, empty `search_path`, EXECUTE for `service_role` only; the
+two live-slug functions `stable`, executable by no API role and still listing the four live slugs; every other row
+count unchanged. `NEXRA_PUBLISH_MODE` is unset (`off`). **M4 — research and evidence with outside sources — is in
+progress** under `docs/roadmap/M4-research-evidence.md` (stacked draft PRs, none merged until approved).
 
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 
@@ -2489,6 +2497,9 @@ Center), `NEXRA_PUBLISH_MODE` default `off` (first live use `dry-run`), no revie
 - **Renderer:** rich blocks and H3 anchors; review the "Our view" label's visibility on the live page.
 - **Renderer re-pin:** automate template re-pin per publication (part of P-L2) — today each new article needs a
   hand-made `/N` template PR at the then-current `nexra-ai` `main` (`/3` for article 2, `/4` for article 3).
+- **Release a slug on takedown (P-L2 follow-up, owner, 3 Oct):** a merged or live publication keeps its slug live for
+  good; taking an article down (a nexra-ai revert) needs a recorded `taken-down` step that releases the slug, so the
+  live-slug list, the proposal check and the renderer stop treating it as live.
 - **Website:** service pages (the planned nexra-ai PR 3); a Search Console follow-up on the new article's indexing
   and first impressions.
 - **Private repository and GitHub Pro, when revenue allows (operator decision, 1 Oct).** The repository is public on
