@@ -57,6 +57,7 @@ describe("the panel", () => {
     assert.match(tab, /confirmation: queueConfirmation\(briefRequest\), run: \(\) => void briefPost\.send\("\/api\/agent-runs", briefRequest/);
     assert.match(panel, /run\.status === "queued" && <RunNowButton/);
     assert.match(panel, /Model proposal/);
-    assert.doesNotMatch(panel, /fetch\(/, "the panel itself writes nothing");
+    const briefPanel = panel.slice(panel.indexOf("export function OpportunityBriefPanel"), panel.indexOf("function ArticleDraftSection"));
+    assert.doesNotMatch(briefPanel, /fetch\(/, "the brief panel itself writes nothing; the parent owns its POST (M6's article draft section queues its own parts)");
   });
 });
