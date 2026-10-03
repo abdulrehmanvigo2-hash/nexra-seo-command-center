@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { decideAccess, operatorFromClaims } from "@/lib/auth/access";
+import { decideAccess, operatorFromClaims, reviewerFromClaims } from "@/lib/auth/access";
 import {
   AuthConfigurationError,
   readAuthConfig,
@@ -12,7 +12,9 @@ import {
  *
  * Runs before anything renders, refreshes the Supabase session cookies, and
  * decides from the verified token whether the request comes from an operator.
- * Pages go to the sign-in page if not; anything else is refused with 401.
+ * Pages go to the sign-in page if not; anything else is refused with 401. A
+ * reviewer (P-L2, `NEXRA_REVIEWER_EMAILS`, empty by default) reaches the publish
+ * pages and their API only; anything else answers 403.
  *
  * This is the only protection the statically rendered pages have, so the
  * matcher excludes nothing but build assets and icons. It is not the only
@@ -26,6 +28,7 @@ import {
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   let signedIn = false;
+  let reviewer = false;
 
   let config: ReturnType<typeof readAuthConfig> | null = null;
   try {
@@ -53,8 +56,10 @@ export async function proxy(request: NextRequest) {
     try {
       const { data, error } = await supabase.auth.getClaims();
       signedIn = !error && operatorFromClaims(data?.claims, config.operatorEmails) !== null;
+      reviewer = !error && !signedIn && reviewerFromClaims(data?.claims, config.reviewerEmails, config.operatorEmails) !== null;
     } catch {
       signedIn = false;
+      reviewer = false;
     }
   }
 
@@ -63,6 +68,7 @@ export async function proxy(request: NextRequest) {
     pathname: request.nextUrl.pathname,
     search: request.nextUrl.search,
     signedIn,
+    reviewer,
   });
 
   if (decision.kind === "allow") {
@@ -75,7 +81,9 @@ export async function proxy(request: NextRequest) {
   const answer =
     decision.kind === "redirect"
       ? NextResponse.redirect(new URL(decision.to, request.url), 307)
-      : NextResponse.json({ error: "unauthorized" }, { status: 401 });
+      : decision.kind === "forbidden"
+        ? NextResponse.json({ error: "forbidden" }, { status: 403 })
+        : NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   // Carry any refreshed or cleared session cookies onto the answer.
   for (const cookie of response.cookies.getAll()) answer.cookies.set(cookie);

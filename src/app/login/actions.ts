@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { operatorFromUser, safeNextPath } from "@/lib/auth/access";
+import { operatorFromUser, reviewerFromUser, safeNextPath } from "@/lib/auth/access";
 import { AuthConfigurationError, readAuthConfig } from "@/lib/auth/config";
 import { createSessionClient } from "@/lib/auth/server-client";
 import { consumeSignInAttempt } from "@/lib/auth/sign-in-limits";
@@ -73,7 +73,7 @@ export async function signInAction(
     const { data, error } = await client.auth.signInWithPassword({ email: address, password });
     if (error || !data.user) return { error: INCORRECT, email: address };
 
-    if (!operatorFromUser(data.user, config.operatorEmails)) {
+    if (!operatorFromUser(data.user, config.operatorEmails) && !reviewerFromUser(data.user, config.reviewerEmails, config.operatorEmails)) {
       await client.auth.signOut({ scope: "local" });
       return { error: "This account does not have access to Nexra.", email: address };
     }

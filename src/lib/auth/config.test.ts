@@ -39,6 +39,20 @@ function refused(env: Record<string, string | undefined>, fragment: string) {
   );
 }
 
+describe("readAuthConfig: reviewers (P-L2)", () => {
+  test("unset or empty: nobody is a reviewer", () => {
+    assert.equal(readAuthConfig(GOOD).reviewerEmails.size, 0);
+    assert.equal(readAuthConfig({ ...GOOD, NEXRA_REVIEWER_EMAILS: "  " }).reviewerEmails.size, 0);
+  });
+
+  test("a list is read lower-cased; a malformed list admits no reviewer and never stops sign-in", () => {
+    assert.deepEqual([...readAuthConfig({ ...GOOD, NEXRA_REVIEWER_EMAILS: " Review@NexraAgency.com, " }).reviewerEmails], ["review@nexraagency.com"]);
+    const config = readAuthConfig({ ...GOOD, NEXRA_REVIEWER_EMAILS: "review@nexraagency.com, not-an-email" });
+    assert.equal(config.reviewerEmails.size, 0);
+    assert.deepEqual([...config.operatorEmails], ["ops@nexraagency.com"]);
+  });
+});
+
 describe("readAuthConfig: what a valid configuration is", () => {
   test("a good environment reads to its origin, key and lower-cased operator set", () => {
     const config = readAuthConfig({ ...GOOD, [OPERATOR_EMAILS_VARIABLE]: " Ops@NexraAgency.com , second@nexraagency.com,, " });
