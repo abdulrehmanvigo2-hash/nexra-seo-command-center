@@ -204,6 +204,11 @@ Editor (or run with the Supabase CLI against a linked project):
     lists `missed-call-text-back` → `339c9b60…` v2 with its three keywords,
     the propose and read functions' bodies unchanged, every row count and the
     article tables' fingerprint unchanged)
+41. `20261019120000_topic_maps.sql` — M1 topical maps: `nexra_topic_maps`,
+    `nexra_topic_clusters` and `nexra_topic_cluster_keywords` (append-only,
+    guarded; RLS on, no policies; `service_role` SELECT and EXECUTE on the two
+    functions `nexra_topic_map_record` and `nexra_topic_map_approve` only;
+    `docs/roadmap/M1-topical-map.md`) — **not yet applied** to production
 
 All thirty-eight are applied to production and recorded in its migration
 history (39 versions).

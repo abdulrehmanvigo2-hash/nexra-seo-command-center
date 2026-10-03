@@ -210,6 +210,7 @@ begin
              'nexra_provider_run_finish(uuid,text,numeric,numeric,text)','nexra_provider_run_reserve(text,text[],integer,text,text,text,numeric,numeric,uuid)','nexra_provider_run_resume(uuid,numeric,numeric,uuid)',
              'nexra_search_console_query_pages_record(text,text,text,date,date,jsonb,timestamp with time zone)',
              'nexra_search_console_snapshot_record(text,text,text,date,date,text,bigint,bigint,numeric,numeric,jsonb,jsonb,text[],timestamp with time zone)',
+             'nexra_topic_map_approve(text,uuid,uuid)','nexra_topic_map_record(text,jsonb,uuid)',
              'rate_limit_consume(text,integer,integer)'],
      'security definer, whole database: exactly the authorized functions with their signatures; nothing unexpected');
   perform t.ok((select bool_and(proconfig = array['search_path=""']) from pg_proc where proname in ('nexra_article_approve_version','nexra_article_approvals_check_insert','nexra_article_approvals_guard_write')), 'empty search_path');
