@@ -231,9 +231,15 @@ Editor (or run with the Supabase CLI against a linked project):
     transaction). `nexra_agent_tasks.source_kind` gains `opportunity`;
     `nexra_agent_task_create` still refuses it. `service_role`: SELECT on the
     table, EXECUTE on the function only — **not yet applied** to production
+44. `20261022120000_content_calendar.sql` — M3: `nexra_agent_tasks.planned_for`
+    and two task event types, `plan-date-changed` and `article-linked` (with
+    `from_date`, `to_date` and `article_id`; every earlier type keeps its shape),
+    through `nexra_agent_task_set_plan_date` and `nexra_agent_task_link_article`
+    (`security definer`, the task row lock; EXECUTE for `service_role` only)
+    (`docs/roadmap/M3-content-calendar.md`) — **not yet applied** to production
 
 The first forty-one are applied to production and recorded in its migration
-history (42 versions); `20261020120000` and `20261021120000` are not yet applied.
+history (42 versions); `20261020120000`, `20261021120000` and `20261022120000` are not yet applied.
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:
