@@ -11,6 +11,7 @@ import {
 import { ArticleApprovalSection } from "@/components/content/article-approval-section";
 import { ArticleCheckSection } from "@/components/content/article-check-section";
 import { ArticleProposalSection } from "@/components/content/article-proposal-section";
+import { ArticlePublicationSection } from "@/components/content/article-publication-section";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
@@ -369,6 +370,10 @@ function ArticleDetail({
         projectId={projectId}
         articleId={article.id}
       />
+
+      {article.status === "approved" && (
+        <ArticlePublicationSection key={`publication:${article.id}:${article.currentVersion}`} projectId={projectId} articleId={article.id} />
+      )}
 
       {viewing === null ? (
         <p className="text-xs text-critical">This version could not be read.</p>
