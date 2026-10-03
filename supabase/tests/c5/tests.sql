@@ -182,7 +182,7 @@ begin
   -- The authorized security definer article functions: C2 create/save, C4 record,
   -- C5 approve, and (since 20260925120000) C6 propose/withdraw. Any other is refused.
   perform t.ok((select array_agg(proname order by proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and prosecdef and proname like 'nexra_article%')
-     = array['nexra_article_approve_version','nexra_article_check_unit_carry','nexra_article_check_unit_fresh','nexra_article_check_unit_record','nexra_article_create','nexra_article_publication_live_articles','nexra_article_publication_propose','nexra_article_publication_withdraw','nexra_article_save_version']::name[], 'security definer article functions: exactly C2, C4, C5, C6, the F8 carry and fresh write functions and the F9 live-articles read');
+     = array['nexra_article_approve_version','nexra_article_check_unit_carry','nexra_article_check_unit_fresh','nexra_article_check_unit_record','nexra_article_create','nexra_article_publication_live_articles','nexra_article_publication_progress','nexra_article_publication_propose','nexra_article_publication_request','nexra_article_publication_start','nexra_article_publication_withdraw','nexra_article_save_version']::name[], 'security definer article functions: exactly C2, C4, C5, C6, the F8 carry and fresh write functions, the F9 live-articles read and the P-L2 request, start and progress');
   perform t.ok((select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where prosecdef and n.nspname not in ('pg_catalog', 'information_schema'))
      = array['agent_run_claim(uuid,text,text,integer)','agent_run_finish(uuid,uuid,text,text,jsonb,text,text)','agent_run_heartbeat(uuid,uuid,integer)',
              'agent_run_recover_expired(integer)','agent_run_schedule_retries(integer)','agent_runs_close_cancelled_attempt()','agent_runtime_status()',
@@ -196,7 +196,10 @@ begin
              'nexra_article_check_unit_record(text,uuid,smallint,uuid,smallint,text,text,smallint,smallint,smallint,text,text,jsonb,uuid,uuid)',
              'nexra_article_create(text,uuid,text,text,jsonb,uuid)',
              'nexra_article_publication_live_articles(text)',
+             'nexra_article_publication_progress(text,uuid,text,jsonb,uuid)',
              'nexra_article_publication_propose(text,uuid,smallint,uuid,text,uuid,text,text,text,text,uuid)',
+             'nexra_article_publication_request(text,jsonb,text,uuid)',
+             'nexra_article_publication_start(text,uuid,text,text,text,jsonb,uuid)',
              'nexra_article_publication_withdraw(text,uuid,uuid)',
              'nexra_article_save_version(text,uuid,smallint,text,text,jsonb,uuid)',
              'nexra_content_draft_save_version(uuid,text,smallint,text,text,uuid)',
