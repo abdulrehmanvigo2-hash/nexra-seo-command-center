@@ -12,6 +12,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { ContentCalendar } from "@/components/content/content-calendar";
+import { EvidenceTab } from "@/components/content/evidence-tab";
 import { LinkTaskControl } from "@/components/content/link-task-control";
 import { ArticlePublicationHistory } from "@/components/publishing/publication-history";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
@@ -186,10 +187,12 @@ export function ContentStudio({ projects }: { projects: readonly ProjectOption[]
 function StudioTab({ projectId, tab }: { projectId: string; tab: ContentTabId }) {
   // The calendar reads its own route, so the stored content's reads never hide it.
   if (tab === "calendar") return <ContentCalendar projectId={projectId} />;
+  // M4: the evidence tab reads its own routes too.
+  if (tab === "evidence") return <EvidenceTab projectId={projectId} />;
   return <StudioRecordsTab projectId={projectId} tab={tab} />;
 }
 
-function StudioRecordsTab({ projectId, tab }: { projectId: string; tab: Exclude<ContentTabId, "calendar"> }) {
+function StudioRecordsTab({ projectId, tab }: { projectId: string; tab: Exclude<ContentTabId, "calendar" | "evidence"> }) {
   const data = useStudioData(projectId);
   if (data.status === "loading") return <Skeleton className="h-64 w-full" />;
   if (data.status !== "ready") {
