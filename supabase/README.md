@@ -198,7 +198,12 @@ Editor (or run with the Supabase CLI against a linked project):
 40. `20261018120000_live_slug_missed_call_text_back.sql` — `missed-call-text-back`
     recorded as the third slug published after the template pin, owned by
     article `339c9b60…` (runbook §7, step 5; nexra-ai PR #13, published
-    3 Oct 2026) — **not yet applied** to production
+    3 Oct 2026) — applied to production and recorded on 3 Oct 2026 (SHA-256
+    `586f2739…d006cf`, one hash-checked transaction after manual backup run
+    `37099766394`; verified read-only: 41 history rows, the live-articles read
+    lists `missed-call-text-back` → `339c9b60…` v2 with its three keywords,
+    the propose and read functions' bodies unchanged, every row count and the
+    article tables' fingerprint unchanged)
 
 All thirty-eight are applied to production and recorded in its migration
 history (39 versions).
