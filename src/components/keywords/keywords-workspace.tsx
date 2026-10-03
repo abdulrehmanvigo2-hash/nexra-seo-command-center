@@ -7,6 +7,7 @@ import { CuratedKeywordsList, type CuratedLoad } from "@/components/keywords/cur
 import { ObservedCannibalization, ObservedGroups, ObservedMovement, ObservedOpportunities, ObservedPortfolio } from "@/components/keywords/observed-views";
 import { ProviderEstimatesSection } from "@/components/keywords/provider-estimates";
 import { TopicMapSection } from "@/components/keywords/topic-map";
+import { ContentOpportunitiesSection } from "@/components/keywords/content-opportunities";
 import { SearchConsoleKeywords, type Curation } from "@/components/search-console/search-console-keywords";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { Badge } from "@/components/ui/badge";
@@ -242,6 +243,8 @@ export function KeywordsWorkspace({
           />
 
           <div role="tabpanel" id={tabPanelDomId("kw", tab)} aria-labelledby={tabDomId("kw", tab)} tabIndex={0} className="space-y-4 focus-visible:outline-none">
+            {/* M2: the scored content opportunities, on their own read, above the query labels. */}
+            {tab === "opportunities" && <ContentOpportunitiesSection projectId={projectId} onOpenMap={() => setTab("map")} />}
             {/* The tabs over the observed inventory show its state until it is read. */}
             {(tab === "keywords" || tab === "clusters" || tab === "opportunities") && (
               <>
