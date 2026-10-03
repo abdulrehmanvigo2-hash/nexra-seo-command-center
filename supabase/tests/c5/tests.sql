@@ -205,6 +205,7 @@ begin
              'nexra_crawl_findings_record(text,uuid,smallint,integer,integer,integer,integer,integer,boolean,jsonb,text[],jsonb)',
              'nexra_keyword_add(text,text,text,text,text,uuid)','nexra_keyword_set_group(text,uuid,text,uuid)','nexra_keyword_set_note(text,uuid,text,uuid)',
              'nexra_keyword_set_status(text,uuid,text,uuid)','nexra_keyword_set_target(text,uuid,text,uuid)',
+             'nexra_opportunity_accept(text,jsonb,uuid)',
              'nexra_provider_metrics_record(uuid,uuid,jsonb)',
              'nexra_provider_request_record(uuid,smallint,text,jsonb,text,integer,text,numeric,integer,text,timestamp with time zone,timestamp with time zone)',
              'nexra_provider_run_finish(uuid,text,numeric,numeric,text)','nexra_provider_run_reserve(text,text[],integer,text,text,text,numeric,numeric,uuid)','nexra_provider_run_resume(uuid,numeric,numeric,uuid)',
