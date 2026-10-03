@@ -108,3 +108,16 @@ export function writeOutcome(httpStatus: number, body: unknown): { readonly text
   if (httpStatus === 401 || httpStatus === 403) return { text: "Sign in again as an operator.", tone: "warning" };
   return { text: "The request failed. Nothing is known to have been recorded.", tone: "warning" };
 }
+
+// ---------------------------------------------------------------------------
+// *Link to a task…* on the article pages (M3, PR 5).
+
+export const LINK_TASK_TITLE = "Planned task";
+export const LINK_TASK_NOT_SET_UP = "Linking this article to a planned task needs migration 20261022120000 in this deployment's database.";
+
+/** The tasks linked to this article now, and the open tasks it could be linked to. */
+export function linkChoices(view: CalendarView, articleId: string): { readonly linked: readonly CalendarItem[]; readonly open: readonly CalendarItem[] } {
+  const linked = view.items.filter((item) => item.article?.id === articleId);
+  const open = view.items.filter((item) => item.task.status !== "completed" && item.task.status !== "cancelled" && item.article?.id !== articleId);
+  return { linked, open };
+}
