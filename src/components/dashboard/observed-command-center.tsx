@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { Icon } from "@/components/icons";
+import { ReadyToPublish } from "@/components/publishing/ready-to-publish";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/field";
@@ -146,6 +147,8 @@ export function ObservedCommandCenter({ projects }: { projects: readonly Project
           ))}
         </div>
       )}
+
+      {projectId && <ReadyToPublish projectId={projectId} />}
 
       <p className="text-[11.5px] leading-relaxed text-fg-subtle">{COMMAND_CENTER_NOTE}</p>
     </div>
