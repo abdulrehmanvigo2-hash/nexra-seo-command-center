@@ -20,6 +20,8 @@ import {
   NEXRA_AI_BLOG_TEMPLATE_V2,
   NEXRA_AI_BLOG_TEMPLATE_V3,
   NEXRA_AI_BLOG_TEMPLATE_V3_CROSS_LINK_ANCHOR,
+  NEXRA_AI_BLOG_TEMPLATE_V4,
+  NEXRA_AI_BLOG_TEMPLATE_V4_CROSS_LINK_ANCHOR,
   type ArticleWebsiteTemplate,
 } from "@/lib/content/articles/website/template";
 import { NEXRA_AI_BLOG_TEMPLATE } from "@/lib/content/publications/website/template";
@@ -660,6 +662,136 @@ describe("the re-pinned template /3 at 356f38f (runbook §7, step 2)", () => {
       detail: "AI lead qualification repeats AI lead qualification (/ai-lead-follow-up-automation)",
     });
     assert.deepEqual(refused(sdr((v) => Object.assign(v, { keywords: ["AI SDR tool", "AI lead reactivation"] })), v3()), {
+      code: "keyword-overlap",
+      detail: "AI lead reactivation repeats AI lead reactivation (/ai-dead-lead-reactivation)",
+    });
+  });
+});
+
+describe("the re-pinned template /4 at ab5f10d (runbook §7, step 2, article 3)", () => {
+  const JOURNEY_OPEN = "        <Section section={sections.journey}>";
+  const ANCHOR_LINE = "            A missed call is the one lead that usually leaves no record at all:";
+  const LIVE4 = [
+    "        <Section section={sections.what}>",
+    "          <P>",
+    '            together. <A href="/blog/ai-sdr-tool">The AI layer reads what someone actually wrote</A> — in their own',
+    "          </P>",
+    "        </Section>",
+    "",
+    JOURNEY_OPEN,
+    "          <P>",
+    "            The clearest way to think about this is as a fixed sequence that runs",
+    "          </P>",
+    "          <H3>How a missed call enters the follow-up sequence</H3>",
+    "          <P>",
+    ANCHOR_LINE,
+    "            no form, no message, often no voicemail. The simplest way to bring it",
+    "          </P>",
+    "        </Section>",
+    "",
+    "        <Section section={sections.revive}>",
+    "          <P>",
+    "            A missed call is the one lead that usually leaves no record at all, said again.",
+    "          </P>",
+    "        </Section>",
+    "",
+  ].join("\n");
+  const REGISTRY4 = REGISTRY.replace('    slug: "ai-lead-follow-up-automation",\n  },', '    slug: "ai-lead-follow-up-automation",\n  },\n  {\n    slug: "ai-dead-lead-reactivation",\n  },\n  {\n    slug: "ai-sdr-tool",\n  },');
+  const TEMPLATE4: ArticleWebsiteTemplate = {
+    ...NEXRA_AI_BLOG_TEMPLATE_V4,
+    registry: { ...NEXRA_AI_BLOG_TEMPLATE_V4.registry, sha256: sha256(REGISTRY4) },
+    liveArticle: { ...NEXRA_AI_BLOG_TEMPLATE_V4.liveArticle, sha256: sha256(LIVE4) },
+  };
+  const LIVE_RECORDS = [
+    { slug: "ai-lead-follow-up-automation", articleId: null, articleVersion: null, keywords: null },
+    { slug: "ai-dead-lead-reactivation", articleId: "1003104c-6b25-456f-9304-eefa2ba88e7d", articleVersion: 6, keywords: ["AI dead lead reactivation", "AI lead reactivation", "reactivate cold leads with AI", "AI agent lead re-engagement"] },
+    { slug: "ai-sdr-tool", articleId: "6f50f8cb-bb85-4389-a5b4-21402c739f8b", articleVersion: 2, keywords: ["AI SDR tool", "best AI SDR tools", "AI SDR", "AI SDR companies"] },
+  ];
+  const missed = (change: (value: Record<string, unknown>) => void = () => {}) =>
+    raw((value) => {
+      Object.assign(value, { slug: "missed-call-text-back", keywords: ["missed call text back", "auto missed call text back"] });
+      change(value);
+    });
+  const v4 = (overrides: Partial<ArticleRenderInput> = {}): Partial<ArticleRenderInput> => ({
+    template: TEMPLATE4,
+    sources: { registry: REGISTRY4, liveArticle: LIVE4 },
+    liveArticles: LIVE_RECORDS,
+    crossLinkAnchor: NEXRA_AI_BLOG_TEMPLATE_V4_CROSS_LINK_ANCHOR,
+    ...overrides,
+  });
+
+  test("the pin: id, commit, the three files' hashes, three live slugs, the journey section; everything else as /2", () => {
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V4.id, "nexra-ai-blog-tsx/4");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V4.pinnedCommit, "ab5f10d6bea82f174efa8b5fcf2b60d660687e23");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V4.registry.sha256, "072bb1d15ad4a70f59e6bf1daecc81146faf23009eb53019ac61f69f711afe83");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V4.liveArticle.sha256, "516699482e6f5cfc1e77c45e28771608c08e6dbc5041567f99bdb95d1bd80444");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V4.components.sha256, NEXRA_AI_BLOG_TEMPLATE_V2.components.sha256, "the component file is byte-identical");
+    assert.deepEqual(NEXRA_AI_BLOG_TEMPLATE_V4.liveSlugs, ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation", "ai-sdr-tool"]);
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V4.liveArticle.reviveOpen, JOURNEY_OPEN);
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V4.liveArticle.slug, "ai-lead-follow-up-automation");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V4.liveArticle.path, NEXRA_AI_BLOG_TEMPLATE_V2.liveArticle.path);
+    assert.deepEqual(NEXRA_AI_BLOG_TEMPLATE_V4.liveArticle.keywords, NEXRA_AI_BLOG_TEMPLATE_V2.liveArticle.keywords);
+    for (const key of ["repository", "defaultBranch", "pagePathTemplate", "routeTemplate", "reservedSectionIds"] as const) {
+      assert.deepEqual(NEXRA_AI_BLOG_TEMPLATE_V4[key], NEXRA_AI_BLOG_TEMPLATE_V2[key], key);
+    }
+    assert.deepEqual(NEXRA_AI_BLOG_TEMPLATE_V4.registry, { ...NEXRA_AI_BLOG_TEMPLATE_V2.registry, sha256: NEXRA_AI_BLOG_TEMPLATE_V4.registry.sha256 });
+    assert.ok(ANCHOR_LINE.includes(NEXRA_AI_BLOG_TEMPLATE_V4_CROSS_LINK_ANCHOR));
+    assert.notEqual(NEXRA_AI_BLOG_TEMPLATE_V4.registry.sha256, NEXRA_AI_BLOG_TEMPLATE_V3.registry.sha256);
+    assert.notEqual(NEXRA_AI_BLOG_TEMPLATE_V4.liveArticle.sha256, NEXRA_AI_BLOG_TEMPLATE_V3.liveArticle.sha256);
+  });
+
+  test("/3 is untouched: its id, commit, hashes, two live slugs and what section are what PR #104 recorded", () => {
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V3.id, "nexra-ai-blog-tsx/3");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V3.pinnedCommit, "356f38f8bbff4928e704d67799e08b65b3ed94f4");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V3.registry.sha256, "d6f1c74ce38bf035f18d2d26b6b446d340106362248438732083658481834c52");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V3.liveArticle.sha256, "1ca570239f134f7b4c56b012974b51752d160f127ac32c3e5d7ba7242193ffd9");
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V3.liveArticle.reviveOpen, "        <Section section={sections.what}>");
+    assert.deepEqual(NEXRA_AI_BLOG_TEMPLATE_V3.liveSlugs, ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation"]);
+    assert.equal(NEXRA_AI_BLOG_TEMPLATE_V3_CROSS_LINK_ANCHOR, "The AI layer reads what someone actually wrote");
+  });
+
+  test("renders under /4: the record appended after three, and one link in the journey section's missed-call paragraph, not in the revive section", () => {
+    const result = renderArticleWebsite(input(canonicalArticleJson(valid(missed())), v4()));
+    assert.ok(result.ok, JSON.stringify(result));
+    const { render: out } = result;
+    assert.equal(out.templateId, "nexra-ai-blog-tsx/4");
+    assert.equal(out.pinnedCommit, "ab5f10d6bea82f174efa8b5fcf2b60d660687e23");
+    assert.equal(out.route, "/blog/missed-call-text-back");
+    assert.equal(out.page.path, "app/blog/missed-call-text-back/page.tsx");
+    assert.equal(out.registry.baseSha256, TEMPLATE4.registry.sha256);
+    assert.ok(out.registry.content.indexOf('slug: "missed-call-text-back"') > out.registry.content.indexOf('slug: "ai-sdr-tool"'), "appended after all three");
+    assert.equal(out.crossLink.baseSha256, TEMPLATE4.liveArticle.sha256);
+    const before = LIVE4.split("\n");
+    const after = out.crossLink.content.split("\n");
+    assert.equal(after.length, before.length);
+    const changed = after.map((line, i) => (line === before[i] ? -1 : i)).filter((i) => i >= 0);
+    assert.deepEqual(changed, [12], "only the missed-call paragraph's first line; the same words in the revive section are untouched");
+    assert.equal(after[12], '            <A href="/blog/missed-call-text-back">A missed call is the one lead that usually leaves no record at all</A>:');
+    assert.ok(after[2].includes('<A href="/blog/ai-sdr-tool">'), "the AI SDR link stays");
+  });
+
+  test("under /4 the registry and the live article must be the ab5f10d files, and the anchor must sit in the journey section", () => {
+    assert.deepEqual(refused(missed(), v4({ sources: { registry: REGISTRY, liveArticle: LIVE4 } })), { code: "registry-changed", detail: "lib/blog.ts" }, "the 1a688bd registry is refused");
+    assert.deepEqual(refused(missed(), v4({ sources: { registry: REGISTRY4, liveArticle: LIVE } })), {
+      code: "live-article-changed",
+      detail: "app/blog/ai-lead-follow-up-automation/page.tsx",
+    });
+    assert.deepEqual(refused(missed(), v4({ sources: { registry: REGISTRY4, liveArticle: `${LIVE4} ` } })), {
+      code: "live-article-changed",
+      detail: "app/blog/ai-lead-follow-up-automation/page.tsx",
+    });
+    assert.deepEqual(refused(missed(), v4({ crossLinkAnchor: NEXRA_AI_BLOG_TEMPLATE_V3_CROSS_LINK_ANCHOR })), { code: "cross-link-anchor-not-found", detail: NEXRA_AI_BLOG_TEMPLATE_V3_CROSS_LINK_ANCHOR }, "the what section is not searched under /4, and a line already holding a link is never a candidate");
+  });
+
+  test("under /4 all three live slugs are refused, and every live article's recorded keywords join the overlap check", () => {
+    for (const slug of NEXRA_AI_BLOG_TEMPLATE_V4.liveSlugs) {
+      assert.deepEqual(refused(missed((v) => Object.assign(v, { slug })), v4()), { code: "slug-live", detail: slug });
+    }
+    assert.deepEqual(refused(missed((v) => Object.assign(v, { keywords: ["missed call text back", "AI SDR"] })), v4()), {
+      code: "keyword-overlap",
+      detail: "AI SDR repeats AI SDR tool (/ai-sdr-tool)",
+    });
+    assert.deepEqual(refused(missed((v) => Object.assign(v, { keywords: ["missed call text back", "AI lead reactivation"] })), v4()), {
       code: "keyword-overlap",
       detail: "AI lead reactivation repeats AI lead reactivation (/ai-dead-lead-reactivation)",
     });

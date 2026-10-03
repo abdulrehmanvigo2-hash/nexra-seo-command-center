@@ -575,6 +575,9 @@ resumes from the unchecked rows. Each unit still has its own run and record, as 
    Done for article 2: `nexra-ai-blog-tsx/3` at `356f38f8` (`template.ts`), pinned at `main` as it stood on 2 Oct — two
    merges after the first article's `9a69c8c` (PR #10, the organisation schema; PR #11, edits to the follow-up article),
    so a pin at `9a69c8c` would have been refused against `main`. Check `main` has not moved again before rendering.
+   Done for article 3: `nexra-ai-blog-tsx/4` at `ab5f10d6` (`main` after article 2's merge, PR #12), the cross-link on
+   the first line of the follow-up article's missed-call paragraph (the "journey" section). Each re-pin is one PR by
+   hand today; automating it per publication is on the backlog (part of P-L2).
 3. **Choose the cross-link** for the new article. Today it is mandatory and targets the one pinned live article. A
    rendered article writes its paragraphs as string literals, so it cannot be a cross-link source until the renderer
    can target it (A5-01 item 3).
