@@ -579,9 +579,14 @@ checkpoint under its own approval (`CLAUDE.md` §6).
    `nexra_article_publication_live_slugs` and `nexra_article_publication_live_slug_article` with the new slug and its
    owning article; the propose function is unchanged. Apply it by §1. No code list changes: the product reads the
    records.
-   Done for article 2: `20261017120000_live_slug_ai_sdr_tool.sql` (merged; apply by §1.2 after a fresh manual backup,
-   on the operator's word). Harness suites `live-slug-2` (21) and `live-slug-2-upgrade` (12); the `live-slugs` and
-   `live-articles` suites now run on the schema before it, which they pin.
+   Done for article 2: `20261017120000_live_slug_ai_sdr_tool.sql`, **applied to production and recorded on 3 Oct 2026**
+   by §1.2 after manual backup run `37091449651` (local tampered-hash test first; one hash-checked transaction, SHA-256
+   `29f315b84c3dfba0ef6d038b82d12289f8bcdfddaf85c7e19c217faaf52c4f48`; no `NOTIFY pgrst`, no signature changed).
+   Verified read-only: 40 history rows; three live slugs; the live-articles read lists `ai-sdr-tool` → article
+   `6f50f8cb…`, version 2, its four keywords; the propose and read functions' bodies unchanged; every row count and
+   the article tables' fingerprint unchanged (step 6 done). Harness suites `live-slug-2` (21) and
+   `live-slug-2-upgrade` (12); the `live-slugs` and `live-articles` suites now run on the schema before it, which
+   they pin.
 6. **Confirm read-only** that `nexra_article_publication_live_articles('nexra-agency-website')` lists the new slug,
    its article, the proposed version and that version's keywords.
 

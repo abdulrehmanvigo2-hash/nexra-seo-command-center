@@ -1576,9 +1576,11 @@ after article 1's `9a69c8c`, so a pin there would have been refused — and plac
 article's "what it does" section. Rendered from the stored v2 and its real approval, built, type-checked and linted in a
 temporary copy; **nexra-ai PR #12, merged by the operator as `ab5f10d`; live 3 Oct 2026**, FAQ working, Search Console
 indexing requested. Migration `20261017120000_live_slug_ai_sdr_tool.sql` (runbook §7 step 5) records the slug as live,
-owned by `6f50f8cb…` v2 — merged, **not yet applied** (apply after a fresh manual backup, on the operator's word; then
-confirm `nexra_article_publication_live_articles` lists it with v2 and its keywords). Until it is applied, the product
-lists two live slugs and the slug is held only by the active proposal.
+owned by `6f50f8cb…` v2 — merged (PR #105, `233d9940…`) and **applied to production and recorded on 3 Oct 2026** by the
+§1.2 method after manual backup run `37091449651` (SHA-256 `29f315b8…c4f48`, one hash-checked transaction, tested first on
+a disposable cluster with a tampered hash failing closed): **40 history rows**; the live-articles read lists
+`ai-sdr-tool` → `6f50f8cb…`, version 2, its four keywords; the propose and read functions unchanged; every row count and
+the article tables' fingerprint unchanged. Runbook §7 steps 5 and 6 are complete for article 2.
 
 **F0 — DataForSEO keyword snapshot: LIVE (2 Oct 2026).** The six PRs (#96 design note, #97 schema, #98 provider
 layer, #99 service and routes, #100 the *Provider estimates* section, #101 docs) and the follow-up #102 (a resumed run
@@ -1994,7 +1996,8 @@ overwrite live content.
 - Article `6f50f8cb-bb85-4389-a5b4-21402c739f8b` (`ai-sdr-tool`) is `approved` at Version 2 (`cdcfbc87…`, 13 of 13 units
   passed, approval `60268daa…`) and **published** on 3 Oct 2026 (nexra-ai PR #12, merge `ab5f10d`, `/blog/ai-sdr-tool`);
   its proposal `870a1af6…` stays as the record of that intent. Migration `20261017120000` (the live-slug record) is
-  merged but not yet applied; until then the database lists two live slugs.
+  applied to production and recorded (3 Oct, 40 history rows): `ai-sdr-tool` is a live slug owned by `6f50f8cb…`, and
+  any other article naming it is refused.
 - Migration `20261015120000_live_articles_read.sql` (F9) is applied to production and recorded (1 Oct): the application
   reads the live slugs and their keywords from the database (`nexra_article_publication_live_articles`, `service_role`
   only); it keeps no list in code, and an unread list blocks a proposal (`live-articles-unread`).
