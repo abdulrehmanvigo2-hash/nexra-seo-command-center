@@ -55,7 +55,7 @@ describe("the real run: ten clusters, one per seed, in demand order", () => {
         "10:appointment booking automation:-",
       ],
     );
-    assert.deepEqual(map.counts, { clusters: 10, covered: 9, partial: 1, gap: 0, noEstimate: 3, excluded: 6 });
+    assert.deepEqual(map.counts, { clusters: 10, covered: 3, partial: 7, gap: 0, noEstimate: 3, excluded: 6 });
   });
 
   test("the three seeds with no provider data read no-estimate with no figure and an unknown intent — never zero, never no demand", () => {
@@ -106,20 +106,20 @@ describe("the real run: ten clusters, one per seed, in demand order", () => {
     assert.deepEqual(STOP_TERMS, ["ghl", "white label", "artisan", "reddit", "qualified"]);
   });
 
-  test("coverage: a live article's recorded keywords cover (D7 overlap); the home page's h1 gives partial (Q5); the best-matching article is named", () => {
+  test("coverage (M1 review): covered only when an article's primary topic matches the primary keyword; other article overlap and the home page's h1 are partial (Q5)", () => {
     assert.deepEqual(
       map.clusters.map((c) => `${c.topic} → ${c.coverage} ${c.existingPage ?? c.candidatePage ?? "-"}`),
       [
         "AI receptionist for small business → partial /",
-        "AI lead follow-up → covered /blog/ai-lead-follow-up-automation",
+        "AI lead follow-up → partial /blog/ai-lead-follow-up-automation",
         "AI SDR → covered /blog/ai-sdr-tool",
         "missed call text back → covered /blog/missed-call-text-back",
-        "AI lead qualification → covered /blog/ai-lead-follow-up-automation",
-        "automated lead follow-up → covered /blog/ai-lead-follow-up-automation",
-        "WhatsApp lead automation → covered /blog/ai-lead-follow-up-automation",
+        "AI lead qualification → partial /blog/ai-lead-follow-up-automation",
+        "automated lead follow-up → partial /blog/ai-lead-follow-up-automation",
+        "WhatsApp lead automation → partial /blog/ai-lead-follow-up-automation",
         "AI dead lead reactivation → covered /blog/ai-dead-lead-reactivation",
-        "reactivate old CRM leads → covered /blog/ai-lead-follow-up-automation",
-        "appointment booking automation → covered /blog/ai-lead-follow-up-automation",
+        "reactivate old CRM leads → partial /blog/ai-lead-follow-up-automation",
+        "appointment booking automation → partial /blog/ai-lead-follow-up-automation",
       ],
     );
     assert.ok(map.clusters.every((c) => (c.coverage === "gap") === (c.existingPage === null)));
@@ -139,6 +139,20 @@ describe("the rules apart from the real run", () => {
     const live: LiveArticle[] = [{ slug: "ai-dead-lead-reactivation", articleId: null, articleVersion: null, keywords: null }];
     const built = buildTopicMap({ seeds: ["AI dead lead reactivation"], metrics: [], liveArticles: live, crawlPages: [] });
     assert.deepEqual(built.clusters.map((c) => [c.coverage, c.existingPage, c.candidatePage]), [["gap", null, null]]);
+  });
+
+  test("an article's primary topic is its first recorded keyword or its crawled page's title or h1; a secondary keyword alone is partial", () => {
+    const metrics = [{ id: "m1", seed: "lead nurturing", keyword: "lead nurturing", relation: "seed" as const, searchVolume: 100, keywordDifficulty: 10, intent: "commercial" }];
+    const secondary: LiveArticle[] = [{ slug: "follow-up", articleId: null, articleVersion: null, keywords: ["sales follow-up", "lead nurturing"] }];
+    const partial = buildTopicMap({ seeds: ["lead nurturing"], metrics, liveArticles: secondary, crawlPages: [] });
+    assert.deepEqual([partial.clusters[0]?.coverage, partial.clusters[0]?.existingPage], ["partial", "/blog/follow-up"]);
+    const first: LiveArticle[] = [{ slug: "nurture", articleId: null, articleVersion: null, keywords: ["B2B lead nurturing", "drip email"] }];
+    const covered = buildTopicMap({ seeds: ["lead nurturing"], metrics, liveArticles: first, crawlPages: [] });
+    assert.deepEqual([covered.clusters[0]?.coverage, covered.clusters[0]?.existingPage], ["covered", "/blog/nurture"], "the first keyword holds the primary (D7)");
+    const byTitle = buildTopicMap({ seeds: ["lead nurturing"], metrics, liveArticles: secondary, crawlPages: [{ url: "https://www.example.com/blog/follow-up/", title: "Lead nurturing that works", firstH1: null }] });
+    assert.deepEqual([byTitle.clusters[0]?.coverage, byTitle.clusters[0]?.existingPage], ["covered", "/blog/follow-up"], "the article's own crawled title names the primary");
+    const otherPage = buildTopicMap({ seeds: ["lead nurturing"], metrics, liveArticles: secondary, crawlPages: [{ url: "https://www.example.com/about", title: "Lead nurturing", firstH1: null }] });
+    assert.equal(otherPage.clusters[0]?.coverage, "partial", "another page's title is not the article's");
   });
 
   test("partial coverage needs a whole keyword in the title or h1, and a page whose URL does not parse is skipped", () => {

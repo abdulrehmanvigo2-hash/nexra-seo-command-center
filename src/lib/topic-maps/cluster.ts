@@ -164,18 +164,49 @@ function membership(seeds: readonly string[], metrics: readonly MetricInput[]): 
   return members;
 }
 
+function overlaps(a: string, b: string): boolean {
+  return holds(a, b) || holds(b, a);
+}
+
+/**
+ * An article's primary topic (M1 review): its first recorded keyword, and the
+ * title and first h1 of its own page when the newest crawl fetched it. The
+ * live-articles read carries no title, so the crawl is the only other source.
+ */
+function primaryTopics(article: LiveArticle, crawlPages: readonly CrawlPageInput[]): readonly string[] {
+  const topics: string[] = [];
+  const first = article.keywords?.[0];
+  if (typeof first === "string") topics.push(normalisePhrase(first));
+  const route = `/blog/${article.slug}`;
+  for (const page of crawlPages) {
+    const path = pathOf(page.url);
+    if (path === null || path.replace(/\/+$/, "") !== route) continue;
+    for (const text of [page.title, page.firstH1]) if (typeof text === "string") topics.push(normalisePhrase(text));
+  }
+  return topics.filter((topic) => topic !== "");
+}
+
 function coverageOf(phrases: readonly string[], liveArticles: readonly LiveArticle[], crawlPages: readonly CrawlPageInput[], liveSlugs: ReadonlySet<string>, primary: string): Pick<ClusterDraft, "coverage" | "existingPage" | "candidatePage"> {
-  // Rule 8a: a live article whose recorded keywords overlap the cluster's (D7: equal, holds or held by).
+  const primaryPhrase = normalisePhrase(primary);
+
+  // Rule 8a (M1 review): covered only when a live article's primary topic matches the cluster's primary keyword (D7).
+  for (const article of liveArticles) {
+    if (primaryPhrase !== "" && primaryTopics(article, crawlPages).some((topic) => overlaps(topic, primaryPhrase))) {
+      return { coverage: "covered", existingPage: `/blog/${article.slug}`, candidatePage: null };
+    }
+  }
+
+  // Rule 8b: any other overlap with a live article's recorded keywords is partial, naming the article with the most hits.
   let best: { slug: string; hits: number } | null = null;
   for (const article of liveArticles) {
     if (article.keywords === null) continue;
     const live = article.keywords.map(normalisePhrase).filter((phrase) => phrase !== "");
-    const hits = phrases.filter((phrase) => live.some((entry) => holds(phrase, entry) || holds(entry, phrase))).length;
+    const hits = phrases.filter((phrase) => live.some((entry) => overlaps(phrase, entry))).length;
     if (hits > 0 && (best === null || hits > best.hits)) best = { slug: article.slug, hits };
   }
-  if (best !== null) return { coverage: "covered", existingPage: `/blog/${best.slug}`, candidatePage: null };
+  if (best !== null) return { coverage: "partial", existingPage: `/blog/${best.slug}`, candidatePage: null };
 
-  // Rule 8b (Q5): a crawled page whose title or first h1 holds a cluster keyword.
+  // Rule 8c (Q5): a crawled page whose title or first h1 holds a cluster keyword.
   for (const page of crawlPages) {
     const declared = [page.title, page.firstH1].filter((text): text is string => typeof text === "string").map(normalisePhrase);
     const path = pathOf(page.url);
@@ -183,7 +214,7 @@ function coverageOf(phrases: readonly string[], liveArticles: readonly LiveArtic
     if (declared.some((text) => phrases.some((phrase) => holds(text, phrase)))) return { coverage: "partial", existingPage: path, candidatePage: null };
   }
 
-  // Rule 8c: a gap, with a candidate slug unless a live page already holds it.
+  // Rule 8d: a gap, with a candidate slug unless a live page already holds it.
   const slug = candidateSlug(primary);
   return { coverage: "gap", existingPage: null, candidatePage: slug !== "" && !liveSlugs.has(slug) ? slug : null };
 }

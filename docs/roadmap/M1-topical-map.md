@@ -44,11 +44,14 @@ with observed data kept apart from anything derived, and an approval before a ma
    **Never "no demand".**
 7. **Topic.** The seed text, title-cased as the provider gave it; one topic per cluster in M1 (a later milestone may
    group clusters).
-8. **Coverage.**
-   - *covered*: a live article's recorded keywords overlap the cluster's keywords by the D7 rule (equal, holds or
-     held by, normalised). The existing page is that article's route.
-   - *partial* (Q5): no article match, but a crawled site page's title or first h1 contains the primary keyword or a
-     supporting keyword, normalised. The existing page is that page's path.
+8. **Coverage** (tightened at the M1 review, 3 Oct).
+   - *covered*: a live article's **primary topic** matches the cluster's primary keyword by the D7 rule (equal, holds
+     or held by, normalised). The primary topic is the article's first recorded keyword, and the title or first h1 of
+     its own `/blog/<slug>` page when the newest crawl fetched it (the live-articles read carries no title). The
+     existing page is that article's route.
+   - *partial*: any other overlap between a live article's recorded keywords and the cluster's keywords, naming the
+     article with the most matches; or (Q5) a crawled site page's title or first h1 contains a cluster keyword,
+     normalised, naming that page's path.
    - *gap*: neither. A candidate page is derived from the primary keyword as a slug (lowercase ASCII words joined by
      hyphens), refused if it equals a live slug, and labelled *candidate — not created*.
 9. **Order.** Clusters by the primary keyword's volume, highest first; *no estimate* clusters last, in seed order.
