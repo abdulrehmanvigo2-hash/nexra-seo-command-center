@@ -197,8 +197,8 @@ describe("the Groups and Opportunities tabs", () => {
 });
 
 describe("tabs, wording and empty states", () => {
-  test("the five observed tabs and the curated Lists tab (3.5); the hidden tabs are absent and a deep link to one opens Keywords", () => {
-    assert.deepEqual(KEYWORD_TABS.map((t) => t.id), ["keywords", "clusters", "opportunities", "movement", "cannibalization", "lists"]);
+  test("the five observed tabs, the curated Lists tab (3.5) and the Topical map tab (M1); the hidden tabs are absent and a deep link to one opens Keywords", () => {
+    assert.deepEqual(KEYWORD_TABS.map((t) => t.id), ["keywords", "clusters", "opportunities", "movement", "cannibalization", "lists", "map"]);
     for (const hidden of HIDDEN_KEYWORD_TABS) {
       assert.equal(KEYWORD_TABS.some((t) => t.id === hidden), false, hidden);
       assert.equal(resolveKeywordTab(hidden), "keywords");

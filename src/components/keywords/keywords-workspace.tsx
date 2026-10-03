@@ -6,6 +6,7 @@ import type { IconName } from "@/components/icons";
 import { CuratedKeywordsList, type CuratedLoad } from "@/components/keywords/curated-keywords";
 import { ObservedCannibalization, ObservedGroups, ObservedMovement, ObservedOpportunities, ObservedPortfolio } from "@/components/keywords/observed-views";
 import { ProviderEstimatesSection } from "@/components/keywords/provider-estimates";
+import { TopicMapSection } from "@/components/keywords/topic-map";
 import { SearchConsoleKeywords, type Curation } from "@/components/search-console/search-console-keywords";
 import { SearchConsolePanel } from "@/components/search-console/search-console-panel";
 import { Badge } from "@/components/ui/badge";
@@ -291,6 +292,7 @@ export function KeywordsWorkspace({
             {tab === "movement" && <ObservedMovement projectId={projectId} />}
             {tab === "cannibalization" && <ObservedCannibalization projectId={projectId} />}
             {tab === "lists" && <CuratedKeywordsList projectId={projectId} load={curated} onChanged={reloadCurated} />}
+            {tab === "map" && <TopicMapSection projectId={projectId} />}
           </div>
         </>
       )}

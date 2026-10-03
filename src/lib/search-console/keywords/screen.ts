@@ -26,6 +26,8 @@ export const KEYWORD_TABS = [
   { id: "cannibalization", label: "Cannibalisation", icon: "split" },
   // Checkpoint 3.5: the operator's curated keywords, back with a persisted entity.
   { id: "lists", label: "Lists", icon: "list" },
+  // M1: the topical map over the provider estimates (decision Q2: a tab here, not a sidebar item).
+  { id: "map", label: "Topical map", icon: "grid" },
 ] as const;
 
 export type KeywordTabId = (typeof KEYWORD_TABS)[number]["id"];
