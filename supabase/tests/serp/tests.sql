@@ -135,7 +135,7 @@ begin
     select run_id, request_id, project_id, opportunity_id, keyword, 'related-search', 9, 'x', provider, mode, location_code, language_code, fetched_at from public.nexra_serp_results limit 1$q$) = '23514', 'E a direct insert is refused (23514)');
   perform t.ok(t.err($q$update public.nexra_serp_results set title = 'changed'$q$) = '23514', 'E an update is refused (23514)');
   perform t.ok(t.err($q$delete from public.nexra_serp_results$q$) = '23514', 'E a delete is refused (23514)');
-  perform t.ok(t.err($q$truncate public.nexra_serp_results$q$) = '23514', 'E a truncate is refused (23514)');
+  perform t.ok(t.err($q$truncate public.nexra_serp_results$q$) in ('23514', '0A000'), 'E a truncate is refused (23514, or 0A000 once evidence sources reference the table, 20261025120000)');
   perform set_config('nexra.provider_write', a::text, true);
   perform t.ok(t.err(format($q$update public.nexra_provider_runs set opportunity_id = null where id = %L$q$, a)) = '23514', 'E a run''s opportunity never changes, even under the flag (23514)');
   perform set_config('nexra.provider_write', '', true);
