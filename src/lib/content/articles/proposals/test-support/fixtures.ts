@@ -26,11 +26,13 @@ export const APPROVAL_ID = "c6000000-0000-4000-8000-000000000002";
 export const APPROVER = "00000000-0000-4000-8000-0000000000bb";
 /** As PostgreSQL returns a `timestamptz`: microseconds and an explicit offset, kept verbatim. */
 export const APPROVED_AT = "2026-09-24T12:00:00.123456+00:00";
-export const SLUG = "missed-call-text-back";
+/** The fixture article's slug: not a live slug (the shared fixture's `missed-call-text-back` went live on 3 Oct 2026, article 3). */
+export const SLUG = "missed-call-text-reply";
 
 /** Valid C1 content with an approvable topic decision; `change` edits the raw object first. */
 export function approvedContent(change: (raw: Record<string, unknown>) => void = () => {}): ValidatedArticleContent {
   const raw = completeArticle();
+  raw.slug = SLUG;
   raw.topicDecision = "different-angle";
   change(raw);
   const checked = validateArticleContent(raw);
@@ -68,6 +70,7 @@ export const LIVE_ARTICLES: readonly LiveArticle[] = [
   { slug: "ai-lead-follow-up-automation", articleId: null, articleVersion: null, keywords: null },
   { slug: "ai-dead-lead-reactivation", articleId: "1003104c-6b25-456f-9304-eefa2ba88e7d", articleVersion: 6, keywords: ["ai dead lead reactivation", "dead lead reactivation"] },
   { slug: "ai-sdr-tool", articleId: "6f50f8cb-bb85-4389-a5b4-21402c739f8b", articleVersion: 2, keywords: ["AI SDR tool", "best AI SDR tools", "AI SDR", "AI SDR companies"] },
+  { slug: "missed-call-text-back", articleId: "339c9b60-7f4c-4c6b-8692-1bb7b9cdfc52", articleVersion: 2, keywords: ["missed call text back", "auto missed call text back", "missed call text back software"] },
 ];
 
 /** Eligible facts for version 2; `overrides` replace whole facts. */

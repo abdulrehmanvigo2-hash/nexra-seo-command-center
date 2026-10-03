@@ -145,10 +145,10 @@ describe("live articles from the records in the proposal service (A5-01)", () =>
   });
 
   test("a slug added to the database's list is followed with no code change", async () => {
-    const { db, service } = setup(approvedContent((raw) => (raw.slug = "missed-call-text-back")));
+    const { db, service } = setup(approvedContent((raw) => (raw.slug = "missed-call-text-reply")));
     const before = await service.getState(PROJECT_ID, ARTICLE_ID, DESTINATION);
     assert.ok(before.ok && before.state.eligibility.status === "eligible");
-    db.liveSlugs.push({ destination: DESTINATION, slug: "missed-call-text-back", articleId: "a0000000-0000-4000-8000-0000000000ff" });
+    db.liveSlugs.push({ destination: DESTINATION, slug: "missed-call-text-reply", articleId: "a0000000-0000-4000-8000-0000000000ff" });
     const after = await service.getState(PROJECT_ID, ARTICLE_ID, DESTINATION);
     assert.ok(after.ok && after.state.eligibility.status === "blocked" && after.state.eligibility.blocks.includes("slug-live-collision"));
   });

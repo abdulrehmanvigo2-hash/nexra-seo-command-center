@@ -357,6 +357,7 @@ describe("the proposal preview of an attesting version", () => {
       attestedRaw((raw) => {
         (raw.sections as unknown[]).push({ id: "why", heading: "Why it helps", paragraphs: ["It keeps the lead. It answers fast.", "Clients tell us it feels attentive."], subsections: [] });
         raw.attestations = [{ locator: "why/1", basis: "opinion" }, { locator: "what-it-does/1", basis: "experience" }];
+        raw.slug = "missed-call-text-reply"; // the shared fixture's slug went live on 3 Oct 2026 (article 3)
       }),
     );
     const canonical = canonicalArticleJson(content);

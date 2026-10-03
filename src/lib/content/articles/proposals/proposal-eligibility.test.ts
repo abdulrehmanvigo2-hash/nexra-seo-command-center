@@ -62,10 +62,10 @@ describe("an eligible version", () => {
       approvedBy: APPROVER,
       approvedAt: APPROVED_AT,
       destination: DESTINATION,
-      slug: "missed-call-text-back",
+      slug: "missed-call-text-reply",
     });
     assert.deepEqual(result.warnings, []);
-    assert.equal(result.route, "/blog/missed-call-text-back");
+    assert.equal(result.route, "/blog/missed-call-text-reply");
     assert.deepEqual(result.content, content);
   });
 
@@ -199,21 +199,21 @@ describe("the destination and proposal state (D3)", () => {
   });
 
   test("an active proposal of this article, and it is returned", () => {
-    const active = { proposalId: "d6000000-0000-4000-8000-000000000009", articleVersion: 2, destination: DESTINATION, slug: "missed-call-text-back" };
+    const active = { proposalId: "d6000000-0000-4000-8000-000000000009", articleVersion: 2, destination: DESTINATION, slug: "missed-call-text-reply" };
     const result = blockedWith(eligibleFacts({ proposals: { activeForArticle: active, holders: [] } }), "proposal-exists");
     assert.deepEqual(result.status === "blocked" ? result.activeProposal : null, active);
   });
 
   test("the destination and slug held by another article's active proposal", () => {
     blockedWith(
-      eligibleFacts({ proposals: { activeForArticle: null, holders: [{ kind: "article", proposalId: "d6000000-0000-4000-8000-000000000001", articleId: OTHER_ARTICLE_ID, destination: DESTINATION, slug: "missed-call-text-back" }] } }),
+      eligibleFacts({ proposals: { activeForArticle: null, holders: [{ kind: "article", proposalId: "d6000000-0000-4000-8000-000000000001", articleId: OTHER_ARTICLE_ID, destination: DESTINATION, slug: "missed-call-text-reply" }] } }),
       "slug-taken-by-article",
     );
   });
 
   test("held by a draft's active proposal (D3)", () => {
     blockedWith(
-      eligibleFacts({ proposals: { activeForArticle: null, holders: [{ kind: "draft", proposalId: "d6000000-0000-4000-8000-000000000002", draftId: "d6200000-0000-4000-8000-000000000001", destination: DESTINATION, slug: "missed-call-text-back" }] } }),
+      eligibleFacts({ proposals: { activeForArticle: null, holders: [{ kind: "draft", proposalId: "d6000000-0000-4000-8000-000000000002", draftId: "d6200000-0000-4000-8000-000000000001", destination: DESTINATION, slug: "missed-call-text-reply" }] } }),
       "slug-taken-by-draft",
     );
   });
@@ -224,7 +224,7 @@ describe("the destination and proposal state (D3)", () => {
         proposals: {
           activeForArticle: null,
           holders: [
-            { kind: "draft", proposalId: "d6000000-0000-4000-8000-000000000003", draftId: "d6200000-0000-4000-8000-000000000002", destination: "other-site", slug: "missed-call-text-back" },
+            { kind: "draft", proposalId: "d6000000-0000-4000-8000-000000000003", draftId: "d6200000-0000-4000-8000-000000000002", destination: "other-site", slug: "missed-call-text-reply" },
             { kind: "article", proposalId: "d6000000-0000-4000-8000-000000000004", articleId: OTHER_ARTICLE_ID, destination: DESTINATION, slug: "another-slug" },
           ],
         },
@@ -236,7 +236,7 @@ describe("the destination and proposal state (D3)", () => {
 
 describe("live slugs (D2)", () => {
   test("the live slugs are the records': the pinned template's, then those published after the pin (fix F9)", () => {
-    assert.deepEqual(liveSlugsIn(LIVE_ARTICLES), ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation", "ai-sdr-tool"]);
+    assert.deepEqual(liveSlugsIn(LIVE_ARTICLES), ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation", "ai-sdr-tool", "missed-call-text-back"]);
     assert.deepEqual(liveSlugsIn([]), []);
   });
 
