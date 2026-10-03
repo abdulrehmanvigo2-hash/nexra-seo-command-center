@@ -280,7 +280,8 @@ Editor (or run with the Supabase CLI against a linked project):
     the shared daily cap) and `nexra_provider_serp_record`; `_request_record`
     and `_run_finish` are replaced with the same signatures (the endpoint must
     fit the run's kind; a SERP run plans one call)
-    (`docs/roadmap/M4-research-evidence.md`) — **not yet applied** to production
+    (`docs/roadmap/M4-research-evidence.md`) — **applied to production and
+    recorded on 3 Oct 2026** (SHA-256 `fd750dd0…167211`; 47 history rows)
 
 47. `20261025120000_evidence.sql` — M4: `nexra_evidence_sources` (one fetched
     outside page for an accepted opportunity: URL, fetch state, robots
@@ -293,19 +294,20 @@ Editor (or run with the Supabase CLI against a linked project):
     `nexra_evidence_units_record` (a completed, model-executed run naming the
     source) and `nexra_evidence_unit_decide` (only a supported unit whose quote
     was found may be admitted); RLS on, no policies, guarded
-    (`docs/roadmap/M4-research-evidence.md`) — **not yet applied** to production
+    (`docs/roadmap/M4-research-evidence.md`) — **applied to production and
+    recorded on 3 Oct 2026** (SHA-256 `8db0e942…c99330`; 48 history rows)
 
 48. `20261026120000_article_citations.sql` — M4: canonical format
     `nexra-article-content/3` for an article that cites outside pages (a
     `citations` list of 1 to 20, the text's last member): the internal count
     function, the versions table's format check and `nexra_article_check_content`
     accept it, and formats 1 and 2 refuse a `citations` member; no row, grant or
-    other function changes (`docs/roadmap/M4-research-evidence.md`) — **not yet
-    applied** to production
+    other function changes (`docs/roadmap/M4-research-evidence.md`) — **applied
+    to production and recorded on 3 Oct 2026** (SHA-256 `aed5870f…21cbb79`; 49
+    history rows)
 
-The first forty-five are applied to production and recorded in its migration
-history (46 versions); `20261024120000`, `20261025120000` and `20261026120000`
-are not yet applied.
+All forty-eight are applied to production and recorded in its migration
+history (49 versions).
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:
