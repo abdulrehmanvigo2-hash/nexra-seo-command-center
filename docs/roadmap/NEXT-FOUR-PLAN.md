@@ -114,6 +114,11 @@ GitHub client, server-only, tested with recorded responses; (6) the publisher se
 notifier and the `/publish/[approvalId]` page; (8) screens: *Request publication…* and publication history; (9)
 runbook §7 rewritten for P-L2.
 
+**Amended by the owner (3 Oct 2026, `docs/roadmap/P-L2-publishing.md`):** no email and no Resend — a request appears as a
+*Ready to publish* item in the Command Center linking to `/publish/[approvalId]` (PR 7 builds that instead of the email
+notifier); `NEXRA_PUBLISH_MODE` defaults to `off` and is first used as `dry-run`; the reviewer role is built with no
+reviewer by default. Owner action 4 (Resend) is dropped; the token (action 3) is already in Vercel.
+
 ## M4 — Research and evidence with outside sources
 
 **For the owner.** For an accepted opportunity, the product records Google's top results and People Also Ask

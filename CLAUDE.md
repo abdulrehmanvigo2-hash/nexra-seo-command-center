@@ -2462,8 +2462,20 @@ then `NOTIFY pgrst`). Verified read-only: **42 history rows**; the three tables 
 **first topic map was approved by the owner on 3 Oct 2026** (map `2213a93d…`, built 11:26 and approved 11:29 UTC over
 provider run `b50f8fa7…` and crawl `75d1bfbe…`: 10 clusters, 3 covered, 0 partial, 7 gaps, 3 with no estimate, 6
 excluded terms). The next four milestones — **M2 → M3 → P-L2 → M4** — are planned in
-`docs/roadmap/NEXT-FOUR-PLAN.md` (approved 3 Oct with every default of its decisions table); **M2 — opportunities — is
-in progress** under `docs/roadmap/M2-opportunities.md` (six stacked draft PRs, none merged until approved).
+`docs/roadmap/NEXT-FOUR-PLAN.md` (approved 3 Oct with every default of its decisions table). **M2 — opportunities —
+and M3 — the content calendar — are LIVE** (`docs/roadmap/M2-opportunities.md`, `docs/roadmap/M3-content-calendar.md`;
+PR #117–#127 merged 3 Oct, `master` `11c0b8d`): after manual backup run `37128565711`, migrations `20261020120000`
+(pinned article keywords, SHA-256 `d038ffdb…c8a5b`), `20261021120000` (opportunities, `ace04956…21b99b`) and
+`20261022120000` (content calendar, `2c3d9265…e293ee`) were **applied to production and recorded on 3 Oct 2026** by
+the §1.2 method, in that order (each tested locally first with a tampered hash failing closed; one hash-checked
+transaction each, `NOTIFY pgrst` after the last two). Verified read-only after each: **43, 44 and 45 history rows**;
+the pinned slug `ai-lead-follow-up-automation` reads its ten template keywords; `nexra_opportunities` empty, RLS on
+with no policies, `service_role` SELECT only, 4 of 4 guard triggers enabled; the accept, set-plan-date and
+link-article functions `security definer` with EXECUTE for `service_role` only; every other row count unchanged. No
+map was rebuilt or approved and no opportunity accepted by these steps (the owner rebuilds the map). **P-L2 —
+publishing Level 2 — is in progress** under `docs/roadmap/P-L2-publishing.md` (stacked draft PRs, none merged until
+approved), with the owner's decisions of 3 Oct: no email (a request appears as *Ready to publish* in the Command
+Center), `NEXRA_PUBLISH_MODE` default `off` (first live use `dry-run`), no reviewer by default.
 
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 

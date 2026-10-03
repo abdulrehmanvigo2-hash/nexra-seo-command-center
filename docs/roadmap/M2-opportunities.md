@@ -1,5 +1,9 @@
 # M2 — Content opportunities: design note
 
+**Status (3 Oct 2026):** merged (PR #117–#122) and live — migrations `20261020120000` and `20261021120000`
+applied to production and recorded after manual backup run `37128565711` (43 and 44 history rows). The owner rebuilds
+and approves the topic map; no opportunity has been accepted.
+
 The second milestone of `docs/roadmap/NEXT-FOUR-PLAN.md` (approved 3 Oct 2026 with every default accepted). It turns
 the **approved** topic map (M1) into a ranked, explainable list of what to do next, and lets the owner accept an
 opportunity as a task. No AI run, no DataForSEO call, nothing published.
