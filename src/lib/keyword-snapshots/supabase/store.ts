@@ -107,13 +107,13 @@ export function createSupabaseSnapshotStore(client: SupabaseClient<SnapshotsData
     },
 
     async getRun(runId) {
-      const { data, error } = await client.from("nexra_provider_runs").select(RUN_READ_COLUMNS).eq("id", runId).maybeSingle();
+      const { data, error } = await client.from("nexra_provider_runs").select(RUN_READ_COLUMNS).eq("id", runId).eq("kind", "keyword-snapshot").maybeSingle();
       if (error) refuse("get run", error);
       return data === null ? null : runRowToRun(data);
     },
 
     async listRuns(projectId, limit) {
-      const { data, error } = await client.from("nexra_provider_runs").select(RUN_READ_COLUMNS).eq("project_id", projectId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+      const { data, error } = await client.from("nexra_provider_runs").select(RUN_READ_COLUMNS).eq("project_id", projectId).eq("kind", "keyword-snapshot").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
       if (error) refuse("list runs", error);
       return (data ?? []).map(runRowToRun);
     },

@@ -1,4 +1,4 @@
-import { DAILY_CAP_CEILING_USD, type Endpoint, type ProviderMode } from "@/lib/providers/dataforseo/constants";
+import { DAILY_CAP_CEILING_USD, type Endpoint, type ProviderMode, type RunKind } from "@/lib/providers/dataforseo/constants";
 
 /**
  * Keyword snapshots (F0, PR 4): the application's view of the records
@@ -15,7 +15,8 @@ export type ProviderRun = {
   readonly id: string;
   readonly projectId: string;
   readonly provider: "dataforseo";
-  readonly kind: "keyword-snapshot";
+  /** A keyword snapshot, or (M4) a SERP run, which shares the table, the cap and the one-open-run rule. */
+  readonly kind: RunKind;
   readonly mode: ProviderMode;
   readonly apiHost: string;
   readonly seeds: readonly string[];

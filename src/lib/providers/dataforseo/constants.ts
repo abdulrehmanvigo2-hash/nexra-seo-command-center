@@ -15,6 +15,11 @@ export const DAILY_CAP_VARIABLE = "DATAFORSEO_DAILY_CAP_USD";
 
 export const PROVIDER = "dataforseo" as const;
 export const SNAPSHOT_KIND = "keyword-snapshot" as const;
+/** M4: one SERP call for an accepted opportunity (migration 20261024120000). */
+export const SERP_KIND = "serp" as const;
+export type RunKind = typeof SNAPSHOT_KIND | typeof SERP_KIND;
+/** M4 decision: the top 10 organic results. */
+export const SERP_DEPTH = 10;
 
 export type ProviderMode = "sandbox" | "live";
 
@@ -31,6 +36,8 @@ export function resolveMode(raw: string | undefined): ProviderMode {
 export const ENDPOINTS = {
   keywordOverview: "dataforseo_labs/google/keyword_overview/live",
   relatedKeywords: "dataforseo_labs/google/related_keywords/live",
+  /** M4: Google's results for one keyword, live, advanced (organic, People Also Ask, related searches). */
+  serpOrganic: "serp/google/organic/live/advanced",
 } as const;
 export type Endpoint = (typeof ENDPOINTS)[keyof typeof ENDPOINTS];
 
@@ -83,3 +90,8 @@ export function parseDailyCap(raw: string | undefined): DailyCap {
  */
 export const PRICE_PER_CALL_USD = 0.012;
 export const PRICE_PER_ITEM_USD = 0.00012;
+/**
+ * M4: one live advanced SERP call (top 10): the public $0.002 plus the ~20% rise of 1 Jul 2026. To be re-confirmed on
+ * the provider's pricing page before the first live call.
+ */
+export const SERP_PRICE_PER_CALL_USD = 0.0024;
