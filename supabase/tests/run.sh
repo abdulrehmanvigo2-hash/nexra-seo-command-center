@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -39,12 +39,13 @@ TOPIC_MAPS_MIGRATION="$MIGRATIONS/20261019120000_topic_maps.sql"
 PINNED_KEYWORDS_MIGRATION="$MIGRATIONS/20261020120000_pinned_article_keywords.sql"
 OPPORTUNITIES_MIGRATION="$MIGRATIONS/20261021120000_opportunities.sql"
 CALENDAR_MIGRATION="$MIGRATIONS/20261022120000_content_calendar.sql"
+PUBLICATIONS_MIGRATION="$MIGRATIONS/20261023120000_article_publications.sql"
 GRANTS_MIGRATION="$MIGRATIONS/20261012120000_revoke_surplus_grants.sql"
 LEGACY_MIGRATION="$MIGRATIONS/20261013120000_retire_legacy_crawl_subsystem.sql"
 CARRY_MIGRATION="$MIGRATIONS/20261014120000_check_unit_carry_forward.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [live-slug-3]=22 [live-slug-3-upgrade]=12 [topic-maps]=64 [topic-maps-upgrade]=7 [pinned-keywords]=14 [pinned-keywords-upgrade]=8 [opportunities]=50 [opportunities-upgrade]=9 [calendar]=35 [calendar-upgrade]=10 [provider]=163)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [live-slug-3]=22 [live-slug-3-upgrade]=12 [topic-maps]=64 [topic-maps-upgrade]=7 [pinned-keywords]=14 [pinned-keywords-upgrade]=8 [opportunities]=50 [opportunities-upgrade]=9 [calendar]=35 [calendar-upgrade]=10 [publications]=65 [publications-upgrade]=8 [provider]=163)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -679,7 +680,7 @@ suite_live_slug_2_upgrade() {
 # Article 3 (runbook §7, step 5; migration 20261018120000): missed-call-text-back as the third slug published after the
 # pin — the lists, the owning article, other articles, the live-articles read; and the migration over proposed rows.
 suite_live_slug_3() {
-  fresh_db
+  fresh_db "$PUBLICATIONS_MIGRATION"
   run_sql_suite live-slug-3 "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-slug-2/setup.sql" "$HERE/live-slug-3/setup.sql" "$HERE/live-slug-3/tests.sql"
 }
 suite_live_slug_3_upgrade() {
@@ -701,7 +702,7 @@ suite_topic_maps_upgrade() {
 # M2 (migration 20261020120000): the pinned follow-up article's keywords in the live-articles read — the pinned entry,
 # the owners' entries, D2 unchanged, the function's security; and the migration over proposed rows, every other entry unchanged.
 suite_pinned_keywords() {
-  fresh_db
+  fresh_db "$PUBLICATIONS_MIGRATION"
   run_sql_suite pinned-keywords "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-slug-2/setup.sql" "$HERE/live-slug-3/setup.sql" "$HERE/pinned-keywords/tests.sql"
 }
 suite_pinned_keywords_upgrade() {
@@ -729,6 +730,18 @@ suite_calendar() {
 suite_calendar_upgrade() {
   fresh_db "$CALENDAR_MIGRATION"
   run_sql_suite calendar-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/calendar/upgrade-before.sql" "$CALENDAR_MIGRATION" "$HERE/calendar/upgrade-after.sql"
+}
+
+# P-L2 publications (migration 20261023120000): the table and its security, request with every refusal, start consuming
+# the 6.8 approval, the steps in order, the live slugs from the records, the guards; and the migration over existing
+# articles, proposals and approvals, unchanged, with the live lists as before.
+suite_publications() {
+  fresh_db
+  run_sql_suite publications "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/publications/setup.sql" "$HERE/publications/tests.sql"
+}
+suite_publications_upgrade() {
+  fresh_db "$PUBLICATIONS_MIGRATION"
+  run_sql_suite publications-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/publications/upgrade-before.sql" "$PUBLICATIONS_MIGRATION" "$HERE/publications/upgrade-after.sql"
 }
 
 # F0 provider keyword snapshot (migration 20261016120000): the three tables and their security, reserve against the daily
@@ -768,7 +781,7 @@ suite_provider_races() {
     "$([ "$R1" = recorded ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/0.0130" ]; echo $?)"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -799,6 +812,7 @@ for s in "${SUITES[@]}"; do
     pinned-keywords) suite_pinned_keywords ;; pinned-keywords-upgrade) suite_pinned_keywords_upgrade ;;
     opportunities) suite_opportunities ;; opportunities-upgrade) suite_opportunities_upgrade ;;
     calendar) suite_calendar ;; calendar-upgrade) suite_calendar_upgrade ;;
+    publications) suite_publications ;; publications-upgrade) suite_publications_upgrade ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done

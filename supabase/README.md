@@ -253,8 +253,20 @@ Editor (or run with the Supabase CLI against a linked project):
     functions `security definer` with EXECUTE for `service_role` only, no table
     grant changed, every guard trigger enabled, every row count unchanged)
 
-All forty-four are applied to production and recorded in its migration
-history (45 versions).
+45. `20261023120000_article_publications.sql` — P-L2: `nexra_article_publications`
+    (one row per publication request, bound at the request to the exact
+    approved version, C5 approval, active proposal, slug, date, optional
+    cross-link and the 6.8 approval it records; then each step — consumed,
+    pull request opened, merged, live — and the last error; RLS on, no
+    policies, guarded) and `nexra_article_publication_request`, `_start`
+    (consumes the approval) and `_progress` (`security definer`; EXECUTE for
+    `service_role` only). The two live-slug list functions become `stable`
+    and add each merged or live publication's slug and article, so the
+    per-article live-slug migration ends (`docs/roadmap/P-L2-publishing.md`)
+    — **not yet applied** to production
+
+The first forty-four are applied to production and recorded in its migration
+history (45 versions); `20261023120000` is not yet applied.
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:

@@ -136,7 +136,7 @@ begin
   perform t.ok(t.err(format($q$update public.nexra_approvals set used_at = null, used_by = null where id = %L$q$, a)) = '23514', 'D even under the flag, a used approval is never unused (23514)');
   perform set_config('nexra.approval_consume', '', true);
   perform t.ok(t.err(format($q$delete from public.nexra_approvals where id = %L$q$, f)) = '23514', 'D a decision is never deleted (23514)');
-  perform t.ok(t.err($q$truncate public.nexra_approvals$q$) = '23514', 'D the table is never truncated (23514)');
+  perform t.ok(t.err($q$truncate public.nexra_approvals$q$) in ('23514', '0A000'), 'D the table is never truncated (23514; 0A000 once P-L2''s publications reference it)');
   perform t.ok(t.err($q$insert into public.nexra_approvals (project_id, action_kind, target_id, payload_sha256, decision, decided_by, expires_at, used_at, used_by) values ('halcyon-fintech', 'article-publication', t.target(), t.digest(), 'approve', t.aop(), now() + interval '1 hour', now(), t.aop())$q$) = '23514', 'D a decision is never recorded already used (23514)');
   perform t.ok(t.err($q$insert into public.nexra_approvals (project_id, action_kind, target_id, payload_sha256, decision, decided_by, expires_at) values ('halcyon-fintech', 'article-publication', t.target(), t.digest(), 'approve', t.aop(), now() + interval '25 hours')$q$) = '23514', 'D an expiry beyond 24 hours is refused (23514)');
   perform t.ok(t.err($q$insert into public.nexra_approvals (project_id, action_kind, target_id, payload_sha256, decision, decided_by, expires_at) values ('halcyon-fintech', 'article-publication', t.target(), t.digest(), 'approve', t.aop(), now())$q$) = '23514', 'D an expiry under one minute is refused (23514)');
