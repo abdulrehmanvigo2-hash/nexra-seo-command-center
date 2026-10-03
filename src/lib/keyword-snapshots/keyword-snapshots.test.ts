@@ -5,7 +5,7 @@ import type { ClientResult, DataForSeoClient } from "../providers/dataforseo/cli
 import type { DataForSeoConfig } from "../providers/dataforseo/config.ts";
 import { ENDPOINTS, SEED_TOPICS, type Endpoint } from "../providers/dataforseo/constants.ts";
 import { estimateRun } from "../providers/dataforseo/estimate.ts";
-import { isRunId, keywordSnapshotsUrl, parseRunRequest, secondsUntilMidnightUtc } from "./contract.ts";
+import { describeSeedProblem, isRunId, keywordSnapshotsUrl, parseRunRequest, parseSeeds, secondsUntilMidnightUtc, seedsFromLines } from "./contract.ts";
 import type { KeywordMetric, ProviderRequest, ProviderRun } from "./contract.ts";
 import { createKeywordSnapshotService, missingSeeds, missingSeqs } from "./service.ts";
 import { SnapshotStoreNotSetUpError, type SnapshotStore } from "./store-contract.ts";
@@ -200,13 +200,60 @@ function fullAnswers(): Answer[] {
 }
 
 describe("the contract", () => {
-  test("the run request is the project only; ids are checked by shape; the cap's Retry-After reaches midnight UTC", () => {
-    assert.deepEqual(parseRunRequest({ project: "nexra-agency" }), { ok: true, projectId: "nexra-agency" });
-    for (const body of [null, [], {}, { project: "" }, { project: "Bad Id" }, { project: "nexra-agency", seeds: ["x"] }, { project: "nexra-agency", estimate: 0 }]) assert.equal(parseRunRequest(body).ok, false, JSON.stringify(body));
+  test("the run request is the project and, optionally, the seeds (M1 PR 6); ids are checked by shape; the cap's Retry-After reaches midnight UTC", () => {
+    assert.deepEqual(parseRunRequest({ project: "nexra-agency" }), { ok: true, projectId: "nexra-agency", seeds: null });
+    assert.deepEqual(parseRunRequest({ project: "nexra-agency", seeds: [" AI SDR ", "", "missed call text back"] }), { ok: true, projectId: "nexra-agency", seeds: ["AI SDR", "missed call text back"] });
+    for (const body of [null, [], {}, { project: "" }, { project: "Bad Id" }, { project: "nexra-agency", seeds: [] }, { project: "nexra-agency", seeds: "x" }, { project: "nexra-agency", seeds: null }, { project: "nexra-agency", estimate: 0 }, { project: "nexra-agency", seeds: ["x"], estimate: 0 }]) assert.equal(parseRunRequest(body).ok, false, JSON.stringify(body));
     assert.ok(isRunId("8d70dbb9-9237-4622-996e-82a65e8f1089") && !isRunId("8d70dbb9") && !isRunId(5));
     assert.equal(keywordSnapshotsUrl("nexra-agency"), "/api/keyword-snapshots?project=nexra-agency");
     assert.equal(secondsUntilMidnightUtc(new Date("2026-10-01T23:59:30Z")), 30);
     assert.equal(secondsUntilMidnightUtc(new Date("2026-10-01T00:00:00Z")), 86_400);
+  });
+});
+
+describe("operator-chosen seeds (M1 PR 6)", () => {
+  test("1 to 10 seeds, trimmed, blanks dropped, each at most 200 characters, no two alike ignoring case", () => {
+    assert.deepEqual(parseSeeds(["a"]), { ok: true, seeds: ["a"] });
+    assert.deepEqual(parseSeeds(SEED_TOPICS), { ok: true, seeds: SEED_TOPICS });
+    assert.deepEqual(parseSeeds([]), { ok: false, reason: "none" });
+    assert.deepEqual(parseSeeds(["  ", ""]), { ok: false, reason: "none" });
+    assert.deepEqual(parseSeeds([...SEED_TOPICS, "one more"]), { ok: false, reason: "too-many" });
+    assert.deepEqual(parseSeeds(["x".repeat(200)]), { ok: true, seeds: ["x".repeat(200)] });
+    assert.deepEqual(parseSeeds(["x".repeat(201)]), { ok: false, reason: "too-long" });
+    assert.deepEqual(parseSeeds(["AI SDR", "ai sdr"]), { ok: false, reason: "duplicate" });
+    assert.deepEqual(parseSeeds(["a", 1]), { ok: false, reason: "not-text" });
+    assert.deepEqual(parseSeeds("a"), { ok: false, reason: "not-text" });
+  });
+
+  test("the screen's field: one seed per line, CRLF accepted; every problem has words", () => {
+    assert.deepEqual(seedsFromLines("AI SDR\r\n\n  missed call text back  \n"), { ok: true, seeds: ["AI SDR", "missed call text back"] });
+    assert.deepEqual(seedsFromLines(""), { ok: false, reason: "none" });
+    for (const reason of ["none", "too-many", "too-long", "duplicate", "not-text"] as const) assert.ok(describeSeedProblem(reason).length > 0);
+  });
+
+  test("a run with chosen seeds: the reserve, the calls and the estimate follow them; the default list is untouched", async () => {
+    const { store, requests } = memoryStore();
+    const { client, calls } = fakeClient(fullAnswers());
+    const chosen = ["AI SDR", "missed call text back", "AI appointment setter"];
+    const result = await service(store, client, configured("live")).run("nexra-agency", OPERATOR, chosen);
+    assert.equal(result.status, "finished");
+    if (result.status !== "finished") return;
+    assert.deepEqual(result.run.seeds, chosen);
+    assert.equal(result.run.estimateUsd, estimateRun(3).usd);
+    assert.equal(calls.length, 4, "one overview and one related call per chosen seed");
+    assert.deepEqual(calls[0].task.keywords, chosen);
+    assert.deepEqual(calls.slice(1).map((c) => c.task.keyword), chosen);
+    assert.equal(result.run.status, "completed");
+    assert.equal(requests.get(result.run.id)!.length, 4);
+    const fallback = await service(memoryStore().store, fakeClient(fullAnswers()).client, configured("live")).run("nexra-agency", OPERATOR, null);
+    assert.equal(fallback.status, "finished");
+    if (fallback.status === "finished") assert.deepEqual(fallback.run.seeds, SEED_TOPICS);
+  });
+
+  test("the route passes the parsed seeds to the service and names them in its docs", () => {
+    const route = readFileSync(new URL("src/app/api/keyword-snapshots/route.ts", root), "utf8");
+    assert.match(route, /run\(parsed\.projectId, operator\.id, parsed\.seeds\)/);
+    assert.match(route, /\{ project, seeds\? \}/);
   });
 });
 
