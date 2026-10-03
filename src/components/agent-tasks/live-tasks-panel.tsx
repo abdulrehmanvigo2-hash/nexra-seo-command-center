@@ -162,7 +162,7 @@ function LiveTaskRow({ task, onChanged }: { task: AgentTask; onChanged: (task: A
           {source.label}
         </span>
         <span className="ml-1.5 truncate font-mono text-[11.5px] text-fg-subtle" title={task.sourceRef}>
-          {task.sourceKind === "director-run" ? `${task.sourceRef.slice(0, 8)}…` : task.sourceRef}
+          {task.sourceKind === "keyword" ? task.sourceRef : `${task.sourceRef.slice(0, 8)}…`}
         </span>
       </TableCell>
       <TableCell className="whitespace-nowrap text-fg-muted">

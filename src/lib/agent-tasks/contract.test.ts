@@ -30,7 +30,7 @@ describe("the fixed sets", () => {
   test("statuses, priorities and source kinds are exactly the ones the table checks", () => {
     assert.deepEqual([...TASK_STATUSES], ["backlog", "ready", "in-progress", "blocked", "review", "completed", "cancelled"]);
     assert.deepEqual([...TASK_PRIORITIES], ["low", "medium", "high", "critical"]);
-    assert.deepEqual([...TASK_SOURCE_KINDS], ["director-run", "keyword"]);
+    assert.deepEqual([...TASK_SOURCE_KINDS], ["director-run", "keyword", "opportunity"], "M2 adds opportunity; the table checks the same three (migration 20261021120000)");
     assert.equal(TASK_TITLE_MAX_LENGTH, 200);
     assert.equal(TASK_READ_LIMIT, 100);
     assert.equal(TASK_READ_DEFAULT_LIMIT, 50);
