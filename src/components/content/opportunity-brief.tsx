@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
 import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
+import { AssembledDraftView } from "@/components/content/assembled-draft";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
@@ -186,6 +187,9 @@ function ArticleDraftSection({ projectId, briefRun, brief, writerRuns, onChanged
             );
           })}
         </ul>
+      )}
+      {states.length > 0 && states.every((state) => state.state === "used") && (
+        <AssembledDraftView projectId={projectId} briefRunId={briefRun.id} version={states.map((state) => (state.state === "used" ? state.runId : "")).join(",")} />
       )}
       {confirming && (
         <SpendConfirmDialog confirmation={draftArticleConfirmation(projectId, briefRun.id, toQueue, brief)} projectId={projectId} busy={busy} onClose={() => setConfirming(false)}
