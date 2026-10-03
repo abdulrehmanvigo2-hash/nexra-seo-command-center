@@ -150,6 +150,54 @@ export const NEXRA_AI_BLOG_TEMPLATE_V3: ArticleWebsiteTemplate = {
  */
 export const NEXRA_AI_BLOG_TEMPLATE_V3_CROSS_LINK_ANCHOR = "The AI layer reads what someone actually wrote";
 
+/**
+ * The same contract re-pinned for the third rendered article (runbook §7,
+ * step 2), read at `nexra-ai` `ab5f10d` — `main` after the second article's
+ * merge (PR #12, which added `ai-sdr-tool`'s record and page and placed its
+ * cross-link in the follow-up article's "what it does" section). `/2` and
+ * `/3` are unchanged and still describe `1a688bd` and `356f38f`.
+ *
+ * What differs from `/3`: the registry holds three records, so its hash
+ * changed; the follow-up article carries the AI SDR link, so its hash
+ * changed; all three slugs are live; and the cross-link is placed in the
+ * follow-up article's "journey" section (the fixed follow-up sequence),
+ * whose missed-call H3 is where the missed-call article belongs — the
+ * revive and "what it does" sections already carry the first two
+ * articles' links. The component file is byte-identical to `/2`'s, so its
+ * hash is the same. The live keyword set is still the follow-up record's
+ * ten; the other live articles' keywords come from the records (fix F9).
+ */
+export const NEXRA_AI_BLOG_TEMPLATE_V4: ArticleWebsiteTemplate = {
+  id: "nexra-ai-blog-tsx/4",
+  repository: NEXRA_AI_BLOG_TEMPLATE_V2.repository,
+  defaultBranch: NEXRA_AI_BLOG_TEMPLATE_V2.defaultBranch,
+  pinnedCommit: "ab5f10d6bea82f174efa8b5fcf2b60d660687e23",
+  pagePathTemplate: NEXRA_AI_BLOG_TEMPLATE_V2.pagePathTemplate,
+  routeTemplate: NEXRA_AI_BLOG_TEMPLATE_V2.routeTemplate,
+  registry: {
+    ...NEXRA_AI_BLOG_TEMPLATE_V2.registry,
+    sha256: "072bb1d15ad4a70f59e6bf1daecc81146faf23009eb53019ac61f69f711afe83",
+  },
+  components: {
+    ...NEXRA_AI_BLOG_TEMPLATE_V2.components,
+    sha256: "beb543a0ce5cc4608812ad221efcebc8216afb48b266df5b620abee6b46d72da",
+  },
+  liveArticle: {
+    ...NEXRA_AI_BLOG_TEMPLATE_V2.liveArticle,
+    sha256: "516699482e6f5cfc1e77c45e28771608c08e6dbc5041567f99bdb95d1bd80444",
+    reviveOpen: "        <Section section={sections.journey}>",
+  },
+  liveSlugs: ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation", "ai-sdr-tool"],
+  reservedSectionIds: NEXRA_AI_BLOG_TEMPLATE_V2.reservedSectionIds,
+};
+
+/**
+ * The cross-link anchor the missed-call article (`missed-call-text-back`)
+ * is placed on in `/4`: the words, exactly as the first line of the
+ * follow-up article's missed-call H3 paragraph reads at `ab5f10d`.
+ */
+export const NEXRA_AI_BLOG_TEMPLATE_V4_CROSS_LINK_ANCHOR = "A missed call is the one lead that usually leaves no record at all";
+
 export function articlePagePath(template: ArticleWebsiteTemplate, slug: string): string {
   return template.pagePathTemplate.replace("<slug>", slug);
 }

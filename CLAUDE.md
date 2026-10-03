@@ -2436,6 +2436,8 @@ control, and the one V1 write was made from a Claude Code session under the lean
 - **Checker external sources (option 1 / 6.1b option b):** let evidence beyond the site's own records support a
   statement, so the four "meta description" sentences of `ai-dead-lead-reactivation` can read naturally again.
 - **Renderer:** rich blocks and H3 anchors; review the "Our view" label's visibility on the live page.
+- **Renderer re-pin:** automate template re-pin per publication (part of P-L2) — today each new article needs a
+  hand-made `/N` template PR at the then-current `nexra-ai` `main` (`/3` for article 2, `/4` for article 3).
 - **Website:** service pages (the planned nexra-ai PR 3); a Search Console follow-up on the new article's indexing
   and first impressions.
 - **Private repository and GitHub Pro, when revenue allows (operator decision, 1 Oct).** The repository is public on
