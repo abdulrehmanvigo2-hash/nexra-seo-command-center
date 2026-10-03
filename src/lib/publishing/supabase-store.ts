@@ -200,7 +200,7 @@ export function createSupabasePublicationStore(client: SupabaseClient<any>): Pub
             ? { merge_commit: step.mergeCommit }
             : step.step === "error"
               ? { code: step.code, step: step.during }
-              : {};
+              : {}; // live, abandon
       const { data, error } = await client.rpc("nexra_article_publication_progress", {
         p_project_id: projectId,
         p_publication_id: publicationId,

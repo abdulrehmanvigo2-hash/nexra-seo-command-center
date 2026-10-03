@@ -257,7 +257,8 @@ Editor (or run with the Supabase CLI against a linked project):
     (one row per publication request, bound at the request to the exact
     approved version, C5 approval, active proposal, slug, date, optional
     cross-link and the 6.8 approval it records; then each step — consumed,
-    pull request opened, merged, live — and the last error; RLS on, no
+    pull request opened, merged, live, or abandoned before a merge — and the
+    last error; RLS on, no
     policies, guarded) and `nexra_article_publication_request`, `_start`
     (consumes the approval) and `_progress` (`security definer`; EXECUTE for
     `service_role` only). The two live-slug list functions become `stable`

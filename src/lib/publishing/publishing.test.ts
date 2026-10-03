@@ -146,6 +146,11 @@ function memoryStore(initial: Publication, facts?: RequestFacts) {
         row = { ...row, lastError: { code: step.code, step: step.during, at: "t" } };
         return { status: "recorded", publication: row };
       }
+      if (step.step === "abandon") {
+        if (row.status !== "publishing" && row.status !== "pull-request-open") return { status: "out-of-order" };
+        row = { ...row, status: "abandoned" };
+        return { status: "recorded", publication: row };
+      }
       if (row.status !== order[step.step]) return { status: "out-of-order" };
       if (step.step === "pull-request-open") row = { ...row, status: step.step, branch: step.branch, pullRequestNumber: step.pullRequestNumber, pullRequestUrl: step.pullRequestUrl, headCommit: step.headCommit, lastError: null };
       if (step.step === "merged") row = { ...row, status: "merged", mergeCommit: step.mergeCommit, mergedAt: "t", lastError: null };
@@ -375,6 +380,20 @@ describe("publish: the steps", () => {
     assert.deepEqual(memory.writes, []);
   });
 
+  test("abandon: an operator ends a publication that never merged; a press on it then changes nothing", async () => {
+    const memory = memoryStore(requested());
+    const github = fakeGitHub();
+    const publisher = service({ mode: "dry-run", store: memory.store, github: github.client });
+    assert.equal((await publisher.abandon(PUB, OP)).status, "out-of-order", "a requested publication cannot be abandoned");
+    await publisher.publish(PUB, OP);
+    const calls = github.calls.length;
+    assert.equal((await publisher.abandon(PUB, OP)).status, "abandoned");
+    assert.equal(memory.row().status, "abandoned");
+    assert.equal(github.calls.length, calls, "nothing is sent to GitHub");
+    assert.equal((await publisher.publish(PUB, OP)).status, "abandoned");
+    assert.equal(github.calls.length, calls);
+  });
+
   test("a consume refusal is passed on and writes nothing more", async () => {
     const memory = memoryStore({ ...requested(), payloadSha256: "0".repeat(64) });
     const result = await service({ mode: "merge", store: memory.store, github: fakeGitHub().client }).publish(PUB, OP);
@@ -409,6 +428,7 @@ describe("the boundary", () => {
     assert.match(list, /export async function GET[\s\S]*getPublisher\(\)/);
     assert.match(list, /export async function POST[\s\S]*isSameOrigin[\s\S]*getOperator\(\)[\s\S]*publicationLimiter\("write"\)/);
     assert.match(one, /isSameOrigin[\s\S]*getPublisher\(\)[\s\S]*publicationLimiter\("write"\)/);
+    assert.match(one, /parsed\.action === "abandon"[\s\S]*publisher\.role !== "operator" \|\| \(await getOperator\(\)\) === null/, "abandon: operators only");
     assert.doesNotMatch(list + one, /NEXRA_AI_GITHUB_TOKEN|console\./);
   });
 });
