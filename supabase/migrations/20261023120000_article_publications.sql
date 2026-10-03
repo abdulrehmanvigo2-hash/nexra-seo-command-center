@@ -12,14 +12,16 @@
 --   * `nexra_article_publications` — bound at the request and never changed: project, article, version, version row,
 --     content SHA-256, the C5 approval, the active proposal, destination, slug, the published date, the optional
 --     cross-link anchor, the request payload's SHA-256 and the 6.8 approval it recorded (unique). Progress, changed
---     only by the functions: status (requested → publishing → pull-request-open → merged → live), the mode
+--     only by the functions: status (requested → publishing → pull-request-open → merged → live; or abandoned from
+--     publishing or pull-request-open, when its pull request was closed or its head moved), the mode
 --     (`dry-run` or `merge`), the base commit and the rendered files, the branch, pull request, head commit, merge
 --     commit, live check, and the last error (set without changing the status, cleared by the next step).
 --   * `nexra_article_publication_request` — checks the article is approved at that version and the proposal is its
 --     active one, refuses a second publication of an article, records the 6.8 approval and the row.
 --   * `nexra_article_publication_start` — consumes the approval (every refusal writes nothing) and records the mode,
 --     base commit and files; a row past `requested` answers `resume`.
---   * `nexra_article_publication_progress` — the next step in order, or an error.
+--   * `nexra_article_publication_progress` — the next step in order, an error, or `abandon` (an operator's decision
+--     that a publication that has not merged will not continue: its article may then be requested again).
 --   * `nexra_article_publication_live_slugs` and `nexra_article_publication_live_slug_article` are replaced with the
 --     same signatures, now `stable`: a merged or live publication's slug is live and owned by its article, after the
 --     slugs recorded so far (20261018120000's lists, unchanged). So the live-articles read, the propose check and the
@@ -102,7 +104,7 @@ create table public.nexra_article_publications (
   -- Progress; changed only by the functions.
   status text not null default 'requested'
     constraint nexra_article_publications_status_valid
-      check (status in ('requested', 'publishing', 'pull-request-open', 'merged', 'live')),
+      check (status in ('requested', 'publishing', 'pull-request-open', 'merged', 'live', 'abandoned')),
   mode text
     constraint nexra_article_publications_mode_valid check (mode is null or mode in ('dry-run', 'merge')),
   base_commit text
@@ -135,7 +137,8 @@ create table public.nexra_article_publications (
     check ((status = 'requested') = (mode is null) and (mode is null) = (base_commit is null) and (mode is null) = (files is null)
            and (mode is null) = (started_by is null) and (mode is null) = (started_at is null)),
   constraint nexra_article_publications_pull_request
-    check ((status in ('pull-request-open', 'merged', 'live')) = (branch is not null)
+    check ((status not in ('pull-request-open', 'merged', 'live') or branch is not null)
+           and (branch is null or status in ('pull-request-open', 'merged', 'live', 'abandoned'))
            and (branch is null) = (pull_request_number is null) and (branch is null) = (pull_request_url is null)
            and (branch is null) = (head_commit is null)),
   constraint nexra_article_publications_merged
@@ -461,7 +464,8 @@ comment on function public.nexra_article_publication_start(text, uuid, text, tex
 --
 -- p_step: 'pull-request-open' { branch, pull_request_number, pull_request_url, head_commit } (from publishing),
 --         'merged' { merge_commit } (from pull-request-open), 'live' {} (from merged),
---         'error' { code, step } (from publishing, pull-request-open or merged; the status does not change).
+--         'error' { code, step } (from publishing, pull-request-open or merged; the status does not change),
+--         'abandon' {} (from publishing or pull-request-open: it never merged; the article may be requested again).
 -- Answers 'recorded' (with the row), 'same' (the step is already recorded with the same values),
 -- 'publication-not-found', 'out-of-order', or 'invalid' with a short reason.
 
@@ -490,7 +494,7 @@ begin
     raise exception 'nexra_article_publication_progress: the detail is an object'
       using errcode = 'invalid_parameter_value';
   end if;
-  if p_step not in ('pull-request-open', 'merged', 'live', 'error') then
+  if p_step not in ('pull-request-open', 'merged', 'live', 'error', 'abandon') then
     return pg_catalog.jsonb_build_object('outcome', 'invalid', 'reason', 'step');
   end if;
 
@@ -557,6 +561,19 @@ begin
            last_error_code = null, last_error_step = null, last_error_at = null, updated_at = v_now
      where id = v_row.id returning * into v_row;
 
+  elsif p_step = 'abandon' then
+    if v_row.status = 'abandoned' then
+      perform pg_catalog.set_config('nexra.publication_write', '', true);
+      return pg_catalog.jsonb_build_object('outcome', 'same', 'publication', pg_catalog.to_jsonb(v_row));
+    end if;
+    if v_row.status not in ('publishing', 'pull-request-open') then
+      perform pg_catalog.set_config('nexra.publication_write', '', true);
+      return pg_catalog.jsonb_build_object('outcome', 'out-of-order', 'publication', pg_catalog.to_jsonb(v_row));
+    end if;
+    update public.nexra_article_publications
+       set status = 'abandoned', updated_at = v_now
+     where id = v_row.id returning * into v_row;
+
   else -- error
     if coalesce(p_detail->>'code', '') !~ '^[a-z0-9]+(-[a-z0-9]+)*$' or pg_catalog.char_length(p_detail->>'code') > 64
        or coalesce(p_detail->>'step', '') !~ '^[a-z]+(-[a-z]+)*$' or pg_catalog.char_length(p_detail->>'step') > 32 then
@@ -578,7 +595,7 @@ end;
 $$;
 
 comment on function public.nexra_article_publication_progress(text, uuid, text, jsonb, uuid) is
-  'P-L2: records the next step of a publication in order — pull-request-open, merged, live — or an error (no status change): recorded, same, publication-not-found, out-of-order or invalid. Contacts nothing.';
+  'P-L2: records the next step of a publication in order — pull-request-open, merged, live — an error (no status change) or abandon (from publishing or pull-request-open): recorded, same, publication-not-found, out-of-order or invalid. Contacts nothing.';
 
 -- ---------------------------------------------------------------------------
 -- The live slugs, now from the records too: 20261018120000's lists, then each merged or live publication's slug.
