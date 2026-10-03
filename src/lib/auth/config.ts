@@ -15,6 +15,8 @@
 export const SUPABASE_URL_VARIABLE = "SUPABASE_URL";
 export const SUPABASE_PUBLISHABLE_KEY_VARIABLE = "SUPABASE_PUBLISHABLE_KEY";
 export const OPERATOR_EMAILS_VARIABLE = "NEXRA_OPERATOR_EMAILS";
+/** P-L2: optional; unset or empty means nobody is a reviewer. */
+export const REVIEWER_EMAILS_VARIABLE = "NEXRA_REVIEWER_EMAILS";
 
 /**
  * How the session cookies are written, by every client that writes them.
@@ -43,6 +45,11 @@ export type AuthConfig = {
   readonly publishableKey: string;
   /** Lower-cased email addresses allowed to use the application. */
   readonly operatorEmails: ReadonlySet<string>;
+  /**
+   * Lower-cased email addresses of reviewers (P-L2): the publish pages and their API only. Empty by default; an
+   * address also on the operator list is an operator.
+   */
+  readonly reviewerEmails: ReadonlySet<string>;
 };
 
 export class AuthConfigurationError extends Error {
@@ -123,5 +130,12 @@ export function readAuthConfig(env: Environment): AuthConfig {
     );
   }
 
-  return { url: parsed.origin, publishableKey, operatorEmails: new Set(emails) };
+  // Reviewers are optional. A malformed list admits no reviewer, and never stops the operators signing in.
+  const reviewers = (env[REVIEWER_EMAILS_VARIABLE]?.trim() ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+  const reviewerEmails = reviewers.every((entry) => EMAIL_PATTERN.test(entry)) ? new Set(reviewers) : new Set<string>();
+
+  return { url: parsed.origin, publishableKey, operatorEmails: new Set(emails), reviewerEmails };
 }

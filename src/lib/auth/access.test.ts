@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { decideAccess, LOGIN_PATH, operatorFromClaims, operatorFromUser, safeNextPath } from "./access.ts";
+import { decideAccess, isReviewerPath, LOGIN_PATH, operatorFromClaims, operatorFromUser, reviewerFromClaims, reviewerFromUser, safeNextPath } from "./access.ts";
 
 /**
  * Who gets in, and where everyone else is sent.
@@ -155,5 +155,48 @@ describe("decideAccess: the proxy's decision for one request", () => {
     // Only those exact prefixes: a look-alike is an ordinary private route.
     assert.deepEqual(decideAccess({ method: "GET", pathname: "/authors", search: "", ...signedOut }).kind, "redirect");
     assert.deepEqual(decideAccess({ method: "GET", pathname: "/api/workers", search: "", ...signedOut }), { kind: "unauthorized" });
+  });
+});
+
+describe("the reviewer role (P-L2): the publish pages and their API only", () => {
+  const REVIEWERS: ReadonlySet<string> = new Set(["review@nexraagency.com", "ops@nexraagency.com"]);
+  const user = { id: "user-9", email: "review@nexraagency.com", email_confirmed_at: "2026-10-01T00:00:00Z" };
+  const claims = { sub: "user-9", email: "review@nexraagency.com", role: "authenticated", is_anonymous: false };
+
+  test("a confirmed listed reviewer is a reviewer; an operator listed twice stays an operator, never a reviewer", () => {
+    assert.deepEqual(reviewerFromUser(user, REVIEWERS, OPERATORS), { id: "user-9", email: "review@nexraagency.com" });
+    assert.equal(reviewerFromUser({ ...user, email: "ops@nexraagency.com" }, REVIEWERS, OPERATORS), null);
+    assert.equal(reviewerFromUser({ ...user, email_confirmed_at: null }, REVIEWERS, OPERATORS), null);
+    assert.equal(operatorFromUser(user, OPERATORS), null, "a reviewer is not an operator");
+    assert.deepEqual(reviewerFromClaims(claims, REVIEWERS, OPERATORS), { id: "user-9", email: "review@nexraagency.com" });
+    assert.equal(reviewerFromClaims({ ...claims, is_anonymous: true }, REVIEWERS, OPERATORS), null);
+  });
+
+  test("with no reviewer list — the default — nobody is a reviewer", () => {
+    assert.equal(reviewerFromUser(user, new Set(), OPERATORS), null);
+    assert.equal(reviewerFromClaims(claims, new Set(), OPERATORS), null);
+  });
+
+  test("the reviewer paths are the publish pages and the publications API, exactly", () => {
+    for (const path of ["/publish/abc", "/publish/0e7c", "/api/publications", "/api/publications/x"]) assert.equal(isReviewerPath(path), true, path);
+    for (const path of ["/", "/publish", "/publisher", "/projects", "/api/publications-x", "/api/agent-runs", "/api/content-articles", "/agents/writer"]) {
+      assert.equal(isReviewerPath(path), false, path);
+    }
+  });
+
+  test("a reviewer reaches the publish pages and API, and gets 403 anywhere else — pages, data and paid actions", () => {
+    const asReviewer = { signedIn: false, reviewer: true };
+    for (const [method, pathname] of [["GET", "/publish/abc"], ["GET", "/api/publications"], ["POST", "/api/publications/x"]] as const) {
+      assert.deepEqual(decideAccess({ method, pathname, search: "", ...asReviewer }), { kind: "allow", private: true }, `${method} ${pathname}`);
+    }
+    for (const [method, pathname] of [["GET", "/"], ["GET", "/content"], ["GET", "/api/agent-runs"], ["POST", "/api/agent-runs"], ["POST", "/api/provider-snapshots"]] as const) {
+      assert.deepEqual(decideAccess({ method, pathname, search: "", ...asReviewer }), { kind: "forbidden" }, `${method} ${pathname}`);
+    }
+  });
+
+  test("an operator flagged as a reviewer is an operator; the flag alone never admits a signed-out caller to anything else", () => {
+    assert.deepEqual(decideAccess({ method: "GET", pathname: "/", search: "", signedIn: true, reviewer: true }), { kind: "allow", private: true });
+    assert.deepEqual(decideAccess({ method: "GET", pathname: "/", search: "", signedIn: false }).kind, "redirect");
+    assert.deepEqual(decideAccess({ method: "GET", pathname: "/publish/x", search: "", signedIn: false }).kind, "redirect");
   });
 });

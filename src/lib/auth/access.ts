@@ -6,10 +6,12 @@
  *
  * The authorization model is deliberately small. Nexra is a private tool run by
  * its operators: a person may use it if they are signed in, their email is
- * confirmed, and that email is on the operator list. There are no roles,
- * teams, or per-project permissions, because nothing in the product needs
- * them yet — and an account that exists in Supabase Auth but is not on the
- * list gets nothing, which is what makes an open sign-up setting harmless.
+ * confirmed, and that email is on the operator list. One narrower role exists
+ * (P-L2): a reviewer, listed in `NEXRA_REVIEWER_EMAILS` (empty by default), may
+ * open the publish pages and press Publish, and nothing else. There are no
+ * teams or per-project permissions — and an account that exists in Supabase
+ * Auth but is on neither list gets nothing, which is what makes an open sign-up
+ * setting harmless.
  */
 
 export const LOGIN_PATH = "/login";
@@ -35,6 +37,22 @@ export const HEALTH_PATH = "/api/health";
 /** Data endpoints: a signed-out caller gets 401, not a sign-in page. */
 const API_PREFIX = "/api/";
 
+/**
+ * Where a reviewer may go (P-L2, `docs/roadmap/P-L2-publishing.md`): the publish pages and their API. Everything else
+ * — every other page, every data route, every paid action — stays operators only. The handlers check again: a
+ * reviewer may read a publication and press Publish; only an operator may request one.
+ */
+const REVIEWER_PAGE_PREFIX = "/publish/";
+const REVIEWER_API_PATH = "/api/publications";
+
+export function isReviewerPath(pathname: string): boolean {
+  return (
+    pathname.startsWith(REVIEWER_PAGE_PREFIX) ||
+    pathname === REVIEWER_API_PATH ||
+    pathname.startsWith(`${REVIEWER_API_PATH}/`)
+  );
+}
+
 export type Operator = {
   readonly id: string;
   readonly email: string;
@@ -51,6 +69,29 @@ export function operatorFromUser(
   if (typeof confirmedAt !== "string" || confirmedAt.length === 0) return null;
   const normalised = email.trim().toLowerCase();
   return operatorEmails.has(normalised) ? { id, email: normalised } : null;
+}
+
+/**
+ * A reviewer (P-L2): a confirmed user listed in `NEXRA_REVIEWER_EMAILS` and not an operator. Authoritative, from the
+ * Auth server's user record, as `operatorFromUser`. With the list empty — the default — nobody is a reviewer.
+ */
+export function reviewerFromUser(
+  user: { id?: unknown; email?: unknown; email_confirmed_at?: unknown } | null | undefined,
+  reviewerEmails: ReadonlySet<string>,
+  operatorEmails: ReadonlySet<string>,
+): Operator | null {
+  if (operatorFromUser(user, operatorEmails) !== null) return null;
+  return operatorFromUser(user, reviewerEmails);
+}
+
+/** The proxy's optimistic reviewer check from verified claims; null for an operator or anyone not listed. */
+export function reviewerFromClaims(
+  claims: Record<string, unknown> | null | undefined,
+  reviewerEmails: ReadonlySet<string>,
+  operatorEmails: ReadonlySet<string>,
+): Operator | null {
+  if (operatorFromClaims(claims, operatorEmails) !== null) return null;
+  return operatorFromClaims(claims, reviewerEmails);
 }
 
 /**
@@ -87,7 +128,8 @@ export function safeNextPath(value: unknown): string {
 export type AccessDecision =
   | { readonly kind: "allow"; readonly private: boolean }
   | { readonly kind: "redirect"; readonly to: string }
-  | { readonly kind: "unauthorized" };
+  | { readonly kind: "unauthorized" }
+  | { readonly kind: "forbidden" };
 
 /**
  * The proxy's decision for one request.
@@ -106,8 +148,11 @@ export function decideAccess(request: {
   readonly pathname: string;
   readonly search: string;
   readonly signedIn: boolean;
+  /** A signed-in reviewer (P-L2): admitted to the publish pages and their API only. */
+  readonly reviewer?: boolean;
 }): AccessDecision {
   const { method, pathname, search, signedIn } = request;
+  const reviewer = request.reviewer === true && !signedIn;
   const read = method === "GET" || method === "HEAD";
 
   if (pathname === LOGIN_PATH) {
@@ -124,6 +169,8 @@ export function decideAccess(request: {
   }
 
   if (signedIn) return { kind: "allow", private: true };
+
+  if (reviewer) return isReviewerPath(pathname) ? { kind: "allow", private: true } : { kind: "forbidden" };
 
   if (read && !pathname.startsWith(API_PREFIX)) {
     return { kind: "redirect", to: `${LOGIN_PATH}?next=${encodeURIComponent(safeNextPath(pathname + search))}` };
