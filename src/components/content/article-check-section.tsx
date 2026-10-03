@@ -5,14 +5,14 @@ import {
   carryArticleCheckUnit,
   freshArticleCheckUnit,
   recordArticleCheckUnit,
-  type CarryArticleCheckUnitActionResult,
   type FreshArticleCheckUnitActionResult,
-  type RecordArticleCheckUnitActionResult,
 } from "@/app/(app)/projects/article-check-actions";
 import { QueuedReview, useQueuedReview } from "@/components/agent-runs/queued-review";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CARRY_BASIS_COPY, CARRY_REFUSAL_COPY, carriedLabel } from "@/lib/content/articles/checks/carry-copy";
+import { CARRY_FAILURE, RECORD_FAILURE } from "@/components/content/check-failure-copy";
+import { CheckAllControl } from "@/components/content/check-all-control";
 import { offersRecordUnit } from "@/lib/content/articles/checks/eligibility";
 import { MAX_UNIT_OBSERVATIONS } from "@/lib/content/articles/checks/result";
 import { ARTICLE_CHECK_UNIT, articleCheckRequest } from "@/lib/crawl/review-request";
@@ -153,6 +153,15 @@ export function ArticleCheckSection({
             {STATE_META[checks.state].label}
           </Badge>
         )}
+        {checks !== null && checks.refusal === null && isCurrent && article.status !== "archived" && article.status !== "approved" && (
+          <CheckAllControl
+            projectId={projectId}
+            article={article}
+            checks={checks}
+            onChecks={(next) => setLoad({ status: "ready", checks: next })}
+            onArticleChanged={onArticleChanged}
+          />
+        )}
       </div>
       <p className="rounded border border-border bg-surface-raised px-3 py-2 text-xs text-fg-muted" role="note">
         {ARTICLE_CHECK_NOTICE}
@@ -290,19 +299,6 @@ function UnitRow({ unit, active, onSelect }: { unit: ArticleCheckUnitView; activ
   );
 }
 
-export const CARRY_FAILURE: Readonly<Record<Exclude<CarryArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
-  unauthorized: "Your session has ended. Reload the page to sign in again.",
-  "rate-limited": "Too many requests. Wait a moment and try again.",
-  invalid: "This unit cannot be carried: its identifiers are not what the server expects.",
-  unavailable: "Article checks are not persisted on this deployment, so nothing can be carried.",
-  "not-current": "Only an unapproved article's current version can carry a result.",
-  "already-recorded": "This unit already has a recorded check on this version, so nothing was carried.",
-  unit: "This unit could not be resolved on the server from the stored version, so nothing was carried.",
-  "not-carryable": "No earlier pass of this exact unit can be carried now.",
-  "evidence-unread": "The evidence could not be re-read to compare it, so nothing was carried. Check the unit with a new run instead.",
-  refused: "The database refused the carry on one of its own checks. Nothing was written.",
-  failed: "The carry could not be completed. Nothing is known to have been written.",
-};
 
 const FRESH_FAILURE: Readonly<Record<Exclude<FreshArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
   unauthorized: "Your session has ended. Reload the page to sign in again.",
@@ -442,18 +438,6 @@ function CarryControls({
   );
 }
 
-export const RECORD_FAILURE: Readonly<Record<Exclude<RecordArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
-  unauthorized: "Your session has ended. Reload the page to sign in again.",
-  "rate-limited": "Too many requests. Wait a moment and try again.",
-  invalid: "This outcome cannot be recorded: its identifiers are not what the server expects.",
-  unavailable: "Article checks are not persisted on this deployment, so nothing can be recorded.",
-  "run-not-found": "This run no longer exists on the server.",
-  unit: "This unit could not be resolved on the server from the stored version, so nothing was recorded.",
-  ineligible: "This run is not this unit's check, or it is simulated or ungrounded, so nothing was recorded.",
-  "already-recorded": "This unit already carries a final result, or a pending one from another run, so nothing was recorded.",
-  refused: "The database refused the record on one of its own checks. Nothing was written.",
-  failed: "The outcome could not be recorded. Nothing is known to have been written.",
-};
 
 function UnitCheck({
   projectId,
