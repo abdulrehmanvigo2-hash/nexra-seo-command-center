@@ -12,6 +12,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { ContentCalendar } from "@/components/content/content-calendar";
+import { LinkTaskControl } from "@/components/content/link-task-control";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import {
   CONTENT_TABS,
@@ -477,6 +478,9 @@ export function ArticleDetailView({ projectId, projectName, articleId }: { proje
             {formatFullDate(detail.createdAt)} · <span className="text-fg-subtle">updated </span>
             {formatFullDate(detail.updatedAt)}
           </p>
+          <div className="sm:col-span-2">
+            <LinkTaskControl projectId={projectId} articleId={articleId} />
+          </div>
         </PanelBody>
         <PanelFooter>
           <span>
@@ -484,7 +488,7 @@ export function ArticleDetailView({ projectId, projectName, articleId }: { proje
             <Link href={projectHref(projectId)} className="text-accent hover:underline">
               project screen
             </Link>
-            ; this page only reads.
+            ; this page only reads, apart from linking the article to a planned task.
           </span>
         </PanelFooter>
       </Panel>

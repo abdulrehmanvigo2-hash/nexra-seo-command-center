@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkTaskControl } from "@/components/content/link-task-control";
 import { useCallback, useEffect, useId, useState } from "react";
 import {
   createArticle,
@@ -691,6 +692,11 @@ function ArticleEditor({
           Import article JSON…
         </Button>
       </div>
+      {mode.kind === "edit" && (
+        <div className="rounded border border-border px-3 py-2">
+          <LinkTaskControl projectId={projectId} articleId={mode.history.article.id} />
+        </div>
+      )}
       {imported !== null && (
         <p className="rounded border border-border bg-surface-raised px-3 py-2 text-xs text-fg-muted" role="status">
           {imported}
