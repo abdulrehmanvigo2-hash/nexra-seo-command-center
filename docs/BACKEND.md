@@ -1894,7 +1894,23 @@ for it, and that version's keywords. The proposal store reads it (`listLiveArtic
   live article's recorded keywords (`keyword-overlap`, naming the slug). It also refuses a live article whose keywords
   are not recorded (`live-keywords-unrecorded`).
 
-A slug published later is added to the database's list by its own migration (`docs/RUNBOOK.md` §7).
+Articles 1–3 were added to the database's list by a migration each (`docs/RUNBOOK.md` §7.6). Since P-L2 (migration
+`20261023120000`) a merged or live row of `nexra_article_publications` makes its slug live and owned by its article,
+with no migration: the two list functions read it (`docs/roadmap/P-L2-publishing.md`, `docs/RUNBOOK.md` §7).
+
+### Publishing (P-L2)
+
+- **Records:** `nexra_article_publications` — one row per request, bound at the request (version, C5 approval,
+  proposal, slug, date, optional cross-link, the 6.8 approval it recorded) and progressed by three `security definer`
+  functions: request (records the approval), start (consumes it), progress (`pull-request-open`, `merged`, `live`,
+  `error`, `abandon`).
+- **Library:** `src/lib/publishing/` — the contract and request text `nexra-publication-request/1`, the GitHub client
+  (`NEXRA_AI_GITHUB_TOKEN`, server-only, never logged), the service (request, preview at `main`'s head, publish one step
+  per press, abandon) and its presenter; `src/lib/content/articles/website/pin.ts` pins the site at publish by structure.
+- **Mode:** `NEXRA_PUBLISH_MODE` — `off` (default), `dry-run`, `merge`.
+- **Routes:** `GET`/`POST /api/publications`, `POST /api/publications/[id]` (`publish`, `abandon`); the page
+  `/publish/[approvalId]`. Operators request and abandon; operators and reviewers (`NEXRA_REVIEWER_EMAILS`, empty by
+  default) read and press Publish.
 
 ### Article import (fix F9, audit A5-03)
 

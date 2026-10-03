@@ -547,10 +547,54 @@ restore into a **new** Supabase project, never over the damaged one.
 with the drill and `NEXRA_DRILL_KEEP=1`, read the rows there, and apply the correction to
 production as its own approved change.
 
-## 7. Before the next article (publishing article 2 and later)
+## 7. Publishing an article (P-L2)
 
-The renderer can render a second article only after these steps (audit A5-01; fix F9 did step 1). Each is its own
-checkpoint under its own approval (`CLAUDE.md` §6).
+Since P-L2 (`docs/roadmap/P-L2-publishing.md`) an approved article is published from the product: *Request
+publication…* records a single-use, 24-hour approval bound to the exact request; the Command Center lists it as
+**Ready to publish**; one press on its publish page opens the `nexra-ai` pull request and, in `merge` mode, merges it
+after green checks. The template is pinned at publish (no hand `/N` PR), and a merged publication's slug is live from
+the records (no per-article live-slug migration). The hand route that published articles 1–3 is kept as the record in
+§7.6; older notes that say "§7 step 5" point there.
+
+### 7.1 Before the first publication (owner, once; each step under its own approval, `CLAUDE.md` §6)
+
+1. **Merge P-L2** (its stacked PRs, in order). The merge into `master` deploys; confirm the deployment (§2.1).
+2. **Apply migration `20261023120000_article_publications.sql`** by §1.2 after a fresh manual backup (§6), tested first
+   on a disposable cluster with a tampered hash failing closed; then `NOTIFY pgrst, 'reload schema';` (a new table and
+   three functions). Verify read-only: one more history row; `nexra_article_publications` RLS on with no policies,
+   `service_role` SELECT only, 4 of 4 guard triggers enabled, empty; the request, start and progress functions
+   `security definer`, empty `search_path`, EXECUTE for `service_role` only; the two live-slug list functions now
+   `stable` and still listing the four live slugs; every other row count unchanged. Until it is applied every
+   publishing surface reads "Not set up yet".
+3. **The token.** `NEXRA_AI_GITHUB_TOKEN` in Vercel (Production, Sensitive): a fine-grained token for
+   `abdulrehmanvigo2-hash/nexra-ai` only — Contents and Pull requests read and write, Metadata read — with an expiry
+   (90 days). Note the expiry date and renew it before then; an expired token reads "GitHub answered unauthorized".
+   It is never logged, returned or shown.
+4. **The mode.** `NEXRA_PUBLISH_MODE` is `off` unless set: set it to `dry-run` (Production), redeploy and confirm
+   (§2.1). `merge` — the product merging after green checks — is a separate, later approval.
+5. **Reviewers.** Leave `NEXRA_REVIEWER_EMAILS` unset: nobody is a reviewer. When set, a listed, confirmed user may open
+   `/publish/*` and press Publish, and nothing else.
+
+### 7.2 Publishing one article
+
+1. **Check, approve, propose** as before: *Check all units…* (one press; see below), approve the version (tick the
+   attestation when it has attested paragraphs), record its publication proposal (the proposal's slug is the one
+   published).
+2. **Request publication…** on the article panel (project screen, the *Publication* section of an approved article):
+   the published date and, optionally, a cross-link — exact words on one plain text line inside a `<P>` of
+   `app/blog/ai-lead-follow-up-automation/page.tsx` (a line that already holds a link is skipped). Record request.
+3. **Command Center → Ready to publish → Open publish page.** Read the request and the files: rendered now, from the
+   stored, approved version, at the website's current `main`. A refusal names the file and what is missing; nothing is
+   consumed or written.
+4. **Publish…** (confirmed). It consumes the approval, creates branch `nexra-publish/<slug>-<8 characters>`, commits the
+   files and opens the pull request *Blog: <title>*.
+   - `dry-run`: review the pull request and its preview deployment on GitHub, merge it there, then press **Check
+     status**: the merge is recorded, the live page is checked, and the publication reads **Live**.
+   - `merge`: press **Check status** until the checks are green; the product then merges with the head commit it
+     recorded, and the live page is checked.
+5. **After.** The slug is live from the records at once — no migration. Confirm read-only that
+   `nexra_article_publication_live_articles('nexra-agency-website')` lists the slug, its article, the version and its
+   keywords. Request indexing in Search Console. Record the publication (pull request, merge commit) in `CLAUDE.md`.
 
 **Checking a version in one press.** On the article's fact-check panel, *Check all units…* opens one confirmation (units to
 carry, units to check, estimated runs and cost range, today's usage against the 40-a-day cap; refused when the cap would
@@ -558,6 +602,40 @@ be exceeded), then carries every unit it can and checks the rest one at a time �
 tab. It continues past a unit that needs review and lists those units at the end; it stops on a failed run, a malformed
 answer, any refused request, or *Stop after this unit*. Closing the tab stops it after the unit in flight; pressing again
 resumes from the unchecked rows. Each unit still has its own run and record, as when checked by hand.
+
+### 7.3 When something goes wrong
+
+Every step is recorded before the next starts, and a press always continues from the last recorded step: a second
+press never makes a second branch, commit or pull request.
+
+| The page says | What it means | What to do |
+|---|---|---|
+| Publishing is off | `NEXRA_PUBLISH_MODE` is `off` or unknown | Set the mode (§7.1 step 4); nothing was read or consumed |
+| The GitHub token is not configured / GitHub answered unauthorized | The token is missing, wrong or expired | Renew it in Vercel, redeploy, press again |
+| The website's files changed shape: *file*: *what* | `nexra-ai` changed what the renderer relies on | A code change to `pin.ts` (its own PR); nothing was consumed |
+| The cross-link words are not on a plain line… | The anchor is not on a plain `<P>` line | Request again with other words, or none |
+| Expired — request again / Superseded | The approval's 24 hours passed, or a newer request replaced it | Request again; use the newest |
+| GitHub answered *code* (step) | A GitHub call failed mid-way | Press again; it continues from the same step |
+| The pull request's checks failed | The site's checks failed on the branch | Fix on GitHub and press Check status, or Abandon… |
+| Someone pushed to the publication branch / The pull request was closed / branch holds other content / files differ | The publication cannot safely continue | **Abandon…** (operators only; nothing is sent to GitHub), close the pull request and delete the branch on GitHub, then request again |
+| Merged. The website is deploying | The page does not answer 200 yet | Wait for the Vercel deployment; press Check status |
+
+### 7.4 Taking an article down
+
+Not automated. Revert its merge in `nexra-ai` (a pull request, under §6 approval). The publication row stays `merged`
+or `live` as the record of what happened, and its slug stays live in the records, so no other article can take it; a
+later change would be needed to release a slug.
+
+### 7.5 What the product never does
+
+It never publishes without a recorded approval and a press, never merges in `dry-run`, never merges a head commit it did
+not record, never edits a file it has not read at the base commit, and never writes anywhere but one branch and one
+pull request of `abdulrehmanvigo2-hash/nexra-ai` per publication.
+
+### 7.6 The hand route (articles 1–3), kept as the record
+
+Superseded by §7.1–§7.5. Articles 1–3 were published this way: a hand-made `/N` template PR, the pull request opened from
+a Claude Code session with the operator's approval, the operator's merge, and a live-slug migration per article.
 
 1. **Live slugs and keywords come from the records (done, F9).** The product keeps no list of live slugs in code. It
    reads `nexra_article_publication_live_articles(destination)` (migration `20261015120000`). That function returns
