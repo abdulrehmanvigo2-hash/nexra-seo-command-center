@@ -35,7 +35,7 @@ const SCOPED = [
 
 describe("the registry: the three scoped-V1 second tasks", () => {
   test("each for its one agent, read-only, over an existing evidence kind, hash-pinned, not a hand-off source", () => {
-    assert.equal(TASK_TYPES.length, 29); // M4: evidence-extract; M5: opportunity-brief
+    assert.equal(TASK_TYPES.length, 30); // M4: evidence-extract; M5: opportunity-brief; M6: article-part-draft
     for (const task of SCOPED) {
       const definition = getTaskType(task.id);
       assert.ok(definition, task.id);

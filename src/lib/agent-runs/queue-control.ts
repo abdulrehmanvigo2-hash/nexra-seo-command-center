@@ -58,6 +58,7 @@ const ELSEWHERE: Partial<Record<AgentTaskType, string>> = {
   "article-check-unit": "Queued from an article's check units on the project screen.",
   "evidence-extract": "Queued from a fetched source on Content Studio's Evidence tab.",
   "opportunity-brief": "Queued from an accepted opportunity on Content Studio's Evidence tab.",
+  "article-part-draft": "Queued from a completed brief on Content Studio's Evidence tab (Draft article…).",
 };
 
 function chooserOf(task: TaskTypeDefinition): ChooserKind {

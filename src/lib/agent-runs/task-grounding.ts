@@ -43,7 +43,8 @@ import type { FindingHistoryRead } from "@/lib/crawl/service";
 import { formatCuratedKeywordGrounding, type CuratedKeywordRead } from "@/lib/keywords/grounding";
 import type { ListKeywordsResult } from "@/lib/keywords/service";
 import { EVIDENCE_SOURCE, formatSourceGrounding, type SourceForExtraction } from "@/lib/evidence/extract";
-import { formatOpportunityGrounding, OPPORTUNITY_SOURCE, type OpportunityBriefInput } from "@/lib/briefs/brief";
+import { BRIEF_SOURCE, formatPartBlock, isArticlePart, sectionNumber } from "@/lib/briefs/article-part";
+import { formatOpportunityGrounding, OPPORTUNITY_SOURCE, parseBrief, type OpportunityBriefInput } from "@/lib/briefs/brief";
 
 /** M5: what the product holds for one accepted opportunity of the project; null when it is not the project's. */
 export type OpportunityReader = (projectId: string, opportunityId: string) => Promise<OpportunityBriefInput | null>;
@@ -618,6 +619,36 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
           bytes: Buffer.byteLength(text, "utf8"),
         };
         return { ok: true, grounding: { text, summary, source: OPPORTUNITY_SOURCE } };
+      }
+
+      case "brief": {
+        // M6: one completed, model-executed brief of the run's own project, re-read and parsed, then its opportunity's
+        // records re-read through M5's reader. Anything else refuses before any provider is reached.
+        if (!readers.opportunities) return { ok: false, reason: "opportunities-not-kept" };
+        const briefRunId = typeof task.input.briefRunId === "string" ? task.input.briefRunId : "";
+        const part = task.input.part;
+        const briefRun = await readers.runs.getById(briefRunId);
+        const brief =
+          briefRun !== null && briefRun.projectId === task.project.id && briefRun.taskType === "opportunity-brief" && briefRun.status === "completed" && briefRun.executor === "ai" && briefRun.resultSummary !== null
+            ? parseBrief(briefRun.resultSummary)
+            : null;
+        if (briefRun === null || brief === null || !isArticlePart(part)) return { ok: false, reason: "brief-not-usable" };
+        const section = sectionNumber(part);
+        if (section !== null && section > brief.outline.length) return { ok: false, reason: "brief-part-missing" };
+        const opportunityId = typeof briefRun.input.opportunityId === "string" ? briefRun.input.opportunityId : "";
+        const input = await readers.opportunities(task.project.id, opportunityId);
+        if (input === null) return { ok: false, reason: "opportunity-not-readable" };
+        const text = `${formatPartBlock(brief, part)}\n\n${formatOpportunityGrounding(input)}`;
+        const summary: JsonObject = {
+          source: "brief",
+          briefRunId: briefRun.id,
+          part,
+          opportunityId: input.opportunity.id,
+          admittedUnits: input.admitted.map((unit) => unit.label),
+          crawlId: input.site?.crawlId ?? null,
+          bytes: Buffer.byteLength(text, "utf8"),
+        };
+        return { ok: true, grounding: { text, summary, source: BRIEF_SOURCE } };
       }
 
       case "competitor-comparison": {

@@ -45,7 +45,7 @@ describe("the task type", () => {
     ];
     for (const agent of others) assert.equal(agentMayRun(definition!, agent), false, agent);
     assert.equal(agentMayRun(definition!, "content-strategist"), true);
-    assert.equal(TASK_TYPES.length, 29); // M4: evidence-extract; M5: opportunity-brief
+    assert.equal(TASK_TYPES.length, 30); // M4: evidence-extract; M5: opportunity-brief; M6: article-part-draft
     // The same evidence kind as the pack: one reader, two readings.
     assert.equal(getTaskType("evidence-pack-review")?.evidence, definition?.evidence);
   });
