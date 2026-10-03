@@ -122,6 +122,16 @@ part costs one run.
 
 No table, no migration, no environment change.
 
+## As built (PRs 2–5)
+
+- The longest full-caps part answers are 1,528 characters (opening), 1,528 (section) and 1,418 (closing). Instructions
+  hash `a6eb6099…`.
+- The parser accepts a section with one paragraph as well as the two or three asked for.
+- A cited source's title is its address (host and path), flagged for the operator: the stored admitted unit keeps no
+  page title.
+- Queue-all skips parts already drafted, queued or running. It queues again a part whose answer is off the format.
+- The draft route is not rate limited, like the run list it reads.
+
 ## Owner actions
 
 - Approve the merges.
