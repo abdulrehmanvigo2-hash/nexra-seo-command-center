@@ -1,5 +1,6 @@
 import type { EvidenceSource, EvidenceUnit } from "@/lib/evidence/contract";
 import type { ExtractedUnit, SourceForExtraction } from "@/lib/evidence/extract";
+import type { AdmittedUnit } from "@/lib/evidence/admitted";
 import type { FetchedSource } from "@/lib/evidence/fetch";
 
 /**
@@ -45,6 +46,8 @@ export type EvidenceStore = {
   recordUnits(projectId: string, sourceId: string, runId: string, units: readonly ExtractedUnit[], operatorId: string): Promise<RecordUnitsOutcome>;
   listUnits(projectId: string, sourceId: string, limit: number): Promise<readonly EvidenceUnit[]>;
   decideUnit(projectId: string, unitId: string, decision: "admitted" | "rejected", operatorId: string): Promise<DecideOutcome>;
+  /** M4, checker v4: the admitted units of the opportunities whose task is linked to the article (M3), with their pages. */
+  admittedForArticle(projectId: string, articleId: string): Promise<readonly AdmittedUnit[]>;
 };
 
 export const unavailableEvidenceStore: EvidenceStore = {
@@ -75,5 +78,8 @@ export const unavailableEvidenceStore: EvidenceStore = {
   },
   async decideUnit() {
     return { status: "unit-not-found" };
+  },
+  async admittedForArticle() {
+    return [];
   },
 };

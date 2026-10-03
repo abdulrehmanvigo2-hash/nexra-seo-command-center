@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
+import { linkedOpportunityIds, MAX_ADMITTED_UNITS } from "@/lib/evidence/admitted";
 import { EvidenceStoreNotSetUpError, type EvidenceStore } from "@/lib/evidence/store-contract";
 import {
   decideResultToOutcome,
@@ -106,6 +107,36 @@ export function createSupabaseEvidenceStore(client: SupabaseClient<EvidenceDatab
       const { data, error } = await client.from("nexra_evidence_units").select(UNIT_READ_COLUMNS).eq("project_id", projectId).eq("source_id", sourceId).order("recorded_at", { ascending: false }).order("position", { ascending: true }).limit(limit);
       if (error) refuseEvidence("list units", error);
       return (data ?? []).map(unitRowToUnit);
+    },
+
+    async admittedForArticle(projectId, articleId) {
+      // The tasks ever linked to this article, then every link event of those tasks (the newest one decides).
+      const linked = await client.from("nexra_agent_task_events").select("task_id, project_id, event_type, article_id, seq").eq("project_id", projectId).eq("event_type", "article-linked").eq("article_id", articleId).limit(200);
+      if (linked.error) refuseEvidence("read article links", linked.error);
+      const taskIds = [...new Set((linked.data ?? []).map((row) => row.task_id))];
+      if (taskIds.length === 0) return [];
+      const events = await client.from("nexra_agent_task_events").select("task_id, project_id, event_type, article_id, seq").eq("project_id", projectId).eq("event_type", "article-linked").in("task_id", taskIds).limit(1_000);
+      if (events.error) refuseEvidence("read link events", events.error);
+      const tasks = await client.from("nexra_agent_tasks").select("id, project_id, source_kind, source_ref").eq("project_id", projectId).in("id", taskIds);
+      if (tasks.error) refuseEvidence("read tasks", tasks.error);
+      const opportunityIds = linkedOpportunityIds(
+        (events.data ?? []).map((row) => ({ taskId: row.task_id, articleId: row.article_id, seq: row.seq })),
+        (tasks.data ?? []).map((row) => ({ taskId: row.id, sourceKind: row.source_kind, sourceRef: row.source_ref })),
+        articleId,
+      );
+      if (opportunityIds.length === 0) return [];
+      const units = await client.from("nexra_evidence_units").select(UNIT_READ_COLUMNS).eq("project_id", projectId).eq("decision", "admitted").in("opportunity_id", [...opportunityIds]).order("decided_at", { ascending: true }).limit(MAX_ADMITTED_UNITS * 2);
+      if (units.error) refuseEvidence("read admitted units", units.error);
+      const rows = (units.data ?? []).map(unitRowToUnit);
+      if (rows.length === 0) return [];
+      const sources = await client.from("nexra_evidence_sources").select("id, project_id, opportunity_id, requested_url, final_url, fetched_at").eq("project_id", projectId).in("id", [...new Set(rows.map((row) => row.sourceId))]);
+      if (sources.error) refuseEvidence("read admitted sources", sources.error);
+      const pages = new Map((sources.data ?? []).map((row) => [row.id, row] as const));
+      return rows.flatMap((unit) => {
+        const page = pages.get(unit.sourceId);
+        if (page === undefined || unit.decidedAt === null) return [];
+        return [{ id: unit.id, claim: unit.claim, quote: unit.quote, url: page.final_url ?? page.requested_url, fetchedAt: page.fetched_at, decidedAt: unit.decidedAt }];
+      });
     },
 
     async decideUnit(projectId, unitId, decision, operatorId) {

@@ -36,7 +36,14 @@ import "server-only";
 import type { GroundingSource } from "@/lib/agent-runs/ai-executor";
 import { readCanonicalArticle } from "@/lib/content/articles/canonical";
 import type { ArticleCheckStore } from "@/lib/content/articles/checks/contract";
-import { ARTICLE_CHECK_LIMITS_NOTE, ARTICLE_CHECK_SOURCE, ARTICLE_CHECK_UNIT_INSTRUCTIONS } from "@/lib/content/article-check-prompt";
+import {
+  ADMITTED_LIMITS_LINE,
+  ARTICLE_CHECK_LIMITS_NOTE,
+  ARTICLE_CHECK_LIMITS_NOTE_OUTSIDE_LINE,
+  ARTICLE_CHECK_SOURCE,
+  ARTICLE_CHECK_UNIT_INSTRUCTIONS,
+} from "@/lib/content/article-check-prompt";
+import { checkEvidenceText, formatAdmittedBlock, type AdmittedBlock, type AdmittedUnit } from "@/lib/evidence/admitted";
 import { evidenceFingerprint } from "@/lib/content/articles/checks/carry";
 import { unitSha256 } from "@/lib/content/articles/checks/unit-hash";
 import { articleCheckPlan, MAX_ARTICLE_UNITS } from "@/lib/content/articles/checks/units";
@@ -55,6 +62,11 @@ import type { StoredArticleVersion } from "@/lib/content/articles/checks/contrac
 export type ArticleCheckGroundingReaders = {
   readonly checks: Pick<ArticleCheckStore, "getArticle" | "getVersion" | "listUnitRecords">;
   readonly evidencePack: EvidencePackReaders;
+  /**
+   * M4: the admitted outside units of the opportunities linked to the article (empty when none, or when the evidence
+   * schema is not set up). Absent means none: the check reads exactly as before M4.
+   */
+  readonly admittedEvidence?: (projectId: string, articleId: string) => Promise<readonly AdmittedUnit[]>;
 };
 
 /** Why a unit cannot be checked. Each refuses before any provider call. */
@@ -114,6 +126,9 @@ export type ArticleCheckGrounding = {
      */
     readonly instructionsSha256: string;
     readonly evidenceSha256: string;
+    /** M4: the admitted outside units the check was given, by label (`E1` …) and by id; empty when none. */
+    readonly admittedUnits: readonly string[];
+    readonly admittedUnitIds: readonly string[];
     readonly bytes: number;
   };
   readonly source: GroundingSource;
@@ -210,8 +225,9 @@ export async function readArticleCheckGrounding(
 
   const records = await readEvidencePackGrounding(readers.evidencePack, { projectId: request.projectId });
   if (!records.ok) return { ok: false, reason: records.reason };
+  const admitted = readers.admittedEvidence === undefined ? [] : await readers.admittedEvidence(request.projectId, resolved.resolved.article.id);
 
-  return { ok: true, grounding: formatArticleCheckGrounding(resolved.resolved, records.grounding) };
+  return { ok: true, grounding: formatArticleCheckGrounding(resolved.resolved, records.grounding, formatAdmittedBlock(admitted)) };
 }
 
 const encoder = new TextEncoder();
@@ -220,7 +236,7 @@ const encoder = new TextEncoder();
 export const ARTICLE_CHECK_INSTRUCTIONS_SHA256 = utf8Sha256(ARTICLE_CHECK_UNIT_INSTRUCTIONS);
 
 /** Wraps the quoted unit and the records into one block, each under the heading that says what it is. */
-export function formatArticleCheckGrounding(resolved: ResolvedUnit, records: EvidencePackGrounding): ArticleCheckGrounding {
+export function formatArticleCheckGrounding(resolved: ResolvedUnit, records: EvidencePackGrounding, admitted: AdmittedBlock | null = null): ArticleCheckGrounding {
   const { article, version, units, unit, sha256 } = resolved;
   const wasCurrent = version.version === article.currentVersion;
   const searchWindow = searchWindowOf(records.summary);
@@ -248,7 +264,9 @@ export function formatArticleCheckGrounding(resolved: ResolvedUnit, records: Evi
       "=== END UNIT UNDER CHECK ===",
     ].join("\n\n"),
     ["=== RECORDED PROJECT EVIDENCE (the only source of facts for this check, re-read now) ===", records.text, "=== END RECORDED PROJECT EVIDENCE ==="].join("\n\n"),
-    ARTICLE_CHECK_LIMITS_NOTE,
+    // M4: admitted outside units, only when there are some; the limits note then names them as records too.
+    ...(admitted === null ? [] : [admitted.text]),
+    admitted === null ? ARTICLE_CHECK_LIMITS_NOTE : ARTICLE_CHECK_LIMITS_NOTE.replace(ARTICLE_CHECK_LIMITS_NOTE_OUTSIDE_LINE, ADMITTED_LIMITS_LINE),
   ].join("\n\n");
 
   return {
@@ -277,7 +295,9 @@ export function formatArticleCheckGrounding(resolved: ResolvedUnit, records: Evi
       recordPaths,
       records: { ...records.summary },
       instructionsSha256: ARTICLE_CHECK_INSTRUCTIONS_SHA256,
-      evidenceSha256: evidenceFingerprint(records.text),
+      evidenceSha256: evidenceFingerprint(checkEvidenceText(records.text, admitted)),
+      admittedUnits: admitted?.labels ?? [],
+      admittedUnitIds: admitted?.unitIds ?? [],
       bytes: encoder.encode(text).length,
     },
     source: ARTICLE_CHECK_SOURCE,

@@ -128,5 +128,7 @@ export function articleCheckRunDisposition(run: AgentRun, target: ArticleCheckTa
         })();
   if (parsed === null || !parsed.ok) return { ok: true, status: "failed", reason: "output-malformed", checkedAt: finishedAt };
 
-  return { ok: true, status: "verdict", output: parsed.output, evidence: { crawlId, searchWindow, recordPaths }, checkedAt: finishedAt };
+  // M4: the admitted outside units the run was given, by label; a run made before M4 carries none.
+  const admittedUnits = Array.isArray(evidence.admittedUnits) ? evidence.admittedUnits.filter((entry): entry is string => typeof entry === "string" && /^E\d{1,2}$/.test(entry)) : [];
+  return { ok: true, status: "verdict", output: parsed.output, evidence: { crawlId, searchWindow, recordPaths, admittedUnits }, checkedAt: finishedAt };
 }

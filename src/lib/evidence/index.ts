@@ -5,6 +5,7 @@ import { createEvidenceService, type EvidenceService } from "@/lib/evidence/serv
 import { fetchSource } from "@/lib/evidence/fetch";
 import { EvidenceStoreNotSetUpError, unavailableEvidenceStore, type EvidenceStore } from "@/lib/evidence/store-contract";
 import type { SourceForExtraction } from "@/lib/evidence/extract";
+import type { AdmittedUnit } from "@/lib/evidence/admitted";
 import type { EvidenceDatabase } from "@/lib/evidence/supabase/schema";
 import { createSupabaseEvidenceStore } from "@/lib/evidence/supabase/store";
 import { selectProjectDataSource } from "@/lib/projects/data-source";
@@ -25,6 +26,16 @@ function evidenceStore(): EvidenceStore {
   const inSupabase = selectProjectDataSource(process.env) === "supabase";
   store ??= inSupabase ? createSupabaseEvidenceStore(createSupabaseServerClient<EvidenceDatabase>(readSupabaseServerConfig(process.env))) : unavailableEvidenceStore;
   return store;
+}
+
+/** Checker v4's reader: the admitted outside units linked to an article; none on a database without the M4 schema. */
+export async function admittedEvidenceForArticle(projectId: string, articleId: string): Promise<readonly AdmittedUnit[]> {
+  try {
+    return await evidenceStore().admittedForArticle(projectId, articleId);
+  } catch (error) {
+    if (error instanceof EvidenceStoreNotSetUpError) return [];
+    throw error;
+  }
 }
 
 /** The extraction's grounding reader: one source's text and topic; a database without the tables reads as nothing. */
