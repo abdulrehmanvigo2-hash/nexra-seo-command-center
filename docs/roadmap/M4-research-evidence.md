@@ -93,11 +93,12 @@ reads **Not set up yet**.
 
 ## 6. Article format `/3` (PR 9)
 
-- An optional top-level `sources` list — `{ url, title, publisher?, retrievedAt }`, 1 to 20, https only — canonical
+- An optional top-level `citations` list (named so because `sources` is the draft provenance a version records, never content) — `{ url, title, publisher, retrievedAt }`, 1 to 20, https only — canonical
   format `nexra-article-content/3` **only when the list is non-empty** (the final member); without it format 1 or 2 byte
   for byte, so every stored text, unit, approval and preview keeps its hash (tested against the V4 pin).
-- `20261026120000_article_sources.sql`: the content-format check and the attestation count accept `/3`; the proposal
-  preview gains a SOURCES section only when there are sources. No row changes.
+- `20261026120000_article_citations.sql`: the content-format check and the attestation count accept `/3` (only with
+  citations; formats 1 and 2 refuse them). The proposal preview gains a CITED SOURCES section only when there are
+  citations; its format name stays bound to the attestations. No row changes.
 - The renderer (P-L2's pin at publish) renders a **Sources** section — each title as an outside link with
   `rel="nofollow noopener"`, its publisher and retrieval date — through `tsString`, tested against hostile text.
 
@@ -123,7 +124,8 @@ the 40-a-project / 100-in-all daily run caps.
 6. The `evidence-extract` task, its instructions, grounding, answer parser and *Record units*.
 7. The Evidence screen.
 8. Checker version 4 and the admitted-units block.
-9. The `sources` field, format `/3`, migration `20261026120000_article_sources.sql`, the preview and the renderer.
+9. The `citations` field, format `/3`, migration `20261026120000_article_citations.sql`, the preview, the editor and the
+   renderer.
 
 ## 9. What the owner does (each under its own approval)
 

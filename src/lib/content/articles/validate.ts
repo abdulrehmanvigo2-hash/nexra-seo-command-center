@@ -58,6 +58,7 @@ import { isInternalPathSyntax } from "@/lib/content/articles/internal-links";
 import { validateSlug } from "@/lib/content/publications/proposal-rules";
 import type {
   ArticleAttestation,
+  ArticleCitedSource,
   ArticleAttestationBasis,
   ArticleContent,
   ArticleFaq,
@@ -98,6 +99,10 @@ export const ARTICLE_LIMITS = {
   ctaTitle: 200,
   ctaBody: 1000,
   attestations: 50,
+  citations: 20,
+  sourceUrl: 2000,
+  sourceTitle: 200,
+  sourcePublisher: 120,
 } as const;
 
 /** Attested paragraphs hold at most this share of the body's sentences (6.8b). */
@@ -145,12 +150,26 @@ const ARTICLE_KEYS = [
   "ctaBody",
   "topicDecision",
   "attestations",
+  "citations",
 ] as const;
 const SECTION_KEYS = ["id", "heading", "paragraphs", "subsections"] as const;
 const SUBSECTION_KEYS = ["id", "heading", "paragraphs"] as const;
 const FAQ_KEYS = ["question", "answer"] as const;
 const LINK_KEYS = ["path", "anchorText", "sectionId"] as const;
 const ATTESTATION_KEYS = ["locator", "basis"] as const;
+const SOURCE_KEYS = ["url", "title", "publisher", "retrievedAt"] as const;
+const RETRIEVED_AT = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/** An https URL with a host, no credentials and no fragment-only form, at most the bound. */
+function isCitableUrl(value: string): boolean {
+  if (value.length > ARTICLE_LIMITS.sourceUrl) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.includes(".") && url.username === "" && url.password === "" && url.href === value;
+  } catch {
+    return false;
+  }
+}
 
 const SECTION_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
@@ -406,6 +425,31 @@ function attestations(collector: Collector, value: unknown, sections: readonly A
   return entries;
 }
 
+function citations(collector: Collector, value: unknown): ArticleCitedSource[] {
+  const entries = collector.list(value, ARTICLE_LIMITS.citations, "citations", false).map((entry, index): ArticleCitedSource => {
+    const path = `citations[${index}]`;
+    const raw = collector.object(entry, path);
+    if (raw === null) return { url: "", title: "", publisher: "", retrievedAt: "" };
+    collector.onlyKeys(raw, SOURCE_KEYS, path);
+    const url = raw.url;
+    if (url === undefined || url === null || url === "") collector.add(join(path, "url"), "required");
+    else if (typeof url !== "string") collector.add(join(path, "url"), "type");
+    else if (!isCitableUrl(url)) collector.add(join(path, "url"), "format");
+    const retrievedAt = raw.retrievedAt;
+    if (retrievedAt === undefined || retrievedAt === null || retrievedAt === "") collector.add(join(path, "retrievedAt"), "required");
+    else if (typeof retrievedAt !== "string") collector.add(join(path, "retrievedAt"), "type");
+    else if (!RETRIEVED_AT.test(retrievedAt) || Number.isNaN(Date.parse(`${retrievedAt}T00:00:00Z`))) collector.add(join(path, "retrievedAt"), "format");
+    return {
+      url: typeof url === "string" ? url : "",
+      title: collector.text(raw.title, ARTICLE_LIMITS.sourceTitle, join(path, "title")),
+      publisher: collector.text(raw.publisher, ARTICLE_LIMITS.sourcePublisher, join(path, "publisher")),
+      retrievedAt: typeof retrievedAt === "string" ? retrievedAt : "",
+    };
+  });
+  duplicates(collector, entries, (source) => source.url, (index) => `citations[${index}].url`);
+  return entries;
+}
+
 /**
  * Validates article content. Returns a fresh, validated copy — never the
  * caller's object — with every key in contract order and every optional
@@ -454,6 +498,7 @@ export function validateArticleContent(input: unknown): ArticleValidationResult 
     ctaBody: collector.text(input.ctaBody, ARTICLE_LIMITS.ctaBody, "ctaBody"),
     topicDecision: collector.oneOf(input.topicDecision, TOPIC_DECISIONS, "topicDecision"),
     attestations: attestations(collector, input.attestations, sections),
+    citations: citations(collector, input.citations),
   };
 
   if (collector.issues.length > 0) return { ok: false, issues: collector.issues };

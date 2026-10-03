@@ -31,14 +31,14 @@
  */
 
 import { ATTESTATION_LABELS } from "@/lib/content/articles/attestations";
-import { ARTICLE_CANONICAL_FORMAT, ARTICLE_CANONICAL_FORMAT_ATTESTED, readCanonicalArticle } from "@/lib/content/articles/canonical";
+import { ARTICLE_CANONICAL_FORMAT, ARTICLE_CANONICAL_FORMAT_ATTESTED, ARTICLE_CANONICAL_FORMAT_SOURCED, readCanonicalArticle } from "@/lib/content/articles/canonical";
 import { isInternalPathSyntax } from "@/lib/content/articles/internal-links";
 import { validateArticleContent } from "@/lib/content/articles/validate";
 import { liveSlugsIn, type LiveArticle } from "@/lib/content/articles/proposals/live-slugs";
 import { keywordOverlaps, normalisedKeywords } from "@/lib/content/articles/website/overlap";
 import { articlePagePath, articleRoute, type ArticleWebsiteTemplate } from "@/lib/content/articles/website/template";
 import { tsString } from "@/lib/content/publications/website/tsx-literal";
-import type { ArticleAttestationBasis, ValidatedArticleContent } from "@/types/content-article";
+import type { ArticleAttestationBasis, ArticleCitedSource, ValidatedArticleContent } from "@/types/content-article";
 
 export const ARTICLE_RENDER_REFUSALS = [
   "approval-missing",
@@ -226,7 +226,7 @@ function readContent(canonical: string): ValidatedArticleContent {
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) refuse("content-unreadable");
   const { format, ...rest } = parsed as Record<string, unknown>;
-  if (format !== ARTICLE_CANONICAL_FORMAT && format !== ARTICLE_CANONICAL_FORMAT_ATTESTED) refuse("content-unreadable", "format");
+  if (format !== ARTICLE_CANONICAL_FORMAT && format !== ARTICLE_CANONICAL_FORMAT_ATTESTED && format !== ARTICLE_CANONICAL_FORMAT_SOURCED) refuse("content-unreadable", "format");
   const checked = validateArticleContent(rest);
   if (!checked.ok) {
     const missing = checked.issues.find((issue) => issue.code === "required");
@@ -259,9 +259,11 @@ function checkArticle(template: ArticleWebsiteTemplate, article: ValidatedArticl
   if (article.topicDecision !== "different-angle") refuse("topic-decision", article.topicDecision);
   if (template.liveSlugs.includes(article.slug) || liveSlugsIn(live).includes(article.slug)) refuse("slug-live", article.slug);
   if (typeof published !== "string" || !validDate(published)) refuse("published-invalid");
+  // M4: an article that cites outside pages renders a Sources section with the id "sources", reserved then too.
+  const reserved = article.citations.length > 0 ? [...template.reservedSectionIds, SOURCES_SECTION_ID] : template.reservedSectionIds;
   for (const section of article.sections) {
-    if (template.reservedSectionIds.includes(section.id)) refuse("section-id-reserved", section.id);
-    for (const sub of section.subsections) if (template.reservedSectionIds.includes(sub.id)) refuse("section-id-reserved", sub.id);
+    if (reserved.includes(section.id)) refuse("section-id-reserved", section.id);
+    for (const sub of section.subsections) if (reserved.includes(sub.id)) refuse("section-id-reserved", sub.id);
   }
   for (const set of liveKeywordSets(template, live, articleId)) {
     const overlap = keywordOverlaps(article.keywords, set.keywords)[0];
@@ -343,6 +345,7 @@ function renderPage(input: RenderCore, article: ValidatedArticleContent, links: 
   const hasH3 = article.sections.some((section) => section.subsections.length > 0);
   const hasFaqs = article.faqs.length > 0;
   const hasAttested = bases.size > 0;
+  const hasSources = article.citations.length > 0;
 
   const componentNames = [
     ...(hasLinks ? ["A"] : []),
@@ -363,8 +366,9 @@ function renderPage(input: RenderCore, article: ValidatedArticleContent, links: 
   const sectionsConst = [
     ...article.sections.map((section, index) => `const section${index + 1}: ArticleSection = { id: ${tsString(section.id)}, title: ${tsString(section.heading)} };`),
     ...(hasFaqs ? ['const faqSection: ArticleSection = { id: "faq", title: "Frequently Asked Questions" };'] : []),
+    ...(hasSources ? [`const sourcesSection: ArticleSection = { id: ${tsString(SOURCES_SECTION_ID)}, title: "Sources" };`] : []),
     "",
-    `const sections: ArticleSection[] = [${[...article.sections.map((_, index) => `section${index + 1}`), ...(hasFaqs ? ["faqSection"] : [])].join(", ")}];`,
+    `const sections: ArticleSection[] = [${[...article.sections.map((_, index) => `section${index + 1}`), ...(hasFaqs ? ["faqSection"] : []), ...(hasSources ? ["sourcesSection"] : [])].join(", ")}];`,
   ];
   const faqConst = hasFaqs
     ? [
@@ -446,6 +450,7 @@ function renderPage(input: RenderCore, article: ValidatedArticleContent, links: 
     "        <ArticleToc sections={sections} />",
     ...sectionJsx,
     ...(hasFaqs ? ["", "        <ArticleFaq section={faqSection} items={faqs} />"] : []),
+    ...(hasSources ? ["", ...sourcesJsx(article.citations)] : []),
     "      </ArticleBody>",
     "",
     `      <ArticleCta title={${tsString(article.ctaTitle)}} body={${tsString(article.ctaBody)}} />`,
@@ -454,6 +459,28 @@ function renderPage(input: RenderCore, article: ValidatedArticleContent, links: 
     "}",
   ];
   return `${lines.join("\n")}\n`;
+}
+
+/** M4: the id of the Sources section an article with citations renders. */
+export const SOURCES_SECTION_ID = "sources";
+
+/**
+ * M4: the Sources section — each cited page as an outside link (`rel="nofollow noopener noreferrer"`, a plain `<a>`:
+ * the site's `A` is its internal link), its publisher and the day it was retrieved, every text a string literal.
+ */
+function sourcesJsx(citations: readonly ArticleCitedSource[]): string[] {
+  return [
+    "        <Section section={sourcesSection}>",
+    '          <ol className="flex list-decimal flex-col gap-3 pl-5 text-[1.0625rem] leading-[1.7] text-ink-2">',
+    ...citations.flatMap((source) => [
+      "            <li>",
+      `              <a href={${tsString(source.url)}} rel="nofollow noopener noreferrer" className="text-ink underline decoration-accent/40 underline-offset-4">{${tsString(source.title)}}</a>`,
+      `              {${tsString(` — ${source.publisher}, retrieved ${source.retrievedAt}`)}}`,
+      "            </li>",
+    ]),
+    "          </ol>",
+    "        </Section>",
+  ];
 }
 
 /* -------------------------------------------------------------------------- */

@@ -79,6 +79,18 @@ export type ArticleAttestation = {
 };
 
 /** The article's editorial content, and nothing else. */
+/**
+ * An outside page the article cites (M4, format `/3`): its URL (https), its title and publisher as the owner gives them,
+ * and the day it was retrieved. Listed in a Sources section on the page; never a check result.
+ */
+export type ArticleCitedSource = {
+  readonly url: string;
+  readonly title: string;
+  readonly publisher: string;
+  /** YYYY-MM-DD. */
+  readonly retrievedAt: string;
+};
+
 export type ArticleContent = {
   readonly topic: string;
   readonly searchIntent: SearchIntent;
@@ -109,6 +121,11 @@ export type ArticleContent = {
    * `nexra-article-content/1`, byte for byte as before.
    */
   readonly attestations: readonly ArticleAttestation[];
+  /**
+   * The outside pages the article cites (M4), in the author's order; named `citations` because `sources` is the draft provenance a version records, never content. Empty when there are none — and then the
+   * canonical text is format 1 or 2, byte for byte as before; with any, `nexra-article-content/3`.
+   */
+  readonly citations: readonly ArticleCitedSource[];
 };
 
 declare const validatedArticle: unique symbol;

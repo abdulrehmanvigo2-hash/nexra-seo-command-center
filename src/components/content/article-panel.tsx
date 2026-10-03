@@ -916,6 +916,28 @@ function ArticleEditor({
         </Button>
       </fieldset>
 
+      <fieldset className="space-y-2">
+        <legend className="text-xs font-medium text-fg">Cited sources (optional; listed in a Sources section on the page)</legend>
+        <p className="text-[11px] text-fg-subtle">
+          Outside pages the article cites — usually the pages behind the evidence you admitted. Each needs an https URL, its title, its publisher and the
+          day it was retrieved (YYYY-MM-DD). Readers see them as outside links.
+        </p>
+        {form.citations.map((citation, index) => (
+          <div key={index} className="grid gap-2 sm:grid-cols-[1.4fr_1fr_0.8fr_8rem_auto]">
+            <TextInput aria-label={`Source ${index + 1} URL`} placeholder="https://" value={citation.url} onChange={(e) => set("citations", form.citations.map((c, i) => (i === index ? { ...c, url: e.target.value } : c)))} />
+            <TextInput aria-label={`Source ${index + 1} title`} placeholder="Title" value={citation.title} onChange={(e) => set("citations", form.citations.map((c, i) => (i === index ? { ...c, title: e.target.value } : c)))} />
+            <TextInput aria-label={`Source ${index + 1} publisher`} placeholder="Publisher" value={citation.publisher} onChange={(e) => set("citations", form.citations.map((c, i) => (i === index ? { ...c, publisher: e.target.value } : c)))} />
+            <TextInput aria-label={`Source ${index + 1} retrieved`} placeholder="YYYY-MM-DD" value={citation.retrievedAt} onChange={(e) => set("citations", form.citations.map((c, i) => (i === index ? { ...c, retrievedAt: e.target.value } : c)))} />
+            <Button variant="ghost" onClick={() => set("citations", form.citations.filter((_, i) => i !== index))}>
+              Remove
+            </Button>
+          </div>
+        ))}
+        <Button variant="ghost" icon="plus" onClick={() => set("citations", [...form.citations, { url: "", title: "", publisher: "", retrievedAt: "" }])}>
+          Add source
+        </Button>
+      </fieldset>
+
       <div className="grid gap-3 sm:grid-cols-2">
         {text("ctaTitle", "CTA title")}
         <Field label="Topic decision" htmlFor={`${id}-decision`} hint="Your explicit decision; nothing is chosen for you.">

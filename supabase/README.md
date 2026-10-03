@@ -295,8 +295,17 @@ Editor (or run with the Supabase CLI against a linked project):
     was found may be admitted); RLS on, no policies, guarded
     (`docs/roadmap/M4-research-evidence.md`) — **not yet applied** to production
 
+48. `20261026120000_article_citations.sql` — M4: canonical format
+    `nexra-article-content/3` for an article that cites outside pages (a
+    `citations` list of 1 to 20, the text's last member): the internal count
+    function, the versions table's format check and `nexra_article_check_content`
+    accept it, and formats 1 and 2 refuse a `citations` member; no row, grant or
+    other function changes (`docs/roadmap/M4-research-evidence.md`) — **not yet
+    applied** to production
+
 The first forty-five are applied to production and recorded in its migration
-history (46 versions); `20261024120000` and `20261025120000` are not yet applied.
+history (46 versions); `20261024120000`, `20261025120000` and `20261026120000`
+are not yet applied.
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:
