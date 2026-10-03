@@ -1952,7 +1952,9 @@ the three files one nexra-ai pull request carries (`docs/website-renderer-6.9.md
 - `lib/blog.ts` with one record appended;
 - the live article with one link in its revive section.
 
-Its template is `nexra-ai-blog-tsx/2`, pinned at `1a688bd`, with the modified files pinned by SHA-256. Output is
+Its template is `nexra-ai-blog-tsx/2`, pinned at `1a688bd`, with the modified files pinned by SHA-256; for the second
+article, `nexra-ai-blog-tsx/3` re-pins the same contract at `356f38f` (both slugs live, the cross-link placed in the
+follow-up article's "what it does" section; runbook §7, step 2), and `/2` is unchanged. Output is
 deterministic and hashed. Content enters only as escaped string literals. Anything incomplete or invalid is
 refused with a typed code and no partial output. A new article's keywords may not repeat the live article's.
 Nothing is written anywhere; 6.11 is the write.
