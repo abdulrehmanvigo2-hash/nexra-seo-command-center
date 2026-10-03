@@ -270,8 +270,20 @@ Editor (or run with the Supabase CLI against a linked project):
     SELECT only, 4 of 4 guard triggers enabled; the three functions EXECUTE for
     `service_role` only; the live slugs and every row count unchanged)
 
-All forty-five are applied to production and recorded in its migration
-history (46 versions).
+46. `20261024120000_serp_results.sql` — M4: `nexra_provider_runs` gains the
+    `serp` kind and `opportunity_id` (required for a SERP run, immutable),
+    the request endpoint list gains `serp/google/organic/live/advanced`, and
+    `nexra_serp_results` (one immutable row per organic result, People Also
+    Ask question or related search, with the run's provenance; RLS on, no
+    policies, guarded) with `nexra_provider_serp_reserve` (the keyword is the
+    accepted opportunity's cluster's primary keyword, chosen in the database;
+    the shared daily cap) and `nexra_provider_serp_record`; `_request_record`
+    and `_run_finish` are replaced with the same signatures (the endpoint must
+    fit the run's kind; a SERP run plans one call)
+    (`docs/roadmap/M4-research-evidence.md`) — **not yet applied** to production
+
+The first forty-five are applied to production and recorded in its migration
+history (46 versions); `20261024120000` is not yet applied.
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:
