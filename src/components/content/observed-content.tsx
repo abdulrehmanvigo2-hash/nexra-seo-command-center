@@ -11,6 +11,7 @@ import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/pane
 import { SectionHeader } from "@/components/ui/section-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
+import { ContentCalendar } from "@/components/content/content-calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import {
   CONTENT_TABS,
@@ -181,6 +182,12 @@ export function ContentStudio({ projects }: { projects: readonly ProjectOption[]
 }
 
 function StudioTab({ projectId, tab }: { projectId: string; tab: ContentTabId }) {
+  // The calendar reads its own route, so the stored content's reads never hide it.
+  if (tab === "calendar") return <ContentCalendar projectId={projectId} />;
+  return <StudioRecordsTab projectId={projectId} tab={tab} />;
+}
+
+function StudioRecordsTab({ projectId, tab }: { projectId: string; tab: Exclude<ContentTabId, "calendar"> }) {
   const data = useStudioData(projectId);
   if (data.status === "loading") return <Skeleton className="h-64 w-full" />;
   if (data.status !== "ready") {

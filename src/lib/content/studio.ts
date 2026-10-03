@@ -27,6 +27,8 @@ export const CONTENT_TABS = [
   { id: "articles", label: "Articles", icon: "content" },
   { id: "drafts", label: "Drafts", icon: "layers" },
   { id: "pipeline", label: "Pipeline", icon: "workflow" },
+  // M3: the content calendar, on its own read (`src/components/content/content-calendar.tsx`).
+  { id: "calendar", label: "Calendar", icon: "calendar" },
 ] as const;
 
 export type ContentTabId = (typeof CONTENT_TABS)[number]["id"];
