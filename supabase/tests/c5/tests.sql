@@ -206,6 +206,7 @@ begin
              'nexra_content_publication_propose(text,uuid,smallint,uuid,text,uuid,timestamp with time zone,text,text,text,text,uuid)',
              'nexra_crawl_finding_triage_set(text,uuid,text,text,text,uuid)',
              'nexra_crawl_findings_record(text,uuid,smallint,integer,integer,integer,integer,integer,boolean,jsonb,text[],jsonb)',
+             'nexra_evidence_source_record(text,uuid,uuid,text,text,text,integer,text,text,text,uuid)','nexra_evidence_unit_decide(text,uuid,text,uuid)','nexra_evidence_units_record(text,uuid,uuid,jsonb,uuid)',
              'nexra_keyword_add(text,text,text,text,text,uuid)','nexra_keyword_set_group(text,uuid,text,uuid)','nexra_keyword_set_note(text,uuid,text,uuid)',
              'nexra_keyword_set_status(text,uuid,text,uuid)','nexra_keyword_set_target(text,uuid,text,uuid)',
              'nexra_opportunity_accept(text,jsonb,uuid)',

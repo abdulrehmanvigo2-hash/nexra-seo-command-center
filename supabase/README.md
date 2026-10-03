@@ -282,8 +282,21 @@ Editor (or run with the Supabase CLI against a linked project):
     fit the run's kind; a SERP run plans one call)
     (`docs/roadmap/M4-research-evidence.md`) — **not yet applied** to production
 
+47. `20261025120000_evidence.sql` — M4: `nexra_evidence_sources` (one fetched
+    outside page for an accepted opportunity: URL, fetch state, robots
+    verdict, title and the visible text capped at 20,000 characters, its
+    SHA-256 computed in the database; internal, never published) and
+    `nexra_evidence_units` (one claim with a quote of at most 300 characters
+    from one `evidence-extract` run; `quote_found` and the status computed in
+    the database; the owner's admit or reject, once), with
+    `nexra_evidence_source_record` (5 a UTC day per opportunity),
+    `nexra_evidence_units_record` (a completed, model-executed run naming the
+    source) and `nexra_evidence_unit_decide` (only a supported unit whose quote
+    was found may be admitted); RLS on, no policies, guarded
+    (`docs/roadmap/M4-research-evidence.md`) — **not yet applied** to production
+
 The first forty-five are applied to production and recorded in its migration
-history (46 versions); `20261024120000` is not yet applied.
+history (46 versions); `20261024120000` and `20261025120000` are not yet applied.
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:
