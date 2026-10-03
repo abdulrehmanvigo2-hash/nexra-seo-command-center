@@ -236,7 +236,7 @@ describe("the destination and proposal state (D3)", () => {
 
 describe("live slugs (D2)", () => {
   test("the live slugs are the records': the pinned template's, then those published after the pin (fix F9)", () => {
-    assert.deepEqual(liveSlugsIn(LIVE_ARTICLES), ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation"]);
+    assert.deepEqual(liveSlugsIn(LIVE_ARTICLES), ["ai-lead-follow-up-automation", "ai-dead-lead-reactivation", "ai-sdr-tool"]);
     assert.deepEqual(liveSlugsIn([]), []);
   });
 

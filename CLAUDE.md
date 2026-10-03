@@ -1565,6 +1565,21 @@ operator: article `c89182f9-4954-4834-8446-a831fc3c42d0`, Version 2, shows **Not
 Approve button (1 unit needs review, 3 unchecked, not Checked) and approval history 0. No article
 has been approved.
 
+**Article 2 — `ai-sdr-tool`: PUBLISHED (3 Oct 2026; the second rendered article, Option C).** Written outside the
+product from the 2 Oct evidence-pack (`16988855…`) and content-plan (`465b6b0f…`) runs, imported with F9 as article
+`6f50f8cb-bb85-4389-a5b4-21402c739f8b` (project `nexra-agency`): version 1 checked (13 units: 9 passed, 4 needs-review,
+each one UNVERIFIABLE sentence), version 2 with four wording fixes checked **13 of 13** (4 fresh runs, 9 carried from v1
+by F8), content SHA-256 `cdcfbc87…b524`, "Our view" 14 of 52 body sentences (26.9%), approved 3 Oct 02:02 UTC (approval
+`60268daa…`, 5 attested paragraphs, attestation ticked), proposal `870a1af6…` (preview `1439bd4d…`). Template `/3`
+(`nexra-ai-blog-tsx/3`, PR #104, merged as `47e43ae7…`) re-pins the renderer at nexra-ai `main` `356f38f8` — two merges
+after article 1's `9a69c8c`, so a pin there would have been refused — and places the cross-link in the follow-up
+article's "what it does" section. Rendered from the stored v2 and its real approval, built, type-checked and linted in a
+temporary copy; **nexra-ai PR #12, merged by the operator as `ab5f10d`; live 3 Oct 2026**, FAQ working, Search Console
+indexing requested. Migration `20261017120000_live_slug_ai_sdr_tool.sql` (runbook §7 step 5) records the slug as live,
+owned by `6f50f8cb…` v2 — merged, **not yet applied** (apply after a fresh manual backup, on the operator's word; then
+confirm `nexra_article_publication_live_articles` lists it with v2 and its keywords). Until it is applied, the product
+lists two live slugs and the slug is held only by the active proposal.
+
 **F0 — DataForSEO keyword snapshot: LIVE (2 Oct 2026).** The six PRs (#96 design note, #97 schema, #98 provider
 layer, #99 service and routes, #100 the *Provider estimates* section, #101 docs) and the follow-up #102 (a resumed run
 can finish `completed`) are merged. Migration `20261016120000_provider_snapshot.sql` (SHA-256 `518cfe62…d21719`) was
@@ -1976,6 +1991,10 @@ overwrite live content.
   so, never observed data; no agent reads them. Live calls are operator-triggered only, behind the F3 confirmation and a
   $1.00 daily cap enforced in the database (ceiling $5.00); a sandbox run costs 0 and is never counted. One live run exists
   (`b50f8fa7…`, $0.1371). The DataForSEO credentials live in Vercel only (Sensitive, Production).
+- Article `6f50f8cb-bb85-4389-a5b4-21402c739f8b` (`ai-sdr-tool`) is `approved` at Version 2 (`cdcfbc87…`, 13 of 13 units
+  passed, approval `60268daa…`) and **published** on 3 Oct 2026 (nexra-ai PR #12, merge `ab5f10d`, `/blog/ai-sdr-tool`);
+  its proposal `870a1af6…` stays as the record of that intent. Migration `20261017120000` (the live-slug record) is
+  merged but not yet applied; until then the database lists two live slugs.
 - Migration `20261015120000_live_articles_read.sql` (F9) is applied to production and recorded (1 Oct): the application
   reads the live slugs and their keywords from the database (`nexra_article_publication_live_articles`, `service_role`
   only); it keeps no list in code, and an unread list blocks a proposal (`live-articles-unread`).

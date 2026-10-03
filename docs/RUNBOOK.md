@@ -579,8 +579,21 @@ checkpoint under its own approval (`CLAUDE.md` §6).
    `nexra_article_publication_live_slugs` and `nexra_article_publication_live_slug_article` with the new slug and its
    owning article; the propose function is unchanged. Apply it by §1. No code list changes: the product reads the
    records.
+   Done for article 2: `20261017120000_live_slug_ai_sdr_tool.sql` (merged; apply by §1.2 after a fresh manual backup,
+   on the operator's word). Harness suites `live-slug-2` (21) and `live-slug-2-upgrade` (12); the `live-slugs` and
+   `live-articles` suites now run on the schema before it, which they pin.
 6. **Confirm read-only** that `nexra_article_publication_live_articles('nexra-agency-website')` lists the new slug,
    its article, the proposed version and that version's keywords.
+
+**Article 2 — `ai-sdr-tool` (published 3 Oct 2026).** Steps 1–4 as recorded: template `/3` at nexra-ai `356f38f8`
+(PR #104); article `6f50f8cb-bb85-4389-a5b4-21402c739f8b` version 2 (content SHA-256 `cdcfbc87…b524`; 13 of 13
+check units passed, 4 run on v2 and 9 carried from v1), approved 3 Oct 02:02 UTC (approval `60268daa…`, 5 attested
+"Our view" paragraphs, attestation ticked), proposal `870a1af6…` to `nexra-agency-website` (preview `1439bd4d…`);
+rendered from that stored version and approval, built in a temporary copy, opened as nexra-ai PR #12 and merged by the
+operator as `ab5f10d`; live at `https://www.nexraagency.com/blog/ai-sdr-tool` (operator browser check, FAQ working,
+Search Console indexing requested). Rendered files: `app/blog/ai-sdr-tool/page.tsx` `dbe38009…`, `lib/blog.ts`
+`072bb1d1…`, the follow-up article with one link in its "what it does" section `51669948…`. Step 5 is migration
+`20261017120000`; step 6 follows its apply.
 
 ---
 

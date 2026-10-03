@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles provider provider-races
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade provider provider-races
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -33,12 +33,13 @@ PRIORITY_MIGRATION="$MIGRATIONS/20261005120000_agent_task_priority.sql"
 LEARNING_MIGRATION="$MIGRATIONS/20261008120000_task_priority_director_run.sql"
 ATTESTED_MIGRATION="$MIGRATIONS/20261010120000_attested_paragraphs.sql"
 LIVE_SLUGS_MIGRATION="$MIGRATIONS/20261011120000_live_slugs_after_pin.sql"
+LIVE_SLUG_2_MIGRATION="$MIGRATIONS/20261017120000_live_slug_ai_sdr_tool.sql"
 GRANTS_MIGRATION="$MIGRATIONS/20261012120000_revoke_surplus_grants.sql"
 LEGACY_MIGRATION="$MIGRATIONS/20261013120000_retire_legacy_crawl_subsystem.sql"
 CARRY_MIGRATION="$MIGRATIONS/20261014120000_check_unit_carry_forward.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [provider]=163)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [provider]=163)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -586,8 +587,9 @@ suite_attested_upgrade() {
 }
 
 # Live slugs published after the template pin (checkpoint 6.12a, D10): the lists, the owning article, other articles.
+# Pinned to the schema before 20261017120000 (article 2), which adds the third slug; that one is the live-slug-2 suite's.
 suite_live_slugs() {
-  fresh_db
+  fresh_db "$LIVE_SLUG_2_MIGRATION"
   run_sql_suite live-slugs "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-slugs/tests.sql"
 }
 
@@ -651,8 +653,19 @@ suite_carry_upgrade() {
 
 # The live articles read from the records (fix F9, audit A5-01): the function, its security, the owner's proposed version and keywords.
 suite_live_articles() {
-  fresh_db
+  fresh_db "$LIVE_SLUG_2_MIGRATION"
   run_sql_suite live-articles "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-articles/tests.sql"
+}
+
+# Article 2 (runbook §7, step 5; migration 20261017120000): ai-sdr-tool as the second slug published after the pin — the
+# lists, the owning article, other articles, the live-articles read; and the migration over proposed rows, unchanged.
+suite_live_slug_2() {
+  fresh_db
+  run_sql_suite live-slug-2 "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-slug-2/setup.sql" "$HERE/live-slug-2/tests.sql"
+}
+suite_live_slug_2_upgrade() {
+  fresh_db "$LIVE_SLUG_2_MIGRATION"
+  run_sql_suite live-slug-2-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-slug-2/setup.sql" "$HERE/live-slug-2/upgrade-before.sql" "$LIVE_SLUG_2_MIGRATION" "$HERE/live-slug-2/upgrade-after.sql"
 }
 
 # F0 provider keyword snapshot (migration 20261016120000): the three tables and their security, reserve against the daily
@@ -692,7 +705,7 @@ suite_provider_races() {
     "$([ "$R1" = recorded ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/0.0130" ]; echo $?)"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles provider provider-races)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade provider provider-races)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -716,6 +729,7 @@ for s in "${SUITES[@]}"; do
     legacy-retire) suite_legacy_retire ;; legacy-retire-refusals) suite_legacy_retire_refusals ;;
     carry) suite_carry ;; carry-upgrade) suite_carry_upgrade ;;
     live-articles) suite_live_articles ;;
+    live-slug-2) suite_live_slug_2 ;; live-slug-2-upgrade) suite_live_slug_2_upgrade ;;
     provider) suite_provider ;; provider-races) suite_provider_races ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac

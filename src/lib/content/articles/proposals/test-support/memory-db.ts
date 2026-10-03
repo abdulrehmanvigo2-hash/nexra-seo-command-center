@@ -70,6 +70,7 @@ export function memoryDb(initial: Partial<Pick<MemoryDb, "articles" | "versions"
 export const DATABASE_LIVE_SLUGS: readonly { readonly destination: string; readonly slug: string; readonly articleId: string | null }[] = [
   { destination: "nexra-agency-website", slug: "ai-lead-follow-up-automation", articleId: null },
   { destination: "nexra-agency-website", slug: "ai-dead-lead-reactivation", articleId: "1003104c-6b25-456f-9304-eefa2ba88e7d" },
+  { destination: "nexra-agency-website", slug: "ai-sdr-tool", articleId: "6f50f8cb-bb85-4389-a5b4-21402c739f8b" },
 ];
 
 /** `nexra_article_publication_live_articles` (20261015120000): each live slug with its owner's proposed version and keywords. */

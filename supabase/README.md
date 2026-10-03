@@ -187,6 +187,10 @@ Editor (or run with the Supabase CLI against a linked project):
     then `NOTIFY pgrst`; verified read-only: 39 history rows, RLS on with no
     policies, `service_role` SELECT only, the five functions `security
     definer` with EXECUTE for `service_role` only, 12 guard triggers enabled)
+39. `20261017120000_live_slug_ai_sdr_tool.sql` — `ai-sdr-tool` recorded as the
+    second slug published after the template pin, owned by article
+    `6f50f8cb…` (runbook §7, step 5; nexra-ai PR #12, merge `ab5f10d`,
+    published 3 Oct 2026) — **not yet applied** to production
 
 All thirty-eight are applied to production and recorded in its migration
 history (39 versions).
