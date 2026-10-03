@@ -186,6 +186,9 @@ export function eventRowToEvent(row: unknown): AgentTaskEvent {
     runId: nullableText(r.run_id, "run_id"),
     fromPriority,
     toPriority,
+    fromDate: nullableText(r.from_date, "from_date"),
+    toDate: nullableText(r.to_date, "to_date"),
+    articleId: nullableText(r.article_id, "article_id"),
     actor: text(r.actor, "actor"),
     createdAt: text(r.created_at, "created_at"),
   };

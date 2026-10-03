@@ -574,5 +574,9 @@ function describeEvent(event: AgentTaskEvent): string {
       return `${event.fromPriority ? TASK_PRIORITY_META[event.fromPriority].label : "?"} → ${event.toPriority ? TASK_PRIORITY_META[event.toPriority].label : "?"}`;
     case "handoff-run-linked":
       return `run ${event.runId ? `${event.runId.slice(0, 8)}…` : "?"} queued for ${event.toAgent ? AGENT_NAMES[event.toAgent] : "?"}; not executed by this record`;
+    case "plan-date-changed":
+      return event.toDate ? `planned for ${event.toDate}${event.fromDate ? ` (was ${event.fromDate})` : ""}` : `planned date cleared (was ${event.fromDate ?? "?"})`;
+    case "article-linked":
+      return `linked to article ${event.articleId ? `${event.articleId.slice(0, 8)}…` : "?"}`;
   }
 }
