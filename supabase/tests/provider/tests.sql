@@ -285,9 +285,11 @@ begin
   perform t.ok(t.err(format($q$delete from public.nexra_keyword_metrics where id = %L$q$, m)) = '23514', 'G a metric row is never deleted (23514)');
   perform t.ok(t.err(format($q$delete from public.nexra_provider_requests where id = %L$q$, q)) = '23514', 'G a request is never deleted (23514)');
   perform t.ok(t.err(format($q$delete from public.nexra_provider_runs where id = %L$q$, c)) = '23514', 'G a run is never deleted (23514)');
-  perform t.ok(t.err($q$truncate public.nexra_keyword_metrics$q$) = '23514', 'G the metrics are never truncated (23514)');
+  -- Since 20261019120000 the topic-map keywords reference the metric rows, so a plain TRUNCATE is refused by the
+  -- foreign-key check (0A000) before the guard, as for requests and runs below.
+  perform t.ok(t.err($q$truncate public.nexra_keyword_metrics$q$) in ('23514', '0A000'), 'G the metrics are never truncated (the guard, or the foreign-key check first)');
   perform t.ok(t.err($q$truncate public.nexra_provider_requests$q$) in ('23514', '0A000') and t.err($q$truncate public.nexra_provider_runs$q$) in ('23514', '0A000'), 'G requests and runs are never truncated (the foreign-key check, 0A000, precedes the guard)');
-  perform t.ok(t.err($q$truncate public.nexra_provider_runs, public.nexra_provider_requests, public.nexra_keyword_metrics$q$) = '23514' and t.err($q$truncate public.nexra_provider_runs cascade$q$) = '23514', 'G truncating the three together, or with CASCADE, is refused by the guard (23514)');
+  perform t.ok(t.err($q$truncate public.nexra_provider_runs, public.nexra_provider_requests, public.nexra_keyword_metrics$q$) in ('23514', '0A000') and t.err($q$truncate public.nexra_provider_runs cascade$q$) = '23514', 'G truncating the three together is refused (the guard, or the foreign-key check first); with CASCADE the guard refuses (23514)');
   perform t.ok((select count(*) from nexra_provider_runs) = 9 and (select count(*) from nexra_keyword_metrics) = 10, 'G every refused statement removed nothing (9 runs, 10 metric rows)');
   perform t.ok(t.err($q$delete from public.projects where id = 'verdant-home'$q$) in ('23503', '23514'), 'G a project with provider runs is never deleted');
   perform t.ok(t.err(format($q$update public.nexra_provider_runs set cost_usd = 9 where id = %L$q$, c)) = '23514', 'G a finished run''s cost is never edited by hand (23514)');
