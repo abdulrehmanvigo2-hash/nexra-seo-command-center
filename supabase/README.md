@@ -221,9 +221,19 @@ Editor (or run with the Supabase CLI against a linked project):
     the template); every other entry, the function's security and every
     proposal, preview and render are unchanged
     (`docs/roadmap/M2-opportunities.md`) — **not yet applied** to production
+43. `20261021120000_opportunities.sql` — M2: `nexra_opportunities` (one
+    immutable row per accepted opportunity: the approved map and cluster, the
+    action, score, rules version, priority, scored lines and the task it
+    created; RLS on, no policies, guarded) and `nexra_opportunity_accept`
+    (`security definer`; checks the map is the project's approved map, the
+    action fits the cluster's coverage and the lines sum to the score; derives
+    priority and owner; creates the opportunity and its backlog task in one
+    transaction). `nexra_agent_tasks.source_kind` gains `opportunity`;
+    `nexra_agent_task_create` still refuses it. `service_role`: SELECT on the
+    table, EXECUTE on the function only — **not yet applied** to production
 
 The first forty-one are applied to production and recorded in its migration
-history (42 versions); `20261020120000` is not yet applied.
+history (42 versions); `20261020120000` and `20261021120000` are not yet applied.
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:

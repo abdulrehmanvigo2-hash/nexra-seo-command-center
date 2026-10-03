@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -37,12 +37,13 @@ LIVE_SLUG_2_MIGRATION="$MIGRATIONS/20261017120000_live_slug_ai_sdr_tool.sql"
 LIVE_SLUG_3_MIGRATION="$MIGRATIONS/20261018120000_live_slug_missed_call_text_back.sql"
 TOPIC_MAPS_MIGRATION="$MIGRATIONS/20261019120000_topic_maps.sql"
 PINNED_KEYWORDS_MIGRATION="$MIGRATIONS/20261020120000_pinned_article_keywords.sql"
+OPPORTUNITIES_MIGRATION="$MIGRATIONS/20261021120000_opportunities.sql"
 GRANTS_MIGRATION="$MIGRATIONS/20261012120000_revoke_surplus_grants.sql"
 LEGACY_MIGRATION="$MIGRATIONS/20261013120000_retire_legacy_crawl_subsystem.sql"
 CARRY_MIGRATION="$MIGRATIONS/20261014120000_check_unit_carry_forward.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [live-slug-3]=22 [live-slug-3-upgrade]=12 [topic-maps]=64 [topic-maps-upgrade]=7 [pinned-keywords]=14 [pinned-keywords-upgrade]=8 [provider]=163)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [live-slug-3]=22 [live-slug-3-upgrade]=12 [topic-maps]=64 [topic-maps-upgrade]=7 [pinned-keywords]=14 [pinned-keywords-upgrade]=8 [opportunities]=50 [opportunities-upgrade]=9 [provider]=163)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -705,6 +706,17 @@ suite_pinned_keywords_upgrade() {
   run_sql_suite pinned-keywords-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/c5/setup.sql" "$HERE/c6/setup.sql" "$HERE/live-slugs/setup.sql" "$HERE/live-slug-2/setup.sql" "$HERE/live-slug-3/setup.sql" "$HERE/pinned-keywords/upgrade-before.sql" "$PINNED_KEYWORDS_MIGRATION" "$HERE/pinned-keywords/upgrade-after.sql"
 }
 
+# M2 opportunities (migration 20261021120000): the table and its security, accept with every refusal, the derived priority
+# and owner, the task it creates, the guards; and the migration over existing tasks, events and maps, unchanged.
+suite_opportunities() {
+  fresh_db
+  run_sql_suite opportunities "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/provider/setup.sql" "$HERE/topic-maps/setup.sql" "$HERE/opportunities/setup.sql" "$HERE/opportunities/tests.sql"
+}
+suite_opportunities_upgrade() {
+  fresh_db "$OPPORTUNITIES_MIGRATION"
+  run_sql_suite opportunities-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/provider/setup.sql" "$HERE/topic-maps/setup.sql" "$HERE/opportunities/upgrade-before.sql" "$OPPORTUNITIES_MIGRATION" "$HERE/opportunities/setup.sql" "$HERE/opportunities/upgrade-after.sql"
+}
+
 # F0 provider keyword snapshot (migration 20261016120000): the three tables and their security, reserve against the daily
 # cap (the $5.00 ceiling, sandbox never counted), request and metric records, finish, resume (Q4), the guards, isolation.
 suite_provider() {
@@ -742,7 +754,7 @@ suite_provider_races() {
     "$([ "$R1" = recorded ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/0.0130" ]; echo $?)"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -771,6 +783,7 @@ for s in "${SUITES[@]}"; do
     provider) suite_provider ;; provider-races) suite_provider_races ;;
     topic-maps) suite_topic_maps ;; topic-maps-upgrade) suite_topic_maps_upgrade ;;
     pinned-keywords) suite_pinned_keywords ;; pinned-keywords-upgrade) suite_pinned_keywords_upgrade ;;
+    opportunities) suite_opportunities ;; opportunities-upgrade) suite_opportunities_upgrade ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done
