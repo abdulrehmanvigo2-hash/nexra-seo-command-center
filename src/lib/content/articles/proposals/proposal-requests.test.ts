@@ -141,7 +141,7 @@ describe("the Record Proposal action", () => {
     const exists = await recordArticleProposalRequest(a.deps(), PROJECT_ID, ARTICLE_ID, 2, DESTINATION, RECORD_PROPOSAL_CONFIRMATION);
     assert.ok(exists.ok && !exists.recorded);
     const b = world();
-    b.db.beforePropose = () => b.db.drafts.push({ proposalId: "d6000000-0000-4000-8000-000000000001", draftId: "d6200000-0000-4000-8000-000000000001", destination: DESTINATION, slug: "missed-call-text-back", status: "proposed" });
+    b.db.beforePropose = () => b.db.drafts.push({ proposalId: "d6000000-0000-4000-8000-000000000001", draftId: "d6200000-0000-4000-8000-000000000001", destination: DESTINATION, slug: "missed-call-text-reply", status: "proposed" });
     assert.deepEqual(await recordArticleProposalRequest(b.deps(), PROJECT_ID, ARTICLE_ID, 2, DESTINATION, RECORD_PROPOSAL_CONFIRMATION), { ok: false, reason: "refused", outcome: "slug-taken", proposal: null });
   });
 

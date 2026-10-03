@@ -1582,6 +1582,19 @@ a disposable cluster with a tampered hash failing closed): **40 history rows**; 
 `ai-sdr-tool` → `6f50f8cb…`, version 2, its four keywords; the propose and read functions unchanged; every row count and
 the article tables' fingerprint unchanged. Runbook §7 steps 5 and 6 are complete for article 2.
 
+**Article 3 — `missed-call-text-back`: PUBLISHED (3 Oct 2026; the third rendered article).** Drafted outside the product
+from the F0 keyword snapshot (primary "missed call text back", 390/mo) and the 3 Oct content-plan run (`c710cf8a…`),
+imported with F9 as article `339c9b60-7f4c-4c6b-8692-1bb7b9cdfc52` (project `nexra-agency`): version 1 checked by one
+press of "Check all units…" — the feature's first live run — 13 runs, 10 passed, 3 needs-review (each one UNVERIFIABLE
+sentence), no halt; version 2 with three wording fixes checked **13 of 13** by one press (10 carried from v1 by F8, 3
+fresh runs), content SHA-256 `0a076a01…8bae0`, "Our view" 14 of 62 body sentences (22.6%), approved 3 Oct 05:02 UTC
+(approval `ee51c6a2…`, 5 attested paragraphs, attestation ticked), proposal `c060a913…` (preview `4fc018ef…`). Template
+`/4` (`nexra-ai-blog-tsx/4`, PR #109, merged as `ef574f93…`) re-pins the renderer at nexra-ai `main` `ab5f10d` (article
+2's merge) and places the cross-link on the first line of the follow-up article's missed-call paragraph. Rendered from
+the stored v2 and its real approval, built, type-checked and linted in a temporary copy; **nexra-ai PR #13, merged by the
+operator; live 3 Oct 2026**, Search Console indexing requested. Migration `20261018120000_live_slug_missed_call_text_back.sql`
+(runbook §7 step 5) records the slug as live, owned by `339c9b60…` v2 — merged; its apply is recorded in the next PR.
+
 **F0 — DataForSEO keyword snapshot: LIVE (2 Oct 2026).** The six PRs (#96 design note, #97 schema, #98 provider
 layer, #99 service and routes, #100 the *Provider estimates* section, #101 docs) and the follow-up #102 (a resumed run
 can finish `completed`) are merged. Migration `20261016120000_provider_snapshot.sql` (SHA-256 `518cfe62…d21719`) was
@@ -1993,6 +2006,11 @@ overwrite live content.
   so, never observed data; no agent reads them. Live calls are operator-triggered only, behind the F3 confirmation and a
   $1.00 daily cap enforced in the database (ceiling $5.00); a sandbox run costs 0 and is never counted. One live run exists
   (`b50f8fa7…`, $0.1371). The DataForSEO credentials live in Vercel only (Sensitive, Production).
+- Article `339c9b60-7f4c-4c6b-8692-1bb7b9cdfc52` (`missed-call-text-back`) is `approved` at Version 2 (`0a076a01…`, 13 of
+  13 units passed, approval `ee51c6a2…`) and **published** on 3 Oct 2026 (nexra-ai PR #13, `/blog/missed-call-text-back`);
+  its proposal `c060a913…` stays as the record of that intent. Migration `20261018120000` (the live-slug record) is
+  merged; once applied, `missed-call-text-back` is a live slug owned by `339c9b60…`, and any other article naming it is
+  refused.
 - Article `6f50f8cb-bb85-4389-a5b4-21402c739f8b` (`ai-sdr-tool`) is `approved` at Version 2 (`cdcfbc87…`, 13 of 13 units
   passed, approval `60268daa…`) and **published** on 3 Oct 2026 (nexra-ai PR #12, merge `ab5f10d`, `/blog/ai-sdr-tool`);
   its proposal `870a1af6…` stays as the record of that intent. Migration `20261017120000` (the live-slug record) is

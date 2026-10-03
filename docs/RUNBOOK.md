@@ -597,6 +597,9 @@ resumes from the unchecked rows. Each unit still has its own run and record, as 
    the article tables' fingerprint unchanged (step 6 done). Harness suites `live-slug-2` (21) and
    `live-slug-2-upgrade` (12); the `live-slugs` and `live-articles` suites now run on the schema before it, which
    they pin.
+   Done for article 3: `20261018120000_live_slug_missed_call_text_back.sql` (merged; apply by §1.2 after a fresh
+   manual backup, on the operator's word). Harness suites `live-slug-3` (22) and `live-slug-3-upgrade` (12); the
+   `live-slug-2` suite now runs on the schema before it, which it pins.
 6. **Confirm read-only** that `nexra_article_publication_live_articles('nexra-agency-website')` lists the new slug,
    its article, the proposed version and that version's keywords.
 
@@ -609,6 +612,17 @@ operator as `ab5f10d`; live at `https://www.nexraagency.com/blog/ai-sdr-tool` (o
 Search Console indexing requested). Rendered files: `app/blog/ai-sdr-tool/page.tsx` `dbe38009…`, `lib/blog.ts`
 `072bb1d1…`, the follow-up article with one link in its "what it does" section `51669948…`. Step 5 is migration
 `20261017120000`; step 6 follows its apply.
+
+**Article 3 — `missed-call-text-back` (published 3 Oct 2026).** Steps 1–4 as recorded: template `/4` at nexra-ai
+`ab5f10d` (PR #109); article `339c9b60-7f4c-4c6b-8692-1bb7b9cdfc52` version 2 (content SHA-256 `0a076a01…8bae0`;
+13 of 13 check units passed — v1 by one press of "Check all units…" (13 runs, 10 passed, 3 needs review), v2 with
+three wording fixes by one press (10 carried, 3 fresh runs)), approved 3 Oct 05:02 UTC (approval `ee51c6a2…`, 5
+attested "Our view" paragraphs, attestation ticked), proposal `c060a913…` to `nexra-agency-website` (preview
+`4fc018ef…`); rendered from that stored version and approval, built in a temporary copy, opened as nexra-ai PR #13 and
+merged by the operator; live at `https://www.nexraagency.com/blog/missed-call-text-back` (operator browser check,
+Search Console indexing requested). Rendered files: `app/blog/missed-call-text-back/page.tsx` `e4058981…`, `lib/blog.ts`
+`97d36872…`, the follow-up article with one link in its missed-call paragraph `8a241b4c…`. Step 5 is migration
+`20261018120000`; step 6 follows its apply.
 
 ---
 

@@ -195,6 +195,10 @@ Editor (or run with the Supabase CLI against a linked project):
     backup run `37091449651`; verified read-only: 40 history rows, the
     live-articles read lists `ai-sdr-tool` → `6f50f8cb…` v2 with its four
     keywords, every row count and fingerprint unchanged)
+40. `20261018120000_live_slug_missed_call_text_back.sql` — `missed-call-text-back`
+    recorded as the third slug published after the template pin, owned by
+    article `339c9b60…` (runbook §7, step 5; nexra-ai PR #13, published
+    3 Oct 2026) — **not yet applied** to production
 
 All thirty-eight are applied to production and recorded in its migration
 history (39 versions).

@@ -65,7 +65,7 @@ describe("the read-only state", () => {
       [APPROVAL_ID, VERSION_ID, sha256, APPROVER, APPROVED_AT],
     );
     assert.equal(state.destination?.key, DESTINATION);
-    assert.equal(state.eligibility.route, "/blog/missed-call-text-back");
+    assert.equal(state.eligibility.route, "/blog/missed-call-text-reply");
     assert.deepEqual(state.eligibility.completeness.missingRequired.map((f) => f.key), ["readingTime"]);
     assert.ok(state.preview !== null);
     assert.equal(state.preview?.format, "article-proposal-text/1");
@@ -130,7 +130,7 @@ describe("the read-only state", () => {
     assert.match(warned.ok ? (warned.state.preview?.document ?? "") : "", /not permission to overwrite the live article/);
 
     const e = setup();
-    e.db.drafts.push({ proposalId: "d6000000-0000-4000-8000-000000000001", draftId: "d6200000-0000-4000-8000-000000000001", destination: DESTINATION, slug: "missed-call-text-back", status: "proposed" });
+    e.db.drafts.push({ proposalId: "d6000000-0000-4000-8000-000000000001", draftId: "d6200000-0000-4000-8000-000000000001", destination: DESTINATION, slug: "missed-call-text-reply", status: "proposed" });
     const draftHeld = await e.service.getState(PROJECT_ID, ARTICLE_ID);
     assert.ok(draftHeld.ok && draftHeld.state.eligibility.status === "blocked" && draftHeld.state.eligibility.blocks.includes("slug-taken-by-draft"));
   });
@@ -154,7 +154,7 @@ describe("recording a proposal", () => {
         contentSha256: sha256,
         approvalId: APPROVAL_ID,
         destination: DESTINATION,
-        slug: "missed-call-text-back",
+        slug: "missed-call-text-reply",
         previewFormat: "article-proposal-text/1",
         previewSha256: "·",
         requestedBy: OPERATOR,
@@ -251,7 +251,7 @@ describe("recording a proposal", () => {
     test("a draft proposal takes the slug meanwhile (D3): refused (slug-taken)", async () => {
       const { record, db } = setup();
       db.beforePropose = () => {
-        db.drafts.push({ proposalId: "d6000000-0000-4000-8000-000000000002", draftId: "d6200000-0000-4000-8000-000000000002", destination: DESTINATION, slug: "missed-call-text-back", status: "proposed" });
+        db.drafts.push({ proposalId: "d6000000-0000-4000-8000-000000000002", draftId: "d6200000-0000-4000-8000-000000000002", destination: DESTINATION, slug: "missed-call-text-reply", status: "proposed" });
       };
       assert.deepEqual(await record(), { ok: false, reason: "refused", outcome: "slug-taken", proposal: null });
     });
