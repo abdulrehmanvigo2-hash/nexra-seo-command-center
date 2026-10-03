@@ -597,9 +597,14 @@ resumes from the unchecked rows. Each unit still has its own run and record, as 
    the article tables' fingerprint unchanged (step 6 done). Harness suites `live-slug-2` (21) and
    `live-slug-2-upgrade` (12); the `live-slugs` and `live-articles` suites now run on the schema before it, which
    they pin.
-   Done for article 3: `20261018120000_live_slug_missed_call_text_back.sql` (merged; apply by §1.2 after a fresh
-   manual backup, on the operator's word). Harness suites `live-slug-3` (22) and `live-slug-3-upgrade` (12); the
-   `live-slug-2` suite now runs on the schema before it, which it pins.
+   Done for article 3: `20261018120000_live_slug_missed_call_text_back.sql` (PR #110), **applied to production and
+   recorded on 3 Oct 2026** by §1.2 after manual backup run `37099766394` (local tampered-hash test first; one
+   hash-checked transaction, SHA-256 `586f2739edb0cea4f2aec8c382974def5cc82a42d234301c0b24b1aa10d006cf`; no `NOTIFY
+   pgrst`, no signature changed). Verified read-only: 41 history rows; four live slugs; the live-articles read lists
+   `missed-call-text-back` → article `339c9b60…`, version 2, its three keywords; the propose and read functions'
+   bodies unchanged (`91aaca49…`, `c4ac3b46…`); every row count and the article tables' fingerprint unchanged (step 6
+   done). Harness suites `live-slug-3` (22) and `live-slug-3-upgrade` (12); the `live-slug-2` suite now runs on the
+   schema before it, which it pins.
 6. **Confirm read-only** that `nexra_article_publication_live_articles('nexra-agency-website')` lists the new slug,
    its article, the proposed version and that version's keywords.
 
@@ -612,6 +617,8 @@ operator as `ab5f10d`; live at `https://www.nexraagency.com/blog/ai-sdr-tool` (o
 Search Console indexing requested). Rendered files: `app/blog/ai-sdr-tool/page.tsx` `dbe38009…`, `lib/blog.ts`
 `072bb1d1…`, the follow-up article with one link in its "what it does" section `51669948…`. Step 5 is migration
 `20261017120000`; step 6 follows its apply.
+Proposal `870a1af6…` was found `withdrawn` on 3 Oct (an accidental click); the operator re-records a proposal for
+version 2 — PLACEHOLDER: new proposal id `________…`, recorded ____ Oct 2026 (to be confirmed by the operator).
 
 **Article 3 — `missed-call-text-back` (published 3 Oct 2026).** Steps 1–4 as recorded: template `/4` at nexra-ai
 `ab5f10d` (PR #109); article `339c9b60-7f4c-4c6b-8692-1bb7b9cdfc52` version 2 (content SHA-256 `0a076a01…8bae0`;
@@ -622,7 +629,7 @@ attested "Our view" paragraphs, attestation ticked), proposal `c060a913…` to `
 merged by the operator; live at `https://www.nexraagency.com/blog/missed-call-text-back` (operator browser check,
 Search Console indexing requested). Rendered files: `app/blog/missed-call-text-back/page.tsx` `e4058981…`, `lib/blog.ts`
 `97d36872…`, the follow-up article with one link in its missed-call paragraph `8a241b4c…`. Step 5 is migration
-`20261018120000`; step 6 follows its apply.
+`20261018120000`, applied 3 Oct; step 6 done (above).
 
 ---
 

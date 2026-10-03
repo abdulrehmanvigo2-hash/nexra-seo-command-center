@@ -1593,7 +1593,14 @@ fresh runs), content SHA-256 `0a076a01…8bae0`, "Our view" 14 of 62 body senten
 2's merge) and places the cross-link on the first line of the follow-up article's missed-call paragraph. Rendered from
 the stored v2 and its real approval, built, type-checked and linted in a temporary copy; **nexra-ai PR #13, merged by the
 operator; live 3 Oct 2026**, Search Console indexing requested. Migration `20261018120000_live_slug_missed_call_text_back.sql`
-(runbook §7 step 5) records the slug as live, owned by `339c9b60…` v2 — merged; its apply is recorded in the next PR.
+(runbook §7 step 5) records the slug as live, owned by `339c9b60…` v2 — merged (PR #110, `8f19e62e…`) and **applied to
+production and recorded on 3 Oct 2026** by the §1.2 method after manual backup run `37099766394` (SHA-256
+`586f2739…d006cf`, one hash-checked transaction, tested first on a disposable cluster with a tampered hash failing
+closed): **41 history rows**; the live-articles read lists `missed-call-text-back` → `339c9b60…`, version 2, its three
+keywords; the propose and read functions unchanged; every row count and the article tables' fingerprint unchanged.
+Runbook §7 steps 5 and 6 are complete for article 3. The same read found article 2's proposal `870a1af6…`
+`withdrawn` (an accidental click, 3 Oct); the operator re-records it — PLACEHOLDER: new proposal `________…`, to be
+confirmed by the operator.
 
 **F0 — DataForSEO keyword snapshot: LIVE (2 Oct 2026).** The six PRs (#96 design note, #97 schema, #98 provider
 layer, #99 service and routes, #100 the *Provider estimates* section, #101 docs) and the follow-up #102 (a resumed run
@@ -2009,11 +2016,12 @@ overwrite live content.
 - Article `339c9b60-7f4c-4c6b-8692-1bb7b9cdfc52` (`missed-call-text-back`) is `approved` at Version 2 (`0a076a01…`, 13 of
   13 units passed, approval `ee51c6a2…`) and **published** on 3 Oct 2026 (nexra-ai PR #13, `/blog/missed-call-text-back`);
   its proposal `c060a913…` stays as the record of that intent. Migration `20261018120000` (the live-slug record) is
-  merged; once applied, `missed-call-text-back` is a live slug owned by `339c9b60…`, and any other article naming it is
-  refused.
+  applied to production and recorded (3 Oct, 41 history rows): `missed-call-text-back` is a live slug owned by
+  `339c9b60…`, and any other article naming it is refused.
 - Article `6f50f8cb-bb85-4389-a5b4-21402c739f8b` (`ai-sdr-tool`) is `approved` at Version 2 (`cdcfbc87…`, 13 of 13 units
   passed, approval `60268daa…`) and **published** on 3 Oct 2026 (nexra-ai PR #12, merge `ab5f10d`, `/blog/ai-sdr-tool`);
-  its proposal `870a1af6…` stays as the record of that intent. Migration `20261017120000` (the live-slug record) is
+  its proposal `870a1af6…` was found `withdrawn` on 3 Oct (an accidental click) and is being re-recorded by the operator
+  (PLACEHOLDER: new proposal `________…`). Migration `20261017120000` (the live-slug record) is
   applied to production and recorded (3 Oct, 40 history rows): `ai-sdr-tool` is a live slug owned by `6f50f8cb…`, and
   any other article naming it is refused.
 - Migration `20261015120000_live_articles_read.sql` (F9) is applied to production and recorded (1 Oct): the application
@@ -2443,6 +2451,10 @@ decision Q4 option B (§13 *Scoped V1*), is built, deployed and in use, and its 
 Migrations applied in Phase 6: `20261008120000`, `20261009120000`, `20261010120000`, `20261011120000` (all recorded;
 34 history versions). Publishing stays operator-driven: the product has no Create PR, Merge, Deploy or Publish
 control, and the one V1 write was made from a Claude Code session under the lean V1 decision (6.10b).
+
+**Next phase (operator brief, `docs/roadmap/NEXT-PHASE-BRIEF.md`; audit `PHASE-0-AUDIT.md`):** F0 is live; **M1 — the
+topical map — is in progress** under `docs/roadmap/M1-topical-map.md` (decisions Q1–Q5 of 3 Oct; six stacked draft
+PRs, none merged until approved).
 
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 
