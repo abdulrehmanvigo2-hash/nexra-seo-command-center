@@ -552,6 +552,13 @@ production as its own approved change.
 The renderer can render a second article only after these steps (audit A5-01; fix F9 did step 1). Each is its own
 checkpoint under its own approval (`CLAUDE.md` §6).
 
+**Checking a version in one press.** On the article's fact-check panel, *Check all units…* opens one confirmation (units to
+carry, units to check, estimated runs and cost range, today's usage against the 40-a-day cap; refused when the cap would
+be exceeded), then carries every unit it can and checks the rest one at a time — queue, run now, record — in this browser
+tab. It continues past a unit that needs review and lists those units at the end; it stops on a failed run, a malformed
+answer, any refused request, or *Stop after this unit*. Closing the tab stops it after the unit in flight; pressing again
+resumes from the unchecked rows. Each unit still has its own run and record, as when checked by hand.
+
 1. **Live slugs and keywords come from the records (done, F9).** The product keeps no list of live slugs in code. It
    reads `nexra_article_publication_live_articles(destination)` (migration `20261015120000`). That function returns
    each live slug with the article it was published from and that version's keywords. The proposal eligibility, the

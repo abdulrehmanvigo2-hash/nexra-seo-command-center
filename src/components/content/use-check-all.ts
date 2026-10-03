@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { carryArticleCheckUnit, recordArticleCheckUnit } from "@/app/(app)/projects/article-check-actions";
-import { CARRY_FAILURE, RECORD_FAILURE } from "@/components/content/article-check-section";
+import { CARRY_FAILURE, RECORD_FAILURE } from "@/components/content/check-failure-copy";
 import { CARRY_REFUSAL_COPY } from "@/lib/content/articles/checks/carry-copy";
 import { runCheckAll, type CheckAllIo, type CheckAllOutcome, type CheckAllProgress } from "@/lib/content/articles/checks/check-all-loop";
 import { ARTICLE_CHECK_UNIT, articleCheckRequest, executeOutcome, queueRefusal } from "@/lib/crawl/review-request";

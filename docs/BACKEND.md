@@ -1648,6 +1648,23 @@ Instructions v3 (`ARTICLE_CHECK_UNIT_INSTRUCTIONS`, `6299e783…`) are v2 (`ARTI
 `8788932b…`) plus one sentence after the EDITORIAL sorting sentence: an article's own title, meta description, excerpt,
 headings and labels describing what it covers are EDITORIAL; a checkable claim about the site is still a statement.
 
+### "Check all units" on the article fact-check panel
+
+One button, one confirmation, then the panel's own calls in a loop in the browser — never on the server, where one unit's
+run already takes 20–60 s inside the execute route's 300 s limit, and never in the worker, which would need a new job
+record. `src/lib/content/articles/checks/check-all.ts` is the planner: from the version's check table and today's usage,
+carries first (fix F8, free), a pending unit's existing run recorded, then one paid run per unrecorded unit, in table
+order; the run count; a cost range from the observed $0.06 a run (an estimate); and a refusal before anything starts
+(nothing to do, not the current version, the packer's refusal, more runs than the queue route's 30 in ten minutes, today's
+project or global run limit). `check-all-loop.ts` is the loop with injected calls: it re-reads the table before every
+step and asks the planner for the next, so a repeat press resumes from the unchecked rows; a needs-review result is
+recorded and the next unit follows; it stops on a failed run, a `failed` record, any refused request, a run that never
+settles, or Stop (after the unit in flight). `src/components/content/use-check-all.ts` supplies the real calls — the
+table's GET, the carry action, `POST /api/agent-runs` with the unit's request, Run Now's execute and read-back, the record
+action — and `check-all-control.tsx` is the button: the fix-F3 dialog from the planner's facts, a progress line with
+Stop, and an end summary naming the units needing review (opened from their rows, nothing edited or re-run) or where and
+why it stopped. Every unit keeps its own run and record; a closed tab loses nothing, since every finished step is stored.
+
 ### Article approval (Stage 5, Complete Article Assembly, milestone C5)
 
 An operator approves the article's current, exact version — and only when
