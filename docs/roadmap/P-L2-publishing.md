@@ -131,3 +131,10 @@ next press continues. Routes: `GET /api/publications?project=`, `GET /api/public
 7. *Request publication…*, the publish page and **Ready to publish** in the Command Center.
 8. Publication history.
 9. Runbook §7 rewritten for P-L2.
+
+## Status (3 Oct 2026)
+
+PR #128–#136 merged (`master` `91da3ab`); the owner accepted the six deviations reported with them, and added
+"release a slug on takedown" to the post-V1 backlog. Migration `20261023120000` applied to production and recorded the
+same day after backup run `37136230527` (46 history rows; verified read-only). `NEXRA_PUBLISH_MODE` stays unset
+(`off`); the owner sets `dry-run` for the first real test.

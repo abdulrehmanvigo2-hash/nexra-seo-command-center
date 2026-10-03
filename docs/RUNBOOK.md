@@ -565,7 +565,8 @@ the records (no per-article live-slug migration). The hand route that published 
    `service_role` SELECT only, 4 of 4 guard triggers enabled, empty; the request, start and progress functions
    `security definer`, empty `search_path`, EXECUTE for `service_role` only; the two live-slug list functions now
    `stable` and still listing the four live slugs; every other row count unchanged. Until it is applied every
-   publishing surface reads "Not set up yet".
+   publishing surface reads "Not set up yet". **Done 3 Oct 2026** (backup run `37136230527`; 46 history rows; verified
+   as above).
 3. **The token.** `NEXRA_AI_GITHUB_TOKEN` in Vercel (Production, Sensitive): a fine-grained token for
    `abdulrehmanvigo2-hash/nexra-ai` only — Contents and Pull requests read and write, Metadata read — with an expiry
    (90 days). Note the expiry date and renew it before then; an expired token reads "GitHub answered unauthorized".
