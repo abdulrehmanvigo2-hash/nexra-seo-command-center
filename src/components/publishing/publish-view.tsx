@@ -13,6 +13,7 @@ import {
   MODE_LABEL,
   NOT_SET_UP_MESSAGE,
   STEPS,
+  canAbandon,
   errorText,
   pageAction,
   publishOutcome,
@@ -36,6 +37,7 @@ export function PublishView({ approvalId, role }: { approvalId: string; role: "o
   const [load, setLoad] = useState<ViewLoad>({ status: "loading" });
   const [version, setVersion] = useState(0);
   const [confirming, setConfirming] = useState(false);
+  const [abandoning, setAbandoning] = useState(false);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [note, setNote] = useState<ReturnType<typeof publishOutcome> | null>(null);
@@ -52,12 +54,12 @@ export function PublishView({ approvalId, role }: { approvalId: string; role: "o
     return () => controller.abort();
   }, [approvalId, version]);
 
-  const press = async (publicationId: string) => {
+  const press = async (publicationId: string, action: "publish" | "abandon" = "publish") => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     try {
-      const response = await fetch(`/api/publications/${publicationId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "publish" }), cache: "no-store" });
+      const response = await fetch(`/api/publications/${publicationId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }), cache: "no-store" });
       setNote(publishOutcome(response.status, await response.json().catch(() => null)));
     } catch {
       setNote(publishOutcome(0, null));
@@ -65,6 +67,7 @@ export function PublishView({ approvalId, role }: { approvalId: string; role: "o
     inFlight.current = false;
     setBusy(false);
     setConfirming(false);
+    setAbandoning(false);
     reload();
   };
 
@@ -75,7 +78,7 @@ export function PublishView({ approvalId, role }: { approvalId: string; role: "o
 
   const { publication, approval } = load.entry;
   const action = pageAction(load);
-  const current = STEPS.indexOf(publication.status);
+  const current = publication.status === "abandoned" ? -1 : STEPS.indexOf(publication.status);
 
   return (
     <div className="space-y-6">
@@ -125,6 +128,11 @@ export function PublishView({ approvalId, role }: { approvalId: string; role: "o
                 <Badge tone={index < current ? "positive" : index === current ? "accent" : "neutral"}>{PUBLICATION_STATUS_LABEL[step]}</Badge>
               </li>
             ))}
+            {publication.status === "abandoned" && (
+              <li>
+                <Badge tone="warning">Abandoned</Badge>
+              </li>
+            )}
           </ol>
           {publication.pullRequestUrl !== null && (
             <p className="text-[12.5px] text-fg-muted">
@@ -219,6 +227,11 @@ export function PublishView({ approvalId, role }: { approvalId: string; role: "o
             {busy ? "Checking…" : "Check status"}
           </Button>
         )}
+        {canAbandon(load) && (
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setAbandoning(true)}>
+            Abandon…
+          </Button>
+        )}
         {action.reason !== null && <p className="text-[12.5px] text-fg-subtle">{action.reason}</p>}
         {note && (
           <p role="status" className={note.tone === "warning" ? "text-[12.5px] text-warning" : note.tone === "positive" ? "text-[12.5px] text-positive" : "text-[12.5px] text-fg-muted"}>
@@ -226,6 +239,26 @@ export function PublishView({ approvalId, role }: { approvalId: string; role: "o
           </p>
         )}
       </div>
+
+      {abandoning && (
+        <Modal
+          title="Abandon this publication?"
+          description="Records that this publication will not continue; nothing is sent to GitHub. Close its pull request there if it is still open. The article can then be requested again."
+          onClose={() => setAbandoning(false)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setAbandoning(false)}>
+                Keep it
+              </Button>
+              <Button variant="danger" size="sm" disabled={busy} onClick={() => void press(publication.id, "abandon")}>
+                Abandon
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-[12.5px] text-fg-muted">/blog/{publication.slug} · {PUBLICATION_STATUS_LABEL[publication.status]}</p>
+        </Modal>
+      )}
 
       {confirming && (
         <Modal
