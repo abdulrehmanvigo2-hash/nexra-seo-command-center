@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { ContentCalendar } from "@/components/content/content-calendar";
 import { LinkTaskControl } from "@/components/content/link-task-control";
+import { ArticlePublicationHistory } from "@/components/publishing/publication-history";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/table";
 import {
   CONTENT_TABS,
@@ -480,6 +481,9 @@ export function ArticleDetailView({ projectId, projectName, articleId }: { proje
           </p>
           <div className="sm:col-span-2">
             <LinkTaskControl projectId={projectId} articleId={articleId} />
+          </div>
+          <div className="sm:col-span-2">
+            <ArticlePublicationHistory projectId={projectId} articleId={articleId} />
           </div>
         </PanelBody>
         <PanelFooter>
