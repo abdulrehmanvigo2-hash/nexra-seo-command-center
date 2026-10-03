@@ -67,6 +67,7 @@ export function approvedArticle(overrides: Partial<Article> = {}): Article {
 export const LIVE_ARTICLES: readonly LiveArticle[] = [
   { slug: "ai-lead-follow-up-automation", articleId: null, articleVersion: null, keywords: null },
   { slug: "ai-dead-lead-reactivation", articleId: "1003104c-6b25-456f-9304-eefa2ba88e7d", articleVersion: 6, keywords: ["ai dead lead reactivation", "dead lead reactivation"] },
+  { slug: "ai-sdr-tool", articleId: "6f50f8cb-bb85-4389-a5b4-21402c739f8b", articleVersion: 2, keywords: ["AI SDR tool", "best AI SDR tools", "AI SDR", "AI SDR companies"] },
 ];
 
 /** Eligible facts for version 2; `overrides` replace whole facts. */

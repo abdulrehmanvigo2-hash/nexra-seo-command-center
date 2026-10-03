@@ -38,11 +38,19 @@ const PINNED_SLUG = "ai-lead-follow-up-automation";
 const root = new URL("../../../../../", import.meta.url);
 const migration = (name: string) => readFileSync(new URL(`supabase/migrations/${name}`, root), "utf8");
 const LIVE_MIGRATION = migration("20261011120000_live_slugs_after_pin.sql");
+/** Article 2 (runbook §7, step 5): the newest live-slug migration, the one the list and owners are read from. */
+const LIVE_MIGRATION_2 = migration("20261017120000_live_slug_ai_sdr_tool.sql");
+const SLUG_2 = "ai-sdr-tool";
+const OWNER_2 = "6f50f8cb-bb85-4389-a5b4-21402c739f8b";
 const ATTESTED_MIGRATION = migration("20261010120000_attested_paragraphs.sql");
 /** The SQL without comments, so prose cannot satisfy or break a check. */
-const SQL = LIVE_MIGRATION.split("\n")
-  .map((line) => line.replace(/--.*$/, ""))
-  .join("\n");
+const stripped = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => line.replace(/--.*$/, ""))
+    .join("\n");
+const SQL = stripped(LIVE_MIGRATION);
+const SQL_2 = stripped(LIVE_MIGRATION_2);
 
 function between(text: string, start: string, end: string): string {
   const from = text.indexOf(start);
@@ -102,9 +110,11 @@ describe("the live articles are the records'", () => {
     assert.deepEqual(NEXRA_AI_BLOG_TEMPLATE_V2.liveSlugs, [PINNED_SLUG]);
   });
 
-  test("the lists from records: the pinned slug, then the one published after the pin; the owner of each", () => {
-    assert.deepEqual(liveSlugsIn(LIVE_ARTICLES), [PINNED_SLUG, SLUG]);
+  test("the lists from records: the pinned slug, then the two published after the pin; the owner of each", () => {
+    assert.deepEqual(liveSlugsIn(LIVE_ARTICLES), [PINNED_SLUG, SLUG, SLUG_2]);
     assert.equal(liveSlugArticle(LIVE_ARTICLES, SLUG), OWNER);
+    assert.equal(liveSlugArticle(LIVE_ARTICLES, SLUG_2), OWNER_2);
+    assert.equal(liveArticleOf(LIVE_ARTICLES, OWNER_2)?.slug, SLUG_2);
     assert.equal(liveSlugArticle(LIVE_ARTICLES, PINNED_SLUG), null);
     assert.equal(liveSlugArticle([], SLUG), null);
     assert.equal(liveArticleOf(LIVE_ARTICLES, OWNER)?.slug, SLUG);
@@ -123,16 +133,43 @@ describe("the live articles are the records'", () => {
   });
 });
 
-describe("the SQL restates the same list (migration 20261011120000)", () => {
-  test("the tests' model of the database (memory-db DATABASE_LIVE_SLUGS) is the SQL's list and owners", () => {
-    const body = between(SQL, "create or replace function public.nexra_article_publication_live_slugs", "$$;");
+describe("the SQL restates the same list (migrations 20261011120000 and 20261017120000)", () => {
+  test("the tests' model of the database (memory-db DATABASE_LIVE_SLUGS) is the newest migration's list and owners", () => {
+    const body = between(SQL_2, "create or replace function public.nexra_article_publication_live_slugs", "$$;");
     const sqlSlugs = new Map([...body.matchAll(/when '([a-z0-9-]+)' then array\[([^\]]*)\]/g)].map((m) => [m[1], [...m[2].matchAll(/'([a-z0-9-]+)'/g)].map((s) => s[1])]));
     const modelSlugs = new Map(WEBSITE_TEMPLATES.map((t) => [t.destinationKey, DATABASE_LIVE_SLUGS.filter((e) => e.destination === t.destinationKey).map((e) => e.slug)]));
     assert.deepEqual(sqlSlugs, modelSlugs);
-    const owners = between(SQL, "create function public.nexra_article_publication_live_slug_article", "$$;");
+    const owners = between(SQL_2, "create or replace function public.nexra_article_publication_live_slug_article", "$$;");
     const sqlOwners = [...owners.matchAll(/\(p_destination, p_slug\) = \('([a-z0-9-]+)', '([a-z0-9-]+)'\)\s+then '([0-9a-f-]{36})'::uuid/g)].map((m) => `${m[1]}|${m[2]}|${m[3]}`);
     assert.deepEqual(sqlOwners, DATABASE_LIVE_SLUGS.filter((e) => e.articleId !== null).map((e) => `${e.destination}|${e.slug}|${e.articleId}`));
     for (const fact of ["9a69c8c09aff7df7ce3d676700114d6efe91d4f9", "pull request #9", "2026-09-30", OWNER]) assert.ok(LIVE_MIGRATION.includes(fact), fact);
+    for (const fact of ["ab5f10d", "pull request #12", "2026-10-03", OWNER_2, "356f38f", "nexra-ai-blog-tsx/3"]) assert.ok(LIVE_MIGRATION_2.includes(fact), fact);
+  });
+
+  test("20261011120000 listed the pinned slug and the first published one; its owner function is 20261017120000's without the second case", () => {
+    const first = between(SQL, "create or replace function public.nexra_article_publication_live_slugs", "$$;");
+    assert.match(first, /array\['ai-lead-follow-up-automation', 'ai-dead-lead-reactivation'\]/);
+    const second = between(SQL_2, "create or replace function public.nexra_article_publication_live_slugs", "$$;");
+    assert.match(second, /array\['ai-lead-follow-up-automation', 'ai-dead-lead-reactivation', 'ai-sdr-tool'\]/);
+    const owners1 = between(SQL, "create function public.nexra_article_publication_live_slug_article", "$$;").replace("create function", "create or replace function");
+    const owners2 = between(SQL_2, "create or replace function public.nexra_article_publication_live_slug_article", "$$;");
+    const added = [
+      "    when (p_destination, p_slug) = ('nexra-agency-website', 'ai-sdr-tool')",
+      `      then '${OWNER_2}'::uuid`,
+      "",
+    ].join("\n");
+    assert.equal(owners2, owners1.replace("    else null::uuid", `${added}    else null::uuid`));
+  });
+
+  test("20261017120000 replaces only the two list functions: no propose, no table, row, trigger or grant change; the article function revoked from every API role", () => {
+    assert.doesNotMatch(SQL_2, /nexra_article_publication_propose|nexra_article_publication_live_articles\(/);
+    assert.doesNotMatch(SQL_2, /create table|alter table|insert into|update public|delete from|create trigger|drop |grant /i);
+    assert.equal((SQL_2.match(/create or replace function/g) ?? []).length, 2);
+    assert.match(SQL_2, /revoke all on function public\.nexra_article_publication_live_slug_article\(text, text\) from public/);
+    assert.match(SQL_2, /array\['anon', 'authenticated', 'service_role'\]/);
+    for (const name of ["live_slugs", "live_slug_article"]) {
+      assert.match(between(SQL_2, `create or replace function public.nexra_article_publication_${name}`, "$$;"), /immutable\nset search_path = ''/);
+    }
   });
 
   test("propose is 20261010120000's function word for word, apart from the live-slug check", () => {
