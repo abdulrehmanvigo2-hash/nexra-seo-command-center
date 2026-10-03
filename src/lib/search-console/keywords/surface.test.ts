@@ -29,8 +29,10 @@ describe("M4 keeps no new raw data", () => {
   test("adds no migration and reads through the two existing stores only", () => {
     const migrations = readdirSync(new URL("supabase/migrations", root)).filter((f) => f.endsWith(".sql")).sort();
     assert.ok(migrations.includes("20261002120000_create_crawl_finding_triage.sql"), "the M3 migration is present");
-    // The curated keyword entity (checkpoint 3.5) is its own migration, not M4's; M4 added none.
-    assert.equal(migrations.filter((file) => file !== "20261006120000_curated_keywords.sql").some((file) => /keyword|search_console_keywords|inventory/.test(file)), false, "M4 added no migration of its own");
+    // The curated keyword entity (checkpoint 3.5) and the pinned article's keywords (M2, 20261020120000) are their own
+    // migrations, not M4's; M4 added none.
+    const notM4 = new Set(["20261006120000_curated_keywords.sql", "20261020120000_pinned_article_keywords.sql"]);
+    assert.equal(migrations.filter((file) => !notM4.has(file)).some((file) => /keyword|search_console_keywords|inventory/.test(file)), false, "M4 added no migration of its own");
     assert.match(READER, /searchConsoleSnapshotStore\(\)/);
     assert.match(READER, /searchConsoleQueryPageStore\(\)/);
     assert.match(READER, /searchConsoleProperties\(\)\.get\(projectId\)/);
