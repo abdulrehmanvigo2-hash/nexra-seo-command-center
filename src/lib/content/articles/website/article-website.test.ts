@@ -797,3 +797,55 @@ describe("the re-pinned template /4 at ab5f10d (runbook §7, step 2, article 3)"
     });
   });
 });
+
+describe("M4: cited sources (format /3)", () => {
+  const CITATIONS = [
+    { url: "https://alpha.example/guide?x=1&y=2", title: 'The "Alpha" guide </a><script>alert(1)</script>', publisher: "Alpha ${process.env.SECRET}", retrievedAt: "2026-10-03" },
+    { url: "https://beta.example/report", title: "Beta report", publisher: "Beta", retrievedAt: "2026-10-02" },
+  ];
+
+  test("format 3 only with citations; formats 1 and 2 keep their bytes", () => {
+    const plain = canonicalArticleJson(valid(raw()));
+    assert.ok(plain.startsWith('{"format":"nexra-article-content/2",') && !plain.includes('"citations"'));
+    const cited = canonicalArticleJson(valid(raw((v) => (v.citations = CITATIONS))));
+    assert.ok(cited.startsWith('{"format":"nexra-article-content/3",'));
+    assert.ok(cited.endsWith(`"citations":${JSON.stringify(CITATIONS.map((c) => ({ url: c.url, title: c.title, publisher: c.publisher, retrievedAt: c.retrievedAt })))}}`));
+    const unattested = canonicalArticleJson(valid(raw((v) => { v.attestations = []; v.citations = CITATIONS; })));
+    assert.ok(unattested.startsWith('{"format":"nexra-article-content/3",') && !unattested.includes('"attestations"'));
+  });
+
+  test("each citation is checked: https, its title and publisher, a real date, no duplicate", () => {
+    const issue = (citation: Record<string, unknown>) => {
+      const checked = validateArticleContent(raw((v) => (v.citations = [{ ...CITATIONS[1], ...citation }])));
+      return checked.ok ? [] : checked.issues.map((i) => `${i.path}:${i.code}`);
+    };
+    assert.deepEqual(issue({ url: "http://beta.example/report" }), ["citations[0].url:format"]);
+    assert.deepEqual(issue({ url: "https://user:pw@beta.example/" }), ["citations[0].url:format"]);
+    assert.deepEqual(issue({ retrievedAt: "2026-13-01" }), ["citations[0].retrievedAt:format"]);
+    assert.deepEqual(issue({ title: "" }), ["citations[0].title:required"]);
+    assert.deepEqual(issue({ note: "x" }), ["citations[0].note:unsupported-field"]);
+    const dup = validateArticleContent(raw((v) => (v.citations = [CITATIONS[1], CITATIONS[1]])));
+    assert.ok(!dup.ok && dup.issues.some((i) => i.path === "citations[1].url"));
+  });
+
+  test("the page gains a Sources section of outside links, every text a string literal", () => {
+    const ok = render(raw((v) => (v.citations = CITATIONS)));
+    const page = ok.page.content;
+    assert.deepEqual(syntaxErrors(page, true), []);
+    assert.ok(page.includes('const sourcesSection: ArticleSection = { id: "sources", title: "Sources" };'));
+    assert.match(page, /const sections: ArticleSection\[\] = \[section1, section2, faqSection, sourcesSection\];/);
+    assert.match(page, /<a href=\{"[^"]+"\} rel="nofollow noopener noreferrer"/);
+    const found = tokens(page);
+    assert.ok(found.strings.includes(CITATIONS[0]!.url), "the URL is a string literal, whatever its escaping");
+    assert.ok(found.strings.includes(CITATIONS[0]!.title), "the hostile title is a string literal");
+    assert.ok(found.strings.includes(` — ${CITATIONS[0]!.publisher}, retrieved 2026-10-03`));
+    assert.ok(!found.jsxText.some((text) => text.includes("script") || text.includes("Alpha")), "no content as JSX text");
+    assert.equal(render().page.content.includes("sourcesSection"), false, "an article with no citations renders as before");
+  });
+
+  test("a section id \"sources\" is reserved only when the article cites sources", () => {
+    const named = (v: Record<string, unknown>) => ((v.sections as { id: string }[])[1]!.id = "sources");
+    assert.equal(render(raw(named)).page.content.includes('id: "sources"'), true);
+    assert.deepEqual(refused(raw((v) => { named(v); v.citations = CITATIONS; (v.internalLinks as unknown[]).splice(0); })), { code: "section-id-reserved", detail: "sources" });
+  });
+});

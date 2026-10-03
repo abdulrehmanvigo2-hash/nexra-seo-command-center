@@ -6,7 +6,7 @@
  * (topic, searchIntent, slug, title, … sections with their H3 subsections,
  * faqs, internalLinks, the CTA, topicDecision and, when there are any,
  * attestations) — or the stored canonical text of a version
- * (`nexra-article-content/1` or `/2`), which is the same object with its
+ * (`nexra-article-content/1`, `/2` or, since M4, `/3`), which is the same object with its
  * format member.
  *
  * The C1 validator decides everything: an unknown field, a missing one, a
@@ -71,7 +71,7 @@ export function importArticleJson(text: string): ArticleImportResult {
 
   // The canonical text's own format member is not part of the content contract; anything else unknown is refused.
   const { format, ...rest } = parsed as Record<string, unknown>;
-  const content = format === "nexra-article-content/1" || format === "nexra-article-content/2" ? rest : parsed;
+  const content = format === "nexra-article-content/1" || format === "nexra-article-content/2" || format === "nexra-article-content/3" ? rest : parsed;
 
   const checked = validateArticleContent(content);
   if (!checked.ok) return { ok: false, errors: checked.issues.map(issueMessage), issues: checked.issues };

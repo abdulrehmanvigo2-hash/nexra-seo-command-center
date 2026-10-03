@@ -107,8 +107,8 @@ describe("import fills every field from one pasted JSON (A5-03)", () => {
     }
   });
 
-  test("a format member other than the two canonical formats is refused as an unknown field", () => {
-    const result = importArticleJson(JSON.stringify({ format: "nexra-article-content/3", ...fullArticle() }));
+  test("a format member other than the canonical formats (M4: /1, /2 and /3) is refused as an unknown field", () => {
+    const result = importArticleJson(JSON.stringify({ format: "nexra-article-content/4", ...fullArticle() }));
     assert.ok(!result.ok && result.errors.some((e) => /is not part of the article contract/.test(e)));
   });
 

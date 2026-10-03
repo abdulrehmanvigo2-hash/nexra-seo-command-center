@@ -202,6 +202,14 @@ export function buildArticleProposalPreview(input: ArticleProposalPreviewInput):
           "",
         ]
       : []),
+    // M4: only when the article cites outside pages, so every earlier preview keeps its bytes.
+    ...(content.citations.length > 0
+      ? [
+          `CITED SOURCES (${content.citations.length}) — outside pages the article lists in its Sources section`,
+          ...content.citations.map((source, index) => `${index + 1}. ${source.title} — ${source.publisher} — ${source.url} — retrieved ${source.retrievedAt}`),
+          "",
+        ]
+      : []),
     `APPROVED CANONICAL CONTENT (${articleCanonicalFormat(content)}, exact stored text)`,
     canonicalContent,
   ];

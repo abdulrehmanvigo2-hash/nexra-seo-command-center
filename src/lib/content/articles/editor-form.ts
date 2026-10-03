@@ -47,7 +47,11 @@ export type ArticleForm = {
   ctaBody: string;
   topicDecision: string;
   attestations: AttestationForm[];
+  /** M4: the outside pages the article cites (format `/3` when any). */
+  citations: CitationForm[];
 };
+
+export type CitationForm = { url: string; title: string; publisher: string; retrievedAt: string };
 
 export function emptySection(): SectionForm {
   return { id: "", heading: "", body: "", subsections: [] };
@@ -73,6 +77,7 @@ export function emptyForm(): ArticleForm {
     ctaBody: "",
     topicDecision: "",
     attestations: [],
+    citations: [],
   };
 }
 
@@ -131,6 +136,7 @@ export function contentFromForm(form: ArticleForm): Record<string, unknown> {
     ctaBody: form.ctaBody,
     topicDecision: chosen(form.topicDecision),
     ...(form.attestations.length > 0 ? { attestations: form.attestations.map((a) => ({ locator: a.locator, basis: chosen(a.basis) })) } : {}),
+    ...(form.citations.length > 0 ? { citations: form.citations.map((c) => ({ url: c.url.trim(), title: c.title, publisher: c.publisher, retrievedAt: c.retrievedAt.trim() })) } : {}),
   };
 }
 
@@ -159,6 +165,7 @@ export function formFromContent(content: ValidatedArticleContent): ArticleForm {
     ctaBody: content.ctaBody,
     topicDecision: content.topicDecision,
     attestations: content.attestations.map((a) => ({ locator: a.locator, basis: a.basis })),
+    citations: content.citations.map((c) => ({ url: c.url, title: c.title, publisher: c.publisher, retrievedAt: c.retrievedAt })),
   };
 }
 
@@ -186,6 +193,10 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   ctaBody: "CTA body",
   topicDecision: "Topic decision",
   attestations: "Attested paragraphs",
+  citations: "Cited sources",
+  url: "URL",
+  publisher: "publisher",
+  retrievedAt: "retrieved date",
   locator: "paragraph",
   basis: "basis",
   sources: "Sources",
