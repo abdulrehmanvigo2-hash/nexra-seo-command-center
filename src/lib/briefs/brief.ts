@@ -42,7 +42,8 @@ export const OPPORTUNITY_SOURCE: GroundingSource = {
   quotes: "the public's search queries, a provider's listing of other sites' titles, and outside pages' quoted claims",
 };
 
-export type AdmittedClaim = { readonly label: string; readonly claim: string; readonly quote: string; readonly url: string };
+/** `retrievedAt` is the page's fetch time (ISO 8601); a cited source carries its date. */
+export type AdmittedClaim = { readonly label: string; readonly claim: string; readonly quote: string; readonly url: string; readonly retrievedAt: string };
 
 export type OpportunityBriefInput = {
   readonly opportunity: AcceptedOpportunity;

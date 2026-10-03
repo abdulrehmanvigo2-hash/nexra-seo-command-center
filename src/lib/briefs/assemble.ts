@@ -35,7 +35,7 @@ export function assembleBriefInput(parts: {
   const cluster = parts.clusters.find((candidate) => candidate.id === opportunity.clusterId) ?? null;
   const latest = parts.serpRuns.find((view) => view.run.status === "completed" && view.run.opportunityId === opportunity.id) ?? null;
   const ordered = [...parts.admitted].sort((a, b) => a.decidedAt.localeCompare(b.decidedAt) || a.id.localeCompare(b.id));
-  const admitted: AdmittedClaim[] = ordered.map((unit, index) => ({ label: `E${index + 1}`, claim: unit.claim, quote: unit.quote, url: unit.url }));
+  const admitted: AdmittedClaim[] = ordered.map((unit, index) => ({ label: `E${index + 1}`, claim: unit.claim, quote: unit.quote, url: unit.url, retrievedAt: unit.fetchedAt }));
   const keywords = new Set((cluster?.keywords ?? []).filter((k) => k.role !== "excluded").map((k) => k.keyword.toLowerCase()));
   if (cluster !== null) keywords.add(cluster.primaryKeyword.toLowerCase());
   const existing = cluster?.existingPage ?? null;
