@@ -253,10 +253,10 @@ describe("the event rows and the function answers", () => {
   const taskRow = { id: "30e79092-6258-4fff-8d1f-c1e2921764b8", project_id: "nexra-agency", title: "T", source_kind: "director-run", source_ref: RUN_ID, owning_agent: "project-manager", status: "ready", priority: "medium", created_by: "00000000-0000-4000-8000-0000000000aa", created_at: "2026-09-26T03:00:00+00:00", updated_at: "2026-09-26T04:00:00+00:00" };
   const eventRow = { id: "e0000000-0000-4000-8000-000000000001", seq: 2, task_id: taskRow.id, project_id: "nexra-agency", event_type: "status-changed", from_status: "backlog", to_status: "ready", from_agent: null, to_agent: null, run_id: null, actor: taskRow.created_by, created_at: "2026-09-26T04:00:00+00:00" };
 
-  test("the six event types; a row is translated field by field and a row that names the unknown is refused", () => {
-    assert.deepEqual([...TASK_EVENT_TYPES], ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked", "priority-changed"]);
+  test("the eight event types (M3 adds two); a row is translated field by field and a row that names the unknown is refused", () => {
+    assert.deepEqual([...TASK_EVENT_TYPES], ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked", "priority-changed", "plan-date-changed", "article-linked"]);
     const event = eventRowToEvent(eventRow);
-    assert.deepEqual(event, { id: eventRow.id, seq: 2, taskId: taskRow.id, projectId: "nexra-agency", type: "status-changed", fromStatus: "backlog", toStatus: "ready", fromAgent: null, toAgent: null, runId: null, fromPriority: null, toPriority: null, actor: taskRow.created_by, createdAt: eventRow.created_at });
+    assert.deepEqual(event, { id: eventRow.id, seq: 2, taskId: taskRow.id, projectId: "nexra-agency", type: "status-changed", fromStatus: "backlog", toStatus: "ready", fromAgent: null, toAgent: null, runId: null, fromPriority: null, toPriority: null, fromDate: null, toDate: null, articleId: null, actor: taskRow.created_by, createdAt: eventRow.created_at });
     assert.equal(eventRowToEvent({ ...eventRow, seq: "17" }).seq, 17, "a bigint that arrives as text");
     assert.throws(() => eventRowToEvent({ ...eventRow, event_type: "deleted" }), /event_type "deleted"/);
     assert.throws(() => eventRowToEvent({ ...eventRow, to_status: "done" }), /to_status "done"/);

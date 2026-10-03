@@ -259,7 +259,7 @@ export function canTransitionTask(from: AgentTaskStatus, to: AgentTaskStatus): b
   return TASK_TRANSITIONS[from].includes(to);
 }
 
-export const TASK_EVENT_TYPES = ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked", "priority-changed"] as const;
+export const TASK_EVENT_TYPES = ["created", "status-changed", "owner-changed", "handoff-requested", "handoff-run-linked", "priority-changed", "plan-date-changed", "article-linked"] as const;
 export type AgentTaskEventType = (typeof TASK_EVENT_TYPES)[number];
 
 export function isTaskEventType(value: unknown): value is AgentTaskEventType {
@@ -287,6 +287,11 @@ export type AgentTaskEvent = {
   /** The priorities before and after, on `priority-changed` only (20261005120000). */
   readonly fromPriority: AgentTaskPriority | null;
   readonly toPriority: AgentTaskPriority | null;
+  /** The planned dates before and after (`YYYY-MM-DD` or null), on `plan-date-changed` only (M3, 20261022120000). */
+  readonly fromDate?: string | null;
+  readonly toDate?: string | null;
+  /** The article linked, on `article-linked` only (M3, 20261022120000). */
+  readonly articleId?: string | null;
   readonly actor: string;
   readonly createdAt: string;
 };
@@ -298,6 +303,8 @@ export const TASK_EVENT_META: Readonly<Record<AgentTaskEventType, string>> = {
   "handoff-requested": "Handoff requested",
   "handoff-run-linked": "Handoff run queued",
   "priority-changed": "Priority changed",
+  "plan-date-changed": "Planned date changed",
+  "article-linked": "Article linked",
 };
 
 /** The most events one read returns; a task sees far fewer. */
