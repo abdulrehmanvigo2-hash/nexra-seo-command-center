@@ -19,6 +19,8 @@ accepted opportunity of the run's own project and answers a brief in a fixed ord
 
 The whole answer stays under 1,800 characters (the worker's 2,000 ceiling, tested at every cap).
 
+**As built (PR 2):** the word caps were tightened so that a full-caps answer fits under 2,000 characters (1,802; the first draft's caps allowed 3,548): ANGLE under 15 words, each H2's heading and purpose under 7 words, FAQ under 8, EVIDENCE NEEDED under 15, NEXT under 10. EVIDENCE and LINKS name an H2 by its number in the outline. Instructions hash `02c77d00…`.
+
 ## Grounding — evidence kind `opportunity`
 
 Read on the server at execution time, for the run's own project only; a refusal before any provider call when the
