@@ -48,6 +48,8 @@ export type EvidenceStore = {
   decideUnit(projectId: string, unitId: string, decision: "admitted" | "rejected", operatorId: string): Promise<DecideOutcome>;
   /** M4, checker v4: the admitted units of the opportunities whose task is linked to the article (M3), with their pages. */
   admittedForArticle(projectId: string, articleId: string): Promise<readonly AdmittedUnit[]>;
+  /** M5: the admitted units of one opportunity, with their pages, oldest decision first. */
+  admittedForOpportunity(projectId: string, opportunityId: string): Promise<readonly AdmittedUnit[]>;
 };
 
 export const unavailableEvidenceStore: EvidenceStore = {
@@ -80,6 +82,9 @@ export const unavailableEvidenceStore: EvidenceStore = {
     return { status: "unit-not-found" };
   },
   async admittedForArticle() {
+    return [];
+  },
+  async admittedForOpportunity() {
     return [];
   },
 };

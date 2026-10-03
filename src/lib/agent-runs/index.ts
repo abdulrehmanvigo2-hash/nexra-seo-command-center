@@ -248,6 +248,8 @@ function configuredExecutor(store: AgentRunStore): { executor: AgentExecutor; ti
         curatedKeywords: async (projectId) => (await import("@/lib/keywords")).keywordService().listKeywords(projectId, null),
         // M4: one stored outside source's text, imported on use (as the keyword service, to keep the module graph acyclic).
         evidenceSources: async (projectId, sourceId) => (await import("@/lib/evidence")).evidenceSourceForExtraction(projectId, sourceId),
+        // M5: one accepted opportunity's records, imported on use.
+        opportunities: async (projectId, opportunityId) => (await import("@/lib/briefs")).opportunityForBrief(projectId, opportunityId),
       }),
     ),
     timeoutMs: AI_TIMEOUT_MS,

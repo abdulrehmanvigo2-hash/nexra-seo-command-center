@@ -56,7 +56,8 @@ export type AgentTaskType =
   | "competitor-page-gap-review"
   | "schema-entity-review"
   | "internal-link-review"
-  | "evidence-extract";
+  | "evidence-extract"
+  | "opportunity-brief";
 
 export type JsonValue =
   | string

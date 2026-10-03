@@ -363,7 +363,7 @@ describe("the task-plan-review registry entry", () => {
       assert.equal(agentMayRun(definition!, agent), false, agent);
     }
     assert.equal(agentMayRun(definition!, "project-manager"), true);
-    assert.equal(TASK_TYPES.length, 28); // M4: evidence-extract
+    assert.equal(TASK_TYPES.length, 29); // M4: evidence-extract; M5: opportunity-brief
     assert.equal(TASK_TYPES.filter((t) => t.evidence === "task").length, 1);
     // The read-only drift test still holds: the Writer's draft is the only other policy.
     assert.deepEqual(TASK_TYPES.filter((t) => t.policy !== "read-only").map((t) => t.id), ["section-draft", "article-revision-draft"]);

@@ -520,7 +520,7 @@ describe("the task type", () => {
     ];
     for (const agent of others) assert.equal(agentMayRun(definition!, agent), false, agent);
     assert.equal(agentMayRun(definition!, "market-intelligence"), true);
-    assert.equal(TASK_TYPES.length, 28); // M4: evidence-extract
+    assert.equal(TASK_TYPES.length, 29); // M4: evidence-extract; M5: opportunity-brief
   });
 
   test("accepts one bare hostname, canonicalised, and nothing else", () => {

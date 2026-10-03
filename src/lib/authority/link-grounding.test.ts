@@ -365,7 +365,7 @@ describe("the task type — outbound-link-review", () => {
     assert.equal(definition?.evidence, "crawl-links");
     assert.equal(definition?.label, "Outbound link review");
     assert.equal(definition?.instructions, OUTBOUND_LINK_REVIEW_INSTRUCTIONS);
-    assert.equal(TASK_TYPES.length, 28); // M4: evidence-extract
+    assert.equal(TASK_TYPES.length, 29); // M4: evidence-extract; M5: opportunity-brief
     // Since 6.6 the internal-link review reads the same edges; the Authority agent has those two tasks and no other agent has either.
     assert.deepEqual(TASK_TYPES.filter((task) => task.evidence === "crawl-links").map((task) => task.id), ["outbound-link-review", "internal-link-review"]);
     for (const task of TASK_TYPES) {

@@ -268,6 +268,14 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "opportunity-brief": {
+        // M5: the mock executor reads no opportunity and briefs nothing.
+        const metadata: JsonObject = { simulated: true, grounded: false, taskType: task.taskType, attempt: task.attempt };
+        return {
+          summary: `Simulated opportunity brief by ${subject}. The mock executor read no record and proposed nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "evidence-extract": {
         // M4: the mock executor reads no outside page and extracts nothing. Its answer is not in the
         // unit format and the database refuses units from a simulated run, so nothing it writes can

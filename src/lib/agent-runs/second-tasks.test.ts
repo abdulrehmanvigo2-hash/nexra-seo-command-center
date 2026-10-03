@@ -77,7 +77,7 @@ const withoutLimits = (text: string) => text.replace(` ${LIMITS_LINE}`, "").repl
 
 describe("the registry: six second tasks, one agent each, over existing evidence kinds", () => {
   test("each is registered for its one agent, with its policy, evidence kind and instructions", () => {
-    assert.equal(TASK_TYPES.length, 28); // M4: evidence-extract
+    assert.equal(TASK_TYPES.length, 29); // M4: evidence-extract; M5: opportunity-brief
     for (const task of SECOND) {
       const definition = getTaskType(task.id);
       assert.ok(definition, task.id);

@@ -44,6 +44,10 @@ function memoryStore(options: { setUp?: boolean } = {}) {
       guard();
       return rows.filter((row) => row.projectId === projectId && row.mapId === mapId);
     },
+    async getAccepted(projectId, opportunityId) {
+      guard();
+      return rows.find((row) => row.projectId === projectId && row.id === opportunityId) ?? null;
+    },
   };
   return { store, rows, calls };
 }
