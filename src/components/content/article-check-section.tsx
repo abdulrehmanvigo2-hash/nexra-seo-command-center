@@ -290,7 +290,7 @@ function UnitRow({ unit, active, onSelect }: { unit: ArticleCheckUnitView; activ
   );
 }
 
-const CARRY_FAILURE: Readonly<Record<Exclude<CarryArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
+export const CARRY_FAILURE: Readonly<Record<Exclude<CarryArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
   unauthorized: "Your session has ended. Reload the page to sign in again.",
   "rate-limited": "Too many requests. Wait a moment and try again.",
   invalid: "This unit cannot be carried: its identifiers are not what the server expects.",
@@ -442,7 +442,7 @@ function CarryControls({
   );
 }
 
-const RECORD_FAILURE: Readonly<Record<Exclude<RecordArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
+export const RECORD_FAILURE: Readonly<Record<Exclude<RecordArticleCheckUnitActionResult, { ok: true }>["reason"], string>> = {
   unauthorized: "Your session has ended. Reload the page to sign in again.",
   "rate-limited": "Too many requests. Wait a moment and try again.",
   invalid: "This outcome cannot be recorded: its identifiers are not what the server expects.",
