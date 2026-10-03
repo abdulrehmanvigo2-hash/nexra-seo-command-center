@@ -178,3 +178,26 @@ begin
   perform t.ok((select count(*) from nexra_article_publications) = 6, 'H service_role reads the table');
 end $$;
 reset role;
+
+-- I: abandon — a publication that never merged (its pull request closed, or its head moved) can be abandoned; its
+-- article may then be requested again. A requested, merged or live publication cannot be abandoned.
+do $$
+declare a uuid; p uuid; q uuid; r jsonb;
+begin
+  a := tp.ready(56, 'abandon-me');
+  p := (tp.req(a)->'publication'->>'id')::uuid;
+  perform t.ok(tp.step(p, 'abandon')->>'outcome' = 'out-of-order', 'I a requested publication cannot be abandoned');
+  perform tp.start(p);
+  perform tp.step(p, 'pull-request-open', tp.pr(9));
+  r := tp.step(p, 'abandon');
+  perform t.ok(r->>'outcome' = 'recorded' and r->'publication'->>'status' = 'abandoned' and (r->'publication'->>'pull_request_number')::int = 9,
+    'I abandoned from pull-request-open, its pull request kept on the row');
+  perform t.ok(tp.step(p, 'abandon')->>'outcome' = 'same' and tp.step(p, 'merged', jsonb_build_object('merge_commit', repeat('e', 40)))->>'outcome' = 'out-of-order'
+    and tp.step(p, 'error', '{"code":"x","step":"merge"}')->>'outcome' = 'out-of-order', 'I abandoned is final: same again; no merge or error after it');
+  perform t.ok(not ('abandon-me' = any (public.nexra_article_publication_live_slugs('nexra-agency-website'))), 'I an abandoned publication is not live');
+  r := tp.req(a, '{}', tp.dig(5));
+  perform t.ok(r->>'outcome' = 'requested', 'I the article may be requested again');
+  q := (r->'publication'->>'id')::uuid;
+  perform t.ok(tp.start(q, tp.dig(5))->>'outcome' = 'started', 'I and the new request starts');
+  perform t.ok(tp.step((select id from nexra_article_publications where slug = 'goes-live'), 'abandon')->>'outcome' = 'out-of-order', 'I a live publication cannot be abandoned');
+end $$;
