@@ -1,5 +1,8 @@
 # M3 — Content calendar: design note
 
+**Status (3 Oct 2026):** merged (PR #123–#127) and live — migration `20261022120000` applied to production and
+recorded after manual backup run `37128565711` (45 history rows). No date is set and no article is linked yet.
+
 The third milestone of `docs/roadmap/NEXT-FOUR-PLAN.md` (approved 3 Oct 2026 with every default accepted). It turns
 accepted work (M2's opportunity tasks, and any other task) into a dated plan the owner can see month by month, each
 item showing the stage it has reached — read from the task and the article linked to it. It never publishes, queues

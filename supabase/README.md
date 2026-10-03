@@ -220,7 +220,11 @@ Editor (or run with the Supabase CLI against a linked project):
     ten keywords the `/2` template pins (a repository test checks them against
     the template); every other entry, the function's security and every
     proposal, preview and render are unchanged
-    (`docs/roadmap/M2-opportunities.md`) — **not yet applied** to production
+    (`docs/roadmap/M2-opportunities.md`) — applied to production and recorded on
+    3 Oct 2026 (SHA-256 `d038ffdb…c8a5b`, one hash-checked transaction after
+    manual backup run `37128565711`; verified read-only: 43 history rows, the
+    pinned slug reads its ten keywords, the function `security definer` with
+    EXECUTE for `service_role` only, every row count unchanged)
 43. `20261021120000_opportunities.sql` — M2: `nexra_opportunities` (one
     immutable row per accepted opportunity: the approved map and cluster, the
     action, score, rules version, priority, scored lines and the task it
@@ -230,16 +234,27 @@ Editor (or run with the Supabase CLI against a linked project):
     priority and owner; creates the opportunity and its backlog task in one
     transaction). `nexra_agent_tasks.source_kind` gains `opportunity`;
     `nexra_agent_task_create` still refuses it. `service_role`: SELECT on the
-    table, EXECUTE on the function only — **not yet applied** to production
+    table, EXECUTE on the function only — applied to production and recorded
+    on 3 Oct 2026 (SHA-256 `ace04956…21b99b`, one hash-checked transaction,
+    then `NOTIFY pgrst`; verified read-only: 44 history rows, the table empty
+    with RLS on and no policies, `service_role` SELECT only, 4 of 4 guard
+    triggers enabled, the accept function `security definer` with EXECUTE for
+    `service_role` only, the source-kind check naming `opportunity`, every
+    other row count unchanged)
 44. `20261022120000_content_calendar.sql` — M3: `nexra_agent_tasks.planned_for`
     and two task event types, `plan-date-changed` and `article-linked` (with
     `from_date`, `to_date` and `article_id`; every earlier type keeps its shape),
     through `nexra_agent_task_set_plan_date` and `nexra_agent_task_link_article`
     (`security definer`, the task row lock; EXECUTE for `service_role` only)
-    (`docs/roadmap/M3-content-calendar.md`) — **not yet applied** to production
+    (`docs/roadmap/M3-content-calendar.md`) — applied to production and
+    recorded on 3 Oct 2026 (SHA-256 `2c3d9265…e293ee`, one hash-checked
+    transaction, then `NOTIFY pgrst`; verified read-only: 45 history rows, the
+    four columns present, the two event types in the type check, the two
+    functions `security definer` with EXECUTE for `service_role` only, no table
+    grant changed, every guard trigger enabled, every row count unchanged)
 
-The first forty-one are applied to production and recorded in its migration
-history (42 versions); `20261020120000`, `20261021120000` and `20261022120000` are not yet applied.
+All forty-four are applied to production and recorded in its migration
+history (45 versions).
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:
