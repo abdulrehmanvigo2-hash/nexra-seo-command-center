@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
+import { runNowButtonState } from "@/lib/agent-runs/run-now-state";
 import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { AssembledDraftView } from "@/components/content/assembled-draft";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,7 @@ import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/pane
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
 import type { ParsedBrief } from "@/lib/briefs/brief";
-import { batchOutcome, capRoom, DRAFT_ARTICLE_LABEL, draftArticleConfirmation, draftParts, partLabel, partRequests, partStateLine, partsToQueue } from "@/lib/briefs/draft-presenter";
+import { batchOutcome, capRoom, DRAFT_ARTICLE_LABEL, draftArticleConfirmation, draftParts, draftWarnings, partLabel, partRequests, partStateLine, partsToQueue } from "@/lib/briefs/draft-presenter";
 import { BRIEF_LABEL, BRIEF_NOTE, briefRunLine, latestBrief, supportLabel } from "@/lib/briefs/presenter";
 import { writeOutcome } from "@/lib/evidence/presenter";
 import type { AgentRun } from "@/types/agent-run";
@@ -24,7 +25,7 @@ type Note = { readonly text: string; readonly tone: "neutral" | "warning" } | nu
 type RunsRead = readonly AgentRun[] | "loading" | "failed";
 
 export function OpportunityBriefPanel({ projectId, runs, writerRuns, busy, note, onDraft, onChanged }: { projectId: string; runs: RunsRead; writerRuns: RunsRead; busy: boolean; note: Note; onDraft: () => void; onChanged: () => void }) {
-  const { executing, executeNote, runNow } = useRunNow(() => onChanged());
+  const { executingId, executeNote, runNow } = useRunNow(() => onChanged());
   const list = Array.isArray(runs) ? (runs as readonly AgentRun[]) : [];
   const shown = latestBrief(list);
 
@@ -57,7 +58,7 @@ export function OpportunityBriefPanel({ projectId, runs, writerRuns, busy, note,
             {list.slice(0, 5).map((run) => (
               <li key={run.id} className="flex flex-wrap items-center gap-2">
                 <span className="text-fg-subtle">{briefRunLine(run)}</span>
-                {run.status === "queued" && <RunNowButton run={run} executing={executing} onRunNow={() => void runNow(run)} />}
+                {run.status === "queued" && <RunNowButton run={run} {...runNowButtonState(run.id, executingId)} onRunNow={() => void runNow(run)} />}
               </li>
             ))}
           </ul>
@@ -117,13 +118,14 @@ export function OpportunityBriefPanel({ projectId, runs, writerRuns, busy, note,
  * article…* — one confirmation that queues every part not yet drafted, after checking today's caps leave room for all.
  */
 function ArticleDraftSection({ projectId, briefRun, brief, writerRuns, onChanged }: { projectId: string; briefRun: AgentRun; brief: ParsedBrief; writerRuns: RunsRead; onChanged: () => void }) {
-  const { executing, executeNote, runNow } = useRunNow(() => onChanged());
+  const { executingId, executeNote, runNow } = useRunNow(() => onChanged());
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<Note>(null);
   const inFlight = useRef(false);
   const list = Array.isArray(writerRuns) ? (writerRuns as readonly AgentRun[]) : [];
   const states = draftParts(brief, list, briefRun.id);
+  const warnings = draftWarnings(brief, list, briefRun.id);
   const toQueue = partsToQueue(states);
   const byId = new Map(list.map((run) => [run.id, run]));
 
@@ -182,12 +184,18 @@ function ArticleDraftSection({ projectId, briefRun, brief, writerRuns, onChanged
               <li key={state.part} className="flex flex-wrap items-center gap-2">
                 <span className="text-fg">{partLabel(state.part, brief)}</span>
                 <span className="text-fg-subtle">{partStateLine(state)}</span>
-                {run !== undefined && run.status === "queued" && <RunNowButton run={run} executing={executing} onRunNow={() => void runNow(run)} />}
+                {warnings.filter((warning) => warning.part === state.part).map((warning) => (
+                  <span key={warning.text} className="basis-full text-warning">{warning.text}</span>
+                ))}
+                {run !== undefined && run.status === "queued" && <RunNowButton run={run} {...runNowButtonState(run.id, executingId)} onRunNow={() => void runNow(run)} />}
               </li>
             );
           })}
         </ul>
       )}
+      {warnings.filter((warning) => warning.part === null).map((warning) => (
+        <p key={warning.text} className="text-xs text-warning" role="status">{warning.text}</p>
+      ))}
       {states.length > 0 && states.every((state) => state.state === "used") && (
         <AssembledDraftView projectId={projectId} briefRunId={briefRun.id} version={states.map((state) => (state.state === "used" ? state.runId : "")).join(",")} />
       )}

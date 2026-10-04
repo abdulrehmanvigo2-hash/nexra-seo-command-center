@@ -2496,9 +2496,19 @@ DataForSEO call and no agent run were made. **M5 (opportunity brief) and M6 (who
 (`docs/roadmap/M5-opportunity-brief.md`, `docs/roadmap/M6-article-writer.md`; PR #146–#155 merged 4 Oct, `master`
 `a39621c`, every deviation accepted by the owner; no migration): the Content Strategist's `opportunity-brief` and the
 Writer's `article-part-draft` (30 task types), the Brief panel and *Draft article…* on the Evidence tab, the assembled
-draft (`GET /api/briefs/draft`) and *Open in editor*. No live brief or Writer run has been made. **M8 (internal links over
-a complete crawl) is in progress** under `docs/roadmap/M8-internal-links.md` (stacked draft PRs, none merged until
-approved); M9 is postponed.
+draft (`GET /api/briefs/draft`) and *Open in editor*. The first live brief (run `638b453b…`, the AI receptionist
+opportunity) and its eight Writer parts (4 Oct) assembled into a draft that failed C1 — opinion paragraphs with numbers
+and over the 40% / half-a-section limits; it was repaired by hand outside the product, and the brief and Writer
+instructions now keep opinion within those limits, with warnings per part (the M6 follow-up in
+`docs/roadmap/M6-article-writer.md`). **M8 (internal links over a complete crawl) is LIVE in code**
+(`docs/roadmap/M8-internal-links.md`; PR #156–#161 merged 4 Oct, `master` `96cc836`, every deviation accepted by the
+owner): after manual backup run `37172018763`, migration `20261027120000_internal_links.sql` (SHA-256 `69c1bcb5…6f7b49`)
+was **applied to production and recorded on 4 Oct 2026** by the §1.2 method (local tampered-hash test first; one
+hash-checked transaction, then `NOTIFY pgrst`). Verified read-only: **50 history rows**; `nexra_crawl_page_texts` empty,
+RLS on with no policies, `service_role` SELECT and INSERT only, 3 of 3 guard triggers enabled;
+`nexra_link_suggestion_task_create` `security definer`, empty `search_path`, EXECUTE for `service_role` only; the task
+source kinds include `internal-link`; every other row count and the V4 / V6 hashes unchanged. Next: the owner sets
+`CRAWL_MAX_PAGES=100` in Vercel and redeploys, then runs one own-site crawl. M9 is postponed.
 
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 

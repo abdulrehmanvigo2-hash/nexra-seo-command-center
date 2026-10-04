@@ -21,6 +21,8 @@ export type AdmittedUnit = {
   readonly url: string;
   readonly fetchedAt: string;
   readonly decidedAt: string;
+  /** The fetched page's recorded `<title>`, when the read carried it. */
+  readonly pageTitle?: string | null;
 };
 
 export type LinkEvent = { readonly taskId: string; readonly articleId: string | null; readonly seq: number };

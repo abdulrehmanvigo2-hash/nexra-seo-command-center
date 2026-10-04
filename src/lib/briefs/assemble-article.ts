@@ -1,7 +1,9 @@
 import { parsePart, partsFor, type ArticlePart, type ParsedClosing, type ParsedOpening, type ParsedSection, type Tag, type TaggedText } from "@/lib/briefs/article-part";
-import type { OpportunityBriefInput, ParsedBrief } from "@/lib/briefs/brief";
-import { ARTICLE_LIMITS, SEARCH_INTENTS, statesAttestedNumber, validateArticleContent } from "@/lib/content/articles/validate";
-import type { ArticleAttestation, ArticleCitedSource, ArticleContent, ArticleInternalLink, ArticleIssue, ArticleSection } from "@/types/content-article";
+import type { AdmittedClaim, OpportunityBriefInput, ParsedBrief } from "@/lib/briefs/brief";
+import { articleWordCount } from "@/lib/content/articles/website/render";
+import { sentencesOf } from "@/lib/content/articles/checks/units";
+import { ARTICLE_LIMITS, ATTESTED_BODY_SHARE, ATTESTED_SECTION_SHARE, SEARCH_INTENTS, statesAttestedNumber, validateArticleContent } from "@/lib/content/articles/validate";
+import type { ArticleAttestation, ArticleCitedSource, ArticleContent, ArticleInternalLink, ArticleIssue, ArticleSection, ValidatedArticleContent } from "@/types/content-article";
 import type { AgentRun } from "@/types/agent-run";
 import type { SearchIntent } from "@/types/seo";
 
@@ -21,6 +23,30 @@ import type { SearchIntent } from "@/types/seo";
  */
 
 export const DEFAULT_CATEGORY = "AI Automation";
+
+/** The assembled article's words (the renderer's count: lead, introduction, sections, FAQ answers) below which it warns. */
+export const MIN_ARTICLE_WORDS = 1_000;
+
+/** A title's site-name separator: " | ", " – ", " — " or " - ", the last one in the title. */
+const TITLE_SEPARATOR = /\s+[|–—-]\s+(?!.*\s[|–—-]\s)/u;
+
+/**
+ * One cited source for the article: the page's recorded title and the publisher it names after a separator
+ * ("AI Answering Service for Small Business | Layer3Labs"), or, when the evidence source recorded no title, the page's
+ * address and host (flagged by the caller for the operator to replace).
+ */
+export function citedSourceOf(unit: AdmittedClaim): ArticleCitedSource & { readonly fromAddress: boolean } {
+  const url = new URL(unit.url);
+  const retrievedAt = unit.retrievedAt.slice(0, 10);
+  const recorded = (unit.pageTitle ?? "").replace(/\s+/g, " ").trim();
+  if (recorded === "") {
+    return { url: unit.url, title: `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`.slice(0, ARTICLE_LIMITS.sourceTitle), publisher: url.hostname.slice(0, ARTICLE_LIMITS.sourcePublisher), retrievedAt, fromAddress: true };
+  }
+  const match = TITLE_SEPARATOR.exec(recorded);
+  const title = (match === null ? recorded : recorded.slice(0, match.index)).trim() || recorded;
+  const publisher = (match === null ? url.hostname.replace(/^www\./, "") : recorded.slice(match.index + match[0].length)).trim() || url.hostname;
+  return { url: unit.url, title: title.slice(0, ARTICLE_LIMITS.sourceTitle), publisher: publisher.slice(0, ARTICLE_LIMITS.sourcePublisher), retrievedAt, fromAddress: false };
+}
 
 export type PartState =
   | { readonly part: ArticlePart; readonly state: "missing" }
@@ -51,7 +77,12 @@ export type AssembledDraft = {
   readonly issues: readonly ArticleIssue[];
   /** Fields set by a default, and links left out, each for the operator to check. */
   readonly notes: readonly string[];
+  /** What the drafted parts already show would fail the attestation rules, part by part, before the whole is assembled. */
+  readonly warnings: readonly PartWarning[];
 };
+
+/** One drafted part's breach of an attestation rule; `part` is null for the share across every drafted section. */
+export type PartWarning = { readonly part: ArticlePart | null; readonly text: string };
 
 function tagText(tag: Tag): string {
   switch (tag.kind) {
@@ -95,12 +126,46 @@ export function partStates(brief: ParsedBrief, runs: readonly AgentRun[], briefR
   });
 }
 
+/**
+ * The attestation rules (C1, 6.8b) checked on each drafted section as soon as it is drafted: an [opinion] line states
+ * no number, opinion holds at most half of a section's sentences, and — across the sections drafted so far — at most
+ * 40% of the body. A warning names the part to re-queue or edit; nothing is changed or dropped.
+ */
+export function partWarnings(states: readonly { state: PartState; parsed: ReturnType<typeof parsePart> }[]): readonly PartWarning[] {
+  const warnings: PartWarning[] = [];
+  let opinionAll = 0;
+  let sentencesAll = 0;
+  for (const entry of states) {
+    if (entry.state.state !== "used" || entry.parsed === null || !("paragraphs" in entry.parsed)) continue;
+    const { part } = entry.state;
+    const label = `Section ${(entry.parsed as ParsedSection).section}`;
+    const paragraphs = (entry.parsed as ParsedSection).paragraphs;
+    let opinion = 0;
+    let total = 0;
+    paragraphs.forEach((paragraph, n) => {
+      const count = sentencesOf(paragraph.text).length;
+      total += count;
+      if (paragraph.tag.kind !== "opinion") return;
+      opinion += count;
+      if (statesAttestedNumber(paragraph.text)) warnings.push({ part, text: `${label}: opinion paragraph ${n + 1} states a number, which an attested paragraph may not; remove it or queue the part again.` });
+    });
+    if (opinion > ATTESTED_SECTION_SHARE * total) warnings.push({ part, text: `${label}: opinion is ${opinion} of ${total} sentences, over half the section; rewrite some as advice or queue the part again.` });
+    opinionAll += opinion;
+    sentencesAll += total;
+  }
+  if (sentencesAll > 0 && opinionAll > ATTESTED_BODY_SHARE * sentencesAll) {
+    warnings.push({ part: null, text: `Opinion is ${opinionAll} of ${sentencesAll} sentences in the drafted sections, over 40% of the body; the assembled draft will fail until some becomes advice.` });
+  }
+  return warnings;
+}
+
 export function assembleArticle(input: { readonly briefRunId: string; readonly brief: ParsedBrief; readonly records: OpportunityBriefInput | null; readonly runs: readonly AgentRun[] }): AssembledDraft {
   const { brief, records } = input;
   const states = partStates(brief, input.runs, input.briefRunId);
   const parts = states.map((entry) => entry.state);
+  const warnings = partWarnings(states);
   if (states.some((entry) => entry.state.state !== "used")) {
-    return { briefRunId: input.briefRunId, parts, content: null, evidenceMap: [], issues: [], notes: [] };
+    return { briefRunId: input.briefRunId, parts, content: null, evidenceMap: [], issues: [], notes: [], warnings };
   }
 
   const opening = states[0]!.parsed as ParsedOpening;
@@ -180,12 +245,10 @@ export function assembleArticle(input: { readonly briefRunId: string; readonly b
   if (cluster === null) notes.push("No cluster was readable: topic and keywords are empty; fill them in before saving.");
   notes.push(`Category set to "${DEFAULT_CATEGORY}"; check it.`);
 
-  const citations: ArticleCitedSource[] = cited.map((label) => {
-    const unit = admitted.get(label)!;
-    const url = new URL(unit.url);
-    return { url: unit.url, title: `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`.slice(0, ARTICLE_LIMITS.sourceTitle), publisher: url.hostname.slice(0, ARTICLE_LIMITS.sourcePublisher), retrievedAt: unit.retrievedAt.slice(0, 10) };
-  });
-  if (citations.length > 0) notes.push("Each cited source's title is its address; give it the page's real title.");
+  const sources = cited.map((label) => citedSourceOf(admitted.get(label)!));
+  const citations: ArticleCitedSource[] = sources.map((source) => ({ url: source.url, title: source.title, publisher: source.publisher, retrievedAt: source.retrievedAt }));
+  if (sources.some((source) => source.fromAddress)) notes.push("A cited source whose page recorded no title is titled by its address; give it the page's real title.");
+  if (sources.some((source) => !source.fromAddress)) notes.push("Cited sources are titled from each page's recorded title, the publisher from its site name; check them.");
 
   const content: ArticleContent = {
     topic: cluster?.topic ?? "",
@@ -209,8 +272,13 @@ export function assembleArticle(input: { readonly briefRunId: string; readonly b
     citations,
   };
   const validation = validateArticleContent(content);
+  // Counted on the assembled content whether or not it validates: a short draft is worth knowing about either way.
+  const words = articleWordCount(content as unknown as ValidatedArticleContent);
+  const allWarnings = words < MIN_ARTICLE_WORDS
+    ? [...warnings, { part: null, text: `The assembled article has ${words} words, under ${MIN_ARTICLE_WORDS.toLocaleString("en-GB")}; queue thin sections again or add sections before saving.` }]
+    : warnings;
   const evidenceMap = map.map((entry, index) => ({ entry, index })).sort((a, b) => Number(a.entry.status !== "unsupported") - Number(b.entry.status !== "unsupported") || a.index - b.index).map(({ entry }) => entry);
-  return { briefRunId: input.briefRunId, parts, content, evidenceMap, issues: validation.ok ? [] : validation.issues, notes };
+  return { briefRunId: input.briefRunId, parts, content, evidenceMap, issues: validation.ok ? [] : validation.issues, notes, warnings: allWarnings };
 }
 
 /** The import box's text: the content object as the editor's Import reads it. */

@@ -45,5 +45,6 @@ export function supportLabel(support: string): string {
   const unit = /^\[evidence (E\d+)\]$/.exec(support);
   if (unit) return `Admitted evidence ${unit[1]}`;
   if (/^opinion$/i.test(support)) return "Opinion — would be an attested paragraph";
+  if (/^advice$/i.test(support)) return "Advice — guidance to the reader, stating no fact";
   return support;
 }
