@@ -810,3 +810,36 @@ website password; it is shown in the dashboard's API Access page (or sent by e-m
 
 A partial run is resumed only from the screen's *Resume…* through the same confirmation (decision Q4); nothing
 resumes on its own, and no live call is ever retried by the system.
+
+## 9. The complete own-site crawl (M8)
+
+The production crawl budget is an environment value, `CRAWL_MAX_PAGES` (1–500; production was 5). M8 needs a complete
+own-site crawl, so the owner raises it to **100**. **Do these in order:**
+
+1. **Merge M8** (its stacked PRs, in order) and confirm the deployment (§2.1).
+2. **Apply `20261027120000_internal_links.sql`** by §1.2, after a fresh manual backup (§6).
+   - Test it first on a disposable cluster, with a tampered hash failing closed; then `NOTIFY pgrst, 'reload schema';`.
+   - **Verify read-only:**
+     - one more history row;
+     - `nexra_crawl_page_texts` empty, RLS on with no policies, `service_role` SELECT and INSERT only, 3 guard
+       triggers enabled;
+     - `nexra_link_suggestion_task_create` `security definer`, empty `search_path`, EXECUTE for `service_role` only;
+     - the task source-kind constraint lists `internal-link`;
+     - every other row count unchanged.
+3. **Then set `CRAWL_MAX_PAGES=100`** in Vercel (Production) and **redeploy**: a new value takes effect only on a new
+   deployment. Confirm the deployment (§2.1).
+4. **Run one own-site crawl** from the project screen (*Run crawl*, then *Start crawl* in its confirmation). It fetches the home page, every page
+   the sitemap lists and the pages they link to, up to 100. Then check:
+   - the Technical SEO screen's coverage banner reads "N of M discovered pages fetched";
+   - the *Internal links* tab shows *Suggestions*;
+   - read-only, `nexra_crawl_page_texts` has one row per fetched page of that crawl.
+
+**Notes.**
+
+- **Setting the budget early is harmless,** but a crawl before step 2 keeps no text, so it gives no suggestions. Its
+  pages and links are still recorded.
+- **Time budget:** a crawl still stops at 60 seconds (`time-budget`), whatever the page budget. At three requests at a
+  time, a site of this size finishes well within it.
+- **Competitor crawls** share the budget but are never sitemap-seeded, and their text is never kept.
+- **To go back:** set `CRAWL_MAX_PAGES` to the old value and redeploy. Nothing is deleted.
+
