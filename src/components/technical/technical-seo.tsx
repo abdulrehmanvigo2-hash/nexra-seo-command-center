@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TabList, tabDomId, tabPanelDomId } from "@/components/ui/tab-list";
 import { FindingHistoryPanel } from "@/components/technical/finding-history";
 import { ObservedFindings } from "@/components/technical/observed-findings";
+import { InternalLinkSuggestions } from "@/components/technical/internal-link-suggestions";
 import { CoverageBanner, LiveCrawlability, LiveLinks, LiveOverview, LivePages, LiveSchema } from "@/components/technical/live-views";
 import type { FindingCategory, FindingSeverity } from "@/lib/crawl/findings/contract";
 import { CATEGORY_LABEL, SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/crawl/findings/present";
@@ -276,7 +277,13 @@ export function TechnicalSeo({
             {tab === "crawlability" && <LiveCrawlability view={view} />}
             {tab === "pages" && <LivePages view={view} />}
             {tab === "schema" && <LiveSchema view={view} />}
-            {tab === "links" && <LiveLinks view={view} />}
+            {tab === "links" && (
+              <div className="space-y-4">
+                <LiveLinks view={view} />
+                {/* M8: suggestions by fixed rules over the same newest own-site crawl, each recordable as a task. */}
+                {projectId !== null && <InternalLinkSuggestions projectId={projectId} />}
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-fg-subtle">{LIVE_PROVENANCE}</p>

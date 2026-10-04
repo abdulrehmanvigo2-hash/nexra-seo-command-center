@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { CrawlStore } from "@/lib/crawl/contract";
+import type { CrawlStore, PageText } from "@/lib/crawl/contract";
+
+/** M8: what the kept-text read answered. */
+export type PageTextsRead = { readonly status: "not-kept" } | { readonly status: "not-readable" } | { readonly status: "read"; readonly texts: readonly PageText[] };
 import type { CrawlConfig } from "@/lib/crawl/config";
 import { isHostAllowed } from "@/lib/crawl/config";
 import { resolveCompetitorTarget } from "@/lib/crawl/competitor-target";
@@ -70,6 +73,11 @@ export type CrawlService = {
    * as an empty list, never as a site with no links.
    */
   listCrawlLinks(id: string, limit?: number): Promise<readonly CrawlLink[]>;
+  /**
+   * M8: the visible text one own-site crawl kept, by URL. `not-kept` when this store keeps none; `not-readable` when
+   * the read failed (the migration not applied, among others) — never an empty list in either case.
+   */
+  listPageTexts(id: string, limit?: number): Promise<PageTextsRead>;
   /** The project's own-site crawls only, newest first. A competitor crawl is never among them. */
   listCrawls(projectId: string, limit?: number): Promise<readonly Crawl[]>;
   /** The crawls of one recorded competitor domain, newest first, or why the domain is refused. */
@@ -575,6 +583,15 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
       const crawl = await store.getById(id);
       if (crawl === null) return null;
       return { crawl, pages: await store.listPages(id, pageLimit) };
+    },
+
+    async listPageTexts(id, limit = 500) {
+      if (!store.listPageTexts) return { status: "not-kept" };
+      try {
+        return { status: "read", texts: await store.listPageTexts(id, Math.min(Math.max(1, limit), 500)) };
+      } catch {
+        return { status: "not-readable" };
+      }
     },
 
     async listCrawlLinks(id, limit = DEFAULT_LINK_LIMIT) {
