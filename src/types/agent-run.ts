@@ -57,7 +57,8 @@ export type AgentTaskType =
   | "schema-entity-review"
   | "internal-link-review"
   | "evidence-extract"
-  | "opportunity-brief";
+  | "opportunity-brief"
+  | "article-part-draft";
 
 export type JsonValue =
   | string

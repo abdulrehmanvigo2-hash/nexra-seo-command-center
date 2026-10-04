@@ -22,6 +22,7 @@ import {
 import { looksLikeSecret } from "@/lib/agent-runs/safety";
 import { OUTBOUND_LINK_REVIEW_INSTRUCTIONS } from "@/lib/authority/link-grounding";
 import { EVIDENCE_EXTRACT_INSTRUCTIONS } from "@/lib/evidence/extract";
+import { ARTICLE_PART_INSTRUCTIONS, ARTICLE_PARTS, isArticlePart } from "@/lib/briefs/article-part";
 import { OPPORTUNITY_BRIEF_INSTRUCTIONS } from "@/lib/briefs/brief";
 import { ARTICLE_CHECK_UNIT_INSTRUCTIONS } from "@/lib/content/article-check-prompt";
 import { MAX_SECTION_INDEX, SECTION_DRAFT_INSTRUCTIONS } from "@/lib/content/draft-grounding";
@@ -140,7 +141,8 @@ export type TaskTypeDefinition = {
     | "article-unit"
     | "task"
     | "evidence-source"
-    | "opportunity";
+    | "opportunity"
+    | "brief";
   /** What a model-backed executor must produce, in plain text. */
   readonly instructions: string;
   parseInput(input: unknown): TaskInputResult;
@@ -961,6 +963,34 @@ const opportunityBrief: TaskTypeDefinition = {
   },
 };
 
+/**
+ * M6 — Writer: one part of an article (the opening, one H2's body, or the closing) from a completed brief. Policy
+ * `draft`: it writes text the operator may import into an article, and saves nothing — an article version exists only
+ * when the operator presses Create or Save in the editor.
+ */
+const articlePartDraft: TaskTypeDefinition = {
+  id: "article-part-draft",
+  label: "Article part draft",
+  description:
+    "Draft one part of an article — the opening, one section, or the FAQ answers and call to action — from a completed brief and the records it was written over, every paragraph tagged with what it rests on.",
+  agents: ["writer"],
+  policy: "draft",
+  evidence: "brief",
+  instructions: ARTICLE_PART_INSTRUCTIONS,
+  parseInput(input): TaskInputResult {
+    const shape = objectWithOnly(input, ["briefRunId", "part"]);
+    if (!shape.ok) return shape;
+    const { briefRunId, part } = shape.value;
+    if (typeof briefRunId !== "string" || !UUID.test(briefRunId)) {
+      return { ok: false, error: "briefRunId must be the id of a completed opportunity brief on this project." };
+    }
+    if (!isArticlePart(part)) {
+      return { ok: false, error: `part must be one of ${ARTICLE_PARTS.join(", ")}.` };
+    }
+    return { ok: true, value: { briefRunId: briefRunId.toLowerCase(), part } };
+  },
+};
+
 export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   projectReview,
   keywordResearch,
@@ -991,6 +1021,7 @@ export const TASK_TYPES: readonly TaskTypeDefinition[] = [
   internalLinkReview,
   evidenceExtract,
   opportunityBrief,
+  articlePartDraft,
 ];
 
 export function getTaskType(id: unknown): TaskTypeDefinition | undefined {

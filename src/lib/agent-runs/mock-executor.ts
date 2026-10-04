@@ -268,6 +268,15 @@ export const mockAgentExecutor: AgentExecutor = {
           metadata,
         };
       }
+      case "article-part-draft": {
+        // M6: the mock executor reads no brief and drafts nothing; its answer is not in the part format, so it never
+        // assembles into an article.
+        const metadata: JsonObject = { simulated: true, grounded: false, taskType: task.taskType, attempt: task.attempt };
+        return {
+          summary: `Simulated article part draft by ${subject}. The mock executor read no record and drafted nothing; this is placeholder output.`,
+          metadata,
+        };
+      }
       case "opportunity-brief": {
         // M5: the mock executor reads no opportunity and briefs nothing.
         const metadata: JsonObject = { simulated: true, grounded: false, taskType: task.taskType, attempt: task.attempt };

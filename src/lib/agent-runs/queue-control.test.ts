@@ -40,7 +40,7 @@ test("each agent's control lists exactly its grounded task types, in registry or
   // project-review (any agent) and keyword-research (no evidence) are not grounded, so never listed.
   assert.deepEqual(queueableTasks("keyword-intent").map((t) => t.taskType), ["search-query-review", "keyword-opportunity-review"]);
   assert.deepEqual(queueableTasks("authority-backlink").map((t) => t.taskType), ["outbound-link-review", "internal-link-review"]);
-  assert.deepEqual(queueableTasks("writer").map((t) => t.taskType), ["section-draft", "article-revision-draft"]);
+  assert.deepEqual(queueableTasks("writer").map((t) => t.taskType), ["section-draft", "article-revision-draft", "article-part-draft"]);
   for (const t of queueableTasks("technical-seo")) assert.equal(t.description, TASK_TYPES.find((d) => d.id === t.taskType)?.description);
 });
 
@@ -70,6 +70,10 @@ test("one chooser per evidence kind; the nine 6.5/6.6 tasks each get a chooser o
   assert.equal(extract.chooser, "elsewhere");
   assert.match(extract.elsewhere ?? "", /Evidence tab/);
   assert.equal(queueRequest("nexra-agency", "research-evidence", extract, EMPTY_SELECTION).ok, false);
+  // M6: a part draft names a completed brief, queued from the Evidence tab.
+  const part = find("writer", "article-part-draft");
+  assert.equal(part.chooser, "elsewhere");
+  assert.match(part.elsewhere ?? "", /Evidence tab/);
   // M5: a brief names an accepted opportunity, chosen on the Evidence tab.
   const brief = find("content-strategist", "opportunity-brief");
   assert.equal(brief.chooser, "elsewhere");
