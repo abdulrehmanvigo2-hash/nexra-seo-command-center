@@ -1,6 +1,7 @@
 import { parsePart, partsFor, type ArticlePart, type ParsedClosing, type ParsedOpening, type ParsedSection, type Tag, type TaggedText } from "@/lib/briefs/article-part";
 import type { OpportunityBriefInput, ParsedBrief } from "@/lib/briefs/brief";
-import { ARTICLE_LIMITS, SEARCH_INTENTS, statesAttestedNumber, validateArticleContent } from "@/lib/content/articles/validate";
+import { sentencesOf } from "@/lib/content/articles/checks/units";
+import { ARTICLE_LIMITS, ATTESTED_BODY_SHARE, ATTESTED_SECTION_SHARE, SEARCH_INTENTS, statesAttestedNumber, validateArticleContent } from "@/lib/content/articles/validate";
 import type { ArticleAttestation, ArticleCitedSource, ArticleContent, ArticleInternalLink, ArticleIssue, ArticleSection } from "@/types/content-article";
 import type { AgentRun } from "@/types/agent-run";
 import type { SearchIntent } from "@/types/seo";
@@ -51,7 +52,12 @@ export type AssembledDraft = {
   readonly issues: readonly ArticleIssue[];
   /** Fields set by a default, and links left out, each for the operator to check. */
   readonly notes: readonly string[];
+  /** What the drafted parts already show would fail the attestation rules, part by part, before the whole is assembled. */
+  readonly warnings: readonly PartWarning[];
 };
+
+/** One drafted part's breach of an attestation rule; `part` is null for the share across every drafted section. */
+export type PartWarning = { readonly part: ArticlePart | null; readonly text: string };
 
 function tagText(tag: Tag): string {
   switch (tag.kind) {
@@ -95,12 +101,46 @@ export function partStates(brief: ParsedBrief, runs: readonly AgentRun[], briefR
   });
 }
 
+/**
+ * The attestation rules (C1, 6.8b) checked on each drafted section as soon as it is drafted: an [opinion] line states
+ * no number, opinion holds at most half of a section's sentences, and — across the sections drafted so far — at most
+ * 40% of the body. A warning names the part to re-queue or edit; nothing is changed or dropped.
+ */
+export function partWarnings(states: readonly { state: PartState; parsed: ReturnType<typeof parsePart> }[]): readonly PartWarning[] {
+  const warnings: PartWarning[] = [];
+  let opinionAll = 0;
+  let sentencesAll = 0;
+  for (const entry of states) {
+    if (entry.state.state !== "used" || entry.parsed === null || !("paragraphs" in entry.parsed)) continue;
+    const { part } = entry.state;
+    const label = `Section ${(entry.parsed as ParsedSection).section}`;
+    const paragraphs = (entry.parsed as ParsedSection).paragraphs;
+    let opinion = 0;
+    let total = 0;
+    paragraphs.forEach((paragraph, n) => {
+      const count = sentencesOf(paragraph.text).length;
+      total += count;
+      if (paragraph.tag.kind !== "opinion") return;
+      opinion += count;
+      if (statesAttestedNumber(paragraph.text)) warnings.push({ part, text: `${label}: opinion paragraph ${n + 1} states a number, which an attested paragraph may not; remove it or queue the part again.` });
+    });
+    if (opinion > ATTESTED_SECTION_SHARE * total) warnings.push({ part, text: `${label}: opinion is ${opinion} of ${total} sentences, over half the section; rewrite some as advice or queue the part again.` });
+    opinionAll += opinion;
+    sentencesAll += total;
+  }
+  if (sentencesAll > 0 && opinionAll > ATTESTED_BODY_SHARE * sentencesAll) {
+    warnings.push({ part: null, text: `Opinion is ${opinionAll} of ${sentencesAll} sentences in the drafted sections, over 40% of the body; the assembled draft will fail until some becomes advice.` });
+  }
+  return warnings;
+}
+
 export function assembleArticle(input: { readonly briefRunId: string; readonly brief: ParsedBrief; readonly records: OpportunityBriefInput | null; readonly runs: readonly AgentRun[] }): AssembledDraft {
   const { brief, records } = input;
   const states = partStates(brief, input.runs, input.briefRunId);
   const parts = states.map((entry) => entry.state);
+  const warnings = partWarnings(states);
   if (states.some((entry) => entry.state.state !== "used")) {
-    return { briefRunId: input.briefRunId, parts, content: null, evidenceMap: [], issues: [], notes: [] };
+    return { briefRunId: input.briefRunId, parts, content: null, evidenceMap: [], issues: [], notes: [], warnings };
   }
 
   const opening = states[0]!.parsed as ParsedOpening;
@@ -210,7 +250,7 @@ export function assembleArticle(input: { readonly briefRunId: string; readonly b
   };
   const validation = validateArticleContent(content);
   const evidenceMap = map.map((entry, index) => ({ entry, index })).sort((a, b) => Number(a.entry.status !== "unsupported") - Number(b.entry.status !== "unsupported") || a.index - b.index).map(({ entry }) => entry);
-  return { briefRunId: input.briefRunId, parts, content, evidenceMap, issues: validation.ok ? [] : validation.issues, notes };
+  return { briefRunId: input.briefRunId, parts, content, evidenceMap, issues: validation.ok ? [] : validation.issues, notes, warnings };
 }
 
 /** The import box's text: the content object as the editor's Import reads it. */

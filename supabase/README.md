@@ -312,7 +312,8 @@ Editor (or run with the Supabase CLI against a linked project):
     INSERT only), the task source kind `internal-link`, and
     `nexra_link_suggestion_task_create` (`security definer`; the project's own
     crawl and two fetched pages, one backlog task for On-Page SEO)
-    (`docs/roadmap/M8-internal-links.md`) — **not applied yet**
+    (`docs/roadmap/M8-internal-links.md`) — **applied to production and
+    recorded on 4 Oct 2026** (SHA-256 `69c1bcb5…6f7b49`; 50 history rows)
 
 The first forty-eight are applied to production and recorded in its migration
 history (49 versions); the forty-ninth waits for its own approval.
