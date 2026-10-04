@@ -110,7 +110,7 @@ describe("assembly and grounding", () => {
   test("missing records are stated, and the block is bounded", () => {
     const empty = formatOpportunityGrounding(assembleBriefInput({ opportunity, clusters: [], serpRuns: [], admitted: [], pairs: null, crawl: null }));
     for (const line of ["Not readable: the opportunity's cluster was not found.", "None recorded for this opportunity.", "None admitted.", "Not observed in stored rows", "No crawl recorded."]) assert.ok(empty.includes(line), line);
-    const big = formatOpportunityGrounding({ ...input(), admitted: Array.from({ length: 200 }, (_, i) => ({ label: `E${i + 1}`, claim: "c".repeat(200), quote: "q".repeat(250), url: "https://a.example/" })) });
+    const big = formatOpportunityGrounding({ ...input(), admitted: Array.from({ length: 200 }, (_, i) => ({ label: `E${i + 1}`, claim: "c".repeat(200), quote: "q".repeat(250), url: "https://a.example/", retrievedAt: "2026-10-03T12:05:00Z" })) });
     assert.ok(new TextEncoder().encode(big).length <= MAX_GROUNDING_BYTES + 60);
     assert.match(big, /further lines left out/);
   });
