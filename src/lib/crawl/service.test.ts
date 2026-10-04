@@ -738,7 +738,7 @@ describe("recording the deterministic findings when a crawl finishes (T3)", () =
   const crawledPage = (path: string, overrides: Partial<CrawlResult["pages"][number]> = {}): CrawlResult["pages"][number] => ({
     url: `https://nexraagency.com${path}`, finalUrl: `https://nexraagency.com${path}`, fetchState: "fetched", httpStatus: 200, redirectHops: 0, redirectChain: [],
     contentType: "text/html", contentBytes: 100, robotsMeta: null, robotsTxtAllowed: true, canonicalHref: null, canonicalResolved: null, canonicalIsSelf: null,
-    title: `A long enough title for the ${path} page here`, titleLength: 38, metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, wordCount: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null, schemaTypes: [], schemaBlocks: 1,
+    title: `A long enough title for the ${path} page here`, titleLength: 38, metaDescription: `Description for ${path}`, metaDescriptionLength: 20, h1Count: 1, firstH1: "h", h2Count: null, h3Count: null, imageCount: null, imagesWithoutAlt: null, xRobotsTag: null, robotsNoindex: null, robotsNofollow: null, wordCount: null, visibleText: null, htmlLang: null, hreflangCount: null, hreflangMalformed: null, ogTagCount: null, ogTitle: null, ogImage: null, twitterCard: null, responseMs: null, schemaTypes: [], schemaBlocks: 1,
     schemaParseFailed: false, inSitemap: null, depth: path === "/" ? 0 : 1, internalLinksIn: path === "/" ? 0 : 1, internalLinksOut: 1, fetchedAt: null, errorCode: null, ...overrides,
   });
 
@@ -831,5 +831,66 @@ describe("recording the deterministic findings when a crawl finishes (T3)", () =
     assert.deepEqual(findings.reads, [["nexra-agency", started.crawl.id]]);
 
     assert.deepEqual(await createCrawlService({ store, projects: projectsWith(PROJECT), config: CONFIG }).getCrawlFindings("nexra-agency", started.crawl.id), { status: "unavailable" });
+  });
+});
+
+describe("startCrawl — M8 page texts and sitemap seeding", () => {
+  const fetched = (url: string, visibleText: string | null) =>
+    ({ url, fetchState: "fetched", visibleText }) as unknown as CrawlResult["pages"][number];
+  const textStore = (fail = false) => {
+    const store = recordingStore();
+    const saved: { crawlId: string; texts: readonly { url: string; text: string }[] }[] = [];
+    return Object.assign(store, {
+      saved,
+      async savePageTexts(crawlId: string, texts: readonly { url: string; text: string }[]) {
+        if (fail) throw new Error("relation does not exist");
+        saved.push({ crawlId, texts });
+      },
+    });
+  };
+
+  test("an own-site crawl is seeded from the sitemap and keeps its fetched pages' text, after its pages", async () => {
+    const store = textStore();
+    let options: Record<string, unknown> = {};
+    const service = createCrawlService({
+      store,
+      projects: projectsWith(PROJECT),
+      config: CONFIG,
+      engine: async (given) => {
+        options = given as unknown as Record<string, unknown>;
+        return engineReturning({ pages: [fetched("https://nexraagency.com/", "Home text"), fetched("https://nexraagency.com/empty", ""), { ...fetched("https://nexraagency.com/x", null), fetchState: "budget-skipped" }] })();
+      },
+    });
+    const result = await service.startCrawl("nexra-agency", OPERATOR);
+    assert.equal(result.ok, true);
+    assert.equal(options.seedFromSitemap, true);
+    assert.deepEqual(store.saved.map((entry) => entry.texts), [[{ url: "https://nexraagency.com/", text: "Home text" }]], "only fetched pages with text");
+    assert.deepEqual(store.calls, ["insert", "savePages", "saveLinks", "finish"]);
+  });
+
+  test("a text write the database refuses (the migration not applied) never fails the crawl", async () => {
+    const store = textStore(true);
+    const service = createCrawlService({ store, projects: projectsWith(PROJECT), config: CONFIG, engine: engineReturning({ pages: [fetched("https://nexraagency.com/", "Home")] }) });
+    const result = await service.startCrawl("nexra-agency", OPERATOR);
+    assert.equal(result.ok, true);
+    assert.ok(store.calls.includes("finish"));
+  });
+
+  test("a competitor crawl is not seeded from the sitemap and keeps no text", async () => {
+    const store = Object.assign(twoHostStore(), { saved: [] as unknown[], async savePageTexts(_c: string, texts: unknown) { (this as { saved: unknown[] }).saved.push(texts); } });
+    let options: Record<string, unknown> = {};
+    const service = createCrawlService({
+      store,
+      projects: projectsWithIntake(PROJECT),
+      config: COMPETITOR_CONFIG,
+      engine: async (given) => {
+        options = given as unknown as Record<string, unknown>;
+        return engineReturning({ pages: [fetched("https://rival.example/", "Their text")] })();
+      },
+    });
+    const result = await service.startCrawl("nexra-agency", OPERATOR, { competitorDomain: "rival.example" });
+    assert.equal(result.ok, true);
+    assert.equal(options.seedFromSitemap, false);
+    assert.deepEqual(store.saved, []);
   });
 });

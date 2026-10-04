@@ -19,7 +19,7 @@ import type { CrawlsDatabase } from "@/lib/crawl/supabase/schema";
  * both the store tests and the service tests need it.
  */
 
-export type FakeTable = "nexra_crawls" | "nexra_crawl_pages" | "nexra_crawl_links";
+export type FakeTable = "nexra_crawls" | "nexra_crawl_pages" | "nexra_crawl_links" | "nexra_crawl_page_texts";
 
 type Row = Record<string, unknown>;
 
@@ -38,6 +38,7 @@ export class FakeSupabase {
     nexra_crawls: [],
     nexra_crawl_pages: [],
     nexra_crawl_links: [],
+    nexra_crawl_page_texts: [],
   };
 
   /** Every insert the store issued, in order, so batching can be asserted. */
@@ -109,6 +110,7 @@ const DEFAULTS: Record<FakeTable, Row> = {
     internal_links_out: 0,
   },
   nexra_crawl_links: { discovered_at: "2026-09-20T00:00:00.000Z" },
+  nexra_crawl_page_texts: { recorded_at: "2026-09-20T00:00:00.000Z" },
 };
 
 type Filter = { readonly column: string; readonly value: unknown };

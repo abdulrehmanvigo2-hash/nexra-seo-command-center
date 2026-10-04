@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type { CrawlStore } from "@/lib/crawl/contract";
@@ -161,6 +162,33 @@ export function createSupabaseCrawlStore(client: SupabaseClient<CrawlsDatabase>)
         .limit(limit);
       if (error) throw new CrawlStoreError("list crawl links", error);
       return data.map(crawlLinkRowToLink);
+    },
+
+    async savePageTexts(crawlId, texts) {
+      await inBatches(texts, async (batch) => {
+        const { error } = await client.from("nexra_crawl_page_texts").insert(
+          batch.map((entry) => ({
+            crawl_id: crawlId,
+            url: entry.url,
+            visible_text: entry.text,
+            // Code points, as the database's char_length counts them.
+            text_chars: [...entry.text].length,
+            text_sha256: createHash("sha256").update(entry.text, "utf8").digest("hex"),
+          })),
+        );
+        if (error) throw new CrawlStoreError("save crawl page texts", error);
+      });
+    },
+
+    async listPageTexts(crawlId, limit) {
+      const { data, error } = await client
+        .from("nexra_crawl_page_texts")
+        .select("url, visible_text")
+        .eq("crawl_id", crawlId)
+        .order("url", { ascending: true })
+        .limit(limit);
+      if (error) throw new CrawlStoreError("list crawl page texts", error);
+      return data.map((row) => ({ url: row.url, text: row.visible_text }));
     },
   };
 }

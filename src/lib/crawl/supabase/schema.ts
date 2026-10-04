@@ -172,6 +172,13 @@ export type CrawlsDatabase = {
         Update: { [_ in never]: never };
         Relationships: [];
       };
+      // M8 (migration 20261027120000): an own-site page's visible text; length and SHA-256 checked by the database.
+      nexra_crawl_page_texts: {
+        Row: { crawl_id: string; url: string; visible_text: string; text_chars: number; text_sha256: string; recorded_at: string };
+        Insert: { crawl_id: string; url: string; visible_text: string; text_chars: number; text_sha256: string };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };

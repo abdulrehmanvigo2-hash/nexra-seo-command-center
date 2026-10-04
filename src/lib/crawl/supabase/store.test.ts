@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
 import { FakeSupabase, asSupabaseClient, postgrestError } from "./fake-client.ts";
 import { createSupabaseCrawlStore } from "./store.ts";
@@ -363,6 +364,7 @@ describe("isolation from the foreign crawl subsystem", () => {
     // And the fake itself cannot hold an unprefixed table.
     assert.deepEqual(Object.keys(db.rows).sort(), [
       "nexra_crawl_links",
+      "nexra_crawl_page_texts",
       "nexra_crawl_pages",
       "nexra_crawls",
     ]);
@@ -531,5 +533,23 @@ describe("createSupabaseCrawlStore — listLinks", () => {
       assert.ok(!error.message.includes("secret row content"));
       return true;
     });
+  });
+});
+
+describe("createSupabaseCrawlStore — M8 page texts", () => {
+  test("each text is written with its length in code points and its SHA-256, and read back by URL", async () => {
+    const { db, store } = storeWith();
+    const text = "AI SDR 😀 replies";
+    await store.savePageTexts!("crawl-1", [{ url: "https://nexraagency.com/b", text }, { url: "https://nexraagency.com/a", text: "A" }]);
+    const row = db.rows.nexra_crawl_page_texts.find((entry) => entry.url === "https://nexraagency.com/b")!;
+    assert.equal(row.text_chars, 16, "the emoji counts once, as char_length does");
+    assert.equal(row.text_sha256, createHash("sha256").update(text, "utf8").digest("hex"));
+    assert.deepEqual((await store.listPageTexts!("crawl-1", 10)).map((entry) => entry.url), ["https://nexraagency.com/a", "https://nexraagency.com/b"]);
+  });
+
+  test("a refused write throws, for the service to note and carry on", async () => {
+    const { db, store } = storeWith();
+    db.failNext({ table: "nexra_crawl_page_texts", operation: "insert", error: postgrestError("42P01", "relation does not exist") });
+    await assert.rejects(() => store.savePageTexts!("crawl-1", [{ url: "https://nexraagency.com/", text: "x" }]));
   });
 });
