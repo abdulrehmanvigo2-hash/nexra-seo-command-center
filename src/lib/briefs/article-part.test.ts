@@ -38,7 +38,7 @@ describe("the article-part-draft task", () => {
   });
 
   test("the instructions are pinned; a full-caps answer of every part stays under the worker's 2,000 ceiling", () => {
-    assert.equal(sha256(ARTICLE_PART_INSTRUCTIONS), "85a2867e3775b57ed64621b1f10d7a936858ec1f2350210be1d416e8e935895d");
+    assert.equal(sha256(ARTICLE_PART_INSTRUCTIONS), "6828d97932d3f29e14a615509c7ca686bada9e6a9e3ab0db72b3f7a1ce92dc7f");
     const w = (n: number) => Array(n).fill("abcdefgh").join(" ");
     const tag = "[evidence E12]";
     const limits = `LIMITS: ${w(19)}`;
