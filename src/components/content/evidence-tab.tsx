@@ -5,6 +5,7 @@ import { ProviderUsageBlock } from "@/components/keywords/provider-estimates";
 import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { OpportunityBriefPanel } from "@/components/content/opportunity-brief";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
+import { runNowButtonState } from "@/lib/agent-runs/run-now-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -262,7 +263,7 @@ function OpportunityEvidence({ projectId, opportunity }: { projectId: string; op
 function SourceRow({ projectId, source, runs, version, onChanged }: { projectId: string; source: EvidenceSource; runs: readonly AgentRun[] | null; version: number; onChanged: () => void }) {
   const units = useRead<readonly EvidenceUnit[]>(source.fetchState === "fetched" ? evidenceUnitsUrl(projectId, source.id) : null, (body) => (Array.isArray(body.units) ? (body.units as EvidenceUnit[]) : null), version);
   const post = usePost(onChanged);
-  const { executing, executeNote, runNow } = useRunNow(() => onChanged());
+  const { executingId, executeNote, runNow } = useRunNow(() => onChanged());
   const [dialog, setDialog] = useState<{ readonly confirmation: Confirmation; readonly run: () => void; readonly usage: boolean } | null>(null);
   const tone = sourceStateTone(source);
   const unitList = units.status === "ready" ? units.value : [];
@@ -294,7 +295,7 @@ function SourceRow({ projectId, source, runs, version, onChanged }: { projectId:
           {runs.map((run) => (
             <li key={run.id} className="flex flex-wrap items-center gap-2">
               <span className="text-fg-subtle">Extraction {run.id.slice(0, 8)} · {run.status}{run.executor === "mock" ? " · simulated, never evidence" : ""}</span>
-              {run.status === "queued" && <RunNowButton run={run} executing={executing} onRunNow={() => void runNow(run)} />}
+              {run.status === "queued" && <RunNowButton run={run} {...runNowButtonState(run.id, executingId)} onRunNow={() => void runNow(run)} />}
               {recordOffered(run, unitList) && (
                 <Button size="sm" variant="secondary" disabled={post.busy} onClick={() => void post.send("/api/evidence/units", { project: projectId, source: source.id, run: run.id }, "Claims recorded; the database checked each quote.")}>
                   Record claims

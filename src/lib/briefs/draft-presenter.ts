@@ -1,6 +1,6 @@
 import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
 import { describeRunInput, QUEUE_CONSEQUENCE, type Confirmation, type QueueRequest } from "@/lib/agent-runs/spend-confirm";
-import { partStates, type PartState } from "@/lib/briefs/assemble-article";
+import { partStates, partWarnings, type PartState, type PartWarning } from "@/lib/briefs/assemble-article";
 import type { ArticlePart } from "@/lib/briefs/article-part";
 import type { ParsedBrief } from "@/lib/briefs/brief";
 import type { AgentRun } from "@/types/agent-run";
@@ -24,6 +24,11 @@ export function partLabel(part: ArticlePart, brief: ParsedBrief): string {
 /** Each part of the brief with its newest run's state, in article order. */
 export function draftParts(brief: ParsedBrief, writerRuns: readonly AgentRun[], briefRunId: string): readonly PartState[] {
   return partStates(brief, writerRuns, briefRunId).map((entry) => entry.state);
+}
+
+/** The attestation warnings of the parts drafted so far (M6 follow-up), shown beside each part before the draft fails. */
+export function draftWarnings(brief: ParsedBrief, writerRuns: readonly AgentRun[], briefRunId: string): readonly PartWarning[] {
+  return partWarnings(partStates(brief, writerRuns, briefRunId));
 }
 
 /** The parts to queue: those with no usable run and none queued or running. */

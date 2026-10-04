@@ -20,6 +20,8 @@ import type { AgentRun } from "@/types/agent-run";
  */
 export function useRunNow(onPersisted: (run: AgentRun) => void) {
   const [executing, setExecuting] = useState(false);
+  /** The run whose execute request is in flight: in a list, only its button shows running. */
+  const [executingId, setExecutingId] = useState<string | null>(null);
   const runningNow = useRef(false);
   const [executeNote, setExecuteNote] = useState<{ text: string; tone: Tone } | null>(null);
 
@@ -27,6 +29,7 @@ export function useRunNow(onPersisted: (run: AgentRun) => void) {
     if (runningNow.current || current === null || !executability(current).ok) return;
     runningNow.current = true;
     setExecuting(true);
+    setExecutingId(current.id);
     setExecuteNote(null);
 
     const runId = current.id;
@@ -62,9 +65,10 @@ export function useRunNow(onPersisted: (run: AgentRun) => void) {
     setExecuteNote(reconciledNote(outcome, persisted));
     runningNow.current = false;
     setExecuting(false);
+    setExecutingId(null);
   };
 
-  return { executing, executeNote, setExecuteNote, runNow };
+  return { executing, executingId, executeNote, setExecuteNote, runNow };
 }
 
 /**
@@ -76,11 +80,15 @@ export function useRunNow(onPersisted: (run: AgentRun) => void) {
 export function RunNowButton({
   run,
   executing,
+  blocked = false,
   onRunNow,
   onPersisted,
 }: {
   run: AgentRun | null;
+  /** This run's execute request is in flight. */
   executing: boolean;
+  /** Another run of the same list is executing: held, not shown as running. */
+  blocked?: boolean;
   onRunNow: () => void;
   /** Receives the run read back after a cancel; without it, no Cancel is offered here. */
   onPersisted?: (run: AgentRun) => void;
@@ -89,7 +97,7 @@ export function RunNowButton({
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant="secondary" icon="bolt" onClick={() => setConfirming(true)} disabled={!runnable.ok || executing} title={runnable.why ?? undefined} aria-busy={executing}>
+      <Button variant="secondary" icon="bolt" onClick={() => setConfirming(true)} disabled={!runnable.ok || executing || blocked} title={runnable.why ?? undefined} aria-busy={executing}>
         {executing ? "Running…" : "Run now"}
       </Button>
       {onPersisted && <CancelRunControl run={run} onPersisted={onPersisted} />}

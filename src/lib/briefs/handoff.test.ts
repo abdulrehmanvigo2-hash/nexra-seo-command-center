@@ -17,7 +17,7 @@ const content: ArticleContent = {
   topicDecision: "unset", attestations: [], citations: [],
 };
 const draft = (over: Partial<AssembledDraft> = {}): AssembledDraft => ({
-  briefRunId: BRIEF, parts: [], content, issues: [], notes: [],
+  briefRunId: BRIEF, parts: [], content, issues: [], notes: [], warnings: [],
   evidenceMap: [{ locator: "what-it-does/0", text: "It replies.", tag: "none", status: "unsupported", note: "No tag: what it rests on is not named." }, { locator: "lead", text: "x", tag: "[evidence E1]", status: "record", note: null }],
   ...over,
 });

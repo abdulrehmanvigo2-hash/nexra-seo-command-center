@@ -136,3 +136,22 @@ No table, no migration, no environment change.
 
 - Approve the merges.
 - Approve the first live article draft: one brief, eight runs, about $0.60.
+
+## Follow-up — opinion within the attestation rules (4 Oct)
+
+The first live brief (run `638b453b…`) and its eight parts assembled into a draft that C1 refused: two opinion
+paragraphs stated numbers ("three", "a second opinion"), and opinion held 17 of 23 body sentences, over half of four
+sections. The parts were drafted one by one, and nothing told the Writer the article-wide limits. Repaired by hand for
+that article (outside the product; nothing saved). At the source:
+
+- **Brief** (hash `4ed10e76…`): an H2 may be supported by `advice` — guidance to the reader that states no fact —
+  and the brief is told to prefer advice to opinion, with the limits (40% of the body, half of any section, no number).
+- **Writer** (hash `b9a2e82a…`): guidance to the reader is `[connective]`, not `[opinion]`; an `[opinion]` line states
+  no number in any form (digit, price, count word, an ordinal such as second; one and first allowed); a section part
+  has at most one `[opinion]` line, of one sentence, beside two lines that are not. A section the brief marks advice is
+  told to be written as guidance. So a section is at most a third opinion, and so is the body.
+- **Assembly:** `partWarnings` checks each drafted section as soon as it is drafted — an opinion line with a number,
+  opinion over half the section, and opinion over 40% across the sections drafted so far — and the part list shows
+  each warning on its part, before the whole draft is assembled and fails.
+- **Run now** on one part showed every queued part as running: the list shared one flag. Only the pressed run now
+  shows running; the others are held until it returns (the Evidence tab's run list had the same fault and is fixed).

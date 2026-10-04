@@ -123,6 +123,12 @@ site.
 - **Phrases:** a one-word phrase is never used; article matching works one paragraph at a time.
 - **Not done:** no browser check of the Suggestions and *Suggest links…* screens before a 100-page crawl exists.
 
+## Applied
+
+Steps 1 and 2 are done: the six PRs merged on 4 Oct (`master` `96cc836`), and after manual backup run `37172018763`
+the migration was applied to production and recorded on 4 Oct 2026 (SHA-256 `69c1bcb5…6f7b49`, 50 history rows),
+verified read-only. Step 3 is the owner's.
+
 ## Owner actions, in this order
 
 1. Approve and merge the six PRs.
