@@ -165,3 +165,20 @@ that article (outside the product; nothing saved). At the source:
   still flagged.
 - **Run now** on one part showed every queued part as running: the list shared one flag. Only the pressed run now
   shows running; the others are held until it returns (the Evidence tab's run list had the same fault and is fixed).
+
+## Follow-up — what the checker cannot verify (4 Oct)
+
+The second auto-drafted article (brief `a8515cfb…`, article `dfc126fc…` v1) passed 6 of its 13 check units. Four
+flags were its pricing sentence: the admitted unit E1 never reached the checker, because the article was not linked to
+the opportunity's task (*Link to a task* in the editor), and an article's admitted evidence is read through that link.
+Every other UNVERIFIABLE sentence was one of five kinds, now named in the Writer instructions as never to be written
+outside an `[opinion]` line, each with an example and its rewrite (hash `6828d979…`):
+
+- a general description of what a kind of product is or does → "In this guide, X means …";
+- a claim about what tools, vendors or a market do → "Find out whether a tool …";
+- what something is built for or best at;
+- a prediction of an outcome or consequence → an instruction ("Run a trial once …");
+- a proportion or frequency (most, many, usually, often) no admitted quote states.
+
+An `[evidence E<n>]` line keeps to its quote and adds no qualifier, audience or scope the quote lacks ("for small
+businesses" was added to E1's claim in one paragraph).
