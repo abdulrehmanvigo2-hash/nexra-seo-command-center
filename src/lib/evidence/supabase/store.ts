@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
-import { linkedOpportunityIds, MAX_ADMITTED_UNITS } from "@/lib/evidence/admitted";
+import { linkedOpportunityIds, MAX_ADMITTED_UNITS, type AdmittedUnit } from "@/lib/evidence/admitted";
 import { EvidenceStoreNotSetUpError, type EvidenceStore } from "@/lib/evidence/store-contract";
 import {
   decideResultToOutcome,
@@ -33,6 +33,23 @@ export function refuseEvidence(operation: string, error: PostgrestError): never 
 }
 
 export function createSupabaseEvidenceStore(client: SupabaseClient<EvidenceDatabase>): EvidenceStore {
+  /** The admitted units of the given opportunities with their pages, oldest decision first. */
+  async function admittedOf(projectId: string, opportunityIds: readonly string[]): Promise<readonly AdmittedUnit[]> {
+    if (opportunityIds.length === 0) return [];
+    const units = await client.from("nexra_evidence_units").select(UNIT_READ_COLUMNS).eq("project_id", projectId).eq("decision", "admitted").in("opportunity_id", [...opportunityIds]).order("decided_at", { ascending: true }).limit(MAX_ADMITTED_UNITS * 2);
+    if (units.error) refuseEvidence("read admitted units", units.error);
+    const rows = (units.data ?? []).map(unitRowToUnit);
+    if (rows.length === 0) return [];
+    const sources = await client.from("nexra_evidence_sources").select("id, project_id, opportunity_id, requested_url, final_url, fetched_at").eq("project_id", projectId).in("id", [...new Set(rows.map((row) => row.sourceId))]);
+    if (sources.error) refuseEvidence("read admitted sources", sources.error);
+    const pages = new Map((sources.data ?? []).map((row) => [row.id, row] as const));
+    return rows.flatMap((unit) => {
+      const page = pages.get(unit.sourceId);
+      if (page === undefined || unit.decidedAt === null) return [];
+      return [{ id: unit.id, claim: unit.claim, quote: unit.quote, url: page.final_url ?? page.requested_url, fetchedAt: page.fetched_at, decidedAt: unit.decidedAt }];
+    });
+  }
+
   return {
     storesEvidence: true,
 
@@ -124,19 +141,11 @@ export function createSupabaseEvidenceStore(client: SupabaseClient<EvidenceDatab
         (tasks.data ?? []).map((row) => ({ taskId: row.id, sourceKind: row.source_kind, sourceRef: row.source_ref })),
         articleId,
       );
-      if (opportunityIds.length === 0) return [];
-      const units = await client.from("nexra_evidence_units").select(UNIT_READ_COLUMNS).eq("project_id", projectId).eq("decision", "admitted").in("opportunity_id", [...opportunityIds]).order("decided_at", { ascending: true }).limit(MAX_ADMITTED_UNITS * 2);
-      if (units.error) refuseEvidence("read admitted units", units.error);
-      const rows = (units.data ?? []).map(unitRowToUnit);
-      if (rows.length === 0) return [];
-      const sources = await client.from("nexra_evidence_sources").select("id, project_id, opportunity_id, requested_url, final_url, fetched_at").eq("project_id", projectId).in("id", [...new Set(rows.map((row) => row.sourceId))]);
-      if (sources.error) refuseEvidence("read admitted sources", sources.error);
-      const pages = new Map((sources.data ?? []).map((row) => [row.id, row] as const));
-      return rows.flatMap((unit) => {
-        const page = pages.get(unit.sourceId);
-        if (page === undefined || unit.decidedAt === null) return [];
-        return [{ id: unit.id, claim: unit.claim, quote: unit.quote, url: page.final_url ?? page.requested_url, fetchedAt: page.fetched_at, decidedAt: unit.decidedAt }];
-      });
+      return admittedOf(projectId, opportunityIds);
+    },
+
+    async admittedForOpportunity(projectId, opportunityId) {
+      return admittedOf(projectId, [opportunityId]);
     },
 
     async decideUnit(projectId, unitId, decision, operatorId) {

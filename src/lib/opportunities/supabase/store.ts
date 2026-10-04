@@ -49,5 +49,11 @@ export function createSupabaseOpportunityStore(client: SupabaseClient<Opportunit
       if (error) refuse("list accepted opportunities", error);
       return (data ?? []).map(opportunityRowToOpportunity);
     },
+
+    async getAccepted(projectId, opportunityId) {
+      const { data, error } = await client.from("nexra_opportunities").select(OPPORTUNITY_READ_COLUMNS).eq("project_id", projectId).eq("id", opportunityId).maybeSingle();
+      if (error) refuse("get accepted opportunity", error);
+      return data === null ? null : opportunityRowToOpportunity(data);
+    },
   };
 }

@@ -26,6 +26,8 @@ export type OpportunityStore = {
   accept(projectId: string, payload: Readonly<Record<string, unknown>>, operatorId: string): Promise<AcceptOutcome>;
   /** The project's accepted opportunities of one map, newest first, bounded. */
   listAccepted(projectId: string, mapId: string): Promise<readonly AcceptedOpportunity[]>;
+  /** M5: one accepted opportunity by project and id, whatever its map; null when not the project's. */
+  getAccepted(projectId: string, opportunityId: string): Promise<AcceptedOpportunity | null>;
 };
 
 export const unavailableOpportunityStore: OpportunityStore = {
@@ -35,5 +37,8 @@ export const unavailableOpportunityStore: OpportunityStore = {
   },
   async listAccepted() {
     return [];
+  },
+  async getAccepted() {
+    return null;
   },
 };

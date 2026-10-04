@@ -22,7 +22,7 @@ import { createSupabaseServerClient, readSupabaseServerConfig } from "@/lib/supa
 let service: EvidenceService | null = null;
 let store: EvidenceStore | null = null;
 
-function evidenceStore(): EvidenceStore {
+export function evidenceStore(): EvidenceStore {
   const inSupabase = selectProjectDataSource(process.env) === "supabase";
   store ??= inSupabase ? createSupabaseEvidenceStore(createSupabaseServerClient<EvidenceDatabase>(readSupabaseServerConfig(process.env))) : unavailableEvidenceStore;
   return store;

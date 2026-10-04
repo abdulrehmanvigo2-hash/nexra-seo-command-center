@@ -43,6 +43,10 @@ import type { FindingHistoryRead } from "@/lib/crawl/service";
 import { formatCuratedKeywordGrounding, type CuratedKeywordRead } from "@/lib/keywords/grounding";
 import type { ListKeywordsResult } from "@/lib/keywords/service";
 import { EVIDENCE_SOURCE, formatSourceGrounding, type SourceForExtraction } from "@/lib/evidence/extract";
+import { formatOpportunityGrounding, OPPORTUNITY_SOURCE, type OpportunityBriefInput } from "@/lib/briefs/brief";
+
+/** M5: what the product holds for one accepted opportunity of the project; null when it is not the project's. */
+export type OpportunityReader = (projectId: string, opportunityId: string) => Promise<OpportunityBriefInput | null>;
 
 /** M4: one stored outside source with its text and topic, by project and id; null when not the project's or holding no text. */
 export type EvidenceSourceReader = (projectId: string, sourceId: string) => Promise<SourceForExtraction | null>;
@@ -172,6 +176,8 @@ export type TaskGroundingReaders = {
   readonly curatedKeywords?: CuratedKeywordReader;
   /** M4 `evidence-source` tasks: one outside source's stored text. Absent refuses the attempt (the records are not kept). */
   readonly evidenceSources?: EvidenceSourceReader;
+  /** M5 `opportunity` tasks: one accepted opportunity's records. Absent refuses the attempt. */
+  readonly opportunities?: OpportunityReader;
 };
 
 export function createTaskGrounding(readers: TaskGroundingReaders): GroundingReader {
@@ -591,6 +597,27 @@ export function createTaskGrounding(readers: TaskGroundingReaders): GroundingRea
           bytes: Buffer.byteLength(text, "utf8"),
         };
         return { ok: true, grounding: { text, summary, source: EVIDENCE_SOURCE } };
+      }
+
+      case "opportunity": {
+        // M5: one accepted opportunity of the run's own project; another project's, or one not found, refuses the
+        // attempt before any provider is reached.
+        if (!readers.opportunities) return { ok: false, reason: "opportunities-not-kept" };
+        const opportunityId = typeof task.input.opportunityId === "string" ? task.input.opportunityId : "";
+        const input = await readers.opportunities(task.project.id, opportunityId);
+        if (input === null) return { ok: false, reason: "opportunity-not-readable" };
+        const text = formatOpportunityGrounding(input);
+        const summary: JsonObject = {
+          source: "opportunity",
+          opportunityId: input.opportunity.id,
+          clusterId: input.opportunity.clusterId,
+          serpResults: input.serp?.results.length ?? 0,
+          admittedUnits: input.admitted.map((unit) => unit.label),
+          searchConsoleRows: input.searchConsole?.rows.length ?? 0,
+          crawlId: input.site?.crawlId ?? null,
+          bytes: Buffer.byteLength(text, "utf8"),
+        };
+        return { ok: true, grounding: { text, summary, source: OPPORTUNITY_SOURCE } };
       }
 
       case "competitor-comparison": {

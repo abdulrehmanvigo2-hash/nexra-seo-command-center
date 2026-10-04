@@ -70,6 +70,11 @@ test("one chooser per evidence kind; the nine 6.5/6.6 tasks each get a chooser o
   assert.equal(extract.chooser, "elsewhere");
   assert.match(extract.elsewhere ?? "", /Evidence tab/);
   assert.equal(queueRequest("nexra-agency", "research-evidence", extract, EMPTY_SELECTION).ok, false);
+  // M5: a brief names an accepted opportunity, chosen on the Evidence tab.
+  const brief = find("content-strategist", "opportunity-brief");
+  assert.equal(brief.chooser, "elsewhere");
+  assert.match(brief.elsewhere ?? "", /Evidence tab/);
+  assert.equal(queueRequest("nexra-agency", "content-strategist", brief, EMPTY_SELECTION).ok, false);
   assert.deepEqual(RANGE_CHOICES.map((r) => r.id), ["7d", "30d", "3m", "6m", "12m"]);
 });
 
