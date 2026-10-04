@@ -2492,9 +2492,13 @@ two). Verified read-only after each: **47, 48 and 49 history rows**; `nexra_serp
 `nexra_evidence_units` empty, RLS on with no policies, `service_role` SELECT only, 4 guard triggers each enabled; the
 new write functions `security definer` with EXECUTE for `service_role` only; the versions check accepts `/3` and every
 stored version still reads; V4 `e9db287f…` and V6 `5ae7594d…` unchanged; every other row count unchanged. No
-DataForSEO call and no agent run were made. **M5 (opportunity brief) and M6 (whole-article Writer) are in progress**
-under `docs/roadmap/M5-opportunity-brief.md` and `docs/roadmap/M6-article-writer.md` (stacked draft PRs, none merged
-until approved); M8 follows; M9 is postponed.
+DataForSEO call and no agent run were made. **M5 (opportunity brief) and M6 (whole-article Writer) are LIVE in code**
+(`docs/roadmap/M5-opportunity-brief.md`, `docs/roadmap/M6-article-writer.md`; PR #146–#155 merged 4 Oct, `master`
+`a39621c`, every deviation accepted by the owner; no migration): the Content Strategist's `opportunity-brief` and the
+Writer's `article-part-draft` (30 task types), the Brief panel and *Draft article…* on the Evidence tab, the assembled
+draft (`GET /api/briefs/draft`) and *Open in editor*. No live brief or Writer run has been made. **M8 (internal links over
+a complete crawl) is in progress** under `docs/roadmap/M8-internal-links.md` (stacked draft PRs, none merged until
+approved); M9 is postponed.
 
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 
