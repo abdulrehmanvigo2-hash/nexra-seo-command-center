@@ -306,8 +306,16 @@ Editor (or run with the Supabase CLI against a linked project):
     to production and recorded on 3 Oct 2026** (SHA-256 `aed5870f…21cbb79`; 49
     history rows)
 
-All forty-eight are applied to production and recorded in its migration
-history (49 versions).
+49. `20261027120000_internal_links.sql` — M8: `nexra_crawl_page_texts` (one
+    own-site fetched page's visible text, at most 20,000 characters, its length
+    and SHA-256 checked; immutable, goes with its crawl; service_role SELECT and
+    INSERT only), the task source kind `internal-link`, and
+    `nexra_link_suggestion_task_create` (`security definer`; the project's own
+    crawl and two fetched pages, one backlog task for On-Page SEO)
+    (`docs/roadmap/M8-internal-links.md`) — **not applied yet**
+
+The first forty-eight are applied to production and recorded in its migration
+history (49 versions); the forty-ninth waits for its own approval.
 
 `20261016120000_provider_snapshot.sql` (F0, PR 2) adds three append-only
 tables with provenance on every row — `nexra_provider_runs` (one per snapshot:

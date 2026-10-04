@@ -12,9 +12,9 @@
  * changes what an operator sees, not what any agent does.
  */
 
-export const TASK_SOURCE_KINDS = ["director-run", "keyword", "opportunity"] as const;
+export const TASK_SOURCE_KINDS = ["director-run", "keyword", "opportunity", "internal-link"] as const;
 export type TaskSourceKind = (typeof TASK_SOURCE_KINDS)[number];
-/** The kinds an operator records through the task route; an `opportunity` task is created only by accepting one (M2). */
+/** The kinds an operator records through the task route; an `opportunity` task is created only by accepting one (M2), an `internal-link` task only by recording a link suggestion (M8). */
 export const CREATABLE_TASK_SOURCE_KINDS = ["director-run", "keyword"] as const;
 export type CreatableTaskSourceKind = (typeof CREATABLE_TASK_SOURCE_KINDS)[number];
 
@@ -95,6 +95,7 @@ export const TASK_SOURCE_META: Readonly<Record<TaskSourceKind, { readonly label:
   "director-run": { label: "Director run", description: "Recorded by an operator from a completed SEO Director review of this project. The run id is the source." },
   keyword: { label: "Observed query", description: "Recorded by an operator from a query Google reported in this product's stored Search Console rows for this project. The exact query text is the source." },
   opportunity: { label: "Opportunity", description: "Created when an operator accepted a scored content opportunity of the project's approved topic map. The accepted opportunity's id is the source." },
+  "internal-link": { label: "Link suggestion", description: "Recorded when an operator accepted an internal-link suggestion over the project's newest crawl. The crawl, the two pages and the anchor are the source." },
 };
 
 /** One stored task, as the table holds it. */
@@ -103,7 +104,7 @@ export type AgentTask = {
   readonly projectId: string;
   readonly title: string;
   readonly sourceKind: TaskSourceKind;
-  /** A run id for `director-run`; the exact stored query text for `keyword`; the accepted opportunity's id for `opportunity`. */
+  /** A run id for `director-run`; the exact stored query text for `keyword`; the accepted opportunity's id for `opportunity`; `<crawl id> <from url> <to url> <anchor>` for `internal-link`. */
   readonly sourceRef: string;
   readonly owningAgent: TaskOwningAgent;
   readonly status: AgentTaskStatus;
