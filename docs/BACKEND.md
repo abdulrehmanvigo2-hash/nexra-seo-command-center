@@ -309,7 +309,7 @@ migration, no worker, cron, credential or environment change.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Twenty-seven task types exist, twenty-five read-only and two `draft` (the nine added in checkpoints 6.5 and 6.6 are listed under *Second grounded tasks* below): `project-review` (any agent),
+project. Twenty-nine task types exist, twenty-seven read-only and two `draft` (the nine added in checkpoints 6.5 and 6.6 are listed under *Second grounded tasks* below; M4's `evidence-extract` and M5's `opportunity-brief` under *Opportunity brief (M5)*): `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -362,6 +362,47 @@ queued → running → completed
              └──→ cancelled
 queued → cancelled
 ```
+
+### Opportunity brief (M5)
+
+`opportunity-brief` (Content Strategist, read-only; `docs/roadmap/M5-opportunity-brief.md`) takes one input, an
+accepted opportunity's id, and is grounded in evidence kind `opportunity` (`src/lib/briefs/`). The block quotes what
+the product holds for that opportunity of the run's own project:
+
+- the scored lines;
+- the cluster and its keywords, with provider figures labelled as estimates and excluded keywords left out;
+- the newest completed Google listing (the provider's text, never evidence);
+- the operator's admitted evidence units as `E1`…`En`, in decision order;
+- stored query × page rows for the cluster's keywords or its existing page (at most 20);
+- the newest own-site crawl's paths (at most 60) and the existing page's title and h1.
+
+Every outside text is JSON-quoted, and the block is at most 12,000 bytes. A missing opportunity refuses before any
+provider call (`opportunity-not-readable`), and so does a deployment without the store (`opportunities-not-kept`).
+Every other record is optional: a failed or absent read is stated in the block and never fails the run.
+
+The answer's fixed order (hash-pinned instructions):
+
+- ANGLE (under 15 words);
+- OUTLINE, 3–6 `H2:` lines (heading and purpose, each under 7 words);
+- FAQ, 2–4 `Q:` lines;
+- EVIDENCE, one `E:` line per H2, naming the H2 by number and its support — `[crawl /path]`, `[evidence En]` or opinion;
+- EVIDENCE NEEDED;
+- LINKS, at most 3 `L:` lines (a crawled path and an H2 number);
+- LIMITS, then NEXT.
+
+The whole answer stays under 1,800 characters; a full-caps answer is 1,802, under the worker's 2,000 ceiling (tested).
+`parseBrief` reads a stored brief back. It returns null for anything off the order, a stray paragraph, too few H2s, an
+H2 number the outline lacks, or a link that is not a site path.
+
+Content Studio's Evidence tab carries a *Brief* panel for the chosen opportunity:
+
+- *Draft brief…* opens the queue confirmation and queues one run;
+- a queued run offers Run now;
+- the newest completed, model-executed brief is shown in sections as a **Model proposal**;
+- an off-format answer is shown as stored and labelled so.
+
+A brief writes nothing to any article. M4's `evidence-extract` (Research & Evidence, one fetched outside page) is
+queued from the same tab; both say so in the agent pages' queue control.
 
 ### Second grounded tasks (checkpoint 6.5)
 
