@@ -2482,8 +2482,19 @@ tampered-hash test first; one hash-checked transaction, then `NOTIFY pgrst`). Ve
 `nexra_article_publications` empty, RLS on with no policies, `service_role` SELECT only, 4 of 4 guard triggers enabled;
 the request, start and progress functions `security definer`, empty `search_path`, EXECUTE for `service_role` only; the
 two live-slug functions `stable`, executable by no API role and still listing the four live slugs; every other row
-count unchanged. `NEXRA_PUBLISH_MODE` is unset (`off`). **M4 — research and evidence with outside sources — is in
-progress** under `docs/roadmap/M4-research-evidence.md` (stacked draft PRs, none merged until approved).
+count unchanged. `NEXRA_PUBLISH_MODE` is unset (`off`). **M4 — research and evidence with outside sources — is LIVE in
+code** (`docs/roadmap/M4-research-evidence.md`; PR #137–#145 merged 3 Oct, `master` `f145d4e`, every deviation accepted
+by the owner). After manual backup run `37141183729`, migrations `20261024120000` (SERP results, SHA-256 `fd750dd0…`),
+`20261025120000` (evidence sources and units, `8db0e942…`) and `20261026120000` (article citations, format `/3`,
+`aed5870f…`) were **applied to production and recorded on 3 Oct 2026** by the §1.2 method, in that order (each tested
+locally first with a tampered hash failing closed; one hash-checked transaction each; `NOTIFY pgrst` after the first
+two). Verified read-only after each: **47, 48 and 49 history rows**; `nexra_serp_results`, `nexra_evidence_sources` and
+`nexra_evidence_units` empty, RLS on with no policies, `service_role` SELECT only, 4 guard triggers each enabled; the
+new write functions `security definer` with EXECUTE for `service_role` only; the versions check accepts `/3` and every
+stored version still reads; V4 `e9db287f…` and V6 `5ae7594d…` unchanged; every other row count unchanged. No
+DataForSEO call and no agent run were made. **M5 (opportunity brief) and M6 (whole-article Writer) are in progress**
+under `docs/roadmap/M5-opportunity-brief.md` and `docs/roadmap/M6-article-writer.md` (stacked draft PRs, none merged
+until approved); M8 follows; M9 is postponed.
 
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 
@@ -2497,6 +2508,11 @@ progress** under `docs/roadmap/M4-research-evidence.md` (stacked draft PRs, none
 - **Renderer:** rich blocks and H3 anchors; review the "Our view" label's visibility on the live page.
 - **Renderer re-pin:** automate template re-pin per publication (part of P-L2) — today each new article needs a
   hand-made `/N` template PR at the then-current `nexra-ai` `main` (`/3` for article 2, `/4` for article 3).
+- **M9 backlinks — revisit when the domain has backlinks (owner, 3 Oct).** The DataForSEO Backlinks API is
+  pay-as-you-go since 1 Jul 2026 (no $100 minimum; about $0.024 a request plus $0.000036 a row, to re-confirm): a
+  monthly snapshot of the site and three competitors would cost about $0.25. Postponed because a young domain has too
+  few backlinks for the snapshot to say much; the plan (a `backlinks` provider kind, a gap list, an Authority task, a
+  Scoped V1 amendment) is in the M5–M9 plan of 3 Oct.
 - **Release a slug on takedown (P-L2 follow-up, owner, 3 Oct):** a merged or live publication keeps its slug live for
   good; taking an article down (a nexra-ai revert) needs a recorded `taken-down` step that releases the slug, so the
   live-slug list, the proposal check and the renderer stop treating it as live.
