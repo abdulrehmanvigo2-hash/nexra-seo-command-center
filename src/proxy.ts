@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { decideAccess, operatorFromClaims, reviewerFromClaims } from "@/lib/auth/access";
+import { ROBOTS_TAG } from "@/lib/security/headers";
 import {
   AuthConfigurationError,
   readAuthConfig,
@@ -88,6 +89,8 @@ export async function proxy(request: NextRequest) {
   // Carry any refreshed or cleared session cookies onto the answer.
   for (const cookie of response.cookies.getAll()) answer.cookies.set(cookie);
   answer.headers.set("Cache-Control", "private, no-store");
+  // The proxy's own redirects and refusals carry the noindex header too (next.config.ts sends it on every route).
+  answer.headers.set("X-Robots-Tag", ROBOTS_TAG);
   return answer;
 }
 

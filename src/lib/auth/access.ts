@@ -34,6 +34,9 @@ const WORKER_PREFIX = "/api/worker/";
  */
 export const HEALTH_PATH = "/api/health";
 
+/** The robots file (`src/app/robots.ts`): public, read only, so a crawler reads "Disallow: /" instead of a redirect. */
+export const ROBOTS_PATH = "/robots.txt";
+
 /** Data endpoints: a signed-out caller gets 401, not a sign-in page. */
 const API_PREFIX = "/api/";
 
@@ -163,6 +166,7 @@ export function decideAccess(request: {
   }
 
   if (pathname === HEALTH_PATH && read) return { kind: "allow", private: true };
+  if (pathname === ROBOTS_PATH && read) return { kind: "allow", private: false };
 
   if (pathname.startsWith(SELF_AUTHORIZING_PREFIX) || pathname.startsWith(WORKER_PREFIX)) {
     return { kind: "allow", private: true };

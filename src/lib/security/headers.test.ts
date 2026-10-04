@@ -25,7 +25,7 @@ describe("security headers (A1-01)", () => {
     assert.equal(contentSecurityPolicy(true), contentSecurityPolicy(false).replace("script-src 'self' 'unsafe-inline'", "script-src 'self' 'unsafe-inline' 'unsafe-eval'"));
   });
 
-  test("the six headers, in order", () => {
+  test("the seven headers, in order", () => {
     assert.deepEqual(securityHeaders(false).map((h) => [h.key, h.key === "Content-Security-Policy" ? "…" : h.value]), [
       ["Content-Security-Policy", "…"],
       ["X-Frame-Options", "DENY"],
@@ -33,6 +33,7 @@ describe("security headers (A1-01)", () => {
       ["Referrer-Policy", "strict-origin-when-cross-origin"],
       ["Permissions-Policy", "camera=(), microphone=(), geolocation=()"],
       ["Strict-Transport-Security", "max-age=63072000; includeSubDomains"],
+      ["X-Robots-Tag", "noindex, nofollow"],
     ]);
   });
 
