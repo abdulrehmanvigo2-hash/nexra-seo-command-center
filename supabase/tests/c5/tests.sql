@@ -209,6 +209,7 @@ begin
              'nexra_evidence_source_record(text,uuid,uuid,text,text,text,integer,text,text,text,uuid)','nexra_evidence_unit_decide(text,uuid,text,uuid)','nexra_evidence_units_record(text,uuid,uuid,jsonb,uuid)',
              'nexra_keyword_add(text,text,text,text,text,uuid)','nexra_keyword_set_group(text,uuid,text,uuid)','nexra_keyword_set_note(text,uuid,text,uuid)',
              'nexra_keyword_set_status(text,uuid,text,uuid)','nexra_keyword_set_target(text,uuid,text,uuid)',
+             'nexra_link_suggestion_task_create(text,uuid,text,text,text,uuid)',
              'nexra_opportunity_accept(text,jsonb,uuid)',
              'nexra_provider_metrics_record(uuid,uuid,jsonb)',
              'nexra_provider_request_record(uuid,smallint,text,jsonb,text,integer,text,numeric,integer,text,timestamp with time zone,timestamp with time zone)',

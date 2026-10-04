@@ -91,7 +91,8 @@ do $$
 declare n int;
 begin
   perform t.ok(t.err($q$truncate nexra_crawls cascade$q$) = '23514', 'C TRUNCATE nexra_crawls CASCADE refused (23514)');
-  perform t.ok(t.err($q$truncate nexra_crawl_pages$q$) = '23514', 'C TRUNCATE nexra_crawl_pages refused (23514)');
+  -- Since M8 (20261027120000) page texts reference pages, so a plain TRUNCATE of pages is refused by PostgreSQL first (0A000); truncating both reaches the guards.
+  perform t.ok(t.err($q$truncate nexra_crawl_pages, nexra_crawl_page_texts$q$) = '23514', 'C TRUNCATE nexra_crawl_pages (with its page texts) refused (23514)');
   perform t.ok(t.err($q$truncate nexra_crawl_links$q$) = '23514', 'C TRUNCATE nexra_crawl_links refused (23514)');
   perform t.ok((t.frec(p_crawl => 'c0000000-0000-4000-8000-000000000002')->>'outcome') = 'created', 'C setup: a findings report on crawl 2');
   perform t.ok(t.err($q$delete from nexra_crawl_pages where url = 'https://halcyon.example/skipped'$q$) = 'none', 'C one page row can still be deleted');

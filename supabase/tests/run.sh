@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, operator-attested paragraphs, live slugs published after the template pin, the surplus grants revoked, the legacy crawl subsystem retired, check-result carry-forward, the live articles read from the records, and the F0 provider keyword snapshot).
+# Local PostgreSQL test harness for the Nexra database migrations (C2, C4, C5, C6, M1 Search Console snapshots and query pages, T3 crawl findings, T5 crawl signals, M2 content signals, M3 finding triage, agent tasks, their workflow, their priority and the learning loop, curated keywords, the delete and truncate guards, approval records, operator-attested paragraphs, live slugs published after the template pin, the surplus grants revoked, the legacy crawl subsystem retired, check-result carry-forward, the live articles read from the records, the F0 provider keyword snapshot, and M8's page texts and internal-link tasks).
 #
 # SAFETY. This script never connects to a hosted database. It creates its own
 # PostgreSQL cluster in a new temporary directory (initdb), starts it with TCP
@@ -10,7 +10,7 @@
 # password or service file is read from the environment or from any file.
 #
 # Usage:  bash supabase/tests/run.sh [suite ...]
-#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade serp serp-upgrade evidence citations
+#   suites: c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade serp serp-upgrade evidence citations internal-links
 #           (default: all, in that order)
 # Needs:  bash, PostgreSQL 16 server binaries (initdb, pg_ctl, postgres, psql, createdb).
 #         Set PG_BIN to their directory if `pg_config --bindir` does not find them.
@@ -43,12 +43,13 @@ PUBLICATIONS_MIGRATION="$MIGRATIONS/20261023120000_article_publications.sql"
 SERP_MIGRATION="$MIGRATIONS/20261024120000_serp_results.sql"
 EVIDENCE_MIGRATION="$MIGRATIONS/20261025120000_evidence.sql"
 CITATIONS_MIGRATION="$MIGRATIONS/20261026120000_article_citations.sql"
+INTERNAL_LINKS_MIGRATION="$MIGRATIONS/20261027120000_internal_links.sql"
 GRANTS_MIGRATION="$MIGRATIONS/20261012120000_revoke_surplus_grants.sql"
 LEGACY_MIGRATION="$MIGRATIONS/20261013120000_retire_legacy_crawl_subsystem.sql"
 CARRY_MIGRATION="$MIGRATIONS/20261014120000_check_unit_carry_forward.sql"
 
 # Expected assertion counts: a suite that stops early or loses assertions fails.
-declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [live-slug-3]=22 [live-slug-3-upgrade]=12 [topic-maps]=64 [topic-maps-upgrade]=7 [pinned-keywords]=14 [pinned-keywords-upgrade]=8 [opportunities]=50 [opportunities-upgrade]=9 [calendar]=35 [calendar-upgrade]=10 [publications]=72 [publications-upgrade]=8 [provider]=163 [serp]=66 [serp-upgrade]=12 [evidence]=71 [citations]=23)
+declare -A EXPECTED=([c2]=54 [c4]=60 [c5]=69 [c6]=146 [drafts]=40 [c6-d3]=35 [gsc]=100 [gsc-pairs]=94 [findings]=109 [signals]=36 [signals-upgrade]=7 [content]=38 [content-upgrade]=7 [triage]=84 [tasks]=80 [task-workflow]=150 [task-priority]=69 [task-learning]=58 [keywords]=126 [guards]=38 [approvals]=63 [attested]=51 [attested-upgrade]=7 [live-slugs]=21 [live-slugs-upgrade]=10 [grants]=23 [grants-upgrade]=11 [legacy-retire]=11 [carry]=47 [carry-upgrade]=10 [live-articles]=14 [live-slug-2]=21 [live-slug-2-upgrade]=12 [live-slug-3]=22 [live-slug-3-upgrade]=12 [topic-maps]=64 [topic-maps-upgrade]=7 [pinned-keywords]=14 [pinned-keywords-upgrade]=8 [opportunities]=50 [opportunities-upgrade]=9 [calendar]=35 [calendar-upgrade]=10 [publications]=72 [publications-upgrade]=8 [provider]=163 [serp]=66 [serp-upgrade]=12 [evidence]=71 [citations]=23 [internal-links]=38)
 
 # --- Isolation from any configured database -------------------------------------------
 PG_BIN_OVERRIDE="${PG_BIN:-}"
@@ -764,6 +765,11 @@ suite_citations() {
   fresh_db
   run_sql_suite citations "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/citations/tests.sql"
 }
+# M8 internal links (migration 20261027120000): own-site page texts, the internal-link task kind and its one write.
+suite_internal_links() {
+  fresh_db
+  run_sql_suite internal-links "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/findings/setup.sql" "$HERE/internal-links/tests.sql"
+}
 suite_serp_upgrade() {
   fresh_db "$SERP_MIGRATION"
   run_sql_suite serp-upgrade "NOTICE:  ok - " "$HERE/c4/setup.sql" "$HERE/gsc/setup.sql" "$HERE/tasks/setup.sql" "$HERE/provider/setup.sql" "$HERE/topic-maps/setup.sql" "$HERE/serp/upgrade-before.sql" "$SERP_MIGRATION" "$HERE/serp/upgrade-after.sql"
@@ -806,7 +812,7 @@ suite_provider_races() {
     "$([ "$R1" = recorded ] && [ "$R2" = exists ] && [ "$WAIT_MS" -ge 1200 ] && [ "$rows" = "1/0.0130" ]; echo $?)"
 }
 
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade serp serp-upgrade evidence citations)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(c2 c4 c5 drafts drafts-races c6 c6-races c6-d3 c6-d3-races c6-d3-preflight c6-rollback gsc gsc-races gsc-pairs gsc-pairs-races findings findings-races signals signals-upgrade content content-upgrade triage triage-races tasks task-workflow task-priority task-learning keywords keywords-races guards claim-races approvals approvals-races attested attested-upgrade live-slugs live-slugs-upgrade grants grants-upgrade legacy-retire legacy-retire-refusals carry carry-upgrade live-articles live-slug-2 live-slug-2-upgrade live-slug-3 live-slug-3-upgrade provider provider-races topic-maps topic-maps-upgrade pinned-keywords pinned-keywords-upgrade opportunities opportunities-upgrade calendar calendar-upgrade publications publications-upgrade serp serp-upgrade evidence citations internal-links)
 echo "Disposable PostgreSQL $PG_MAJOR cluster at $WORK (Unix socket only)"
 for s in "${SUITES[@]}"; do
   case "$s" in
@@ -838,7 +844,7 @@ for s in "${SUITES[@]}"; do
     opportunities) suite_opportunities ;; opportunities-upgrade) suite_opportunities_upgrade ;;
     calendar) suite_calendar ;; calendar-upgrade) suite_calendar_upgrade ;;
     publications) suite_publications ;; publications-upgrade) suite_publications_upgrade ;;
-    serp) suite_serp ;; serp-upgrade) suite_serp_upgrade ;; evidence) suite_evidence ;; citations) suite_citations ;;
+    serp) suite_serp ;; serp-upgrade) suite_serp_upgrade ;; evidence) suite_evidence ;; citations) suite_citations ;; internal-links) suite_internal_links ;;
     *) echo "run.sh: unknown suite $s" >&2; exit 2 ;;
   esac
 done
