@@ -2514,9 +2514,9 @@ auto-drafted article is LIVE (4 Oct 2026):** `/blog/ai-receptionist-for-small-bu
 check passed 6 of 13 units, because the article was not linked to the opportunity's task (its pricing quote E1 never
 reached the checker) and five kinds of unverifiable sentence, now "never write" rules for the Writer (PR #163, hash
 `6828d979…`); v2 fixed the wording, and the link was the owner's step before its check. Since PR #164 an article created from *Open in editor* is
-linked to its opportunity's task at once (runbook §7.2a). An article's plan must still be a `content-plan-review` run:
-the database's article create refuses any other (`plan-run-invalid`), so using the brief run as the plan needs a
-migration, not built.
+linked to its opportunity's task at once (runbook §7.2a). An article's plan may also be the brief itself (part 2b, migration `20261028120000`,
+PR #165): a completed `opportunity-brief` run of the project is accepted as a `content-plan-review` run is, one article
+per plan run, and *Open in editor* pre-selects it.
 
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 

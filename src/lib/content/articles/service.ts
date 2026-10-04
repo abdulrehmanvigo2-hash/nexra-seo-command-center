@@ -113,10 +113,19 @@ export const ARTICLE_VERSION_LIMIT = 100;
 export const SOURCE_DRAFT_LIMIT = 50;
 export const PLAN_RUN_LIMIT = 50;
 
-const CONTENT_PLAN = { agentId: "content-strategist", taskType: "content-plan-review" } as const;
+/**
+ * An article's plan: a completed Content Strategist content plan review of the project, or (migration 20261028120000) a
+ * completed opportunity brief, the plan an auto-drafted article was written from. The database holds the same rule.
+ */
+const PLAN_AGENT = "content-strategist";
+export const PLAN_TASK_TYPES = { "content-plan-review": "content-plan", "opportunity-brief": "brief" } as const;
+
+function planKind(run: AgentRun): ArticlePlanCandidate["kind"] | null {
+  return run.agentId === PLAN_AGENT && Object.hasOwn(PLAN_TASK_TYPES, run.taskType) ? PLAN_TASK_TYPES[run.taskType as keyof typeof PLAN_TASK_TYPES] : null;
+}
 
 function isCompletedPlan(run: AgentRun, projectId: string): boolean {
-  return run.projectId === projectId && run.agentId === CONTENT_PLAN.agentId && run.taskType === CONTENT_PLAN.taskType && run.status === "completed";
+  return run.projectId === projectId && planKind(run) !== null && run.status === "completed";
 }
 
 function codePointLength(value: string): number {
@@ -201,7 +210,7 @@ export function createArticleService(dependencies: { readonly store: ArticleStor
 
       const planCandidates: ArticlePlanCandidate[] = (await runs.listStrategistRuns(projectId, PLAN_RUN_LIMIT))
         .filter((run) => isCompletedPlan(run, projectId) && !withArticle.has(run.id))
-        .map((run) => ({ runId: run.id, summary: run.resultSummary, finishedAt: run.finishedAt }));
+        .map((run) => ({ runId: run.id, kind: planKind(run)!, summary: run.resultSummary, finishedAt: run.finishedAt }));
 
       const sourceCandidates: ArticleSourceCandidate[] = (await store.listSourceVersions(projectId, SOURCE_DRAFT_LIMIT)).map((row) => ({
         draftId: row.draftId,
