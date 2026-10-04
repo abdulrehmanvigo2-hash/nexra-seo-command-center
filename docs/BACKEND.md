@@ -309,7 +309,7 @@ migration, no worker, cron, credential or environment change.
 ## Agent runtime
 
 An operator asks one of the twelve registry agents to run a task on a stored
-project. Twenty-nine task types exist, twenty-seven read-only and two `draft` (the nine added in checkpoints 6.5 and 6.6 are listed under *Second grounded tasks* below; M4's `evidence-extract` and M5's `opportunity-brief` under *Opportunity brief (M5)*): `project-review` (any agent),
+project. Thirty task types exist, twenty-seven read-only and three `draft` (the nine added in checkpoints 6.5 and 6.6 are listed under *Second grounded tasks* below; M4's `evidence-extract` and M5's `opportunity-brief` under *Opportunity brief (M5)*; M6's `article-part-draft` under *Article part drafts (M6)*): `project-review` (any agent),
 `keyword-research` (Keyword & Search Intent, from operator seed keywords),
 `crawl-review` (Technical SEO), `on-page-review` (On-Page SEO),
 `answer-readiness-review` (AI Visibility),
@@ -403,6 +403,61 @@ Content Studio's Evidence tab carries a *Brief* panel for the chosen opportunity
 
 A brief writes nothing to any article. M4's `evidence-extract` (Research & Evidence, one fetched outside page) is
 queued from the same tab; both say so in the agent pages' queue control.
+
+### Article part drafts (M6)
+
+`article-part-draft` (Writer, policy `draft`; `docs/roadmap/M6-article-writer.md`) takes `{briefRunId, part}`. The
+part is `opening`, `section-1`…`section-6` or `closing`; one part per run keeps every answer under the 2,000
+ceiling. Its grounding (evidence kind `brief`, `src/lib/briefs/article-part.ts`):
+
+- re-reads the brief run and requires it to be this project's `opportunity-brief`, completed, model-executed and
+  parseable;
+- quotes the brief as a proposal, never evidence;
+- names the part — for a section: its heading, purpose, the brief's support and the paths placed under it;
+- re-reads the opportunity's records through M5's reader.
+
+It refuses before any provider call with `brief-not-usable`, `brief-part-missing`, `opportunity-not-readable` or
+`opportunities-not-kept`.
+
+Each part has a fixed order:
+
+| Part | Lines, in order |
+|---|---|
+| opening | TITLE, META TITLE, META DESCRIPTION, SLUG, EXCERPT, LEAD, one `P:`, LIMITS |
+| section | two or three `P:`, at most one LINK, LIMITS |
+| closing | `A<n>:` per brief FAQ, CTA TITLE, CTA BODY, LIMITS |
+
+Every `P:`, the LEAD and every answer end with one tag: `[crawl /path]`, `[evidence En]`, `[opinion]` (no number) or
+`[connective]`. The instructions are hash-pinned; the longest full-caps part is 1,528 characters (tested).
+
+**Assembly** (`src/lib/briefs/assemble-article.ts`, pure) takes each part's newest completed, model-executed run and
+builds an `ArticleContent` that the editor's *Import article JSON* accepts:
+
+- sections from the brief's H2s;
+- FAQs from its questions;
+- `[opinion]` paragraphs as attested paragraphs (basis `opinion`);
+- cited admitted units as citations;
+- links only where the brief placed them and the anchor appears;
+- `topicDecision` `unset`;
+- category `AI Automation`, flagged.
+
+The **evidence map** checks each tagged line against the records the run read: `record`, `opinion`, `connective` or
+`unsupported` (no tag, a path the crawl did not fetch, an unknown unit). Unsupported lines stay in the text and are
+listed first. The C1 validator's issues and the notes are returned beside it.
+
+**Screens.** Beneath a completed brief on the Evidence tab:
+
+- each part's state is shown, with Run now on a queued part;
+- *Draft article…* opens one confirmation, reads today's caps (`/api/agent-runs/daily-usage`) and queues nothing
+  unless every missing part fits; it then posts one part at a time and stops at the first refusal;
+- once every part is drafted, `GET /api/briefs/draft?project=&brief=` (operators, read-only) gives the assembled draft
+  and its evidence map;
+- *Open in editor* (only when the draft validates) opens the project screen with `?importBrief=<brief run>`, and the
+  create editor's Import box holds the JSON. The operator presses *Fill the form*, chooses the plan run and sources,
+  and *Create*.
+
+Nothing is saved automatically. The saved article then goes through the check units, approval, proposal and
+publishing as before.
 
 ### Second grounded tasks (checkpoint 6.5)
 
