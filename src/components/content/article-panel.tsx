@@ -42,6 +42,7 @@ import {
   type AttestationBinding,
 } from "@/lib/content/articles/editor-safety";
 import { importArticleJson } from "@/lib/content/articles/import";
+import { SuggestLinks } from "@/components/content/suggest-links";
 import type { AssembledDraft } from "@/lib/briefs/assemble-article";
 import { draftUrl, handoff, importBriefParam, type HandoffNote } from "@/lib/briefs/handoff";
 import { ATTESTATION_BASES, SEARCH_INTENTS, TOPIC_DECISIONS, validateArticleContent } from "@/lib/content/articles/validate";
@@ -916,9 +917,13 @@ function ArticleEditor({
             </Button>
           </div>
         ))}
-        <Button variant="ghost" icon="plus" onClick={() => set("internalLinks", [...form.internalLinks, { path: "", anchorText: "", sectionId: "" }])}>
-          Add link
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="ghost" icon="plus" onClick={() => set("internalLinks", [...form.internalLinks, { path: "", anchorText: "", sectionId: "" }])}>
+            Add link
+          </Button>
+          {/* M8: suggestions from the newest crawl; Add fills the form, nothing is saved here. */}
+          <SuggestLinks projectId={projectId} form={form} onAdd={(link) => set("internalLinks", [...form.internalLinks, link])} />
+        </div>
       </fieldset>
 
       <fieldset className="space-y-2">
