@@ -91,6 +91,7 @@ export function describeRunInput(input: Readonly<Record<string, unknown>>): stri
   if (typeof input.planRunId === "string") return `Content plan run ${shortId(input.planRunId)}, section ${String(input.sectionIndex)}`;
   if (typeof input.crawlId === "string") return `Crawl ${shortId(input.crawlId)}`;
   if (typeof input.competitorDomain === "string") return `Competitor ${input.competitorDomain}, from its newest crawl`;
+  if (typeof input.opportunityId === "string") return `Accepted opportunity ${shortId(input.opportunityId)} and what the product holds for it`;
   if (typeof input.sourceRunId === "string") return `Run ${shortId(input.sourceRunId)}'s completed review`;
   if (typeof input.range === "string") return `Search Console, range ${input.range}`;
   const keys = Object.keys(input).filter((key) => key !== "sourceTaskId");

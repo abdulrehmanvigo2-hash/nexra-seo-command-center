@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ProviderUsageBlock } from "@/components/keywords/provider-estimates";
 import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
+import { OpportunityBriefPanel } from "@/components/content/opportunity-brief";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ import {
 import { opportunitiesUrl, type AcceptedOpportunity, type OpportunitiesView } from "@/lib/opportunities/contract";
 import { resultsOfType, serpUrl, type SerpView } from "@/lib/serp/contract";
 import type { Confirmation } from "@/lib/agent-runs/spend-confirm";
+import { BRIEF_REQUEST, briefRuns } from "@/lib/briefs/presenter";
 import type { AgentRun } from "@/types/agent-run";
 
 /**
@@ -134,8 +136,11 @@ function OpportunityEvidence({ projectId, opportunity }: { projectId: string; op
   const serp = useRead<SerpView>(serpUrl(projectId, opportunity.id), (body) => (body.view as SerpView | undefined) ?? null, version);
   const sources = useRead<readonly EvidenceSource[]>(evidenceSourcesUrl(projectId, opportunity.id), (body) => (Array.isArray(body.sources) ? (body.sources as EvidenceSource[]) : null), version);
   const runs = useRead<readonly AgentRun[]>(runHistoryListUrl({ projectId, agentId: "research-evidence", limit: 50, offset: 0 }), (body) => (Array.isArray(body.runs) ? (body.runs as AgentRun[]) : null), version);
+  const strategistRuns = useRead<readonly AgentRun[]>(runHistoryListUrl({ projectId, agentId: BRIEF_REQUEST.agentId, limit: 50, offset: 0 }), (body) => (Array.isArray(body.runs) ? (body.runs as AgentRun[]) : null), version);
   const post = usePost(reload);
-  const [dialog, setDialog] = useState<{ readonly confirmation: Confirmation; readonly run: () => void; readonly provider?: boolean } | null>(null);
+  const briefPost = usePost(reload);
+  const [dialog, setDialog] = useState<{ readonly confirmation: Confirmation; readonly run: () => void; readonly provider?: boolean; readonly usage?: boolean } | null>(null);
+  const briefRequest = { projectId, ...BRIEF_REQUEST, input: { opportunityId: opportunity.id } };
   const [typed, setTyped] = useState("");
 
   const fetchPage = (url: string, body: Record<string, unknown>) =>
@@ -229,8 +234,16 @@ function OpportunityEvidence({ projectId, opportunity }: { projectId: string; op
         </PanelBody>
       </Panel>
 
+      <OpportunityBriefPanel
+        runs={strategistRuns.status === "ready" ? briefRuns(strategistRuns.value, opportunity.id) : strategistRuns.status === "loading" ? "loading" : "failed"}
+        busy={briefPost.busy}
+        note={briefPost.note}
+        onChanged={reload}
+        onDraft={() => setDialog({ usage: true, confirmation: queueConfirmation(briefRequest), run: () => void briefPost.send("/api/agent-runs", briefRequest, "Brief queued, not run. Run now below, or the scheduled worker picks it up.") })}
+      />
+
       {dialog !== null && (
-        <SpendConfirmDialog confirmation={dialog.confirmation} projectId={null} busy={post.busy} onClose={() => setDialog(null)}
+        <SpendConfirmDialog confirmation={dialog.confirmation} projectId={dialog.usage ? projectId : null} busy={post.busy || briefPost.busy} onClose={() => setDialog(null)}
           onConfirm={() => {
             const chosen = dialog;
             setDialog(null);
