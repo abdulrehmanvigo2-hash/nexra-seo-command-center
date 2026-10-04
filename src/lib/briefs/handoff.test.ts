@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import type { AssembledDraft } from "@/lib/briefs/assemble-article";
-import { draftUrl, editorHref, handoff, importBriefParam, openable, statusCounts } from "@/lib/briefs/handoff";
+import { AUTO_LINK_UNKNOWN, autoLinkNote, autoLinkRequest, draftTaskId, draftUrl, editorHref, handoff, importBriefParam, openable, statusCounts } from "@/lib/briefs/handoff";
 import { importArticleJson } from "@/lib/content/articles/import";
 import type { ArticleContent } from "@/types/content-article";
 
@@ -57,5 +57,38 @@ describe("the hand-off", () => {
     const effect = panel.slice(panel.indexOf("M6, PR 5: the assembled draft of a brief"), panel.indexOf("// Fix F9 (A5-03)"));
     assert.match(effect, /setImportText\(result\.json\);\n\s+setImporting\(true\);/);
     assert.doesNotMatch(effect, /applyImport|createArticle|saveArticleVersion/, "the operator presses Fill the form, then Create");
+  });
+});
+
+describe("the new article is linked to the brief's opportunity task", () => {
+  const TASK = "1d84b831-2668-4f06-8698-32607dc900dd";
+  const ARTICLE = "dfc126fc-388d-4c0b-86ea-d7717c51f8af";
+
+  test("the draft route's task id is read only when it is a uuid", () => {
+    assert.equal(draftTaskId({ draft: {}, taskId: TASK.toUpperCase() }), TASK);
+    assert.equal(draftTaskId({ draft: {}, taskId: null }), null);
+    assert.equal(draftTaskId({ taskId: "not-a-task" }), null);
+    assert.equal(draftTaskId(null), null);
+  });
+
+  test("one calendar link-article request, and what the editor says about it", () => {
+    assert.deepEqual(autoLinkRequest("nexra-agency", TASK, ARTICLE), { project: "nexra-agency", action: "link-article", taskId: TASK, articleId: ARTICLE });
+    assert.deepEqual(autoLinkNote(200, { status: "article-linked" }), { text: "Linked to the opportunity's task, so its admitted evidence reaches the article check.", tone: "neutral" });
+    assert.equal(autoLinkNote(200, { status: "same-article" }).tone, "neutral");
+    const refused = autoLinkNote(409, { error: "terminal" });
+    assert.equal(refused.tone, "warning");
+    assert.match(refused.text, /^Not linked to the opportunity's task: A completed or cancelled task is not planned or linked\. Nothing changed\. Link it with Link to a task before checking/);
+    assert.equal(autoLinkNote(0, null).tone, "warning");
+    assert.equal(AUTO_LINK_UNKNOWN.tone, "warning");
+  });
+
+  test("the editor links only a newly created article opened from a brief, through the calendar route, then says so", () => {
+    const panel = readFileSync(new URL("src/components/content/article-panel.tsx", root), "utf8");
+    assert.match(panel, /setBriefTaskId\(response\.ok \? draftTaskId\(body\) : null\)/);
+    assert.match(panel, /if \(mode\.kind === "create" && created && fromBrief !== null\) \{/);
+    assert.match(panel, /fetch\("\/api\/calendar", \{ method: "POST", headers: \{ "content-type": "application\/json" \}, body: JSON\.stringify\(autoLinkRequest\(projectId, briefTaskId, result\.history\.article\.id\)\)/);
+    assert.match(panel, /linkNote\?\.tone === "warning"/);
+    const route = readFileSync(new URL("src/app/api/briefs/draft/route.ts", root), "utf8");
+    assert.match(route, /json\(\{ draft: result\.draft, taskId: result\.taskId \}\)/);
   });
 });

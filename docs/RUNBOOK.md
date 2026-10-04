@@ -604,6 +604,24 @@ tab. It continues past a unit that needs review and lists those units at the end
 answer, any refused request, or *Stop after this unit*. Closing the tab stops it after the unit in flight; pressing again
 resumes from the unchecked rows. Each unit still has its own run and record, as when checked by hand.
 
+### 7.2a An auto-drafted article (M5 / M6), from opportunity to live
+
+**First one live, 4 Oct 2026:** `/blog/ai-receptionist-for-small-business` (nexra-ai PR #14, merge `fd524e0`), drafted
+from brief `a8515cfb…`, article `dfc126fc…`. Its order, which every later auto-drafted article follows:
+
+1. **Evidence tab:** an accepted opportunity, its admitted evidence, then *Queue a brief* (one run).
+2. ***Draft article…*** on the brief (one run per part: opening, each section, closing), each run by Run now or the
+   worker. Read the part warnings (opinion with a number, over half a section, over 40% of the body, under 1,000 words).
+3. ***Open in editor*** → *Fill the form* → choose the content plan run and source drafts → **Create**. The article
+   needs a completed Content Strategist `content-plan-review` run as its plan (the database's article create requires
+   one; a brief run is not accepted). Since 4 Oct the new article is **linked to the opportunity's task at once**, so
+   the opportunity's admitted evidence reaches the check; the message says so, or says to link it by hand (*Link to a
+   task*) when the link failed. An article created any other way must be linked by hand **before** checking: an unlinked
+   article's evidence-backed sentences (the pricing quote of the first one) are UNVERIFIABLE.
+4. ***Check all units…*** → fix what needs review with the smallest wording changes → save a version → check again
+   (passed identical units carry).
+5. Approve, propose and publish as in §7.2.
+
 ### 7.3 When something goes wrong
 
 Every step is recorded before the next starts, and a press always continues from the last recorded step: a second

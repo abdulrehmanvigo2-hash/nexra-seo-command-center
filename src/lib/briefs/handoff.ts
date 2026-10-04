@@ -1,5 +1,6 @@
 import type { AssembledDraft, EvidenceStatus } from "@/lib/briefs/assemble-article";
 import { importText } from "@/lib/briefs/assemble-article";
+import { writeOutcome } from "@/lib/calendar/presenter";
 
 /**
  * M6, PR 5: the hand-off from an assembled draft to the article editor. Pure and client-safe. *Open in editor* goes to
@@ -60,3 +61,30 @@ export function handoff(draft: AssembledDraft | null, httpStatus: number): { rea
     json: importText(draft),
   };
 }
+
+const TASK_ID = UUID;
+
+/** The opportunity's task id the draft route answered, or null. */
+export function draftTaskId(body: unknown): string | null {
+  const value = typeof body === "object" && body !== null ? (body as { taskId?: unknown }).taskId : null;
+  return typeof value === "string" && TASK_ID.test(value) ? value.toLowerCase() : null;
+}
+
+/**
+ * The link made right after an article is created from a brief: the article is linked to the brief's opportunity's
+ * task through the calendar's own write, so the opportunity's admitted evidence reaches the article check (the first
+ * auto-drafted article's pricing sentence failed because it was not linked). One request; nothing else is written.
+ */
+export function autoLinkRequest(projectId: string, taskId: string, articleId: string) {
+  return { project: projectId, action: "link-article", taskId, articleId } as const;
+}
+
+/** What the editor says about that link. */
+export function autoLinkNote(httpStatus: number, body: unknown): HandoffNote {
+  const outcome = writeOutcome(httpStatus, body);
+  if (outcome.tone === "neutral") return { text: "Linked to the opportunity's task, so its admitted evidence reaches the article check.", tone: "neutral" };
+  return { text: `Not linked to the opportunity's task: ${outcome.text} Link it with Link to a task before checking, or its admitted evidence will not reach the check.`, tone: "warning" };
+}
+
+/** Said when the brief's opportunity (and so its task) could not be read: nothing was linked. */
+export const AUTO_LINK_UNKNOWN: HandoffNote = { text: "The brief's opportunity task could not be read, so the article was not linked. Link it with Link to a task before checking.", tone: "warning" };
