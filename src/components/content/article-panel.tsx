@@ -44,7 +44,7 @@ import {
 import { importArticleJson } from "@/lib/content/articles/import";
 import { SuggestLinks } from "@/components/content/suggest-links";
 import type { AssembledDraft } from "@/lib/briefs/assemble-article";
-import { draftUrl, handoff, importBriefParam, type HandoffNote } from "@/lib/briefs/handoff";
+import { AUTO_LINK_UNKNOWN, autoLinkNote, autoLinkRequest, draftTaskId, draftUrl, handoff, importBriefParam, type HandoffNote } from "@/lib/briefs/handoff";
 import { ATTESTATION_BASES, SEARCH_INTENTS, TOPIC_DECISIONS, validateArticleContent } from "@/lib/content/articles/validate";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { ArticleIssue, ArticleSourceReference, ValidatedArticleContent } from "@/types/content-article";
@@ -158,6 +158,7 @@ export function ArticlePanel({ projectId }: { projectId: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>({ mode: "none" });
   const [note, setNote] = useState<string | null>(null);
+  const [noteWarns, setNoteWarns] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -193,10 +194,11 @@ export function ArticlePanel({ projectId }: { projectId: string }) {
   const workspace = load.status === "ready" ? load.workspace : null;
   const selected = workspace?.articles.find((entry) => entry.article.id === selectedId) ?? workspace?.articles[0] ?? null;
 
-  function saved(history: ArticleHistory, message: string) {
+  function saved(history: ArticleHistory, message: string, warns = false) {
     setEditing({ mode: "none" });
     setSelectedId(history.article.id);
     setNote(message);
+    setNoteWarns(warns);
     void reload();
   }
 
@@ -232,7 +234,7 @@ export function ArticlePanel({ projectId }: { projectId: string }) {
           </div>
         )}
         {note !== null && (
-          <p className="text-xs text-positive" role="status">
+          <p className={noteWarns ? "text-xs text-warning" : "text-xs text-positive"} role="status">
             {note}
           </p>
         )}
@@ -249,7 +251,7 @@ export function ArticlePanel({ projectId }: { projectId: string }) {
             mode={{ kind: "create" }}
             fromBrief={fromBrief}
             onCancel={() => setEditing({ mode: "none" })}
-            onSaved={(history, created) => saved(history, created ? "Article created as version 1." : "An article for this plan already existed; it is shown unchanged.")}
+            onSaved={(history, created, linkNote) => saved(history, `${created ? "Article created as version 1." : "An article for this plan already existed; it is shown unchanged."}${linkNote ? ` ${linkNote.text}` : ""}`, linkNote?.tone === "warning")}
           />
         )}
 
@@ -616,7 +618,7 @@ function ArticleEditor({
   mode: EditorMode;
   fromBrief?: string | null;
   onCancel: () => void;
-  onSaved: (history: ArticleHistory, created: boolean) => void;
+  onSaved: (history: ArticleHistory, created: boolean, linkNote?: HandoffNote | null) => void;
 }) {
   const id = useId();
   // The form and, beside it, each attestation's binding to its paragraph's text (fix F4, A5-04): every edit
@@ -638,6 +640,8 @@ function ArticleEditor({
   const [imported, setImported] = useState<string | null>(null);
 
   const [briefNote, setBriefNote] = useState<HandoffNote | null>(null);
+  /** The brief's opportunity's task: a new article is linked to it as soon as it is created. */
+  const [briefTaskId, setBriefTaskId] = useState<string | null>(null);
 
   // M6, PR 5: the assembled draft of a brief goes into the Import box; the operator still presses Fill the form.
   useEffect(() => {
@@ -645,9 +649,10 @@ function ArticleEditor({
     const controller = new AbortController();
     fetch(draftUrl(projectId, fromBrief), { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as { draft?: AssembledDraft } | null;
+        const body = (await response.json().catch(() => null)) as { draft?: AssembledDraft; taskId?: unknown } | null;
         const result = handoff(response.ok ? (body?.draft ?? null) : null, response.status);
         setBriefNote(result.note);
+        setBriefTaskId(response.ok ? draftTaskId(body) : null);
         if (result.json !== null) {
           setImportText(result.json);
           setImporting(true);
@@ -710,7 +715,21 @@ function ArticleEditor({
           ? await createArticle(projectId, planRunId, content, sources)
           : await saveArticleVersion(projectId, mode.history.article.id, mode.history.article.currentVersion, content, sources);
       if (result.ok) {
-        onSaved(result.history, "created" in result && result.created === true ? true : mode.kind === "edit");
+        const created = "created" in result && result.created === true;
+        // Opened from a brief: link the new article to the opportunity's task, so its admitted evidence reaches the check.
+        let linkNote: HandoffNote | null = null;
+        if (mode.kind === "create" && created && fromBrief !== null) {
+          if (briefTaskId === null) linkNote = AUTO_LINK_UNKNOWN;
+          else {
+            try {
+              const response = await fetch("/api/calendar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(autoLinkRequest(projectId, briefTaskId, result.history.article.id)), cache: "no-store" });
+              linkNote = autoLinkNote(response.status, await response.json().catch(() => null));
+            } catch {
+              linkNote = autoLinkNote(0, null);
+            }
+          }
+        }
+        onSaved(result.history, created ? true : mode.kind === "edit", linkNote);
         return;
       }
       if (result.reason === "invalid-content" || result.reason === "invalid-sources") setIssues(result.issues);

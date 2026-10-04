@@ -2508,7 +2508,15 @@ hash-checked transaction, then `NOTIFY pgrst`). Verified read-only: **50 history
 RLS on with no policies, `service_role` SELECT and INSERT only, 3 of 3 guard triggers enabled;
 `nexra_link_suggestion_task_create` `security definer`, empty `search_path`, EXECUTE for `service_role` only; the task
 source kinds include `internal-link`; every other row count and the V4 / V6 hashes unchanged. Next: the owner sets
-`CRAWL_MAX_PAGES=100` in Vercel and redeploys, then runs one own-site crawl. M9 is postponed.
+`CRAWL_MAX_PAGES=100` in Vercel and redeploys, then runs one own-site crawl. M9 is postponed. **The first end-to-end
+auto-drafted article is LIVE (4 Oct 2026):** `/blog/ai-receptionist-for-small-business`, nexra-ai PR #14, merge `fd524e0`
+— drafted by the Writer from brief `a8515cfb…` (opportunity `9f2b60b9…`, task `1d84b831…`), article `dfc126fc…`; its v1
+check passed 6 of 13 units, because the article was not linked to the opportunity's task (its pricing quote E1 never
+reached the checker) and five kinds of unverifiable sentence, now "never write" rules for the Writer (PR #163, hash
+`6828d979…`); v2 fixed the wording, and the link was the owner's step before its check. Since PR #164 an article created from *Open in editor* is
+linked to its opportunity's task at once (runbook §7.2a). An article's plan must still be a `content-plan-review` run:
+the database's article create refuses any other (`plan-run-invalid`), so using the brief run as the plan needs a
+migration, not built.
 
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 

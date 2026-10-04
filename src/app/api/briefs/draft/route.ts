@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const result = await assembledDraftFor(project, brief.toLowerCase());
     if (result.status === "not-kept") return errorResponse("not-set-up", 503);
     if (result.status === "brief-not-usable") return errorResponse("brief-not-usable", 404);
-    return json({ draft: result.draft });
+    return json({ draft: result.draft, taskId: result.taskId });
   } catch (error) {
     logFailure("briefs draft", error);
     return errorResponse("failed", 500);

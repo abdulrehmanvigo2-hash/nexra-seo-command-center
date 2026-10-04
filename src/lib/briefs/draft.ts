@@ -13,7 +13,12 @@ import { opportunityForBrief } from "@/lib/briefs";
 export type DraftRead =
   | { readonly status: "not-kept" }
   | { readonly status: "brief-not-usable" }
-  | { readonly status: "read"; readonly draft: AssembledDraft };
+  | {
+      readonly status: "read";
+      readonly draft: AssembledDraft;
+      /** The brief's opportunity's task, so a new article can be linked to it (its admitted evidence reaches the check through that link); null when the opportunity was not read. */
+      readonly taskId: string | null;
+    };
 
 export async function assembledDraftFor(projectId: string, briefRunId: string): Promise<DraftRead> {
   const service = agentRunService();
@@ -24,5 +29,5 @@ export async function assembledDraftFor(projectId: string, briefRunId: string): 
   if (brief === null) return { status: "brief-not-usable" };
   const opportunityId = typeof run.input.opportunityId === "string" ? run.input.opportunityId : "";
   const [records, writer] = await Promise.all([opportunityForBrief(projectId, opportunityId), service.listRuns({ projectId, agentId: "writer", limit: MAX_LIST_LIMIT })]);
-  return { status: "read", draft: assembleArticle({ briefRunId: run.id, brief, records, runs: writer.ok ? writer.runs : [] }) };
+  return { status: "read", draft: assembleArticle({ briefRunId: run.id, brief, records, runs: writer.ok ? writer.runs : [] }), taskId: records?.opportunity.taskId ?? null };
 }
