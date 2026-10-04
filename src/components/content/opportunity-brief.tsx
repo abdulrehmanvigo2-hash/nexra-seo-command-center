@@ -1,11 +1,17 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
+import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
+import type { ParsedBrief } from "@/lib/briefs/brief";
+import { batchOutcome, capRoom, DRAFT_ARTICLE_LABEL, draftArticleConfirmation, draftParts, partLabel, partRequests, partStateLine, partsToQueue } from "@/lib/briefs/draft-presenter";
 import { BRIEF_LABEL, BRIEF_NOTE, briefRunLine, latestBrief, supportLabel } from "@/lib/briefs/presenter";
+import { writeOutcome } from "@/lib/evidence/presenter";
 import type { AgentRun } from "@/types/agent-run";
 
 /**
@@ -13,7 +19,10 @@ import type { AgentRun } from "@/types/agent-run";
  * the POST); a queued brief offers Run Now; the newest completed brief is read back into its sections and labelled a
  * model's proposal. Nothing here writes an article.
  */
-export function OpportunityBriefPanel({ runs, busy, note, onDraft, onChanged }: { runs: readonly AgentRun[] | "loading" | "failed"; busy: boolean; note: { readonly text: string; readonly tone: "neutral" | "warning" } | null; onDraft: () => void; onChanged: () => void }) {
+type Note = { readonly text: string; readonly tone: "neutral" | "warning" } | null;
+type RunsRead = readonly AgentRun[] | "loading" | "failed";
+
+export function OpportunityBriefPanel({ projectId, runs, writerRuns, busy, note, onDraft, onChanged }: { projectId: string; runs: RunsRead; writerRuns: RunsRead; busy: boolean; note: Note; onDraft: () => void; onChanged: () => void }) {
   const { executing, executeNote, runNow } = useRunNow(() => onChanged());
   const list = Array.isArray(runs) ? (runs as readonly AgentRun[]) : [];
   const shown = latestBrief(list);
@@ -91,6 +100,7 @@ export function OpportunityBriefPanel({ runs, busy, note, onDraft, onChanged }: 
               <dt className="font-medium text-fg">Limits</dt><dd>{shown.brief.limits}</dd>
               <dt className="font-medium text-fg">Next</dt><dd>{shown.brief.next}</dd>
             </dl>
+            <ArticleDraftSection projectId={projectId} briefRun={shown.run} brief={shown.brief} writerRuns={writerRuns} onChanged={onChanged} />
           </div>
         )}
       </PanelBody>
@@ -98,5 +108,92 @@ export function OpportunityBriefPanel({ runs, busy, note, onDraft, onChanged }: 
         <span>{BRIEF_NOTE}</span>
       </PanelFooter>
     </Panel>
+  );
+}
+
+/**
+ * The article draft of one brief (M6, PR 4): each part's newest run in words, Run now on a queued one, and *Draft
+ * article…* — one confirmation that queues every part not yet drafted, after checking today's caps leave room for all.
+ */
+function ArticleDraftSection({ projectId, briefRun, brief, writerRuns, onChanged }: { projectId: string; briefRun: AgentRun; brief: ParsedBrief; writerRuns: RunsRead; onChanged: () => void }) {
+  const { executing, executeNote, runNow } = useRunNow(() => onChanged());
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<Note>(null);
+  const inFlight = useRef(false);
+  const list = Array.isArray(writerRuns) ? (writerRuns as readonly AgentRun[]) : [];
+  const states = draftParts(brief, list, briefRun.id);
+  const toQueue = partsToQueue(states);
+  const byId = new Map(list.map((run) => [run.id, run]));
+
+  const queueAll = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setNote(null);
+    let queued = 0;
+    let refusal: string | null = null;
+    try {
+      const usageResponse = await fetch(`/api/agent-runs/daily-usage?project=${encodeURIComponent(projectId)}`, { cache: "no-store" });
+      const usage = usageResponse.ok ? ((await usageResponse.json().catch(() => null)) as { usage?: DailyUsage } | null)?.usage ?? null : null;
+      const room = capRoom(usage, toQueue.length);
+      if (!room.ok) refusal = room.why;
+      else {
+        for (const request of partRequests(projectId, briefRun.id, toQueue)) {
+          const response = await fetch("/api/agent-runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request), cache: "no-store" });
+          if (!response.ok) {
+            refusal = writeOutcome(response.status, await response.json().catch(() => null), "").text;
+            break;
+          }
+          queued += 1;
+        }
+      }
+    } catch {
+      refusal = "The request could not be sent. Check your connection.";
+    }
+    setNote(refusal !== null && queued === 0 ? { text: refusal, tone: "warning" } : batchOutcome(queued, toQueue.length, refusal));
+    inFlight.current = false;
+    setBusy(false);
+    onChanged();
+  };
+
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-fg">Article draft — the Writer, one run per part</p>
+        <Button size="sm" variant="secondary" icon="edit" disabled={busy || toQueue.length === 0 || writerRuns === "loading"} onClick={() => setConfirming(true)}>
+          {DRAFT_ARTICLE_LABEL}
+        </Button>
+      </div>
+      {note !== null && (
+        <p className={note.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-muted"} role="status">
+          {note.text}
+        </p>
+      )}
+      <RunNowNote note={executeNote} />
+      {writerRuns === "failed" ? (
+        <p className="text-xs text-warning">{"The Writer's runs could not be read. Nothing is shown in their place."}</p>
+      ) : (
+        <ul className="space-y-1 text-xs">
+          {states.map((state) => {
+            const run = state.state === "pending" ? byId.get(state.runId) : undefined;
+            return (
+              <li key={state.part} className="flex flex-wrap items-center gap-2">
+                <span className="text-fg">{partLabel(state.part, brief)}</span>
+                <span className="text-fg-subtle">{partStateLine(state)}</span>
+                {run !== undefined && run.status === "queued" && <RunNowButton run={run} executing={executing} onRunNow={() => void runNow(run)} />}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {confirming && (
+        <SpendConfirmDialog confirmation={draftArticleConfirmation(projectId, briefRun.id, toQueue, brief)} projectId={projectId} busy={busy} onClose={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            void queueAll();
+          }} />
+      )}
+    </div>
   );
 }

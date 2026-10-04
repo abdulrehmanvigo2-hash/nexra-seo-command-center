@@ -136,6 +136,7 @@ function OpportunityEvidence({ projectId, opportunity }: { projectId: string; op
   const serp = useRead<SerpView>(serpUrl(projectId, opportunity.id), (body) => (body.view as SerpView | undefined) ?? null, version);
   const sources = useRead<readonly EvidenceSource[]>(evidenceSourcesUrl(projectId, opportunity.id), (body) => (Array.isArray(body.sources) ? (body.sources as EvidenceSource[]) : null), version);
   const runs = useRead<readonly AgentRun[]>(runHistoryListUrl({ projectId, agentId: "research-evidence", limit: 50, offset: 0 }), (body) => (Array.isArray(body.runs) ? (body.runs as AgentRun[]) : null), version);
+  const writerRuns = useRead<readonly AgentRun[]>(runHistoryListUrl({ projectId, agentId: "writer", limit: 50, offset: 0 }), (body) => (Array.isArray(body.runs) ? (body.runs as AgentRun[]) : null), version);
   const strategistRuns = useRead<readonly AgentRun[]>(runHistoryListUrl({ projectId, agentId: BRIEF_REQUEST.agentId, limit: 50, offset: 0 }), (body) => (Array.isArray(body.runs) ? (body.runs as AgentRun[]) : null), version);
   const post = usePost(reload);
   const briefPost = usePost(reload);
@@ -235,6 +236,8 @@ function OpportunityEvidence({ projectId, opportunity }: { projectId: string; op
       </Panel>
 
       <OpportunityBriefPanel
+        projectId={projectId}
+        writerRuns={writerRuns.status === "ready" ? writerRuns.value : writerRuns.status === "loading" ? "loading" : "failed"}
         runs={strategistRuns.status === "ready" ? briefRuns(strategistRuns.value, opportunity.id) : strategistRuns.status === "loading" ? "loading" : "failed"}
         busy={briefPost.busy}
         note={briefPost.note}
