@@ -21,10 +21,16 @@
  * over plain http, so it is harmless locally; Vercel's edge adds the same on
  * production.
  *
+ * `X-Robots-Tag: noindex, nofollow` keeps every response — pages, the sign-in page, JSON, the health check — out of
+ * search indexes: this is a private operator tool, never a public site.
+ *
  * Pure.
  */
 
 export type SecurityHeader = { readonly key: string; readonly value: string };
+
+/** Never index, never follow: sent on every response, and by the proxy on its own redirects and refusals. */
+export const ROBOTS_TAG = "noindex, nofollow";
 
 export function contentSecurityPolicy(isDevelopment: boolean): string {
   return [
@@ -49,5 +55,6 @@ export function securityHeaders(isDevelopment: boolean): readonly SecurityHeader
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
     { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
     { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+    { key: "X-Robots-Tag", value: ROBOTS_TAG },
   ];
 }
