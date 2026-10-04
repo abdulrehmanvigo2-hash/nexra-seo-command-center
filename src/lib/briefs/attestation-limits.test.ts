@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { assembleArticle } from "@/lib/briefs/assemble-article";
+import { assembleArticle, citedSourceOf, MIN_ARTICLE_WORDS } from "@/lib/briefs/assemble-article";
 import { ARTICLE_PART_INSTRUCTIONS, formatPartBlock } from "@/lib/briefs/article-part";
 import { OPPORTUNITY_BRIEF_INSTRUCTIONS, parseBrief, type OpportunityBriefInput } from "@/lib/briefs/brief";
 import { draftWarnings } from "@/lib/briefs/draft-presenter";
@@ -29,7 +29,7 @@ describe("the instructions keep opinion within the attestation rules", () => {
   test("the Writer prefers advice, bans every number form in opinion, and allows one one-sentence opinion line per section", () => {
     assert.match(ARTICLE_PART_INSTRUCTIONS, /Prefer advice to opinion: write guidance to the reader — what to check, ask or choose — as \[connective\], not \[opinion\]\./);
     assert.match(ARTICLE_PART_INSTRUCTIONS, /An \[opinion\] line states no number in any form: no digit, percentage, price, count word such as three, or ordinal such as second or third; only one and first are allowed\./);
-    assert.match(ARTICLE_PART_INSTRUCTIONS, /two or three P: lines, each under 45 words, of which at most one is \[opinion\], and only beside two lines that are not, and it is one sentence;/);
+    assert.match(ARTICLE_PART_INSTRUCTIONS, /two or three P: lines that together hold about 200 to 260 words, each line's text under 500 characters, of which at most one is \[opinion\], and only beside two lines that are not, and it is one sentence;/);
   });
 
   test("the brief may mark an H2 advice, and names the limits", () => {
@@ -63,5 +63,48 @@ describe("the assembly warns part by part", () => {
   test("half a section exactly is allowed; a section within the rules has no warning", () => {
     const ok = ["P: In our view it answers calls. [opinion]", "P: Start from your call pattern. [connective]", "P: Ask how it hands over. [connective]", "LIMITS: None."].join("\n");
     assert.deepEqual(assembleArticle({ briefRunId: BRIEF_RUN, brief, records, runs: [run("section-1", ok)] }).warnings, []);
+  });
+});
+
+describe("article length", () => {
+  test("the brief plans for 1,200 words or more; the Writer drafts each section at about 200 to 260 words", () => {
+    assert.match(OPPORTUNITY_BRIEF_INSTRUCTIONS, /The article aims at 1,200 words or more: each H2 is drafted as about 200 to 260 words, so plan at least five H2s when the topic holds them\./);
+    assert.equal(MIN_ARTICLE_WORDS, 1_000);
+  });
+
+  const words = (n: number) => Array(n).fill("word").join(" ");
+  const opening = ["TITLE: A pricing-first guide", "META TITLE: A pricing-first guide", "META DESCRIPTION: What it is and how to choose one.", "SLUG: pricing-first-guide", "EXCERPT: What it is and how to choose.", "LEAD: This guide starts with price. [connective]", "P: Here is how it is laid out. [connective]", "LIMITS: None."].join("\n");
+  const closing = ["A1: It depends on the plan. [connective]", "A2: Judge it on your calls. [connective]", "CTA TITLE: Talk to us", "CTA BODY: Tell us how calls arrive.", "LIMITS: None."].join("\n");
+  const sectionOf = (n: number) => [`P: ${words(n)}. [connective]`, `P: ${words(n)}. [connective]`, "LIMITS: None."].join("\n");
+  const draftWith = (n: number) => assembleArticle({ briefRunId: BRIEF_RUN, brief, records, runs: [run("opening", opening), run("section-1", sectionOf(n)), run("section-2", sectionOf(n)), run("section-3", sectionOf(n)), run("closing", closing)] });
+
+  test("an assembled article under 1,000 words is warned about; one at or over it is not", () => {
+    const short = draftWith(60);
+    assert.ok(short.content !== null);
+    assert.deepEqual(short.warnings.filter((w) => w.part === null).map((w) => w.text), ["The assembled article has 382 words, under 1,000; queue thin sections again or add sections before saving."]);
+    const long = draftWith(170);
+    assert.ok(long.content !== null);
+    assert.deepEqual(long.warnings, []);
+  });
+});
+
+describe("a cited source's title and publisher", () => {
+  const unit = { label: "E1", claim: "c", quote: "q", url: "https://www.layer3labs.io/guides/ai-answering-service-for-small-business", retrievedAt: "2026-10-04T02:52:46Z" };
+
+  test("taken from the page's recorded title, the publisher after its site-name separator", () => {
+    assert.deepEqual(citedSourceOf({ ...unit, pageTitle: "AI Answering Service for Small Business | Layer3Labs" }), {
+      url: unit.url, title: "AI Answering Service for Small Business", publisher: "Layer3Labs", retrievedAt: "2026-10-04", fromAddress: false,
+    });
+    assert.equal(citedSourceOf({ ...unit, pageTitle: "Pricing guide — Acme Inc" }).publisher, "Acme Inc");
+    assert.equal(citedSourceOf({ ...unit, pageTitle: "A self-serve guide - part one - Acme" }).title, "A self-serve guide - part one", "the last separator names the site");
+  });
+
+  test("a title without a separator keeps the whole title and the host as publisher; no title falls back to the address", () => {
+    assert.deepEqual(citedSourceOf({ ...unit, pageTitle: "AI Answering Service for Small Business" }), {
+      url: unit.url, title: "AI Answering Service for Small Business", publisher: "layer3labs.io", retrievedAt: "2026-10-04", fromAddress: false,
+    });
+    assert.deepEqual(citedSourceOf({ ...unit, pageTitle: null }), {
+      url: unit.url, title: "www.layer3labs.io/guides/ai-answering-service-for-small-business", publisher: "www.layer3labs.io", retrievedAt: "2026-10-04", fromAddress: true,
+    });
   });
 });

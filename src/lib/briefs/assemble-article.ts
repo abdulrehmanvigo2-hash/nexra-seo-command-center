@@ -1,8 +1,9 @@
 import { parsePart, partsFor, type ArticlePart, type ParsedClosing, type ParsedOpening, type ParsedSection, type Tag, type TaggedText } from "@/lib/briefs/article-part";
-import type { OpportunityBriefInput, ParsedBrief } from "@/lib/briefs/brief";
+import type { AdmittedClaim, OpportunityBriefInput, ParsedBrief } from "@/lib/briefs/brief";
+import { articleWordCount } from "@/lib/content/articles/website/render";
 import { sentencesOf } from "@/lib/content/articles/checks/units";
 import { ARTICLE_LIMITS, ATTESTED_BODY_SHARE, ATTESTED_SECTION_SHARE, SEARCH_INTENTS, statesAttestedNumber, validateArticleContent } from "@/lib/content/articles/validate";
-import type { ArticleAttestation, ArticleCitedSource, ArticleContent, ArticleInternalLink, ArticleIssue, ArticleSection } from "@/types/content-article";
+import type { ArticleAttestation, ArticleCitedSource, ArticleContent, ArticleInternalLink, ArticleIssue, ArticleSection, ValidatedArticleContent } from "@/types/content-article";
 import type { AgentRun } from "@/types/agent-run";
 import type { SearchIntent } from "@/types/seo";
 
@@ -22,6 +23,30 @@ import type { SearchIntent } from "@/types/seo";
  */
 
 export const DEFAULT_CATEGORY = "AI Automation";
+
+/** The assembled article's words (the renderer's count: lead, introduction, sections, FAQ answers) below which it warns. */
+export const MIN_ARTICLE_WORDS = 1_000;
+
+/** A title's site-name separator: " | ", " – ", " — " or " - ", the last one in the title. */
+const TITLE_SEPARATOR = /\s+[|–—-]\s+(?!.*\s[|–—-]\s)/u;
+
+/**
+ * One cited source for the article: the page's recorded title and the publisher it names after a separator
+ * ("AI Answering Service for Small Business | Layer3Labs"), or, when the evidence source recorded no title, the page's
+ * address and host (flagged by the caller for the operator to replace).
+ */
+export function citedSourceOf(unit: AdmittedClaim): ArticleCitedSource & { readonly fromAddress: boolean } {
+  const url = new URL(unit.url);
+  const retrievedAt = unit.retrievedAt.slice(0, 10);
+  const recorded = (unit.pageTitle ?? "").replace(/\s+/g, " ").trim();
+  if (recorded === "") {
+    return { url: unit.url, title: `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`.slice(0, ARTICLE_LIMITS.sourceTitle), publisher: url.hostname.slice(0, ARTICLE_LIMITS.sourcePublisher), retrievedAt, fromAddress: true };
+  }
+  const match = TITLE_SEPARATOR.exec(recorded);
+  const title = (match === null ? recorded : recorded.slice(0, match.index)).trim() || recorded;
+  const publisher = (match === null ? url.hostname.replace(/^www\./, "") : recorded.slice(match.index + match[0].length)).trim() || url.hostname;
+  return { url: unit.url, title: title.slice(0, ARTICLE_LIMITS.sourceTitle), publisher: publisher.slice(0, ARTICLE_LIMITS.sourcePublisher), retrievedAt, fromAddress: false };
+}
 
 export type PartState =
   | { readonly part: ArticlePart; readonly state: "missing" }
@@ -220,12 +245,10 @@ export function assembleArticle(input: { readonly briefRunId: string; readonly b
   if (cluster === null) notes.push("No cluster was readable: topic and keywords are empty; fill them in before saving.");
   notes.push(`Category set to "${DEFAULT_CATEGORY}"; check it.`);
 
-  const citations: ArticleCitedSource[] = cited.map((label) => {
-    const unit = admitted.get(label)!;
-    const url = new URL(unit.url);
-    return { url: unit.url, title: `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`.slice(0, ARTICLE_LIMITS.sourceTitle), publisher: url.hostname.slice(0, ARTICLE_LIMITS.sourcePublisher), retrievedAt: unit.retrievedAt.slice(0, 10) };
-  });
-  if (citations.length > 0) notes.push("Each cited source's title is its address; give it the page's real title.");
+  const sources = cited.map((label) => citedSourceOf(admitted.get(label)!));
+  const citations: ArticleCitedSource[] = sources.map((source) => ({ url: source.url, title: source.title, publisher: source.publisher, retrievedAt: source.retrievedAt }));
+  if (sources.some((source) => source.fromAddress)) notes.push("A cited source whose page recorded no title is titled by its address; give it the page's real title.");
+  if (sources.some((source) => !source.fromAddress)) notes.push("Cited sources are titled from each page's recorded title, the publisher from its site name; check them.");
 
   const content: ArticleContent = {
     topic: cluster?.topic ?? "",
@@ -249,8 +272,13 @@ export function assembleArticle(input: { readonly briefRunId: string; readonly b
     citations,
   };
   const validation = validateArticleContent(content);
+  // Counted on the assembled content whether or not it validates: a short draft is worth knowing about either way.
+  const words = articleWordCount(content as unknown as ValidatedArticleContent);
+  const allWarnings = words < MIN_ARTICLE_WORDS
+    ? [...warnings, { part: null, text: `The assembled article has ${words} words, under ${MIN_ARTICLE_WORDS.toLocaleString("en-GB")}; queue thin sections again or add sections before saving.` }]
+    : warnings;
   const evidenceMap = map.map((entry, index) => ({ entry, index })).sort((a, b) => Number(a.entry.status !== "unsupported") - Number(b.entry.status !== "unsupported") || a.index - b.index).map(({ entry }) => entry);
-  return { briefRunId: input.briefRunId, parts, content, evidenceMap, issues: validation.ok ? [] : validation.issues, notes, warnings };
+  return { briefRunId: input.briefRunId, parts, content, evidenceMap, issues: validation.ok ? [] : validation.issues, notes, warnings: allWarnings };
 }
 
 /** The import box's text: the content object as the editor's Import reads it. */

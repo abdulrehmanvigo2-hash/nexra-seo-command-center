@@ -38,12 +38,13 @@ describe("the article-part-draft task", () => {
   });
 
   test("the instructions are pinned; a full-caps answer of every part stays under the worker's 2,000 ceiling", () => {
-    assert.equal(sha256(ARTICLE_PART_INSTRUCTIONS), "b9a2e82a3ef69d41006e5e689997ac39b1fb6b253058e3b1c0b522cd2f36d231");
+    assert.equal(sha256(ARTICLE_PART_INSTRUCTIONS), "85a2867e3775b57ed64621b1f10d7a936858ec1f2350210be1d416e8e935895d");
     const w = (n: number) => Array(n).fill("abcdefgh").join(" ");
     const tag = "[evidence E12]";
     const limits = `LIMITS: ${w(19)}`;
     const opening = [`TITLE: ${w(11)}`, `META TITLE: ${"a".repeat(59)}`, `META DESCRIPTION: ${"a".repeat(154)}`, `SLUG: ${Array(8).fill("abcdefgh").join("-")}`, `EXCERPT: ${w(24)}`, `LEAD: ${w(34)} ${tag}`, `P: ${w(39)} ${tag}`, limits].join("\n");
-    const section = [...Array.from({ length: 3 }, () => `P: ${w(44)} [crawl /abcdefgh-abcdefgh]`), `LINK: /abcdefgh-abcdefgh — ${w(5)}`, limits].join("\n");
+    // A section's paragraphs are capped by characters (each under 500), so the worst case is three 499-character texts.
+    const section = [...Array.from({ length: 3 }, () => `P: ${"a".repeat(499)} [crawl /abcdefgh-abcdefgh]`), `LINK: /abcdefgh-abcdefgh — ${w(5)}`, limits].join("\n");
     const closing = [...Array.from({ length: 4 }, (_, i) => `A${i + 1}: ${w(24)} ${tag}`), `CTA TITLE: ${w(7)}`, `CTA BODY: ${w(24)}`, limits].join("\n");
     for (const [name, answer] of [["opening", opening], ["section", section], ["closing", closing]] as const) assert.ok(answer.length < 2_000, `${name} ${answer.length}`);
   });

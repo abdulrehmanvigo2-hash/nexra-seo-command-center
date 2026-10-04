@@ -40,13 +40,13 @@ export function createSupabaseEvidenceStore(client: SupabaseClient<EvidenceDatab
     if (units.error) refuseEvidence("read admitted units", units.error);
     const rows = (units.data ?? []).map(unitRowToUnit);
     if (rows.length === 0) return [];
-    const sources = await client.from("nexra_evidence_sources").select("id, project_id, opportunity_id, requested_url, final_url, fetched_at").eq("project_id", projectId).in("id", [...new Set(rows.map((row) => row.sourceId))]);
+    const sources = await client.from("nexra_evidence_sources").select("id, project_id, opportunity_id, requested_url, final_url, fetched_at, title").eq("project_id", projectId).in("id", [...new Set(rows.map((row) => row.sourceId))]);
     if (sources.error) refuseEvidence("read admitted sources", sources.error);
     const pages = new Map((sources.data ?? []).map((row) => [row.id, row] as const));
     return rows.flatMap((unit) => {
       const page = pages.get(unit.sourceId);
       if (page === undefined || unit.decidedAt === null) return [];
-      return [{ id: unit.id, claim: unit.claim, quote: unit.quote, url: page.final_url ?? page.requested_url, fetchedAt: page.fetched_at, decidedAt: unit.decidedAt }];
+      return [{ id: unit.id, claim: unit.claim, quote: unit.quote, url: page.final_url ?? page.requested_url, fetchedAt: page.fetched_at, decidedAt: unit.decidedAt, pageTitle: page.title }];
     });
   }
 

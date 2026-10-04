@@ -74,7 +74,7 @@ describe("the opportunity-brief task", () => {
   });
 
   test("the instructions are pinned; a worst-case brief stays under the worker's 2,000 ceiling", () => {
-    assert.equal(sha256(OPPORTUNITY_BRIEF_INSTRUCTIONS), "4ed10e76bf1b56e79cbf00e1d071016995f347d7bd9086d3ed32d146c24e4c37");
+    assert.equal(sha256(OPPORTUNITY_BRIEF_INSTRUCTIONS), "170785696de1cae3194bd1f788121a7357aa9ddad23cf7132d8631d77c25a4bd");
     const w = (n: number) => Array(n).fill("abcdefgh").join(" ");
     const worst = [
       `ANGLE: ${w(14)}`, "OUTLINE:", ...Array.from({ length: 6 }, () => `H2: ${w(6)} — ${w(6)}`), "FAQ:", ...Array.from({ length: 4 }, () => `Q: ${w(7)}`),

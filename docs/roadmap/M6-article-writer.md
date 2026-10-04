@@ -153,5 +153,15 @@ that article (outside the product; nothing saved). At the source:
 - **Assembly:** `partWarnings` checks each drafted section as soon as it is drafted — an opinion line with a number,
   opinion over half the section, and opinion over 40% across the sections drafted so far — and the part list shows
   each warning on its part, before the whole draft is assembled and fails.
+- **Length** (hashes: Writer `85a2867e…`, brief `17078569…`): a section part is two or three paragraphs of about
+  200 to 260 words together, each paragraph's text under 500 characters, so the part stays under the 2,000-character
+  ceiling (a full-caps section answer is about 1,840 characters; 300 words would not fit). The brief aims the article
+  at 1,200 words or more and plans at least five H2s when the topic holds them; the opening and closing are as before.
+  The assembly warns when the assembled article (the renderer's word count: lead, introduction, sections and FAQ
+  answers) is under 1,000 words.
+- **Cited sources:** the evidence read now carries each source page's recorded title. A cited source takes its title
+  and publisher from it ("AI Answering Service for Small Business | Layer3Labs" → that title, publisher Layer3Labs;
+  without a separator the host is the publisher), and only a page with no recorded title falls back to its address,
+  still flagged.
 - **Run now** on one part showed every queued part as running: the list shared one flag. Only the pressed run now
   shows running; the others are held until it returns (the Evidence tab's run list had the same fault and is fixed).
