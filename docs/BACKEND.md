@@ -2164,6 +2164,49 @@ the project workspace lists the recorded pages. The Technical SEO screen shows
 the latest recorded findings and their triage in its *Observed findings*
 section (M3); its other tabs still render fixtures.
 
+
+### Internal links over a complete crawl (M8)
+
+`docs/roadmap/M8-internal-links.md`. Migration `20261027120000_internal_links.sql`.
+
+**The crawl.**
+
+- **Sitemap seed:** an own-site crawl queues every in-scope sitemap URL at depth 1 (`seedFromSitemap`). Robots.txt,
+  the host scope, the network guard and the page budget still apply. A competitor crawl follows links only.
+- **Budget:** set by `CRAWL_MAX_PAGES` (the code accepts 1–500; production is to be set to 100 by the owner, see
+  `docs/RUNBOOK.md` §9).
+- **Kept text:** each own-site fetched page's visible text — collapsed, at most 20,000 characters, cut on a word — goes
+  to `nexra_crawl_page_texts`, with its length in code points and its SHA-256.
+  - The database checks both, refuses a competitor's or an unfetched page's text, and keeps the row immutable; it goes
+    with its crawl.
+  - The write follows the pages and links, and a refusal (the migration not applied) is logged as
+    `crawl.texts_not_kept` and never fails the crawl.
+
+**Suggestions** (`src/lib/internal-links/suggest.ts`, pure, no AI).
+
+- **Phrases that name a page,** in rule order, each 2–8 words:
+  1. live article keywords;
+  2. tracked curated keywords targeting the page;
+  3. its h1;
+  4. its title's first segment.
+- **Site suggestion:** a whole-word, case-ignored match of a target's phrase in another page's kept text, where the
+  crawl recorded no edge between them. Noindex and failed pages are left out. Targets with the fewest inbound links
+  come first; at most 3 per target and 50 in all.
+- **Article suggestion:** the same match inside one paragraph of one H2 section of the article being edited, for pages
+  it does not link to yet.
+
+**Routes and screens.**
+
+- `GET /api/internal-links?project=` (operators, read-only) computes the suggestions on read.
+- `POST /api/internal-links/task` (same origin, operators, 60 per ten minutes) records one suggestion as a backlog task
+  for On-Page SEO through `nexra_link_suggestion_task_create` (`security definer`; the project's own crawl and two of its
+  fetched pages; source kind `internal-link`).
+- The Technical SEO *Internal links* tab shows the Suggestions with *Record as task…* (confirmed).
+- The article editor's *Suggest links…* adds a suggestion to the form's internal links; saving is the usual Create or
+  Save.
+
+Nothing here edits a page, calls a model or costs anything.
+
 ### Competitor site crawls
 
 An operator may also crawl one competitor domain the agency recorded for the

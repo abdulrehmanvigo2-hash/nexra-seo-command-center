@@ -114,6 +114,15 @@ site.
 5. The screens: the Suggestions section, *Record as task*, the routes, and *Suggest links…* in the article editor.
 6. Docs: `docs/BACKEND.md` and the runbook step for the crawl budget.
 
+## As built (PRs 2–5)
+
+- **Table guards:** three triggers (insert, update, truncate). A row goes only with its crawl (a composite foreign key
+  to its page row), and `service_role` cannot delete. The `guards` harness now truncates pages together with their
+  texts, because a plain TRUNCATE of pages is refused by PostgreSQL's foreign-key rule (0A000) first.
+- **Recording a task:** uses the crawl `triage` limiter (60 per ten minutes).
+- **Phrases:** a one-word phrase is never used; article matching works one paragraph at a time.
+- **Not done:** no browser check of the Suggestions and *Suggest links…* screens before a 100-page crawl exists.
+
 ## Owner actions, in this order
 
 1. Approve and merge the six PRs.
