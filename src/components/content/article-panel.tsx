@@ -44,12 +44,13 @@ import {
 import { importArticleJson } from "@/lib/content/articles/import";
 import { SuggestLinks } from "@/components/content/suggest-links";
 import type { AssembledDraft } from "@/lib/briefs/assemble-article";
-import { AUTO_LINK_UNKNOWN, autoLinkNote, autoLinkRequest, draftTaskId, draftUrl, handoff, importBriefParam, type HandoffNote } from "@/lib/briefs/handoff";
+import { AUTO_LINK_UNKNOWN, autoLinkNote, autoLinkRequest, briefPlanChoice, draftTaskId, draftUrl, handoff, importBriefParam, type HandoffNote } from "@/lib/briefs/handoff";
 import { ATTESTATION_BASES, SEARCH_INTENTS, TOPIC_DECISIONS, validateArticleContent } from "@/lib/content/articles/validate";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { ArticleIssue, ArticleSourceReference, ValidatedArticleContent } from "@/types/content-article";
 import type {
   ArticleHistory,
+  ArticlePlanCandidate,
   ArticleSourceCandidate,
   ArticleStatus,
   ArticleVersionView,
@@ -139,6 +140,11 @@ async function readWorkspace(projectId: string, signal?: AbortSignal): Promise<L
   if (!response.ok) return { status: "failed" };
   const body = (await response.json()) as { workspace?: ArticleWorkspace };
   return body.workspace ? { status: "ready", workspace: body.workspace } : { status: "failed" };
+}
+
+/** One plan candidate in the chooser: its kind, short id and finish date. */
+function planCandidateLabel(c: ArticlePlanCandidate): string {
+  return `${c.kind === "brief" ? "Opportunity brief" : "Content plan"} ${shortId(c.runId)}${c.finishedAt ? ` · ${formatFullDate(c.finishedAt)}` : ""}`;
 }
 
 function shortId(id: string): string {
@@ -629,7 +635,8 @@ function ArticleEditor({
   });
   const form = state.form;
   const [previewing, setPreviewing] = useState(false);
-  const [planRunId, setPlanRunId] = useState("");
+  // Opened from a brief: that brief run is the plan, pre-selected when it is a candidate (the operator may change it).
+  const [planRunId, setPlanRunId] = useState(() => briefPlanChoice(fromBrief, workspace.planCandidates));
   const [sources, setSources] = useState<ArticleSourceReference[]>(() => initialSources(mode));
   const [issues, setIssues] = useState<readonly ArticleIssue[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -701,7 +708,7 @@ function ArticleEditor({
       return;
     }
     if (mode.kind === "create" && planRunId === "") {
-      setMessage("Choose the content plan run this article is assembled for.");
+      setMessage("Choose the plan run (a content plan or an opportunity brief) this article is assembled for.");
       return;
     }
     if (sources.length === 0) {
@@ -808,14 +815,14 @@ function ArticleEditor({
       )}
 
       {mode.kind === "create" && (
-        <Field label="Content plan run" htmlFor={`${id}-plan`} required hint="A completed content plan of this project that has no article yet.">
+        <Field label="Plan run" htmlFor={`${id}-plan`} required hint="A completed content plan or opportunity brief of this project that has no article yet.">
           <Select
             id={`${id}-plan`}
             value={planRunId}
             onChange={(e) => setPlanRunId(e.target.value)}
             options={[
               { value: "", label: "Choose…" },
-              ...workspace.planCandidates.map((c) => ({ value: c.runId, label: `${shortId(c.runId)}${c.finishedAt ? ` · ${formatFullDate(c.finishedAt)}` : ""}` })),
+              ...workspace.planCandidates.map((c) => ({ value: c.runId, label: planCandidateLabel(c) })),
             ]}
           />
         </Field>

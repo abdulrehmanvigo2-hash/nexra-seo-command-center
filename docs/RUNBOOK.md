@@ -612,9 +612,9 @@ from brief `a8515cfb…`, article `dfc126fc…`. Its order, which every later au
 1. **Evidence tab:** an accepted opportunity, its admitted evidence, then *Queue a brief* (one run).
 2. ***Draft article…*** on the brief (one run per part: opening, each section, closing), each run by Run now or the
    worker. Read the part warnings (opinion with a number, over half a section, over 40% of the body, under 1,000 words).
-3. ***Open in editor*** → *Fill the form* → choose the content plan run and source drafts → **Create**. The article
-   needs a completed Content Strategist `content-plan-review` run as its plan (the database's article create requires
-   one; a brief run is not accepted). Since 4 Oct the new article is **linked to the opportunity's task at once**, so
+3. ***Open in editor*** → *Fill the form* → choose the source drafts → **Create**. The plan run is the brief itself,
+   pre-selected (since migration `20261028120000`, a completed `opportunity-brief` run is an article's plan, as a
+   `content-plan-review` run is; one article per plan run). Since 4 Oct the new article is **linked to the opportunity's task at once**, so
    the opportunity's admitted evidence reaches the check; the message says so, or says to link it by hand (*Link to a
    task*) when the link failed. An article created any other way must be linked by hand **before** checking: an unlinked
    article's evidence-backed sentences (the pricing quote of the first one) are UNVERIFIABLE.

@@ -1161,3 +1161,8 @@ type accepted by the shape check and cross-type or no-change events refused
 (23514), `service_role` direct writes refused (42501). Production row counts
 unchanged; the probes consumed identity values of the events `seq`, which are
 not reused.
+
+50. `20261028120000_article_plan_from_brief.sql` — M6 follow-up (part 2b): `nexra_article_create` replaced with the same
+    signature, its body 20260923120000's except the plan check, which now accepts a completed Content Strategist
+    `opportunity-brief` run of the project as well as a `content-plan-review` run; one article per plan run; no table,
+    trigger or grant change — **not applied yet**

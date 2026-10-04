@@ -213,7 +213,7 @@ export function memoryArticleStore(options: { readonly projects?: readonly strin
         run === undefined ||
         run.projectId !== input.projectId ||
         run.agentId !== "content-strategist" ||
-        run.taskType !== "content-plan-review" ||
+        (run.taskType !== "content-plan-review" && run.taskType !== "opportunity-brief") ||
         run.status !== "completed"
       ) {
         return { status: "plan-run-invalid" };

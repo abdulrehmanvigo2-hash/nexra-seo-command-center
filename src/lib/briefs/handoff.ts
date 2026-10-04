@@ -88,3 +88,13 @@ export function autoLinkNote(httpStatus: number, body: unknown): HandoffNote {
 
 /** Said when the brief's opportunity (and so its task) could not be read: nothing was linked. */
 export const AUTO_LINK_UNKNOWN: HandoffNote = { text: "The brief's opportunity task could not be read, so the article was not linked. Link it with Link to a task before checking.", tone: "warning" };
+
+/**
+ * Part 2b: the plan an article opened from a brief is created for — that brief run, when the workspace offers it as a
+ * plan candidate (a completed brief of this project with no article yet); otherwise none, and the operator chooses.
+ */
+export function briefPlanChoice(fromBrief: string | null, candidates: readonly { readonly runId: string; readonly kind: string }[]): string {
+  if (fromBrief === null) return "";
+  const brief = fromBrief.toLowerCase();
+  return candidates.some((c) => c.kind === "brief" && c.runId.toLowerCase() === brief) ? brief : "";
+}

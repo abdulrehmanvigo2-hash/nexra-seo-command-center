@@ -77,6 +77,8 @@ export type ArticleHistory = {
 /** A completed content plan run of the project that has no article yet. */
 export type ArticlePlanCandidate = {
   readonly runId: string;
+  /** A content plan review, or (since 20261028120000) the opportunity brief the Writer's parts were drafted from. */
+  readonly kind: "content-plan" | "brief";
   readonly summary: string | null;
   readonly finishedAt: string | null;
 };
