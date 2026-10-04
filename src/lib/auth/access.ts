@@ -34,7 +34,7 @@ const WORKER_PREFIX = "/api/worker/";
  */
 export const HEALTH_PATH = "/api/health";
 
-/** The robots file (`src/app/robots.ts`): public, read only, so a crawler reads "Disallow: /" instead of a redirect. */
+/** The robots file (`src/app/robots.txt/route.ts`): public, read only, so a crawler reads "Disallow: /" instead of a redirect. */
 export const ROBOTS_PATH = "/robots.txt";
 
 /** Data endpoints: a signed-out caller gets 401, not a sign-in page. */

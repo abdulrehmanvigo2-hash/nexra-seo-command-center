@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import robots from "@/app/robots";
+import { GET } from "@/app/robots.txt/route";
 import { decideAccess, ROBOTS_PATH } from "@/lib/auth/access";
 import { ROBOTS_TAG, securityHeaders } from "@/lib/security/headers";
 
@@ -11,8 +11,13 @@ const root = new URL("../../../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
 
 describe("kept out of search indexes", () => {
-  test("robots.txt disallows the whole app, with no sitemap", () => {
-    assert.deepEqual(robots(), { rules: { userAgent: "*", disallow: "/" } });
+  test("robots.txt is exactly two lines, Disallow: / for every crawler, never cached", async () => {
+    const response = GET();
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "User-agent: *\nDisallow: /\n");
+    assert.equal(response.headers.get("content-type"), "text/plain; charset=utf-8");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow");
   });
 
   test("robots.txt is public at exactly its path, read only; every other signed-out page still goes to sign-in", () => {
