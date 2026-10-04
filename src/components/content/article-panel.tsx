@@ -42,6 +42,8 @@ import {
   type AttestationBinding,
 } from "@/lib/content/articles/editor-safety";
 import { importArticleJson } from "@/lib/content/articles/import";
+import type { AssembledDraft } from "@/lib/briefs/assemble-article";
+import { draftUrl, handoff, importBriefParam, type HandoffNote } from "@/lib/briefs/handoff";
 import { ATTESTATION_BASES, SEARCH_INTENTS, TOPIC_DECISIONS, validateArticleContent } from "@/lib/content/articles/validate";
 import { formatFullDate, formatTimeUtc } from "@/lib/format";
 import type { ArticleIssue, ArticleSourceReference, ValidatedArticleContent } from "@/types/content-article";
@@ -174,6 +176,19 @@ export function ArticlePanel({ projectId }: { projectId: string }) {
     return () => controller.abort();
   }, [projectId]);
 
+  // M6, PR 5: opened from an assembled brief draft (?importBrief=<brief run id>) — the create editor opens with the draft
+  // in its Import box. Nothing is filled or saved until the operator presses Fill the form and then Create.
+  const [fromBrief, setFromBrief] = useState<string | null>(null);
+  useEffect(() => {
+    const briefRunId = importBriefParam(window.location.search);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the address the screen was opened with
+    if (briefRunId !== null) setFromBrief(briefRunId);
+  }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the editor opens once the workspace is read
+    if (fromBrief !== null && load.status === "ready" && load.workspace.planCandidates.length > 0) setEditing((current) => (current.mode === "none" ? { mode: "create" } : current));
+  }, [fromBrief, load]);
+
   const workspace = load.status === "ready" ? load.workspace : null;
   const selected = workspace?.articles.find((entry) => entry.article.id === selectedId) ?? workspace?.articles[0] ?? null;
 
@@ -220,12 +235,18 @@ export function ArticlePanel({ projectId }: { projectId: string }) {
             {note}
           </p>
         )}
+        {fromBrief !== null && workspace !== null && workspace.planCandidates.length === 0 && (
+          <p className="text-xs text-warning" role="status">
+            The Writer&apos;s draft cannot be opened here yet: an article needs a completed content plan run of this project to be created against.
+          </p>
+        )}
 
         {workspace !== null && editing.mode === "create" && (
           <ArticleEditor
             projectId={projectId}
             workspace={workspace}
             mode={{ kind: "create" }}
+            fromBrief={fromBrief}
             onCancel={() => setEditing({ mode: "none" })}
             onSaved={(history, created) => saved(history, created ? "Article created as version 1." : "An article for this plan already existed; it is shown unchanged.")}
           />
@@ -585,12 +606,14 @@ function ArticleEditor({
   projectId,
   workspace,
   mode,
+  fromBrief = null,
   onCancel,
   onSaved,
 }: {
   projectId: string;
   workspace: ArticleWorkspace;
   mode: EditorMode;
+  fromBrief?: string | null;
   onCancel: () => void;
   onSaved: (history: ArticleHistory, created: boolean) => void;
 }) {
@@ -612,6 +635,28 @@ function ArticleEditor({
   const [importText, setImportText] = useState("");
   const [importErrors, setImportErrors] = useState<readonly string[]>([]);
   const [imported, setImported] = useState<string | null>(null);
+
+  const [briefNote, setBriefNote] = useState<HandoffNote | null>(null);
+
+  // M6, PR 5: the assembled draft of a brief goes into the Import box; the operator still presses Fill the form.
+  useEffect(() => {
+    if (fromBrief === null) return;
+    const controller = new AbortController();
+    fetch(draftUrl(projectId, fromBrief), { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const body = (await response.json().catch(() => null)) as { draft?: AssembledDraft } | null;
+        const result = handoff(response.ok ? (body?.draft ?? null) : null, response.status);
+        setBriefNote(result.note);
+        if (result.json !== null) {
+          setImportText(result.json);
+          setImporting(true);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof Error && error.name === "AbortError")) setBriefNote(handoff(null, 0).note);
+      });
+    return () => controller.abort();
+  }, [fromBrief, projectId]);
 
   // Fix F9 (A5-03): one pasted JSON fills every field; nothing is sent until Create or Save.
   function applyImport() {
@@ -701,6 +746,11 @@ function ArticleEditor({
         <div className="rounded border border-border px-3 py-2">
           <LinkTaskControl projectId={projectId} articleId={mode.history.article.id} />
         </div>
+      )}
+      {briefNote !== null && (
+        <p className={`rounded border border-border px-3 py-2 text-xs ${briefNote.tone === "warning" ? "text-warning" : "text-fg-muted"}`} role="status">
+          {briefNote.text}
+        </p>
       )}
       {imported !== null && (
         <p className="rounded border border-border bg-surface-raised px-3 py-2 text-xs text-fg-muted" role="status">
