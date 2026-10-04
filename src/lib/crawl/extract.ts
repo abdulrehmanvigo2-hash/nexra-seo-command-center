@@ -86,6 +86,9 @@ export function isWellFormedHreflang(value: string): boolean {
   return HREFLANG_PATTERN.test(value.trim());
 }
 
+/** The most visible text kept per page (M8), in characters; the database checks the same bound. */
+export const MAX_VISIBLE_TEXT = 20_000;
+
 /** Elements whose text is never visible and never counted as words. */
 const NON_TEXT_ELEMENTS: ReadonlySet<string> = new Set(["script", "style", "template", "noscript", "svg", "head"]);
 
@@ -122,6 +125,11 @@ export type ExtractedDocument = {
   readonly links: readonly ExtractedLink[];
   /** Whitespace-separated words in the document's visible text (outside script, style, template, noscript, svg and the head). */
   readonly wordCount: number;
+  /**
+   * The same visible text (M8), its runs of whitespace collapsed to one space and each text node set apart by one,
+   * at most MAX_VISIBLE_TEXT characters (cut at a word boundary when one is near). Empty when the page shows none.
+   */
+  readonly visibleText: string;
   /** The html element's `lang` attribute as written; null when absent. Empty is empty. */
   readonly htmlLang: string | null;
   /** `<link rel="alternate" hreflang>` elements, and how many of them are empty, ill-formed or without an href. */
@@ -253,6 +261,8 @@ export function extractDocument(html: string): ExtractedDocument {
   const schemaTypes = new Set<string>();
   const links: ExtractedLink[] = [];
   let wordCount = 0;
+  const textParts: string[] = [];
+  let textLength = 0;
   let htmlLang: string | null = null;
   let hreflangCount = 0;
   let hreflangMalformed = 0;
@@ -268,6 +278,11 @@ export function extractDocument(html: string): ExtractedDocument {
       if (visible) {
         const words = node.value.trim().split(/\s+/).filter((word) => word !== "").length;
         wordCount += words;
+        if (words > 0 && textLength <= MAX_VISIBLE_TEXT) {
+          const part = node.value.replace(/\s+/g, " ").trim();
+          textParts.push(part);
+          textLength += part.length + 1;
+        }
       }
       return;
     }
@@ -403,6 +418,7 @@ export function extractDocument(html: string): ExtractedDocument {
     schemaParseFailed,
     links,
     wordCount,
+    visibleText: boundText(textParts.join(" ")),
     htmlLang,
     hreflangCount,
     hreflangMalformed,
@@ -411,6 +427,16 @@ export function extractDocument(html: string): ExtractedDocument {
     ogImage,
     twitterCard,
   };
+}
+
+/** Visible text within MAX_VISIBLE_TEXT characters, cut at the last space in its final 200 characters when there is one. */
+export function boundText(text: string): string {
+  if (text.length <= MAX_VISIBLE_TEXT) return text;
+  const cut = text.slice(0, MAX_VISIBLE_TEXT);
+  const space = cut.lastIndexOf(" ");
+  const bounded = (space >= MAX_VISIBLE_TEXT - 200 ? cut.slice(0, space) : cut).trimEnd();
+  // Never end on half of a surrogate pair: the database stores valid UTF-8 only.
+  return /[\uD800-\uDBFF]$/.test(bounded) ? bounded.slice(0, -1) : bounded;
 }
 
 /** Whether a `rel` attribute tells a crawler not to follow the link. */

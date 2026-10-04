@@ -64,7 +64,17 @@ export type CrawlStore = {
    * what it links to within itself. Read-only: nothing here fetches a target.
    */
   listLinks(crawlId: string, limit: number): Promise<readonly CrawlLink[]>;
+  /**
+   * M8: keeps the visible text of an own-site crawl's fetched pages (migration 20261027120000). Optional: a store
+   * without it keeps none. It may throw (the table not there yet); the service then notes "text not kept".
+   */
+  savePageTexts?(crawlId: string, texts: readonly PageText[]): Promise<void>;
+  /** M8: the kept texts of one crawl, by URL, at most `limit`; empty when none were kept. */
+  listPageTexts?(crawlId: string, limit: number): Promise<readonly PageText[]>;
 };
+
+/** One fetched page's visible text, as kept (M8). */
+export type PageText = { readonly url: string; readonly text: string };
 
 /**
  * The store used when crawls are not persisted anywhere.

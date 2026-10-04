@@ -331,6 +331,8 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
           userAgent: config.userAgent,
           budget: config.budget,
           concurrency: config.concurrency,
+          // M8: an own-site crawl starts from the sitemap as well as the home page; a competitor's follows links only.
+          seedFromSitemap: target === undefined,
           ...engineOverrides,
         });
 
@@ -361,6 +363,19 @@ export function createCrawlService(options: CrawlServiceOptions): CrawlService {
           error: { ...UNEXPECTED_FAILURE },
         });
         return { ok: false, failure: { reason: "unavailable" } };
+      }
+
+      // M8: an own-site crawl keeps its fetched pages' visible text, after the pages they belong to. Never fatal: a
+      // store without the table (the migration not applied yet) keeps none, and the crawl is recorded as before.
+      if (target === undefined && store.savePageTexts) {
+        const texts = result.pages
+          .filter((page) => page.fetchState === "fetched" && page.visibleText !== null && page.visibleText !== "")
+          .map((page) => ({ url: page.url, text: page.visibleText! }));
+        try {
+          if (texts.length > 0) await store.savePageTexts(crawl.id, texts);
+        } catch (error) {
+          logEvent("warn", "crawl.texts_not_kept", { crawlId: crawl.id, projectId, reason: error instanceof Error ? error.name : "unknown" });
+        }
       }
 
       const status: Exclude<CrawlStatus, "running"> =

@@ -70,6 +70,8 @@ export type CrawledPage = {
   readonly robotsNoindex: boolean | null;
   readonly robotsNofollow: boolean | null;
   readonly wordCount: number | null;
+  /** The page's visible text (M8), bounded; null when not fetched or not HTML. Kept only for an own-site crawl. */
+  readonly visibleText: string | null;
   readonly htmlLang: string | null;
   readonly hreflangCount: number | null;
   readonly hreflangMalformed: number | null;
@@ -115,6 +117,12 @@ export type EngineOptions = {
   readonly sleep?: (ms: number) => Promise<void>;
   readonly timeoutMs?: number;
   readonly maxBodyBytes?: number;
+  /**
+   * M8: queue every in-scope URL the sitemap lists, at depth 1 after the start page, unless the walk already knows it.
+   * Set for an own-site crawl only. Each one still passes robots.txt, the host scope, the guard and the page budget;
+   * one beyond the budget is recorded as budget-skipped.
+   */
+  readonly seedFromSitemap?: boolean;
 };
 
 type Queued = { readonly url: string; readonly depth: number };
@@ -181,6 +189,7 @@ function toPage(
     // M2 content signals: read off the parsed HTML alone, so a URL that never
     // answered, or answered with something other than HTML, keeps them null.
     wordCount: extracted?.wordCount ?? null,
+    visibleText: extracted?.visibleText ?? null,
     htmlLang: extracted?.htmlLang ?? null,
     hreflangCount: extracted?.hreflangCount ?? null,
     hreflangMalformed: extracted?.hreflangMalformed ?? null,
@@ -275,6 +284,7 @@ export async function runCrawl(options: EngineOptions): Promise<CrawlResult> {
     sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms)),
     timeoutMs,
     maxBodyBytes,
+    seedFromSitemap = false,
   } = options;
 
   const startedAt = now();
@@ -387,6 +397,14 @@ export async function runCrawl(options: EngineOptions): Promise<CrawlResult> {
   const outboundCounts = new Map<string, number>();
   const known = new Set<string>([startUrl]);
   let frontier: Queued[] = [{ url: startUrl, depth: 0 }];
+  if (seedFromSitemap && budget.maxDepth >= 1) {
+    // Sorted, so the same sitemap seeds the same order.
+    for (const url of [...sitemapUrls].sort()) {
+      if (known.has(url)) continue;
+      known.add(url);
+      frontier.push({ url, depth: 1 });
+    }
+  }
   let stopReason: CrawlStopReason = "completed";
   let startFailure: CrawlResult["startFailure"] = null;
 
