@@ -1,6 +1,6 @@
 # OC1 — One-Click Article: design note
 
-Status: **design only — no code in this PR.** Proposed 14 Oct 2026 from the Nexra SEO Intelligence Lab
+Status: **design only — no code in this PR. Approved by the owner with every default (D1–D7), 14 Oct 2026.** Proposed 14 Oct 2026 from the Nexra SEO Intelligence Lab
 (research R-001 / R-003, after comparing the M16 "AI Search Dominance Engine" architecture with this product).
 
 ## Why
