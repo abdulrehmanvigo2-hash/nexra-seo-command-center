@@ -1179,4 +1179,8 @@ not reused.
     part runs); every other article still names at least one. `nexra_article_check_sources` (count 0–20),
     `nexra_article_create` and `nexra_article_save_version` replaced with the same signatures, their bodies the earlier
     ones plus the brief rule (drift-tested); no table, trigger or grant change. Harness suite `brief-sources` —
-    **not applied** (SHA-256 `4edf3aa5…6a6bd8`)
+    **applied to production and recorded on 15 Oct 2026** (SHA-256 `4edf3aa5…6a6bd8`;
+    53 history rows; after manual backup run `38688589389`; tested first on a disposable cluster with a tampered hash failing
+    closed; the three production function sources matched the repository's before the apply; verified read-only: the
+    rules present, `security definer` and EXECUTE for `service_role` only on create and save, `check_sources` executable by
+    no API role, empty `search_path`, owner `postgres`; articles 7, versions 18, source rows 24 unchanged)
