@@ -143,7 +143,7 @@ export function writeOutcome(httpStatus: number, body: unknown, done: string): {
     case "run-active":
       return { text: "Another provider run is open on this project; try again when it finishes.", tone: "warning" };
     case "source-limit":
-      return { text: "Five pages were already fetched for this opportunity today.", tone: "warning" };
+      return { text: "Ten pages were already fetched for this opportunity today.", tone: "warning" };
     case "answer-malformed":
       return { text: "The run's answer is not in the unit format, so nothing was recorded. Queue another extraction.", tone: "warning" };
     case "no-units":
