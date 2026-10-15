@@ -11,7 +11,7 @@ import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
 import type { ParsedBrief } from "@/lib/briefs/brief";
 import { draftParts, partLabel, partsToQueue } from "@/lib/briefs/draft-presenter";
 import { evidenceUnitsUrl, type EvidenceSource, type EvidenceUnit } from "@/lib/evidence/contract";
-import { GATE1_LABEL, gate1Confirmation, gate1Requests, gate1State, partsEstimate, runGate1, writingConfirmation, type Gate1Outcome } from "@/lib/pipeline/gate1";
+import { GATE1_LABEL, gate1Confirmation, gate1Requests, gate1State, partsEstimate, rewriteConfirmation, runGate1, writingConfirmation, type Gate1Outcome } from "@/lib/pipeline/gate1";
 import { runWriting, writingCounts, writingNote, type WritingProgress } from "@/lib/pipeline/write-parts";
 import { writingIo } from "@/components/content/writer-io";
 import { confirmTicks, gate1Evidence } from "@/lib/pipeline/stage-a";
@@ -77,6 +77,7 @@ export function Gate1Panel({
   const stopRef = useRef(false);
   const [writing, setWriting] = useState<{ readonly running: boolean; readonly progress: WritingProgress | null; readonly note: { readonly text: string; readonly tone: "neutral" | "warning" } | null }>({ running: false, progress: null, note: null });
   const [confirmWriting, setConfirmWriting] = useState(false);
+  const [confirmRewrite, setConfirmRewrite] = useState(false);
   /** The writing finished in this tab: the article is saved without a further press (PR 6b). */
   const [justWrote, setJustWrote] = useState(false);
 
@@ -116,6 +117,35 @@ export function Gate1Panel({
   const titleOf = new Map(sources.map((source) => [source.id, source.title ?? source.finalUrl ?? source.requestedUrl]));
   const estimate = partsEstimate(parts.length);
   const counts = writingCounts(draftParts(brief, writerRuns, briefRun.id));
+
+  /** Queue the parts with no usable run, then write them (no claim is admitted here). */
+  const rewrite = async () => {
+    if (inFlight.current || parts.length === 0) return;
+    inFlight.current = true;
+    setBusy(true);
+    setOutcome(null);
+    const result = await runGate1(
+      {
+        usage: async () => {
+          const response = await fetch(`/api/agent-runs/daily-usage?project=${encodeURIComponent(projectId)}`, { cache: "no-store" });
+          return response.ok ? ((await response.json().catch(() => null)) as { usage?: DailyUsage } | null)?.usage ?? null : null;
+        },
+        post: async (url, body) => {
+          const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
+          return { status: response.status, body: await response.json().catch(() => null) };
+        },
+      },
+      gate1Requests(projectId, briefRun.id, [], parts),
+    );
+    inFlight.current = false;
+    setBusy(false);
+    if (result.refusal !== null) {
+      setOutcome(result);
+      onChanged();
+      return;
+    }
+    await write();
+  };
 
   const approve = async () => {
     const check = confirmTicks(offered, ticked);
@@ -176,10 +206,16 @@ export function Gate1Panel({
                 <Button size="sm" variant="ghost" icon="close" onClick={() => { stopRef.current = true; }}>Stop after this part</Button>
               </div>
             ) : (
-              counts.waiting > 0 && (
+              counts.waiting > 0 ? (
                 <Button size="sm" variant="primary" icon="edit" onClick={() => setConfirmWriting(true)}>
                   {`Continue writing (${counts.waiting} queued)…`}
                 </Button>
+              ) : (
+                parts.length > 0 && (
+                  <Button size="sm" variant="primary" icon="refresh" disabled={busy} onClick={() => setConfirmRewrite(true)}>
+                    {`Write the ${parts.length} missing ${parts.length === 1 ? "part" : "parts"}…`}
+                  </Button>
+                )
               )
             )}
             {writing.note !== null && (
@@ -238,6 +274,13 @@ export function Gate1Panel({
       <PanelFooter>
         <span>Approving admits the ticked claims and queues the Writer&apos;s runs. Nothing is published; the article still needs its check and Gate 2.</span>
       </PanelFooter>
+      {confirmRewrite && (
+        <SpendConfirmDialog confirmation={rewriteConfirmation(projectId, brief, parts)} projectId={projectId} busy={busy || writing.running} onClose={() => setConfirmRewrite(false)}
+          onConfirm={() => {
+            setConfirmRewrite(false);
+            void rewrite();
+          }} />
+      )}
       {confirmWriting && (
         <SpendConfirmDialog confirmation={writingConfirmation(projectId, counts.waiting)} projectId={projectId} busy={writing.running} onClose={() => setConfirmWriting(false)}
           onConfirm={() => {

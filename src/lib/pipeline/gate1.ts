@@ -134,3 +134,25 @@ export function writingConfirmation(projectId: string, waiting: number): Confirm
     tone: "primary",
   };
 }
+
+/**
+ * After Gate 1, a part with no usable run (never queued, or its answer did not hold the part's fixed form — 15 Oct: a
+ * section of four paragraphs) is written again from the panel itself: one confirmation queues those parts and runs them,
+ * so the owner never goes back to the brief's buttons. The same requests and cap check as Gate 1, without the claims.
+ */
+export function rewriteConfirmation(projectId: string, brief: ParsedBrief, parts: readonly ArticlePart[]): Confirmation {
+  const estimate = partsEstimate(parts.length);
+  return {
+    title: `Write the ${parts.length} missing ${parts.length === 1 ? "part" : "parts"} again?`,
+    facts: [
+      { label: "Project", value: projectId },
+      { label: "Parts", value: parts.map((part) => partLabel(part, brief)).join("; ") },
+      { label: "Estimate", value: `about $${estimate.low.toFixed(2)}–$${estimate.high.toFixed(2)}` },
+    ],
+    consequence: "Queues one fresh Writer run per part and runs them now, one at a time — each a paid model call. Parts already drafted are kept. Keep this page open. Stops at the first refusal or failed part. Writes a draft for your review, publishes nothing.",
+    confirmLabel: `Write ${parts.length}`,
+    dismissLabel: "Go back",
+    usage: "created",
+    tone: "primary",
+  };
+}
