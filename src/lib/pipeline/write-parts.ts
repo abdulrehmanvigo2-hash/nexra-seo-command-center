@@ -119,7 +119,7 @@ export function writingNote(outcome: WritingOutcome, label: (part: ArticlePart) 
     case "timed-out":
       return { text: `${prefix}${label(halt.part)} is still running after the wait. It may still finish; press Continue writing later.`, tone: "warning" };
     case "not-queued":
-      return { text: `${prefix}No run is queued for: ${halt.parts.map(label).join("; ")}. Queue them from the article draft above, then continue.`, tone: "warning" };
+      return { text: `${prefix}No run is queued for: ${halt.parts.map(label).join("; ")}. Its answer did not hold the part's form, or no run was queued: press Write the missing parts below.`, tone: "warning" };
     default:
       return { text: `${prefix}${halt.message}`, tone: "warning" };
   }

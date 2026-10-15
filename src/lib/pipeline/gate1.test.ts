@@ -137,3 +137,18 @@ describe("the Gate 1 screen", async () => {
     assert.doesNotMatch(panel, /@\/lib\/mock/);
   });
 });
+
+describe("writing the missing parts again", async () => {
+  const { rewriteConfirmation } = await import("@/lib/pipeline/gate1");
+  const { readFileSync } = await import("node:fs");
+  test("one confirmation names the parts and the estimate; the panel offers it only after approval with no part queued", () => {
+    const c = rewriteConfirmation("nexra-agency", brief, ["section-2"]);
+    assert.equal(c.confirmLabel, "Write 1");
+    assert.equal(c.usage, "created");
+    assert.match(c.facts.find((f) => f.label === "Parts")!.value, /^Section 2 — /);
+    const panel = readFileSync("src/components/content/gate1-panel.tsx", "utf8");
+    assert.match(panel, /counts\.waiting > 0 \? \(/);
+    assert.match(panel, /gate1Requests\(projectId, briefRun\.id, \[\], parts\)/);
+    assert.match(panel, /await write\(\);/);
+  });
+});
