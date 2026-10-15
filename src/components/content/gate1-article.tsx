@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createArticle, saveArticleVersion } from "@/app/(app)/projects/article-actions";
 import { CheckAllControl } from "@/components/content/check-all-control";
+import { Gate2Panel } from "@/components/content/gate2-panel";
 import { executeRun, readRun } from "@/components/content/writer-io";
 import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +27,8 @@ import type { ArticleHistory, ArticleWorkspace } from "@/types/content-article-r
  * article* — and linked to the opportunity's task (`saveArticle`). With the article saved, its current version's check
  * table is read and the existing *Check all units…* control runs it (its own confirmation). When the check has finished
  * and a part did not pass, *Re-draft…* (PR 6c) runs that part again — at most twice per part — and saves the next
- * version; the owner then presses Check all again. Nothing is approved or published here.
+ * version; the owner then presses Check all again. Once every unit passed, Gate 2 (PR 7, `Gate2Panel`) approves and
+ * publishes, each step behind its own confirmation and the server's checks.
  */
 
 type Load<T> = { readonly status: "loading" } | { readonly status: "failed" } | { readonly status: "ready"; readonly value: T };
@@ -252,6 +254,9 @@ function ArticleChecks({
               onChecks={(next) => setChecks({ status: "ready", value: next })}
               onArticleChanged={onChanged}
             />
+          )}
+          {checks.value.counts.total > 0 && checks.value.counts.passed === checks.value.counts.total && (
+            <Gate2Panel projectId={projectId} articleId={article.id} onChanged={onChanged} />
           )}
         </>
       )}
