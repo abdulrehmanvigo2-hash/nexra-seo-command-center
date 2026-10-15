@@ -2518,6 +2518,15 @@ linked to its opportunity's task at once (runbook §7.2a). An article's plan may
 PR #165): a completed `opportunity-brief` run of the project is accepted as a `content-plan-review` run is, one article
 per plan run, and *Open in editor* pre-selects it.
 
+**OC1 — the one-click article — is LIVE in code** (`docs/roadmap/OC1-one-click-article.md`, approved 14 Oct with
+D1–D7; PR #169–#179 merged 15 Oct, `master` `6210357`): Gate 1 (*Approve & write…*), the writing of every part, the
+article saved and linked without the editor, *Check all*, at most two re-drafts per failing part, and Gate 2 (*Approve &
+publish…*: approve → propose → request → Publish, *Check status*, the indexing link). Migrations `20261029120000` (ten
+sources an opportunity a day) and `20261030120000` (a brief-planned article needs no source draft) were applied to
+production and recorded on 15 Oct 2026 (52 and 53 history rows), each after a manual backup. `NEXRA_PUBLISH_MODE` is
+unchanged (D6). Not yet on a screen: the Stage A start (keyword → SERP → ten sources → extraction → brief), whose
+planner, driver and picks exist.
+
 **Post-V1 backlog** (each needs its own design or approval; none is started):
 
 - **Designed publishing route:** the published-state table (C7b), the product's C7 publication approval consuming a

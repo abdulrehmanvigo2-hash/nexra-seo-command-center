@@ -1,6 +1,8 @@
 # OC1 — One-Click Article: design note
 
-Status: **design only — no code in this PR. Approved by the owner with every default (D1–D7), 14 Oct 2026.** Proposed 14 Oct 2026 from the Nexra SEO Intelligence Lab
+Status: **approved by the owner with every default (D1–D7), 14 Oct 2026; Gate 1, Stage B and Gate 2 built and merged
+15 Oct 2026 (PR #170–#179; see *As built* at the end). The Stage A start — one keyword to the brief without the M4
+presses — is not on a screen yet.** Proposed 14 Oct 2026 from the Nexra SEO Intelligence Lab
 (research R-001 / R-003, after comparing the M16 "AI Search Dominance Engine" architecture with this product).
 
 ## Why
@@ -119,3 +121,37 @@ Each: bounded feature → tests → typecheck → lint → build → secret scan
 ## Owner actions
 
 Approve this note and decisions D1–D7 (or change any), then approve PR 2.
+
+## As built (15 Oct 2026)
+
+| PR | What | Merge |
+|---|---|---|
+| #169 | This note | `d79c87e` |
+| #170 | Pipeline planner and driver (`src/lib/pipeline/plan.ts`, `driver.ts`; pure, injected I/O) | `af9477e` |
+| #171 | Stage A picks: up to **ten** sources (owner, 15 Oct: "at least ten"), own site excluded, one per domain; Gate 1's pre-ticked list (`stage-a.ts`) | `ee27cc1` |
+| #172 | Migration `20261029120000` (ten sources an opportunity a day) — applied and recorded 15 Oct (52 history rows) | `7609697` |
+| #173 | Gate 1, *Approve & write…* on the Evidence tab (`gate1.ts`, `gate1-panel.tsx`) | `c7f194d` |
+| #174 | Stage B writing: every part run one by one after Gate 1 (`write-parts.ts`) | `427c0f7` |
+| #175, #176 | Option A (owner, 15 Oct): migration `20261030120000`, an article planned by a brief needs no source draft — applied and recorded 15 Oct (53 history rows) | `9dc605f`, `55484a3` |
+| #177 | Save the written article, link it to the opportunity's task, *Check all units* beneath Gate 1 (`save-article.ts`, `gate1-article.tsx`) | `e7d8962` |
+| #178 | Re-draft the parts that did not pass, at most twice each (`redraft.ts`) | `6245818` |
+| #179 | Gate 2, *Approve & publish…* (`gate2.ts`, `gate2-panel.tsx`) | `6210357` |
+
+**Deviations from the note, each accepted by the owner when its PR was merged:**
+
+- **Gate 1's approval record** is the Writer part runs that name the brief (who, when, which brief — permanent in the
+  run store), not a new approval table.
+- **Re-draft** queues a fresh `article-part-draft` run for the part (not `article-revision-draft`), triggered by a unit
+  recorded `needs-review`; a `failed` unit is an unfinished check, which *Check all* runs again first. The Writer does not
+  read the check's notes, so a part that failed for a missing record may fail again; after two re-drafts it is the
+  owner's to edit.
+- **Gate 2** shows no rendered article on the panel: it links to the article in the Content Studio ("Read the article
+  first"). It sends no cross-link. The Search Console link opens URL inspection for the page; the owner chooses the
+  property there and presses *Request indexing*.
+- **Stage A is not wired to a screen.** The planner, driver and source picks exist and are tested, but nothing on a
+  screen calls them: SERP, sources, extraction and the brief are still the M4 / M5 presses on the Evidence tab. The
+  owner's actions today are therefore those presses, then **Gate 1** and **Gate 2** (plus *Check all*, and the merge on
+  GitHub in dry-run). A *Start* control that runs Stage A from the keyword is the next OC1 change, under its own
+  approval.
+
+D6 holds: `NEXRA_PUBLISH_MODE` is unchanged.

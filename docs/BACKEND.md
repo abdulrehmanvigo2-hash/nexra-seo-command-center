@@ -3082,6 +3082,26 @@ findings-block sentences are unchanged.
 Verified live: run `941cc617…` on the bounded build (PR #30) completed at 1,138
 characters with 3 findings and both the COVERAGE and NEXT lines.
 
+### One-click article (OC1; Gate 1, Stage B and Gate 2 deployed 15 Oct 2026)
+
+`src/lib/pipeline/` — browser-driven, resumable chains over the existing routes and Server Actions (decision D1), each
+with injected calls and tests; no new route, no new task type:
+
+- `stage-a.ts` — source picks (up to ten, own site excluded, one per domain) and Gate 1's pre-ticked list (admissible
+  units only). `plan.ts` / `driver.ts` — the planner and driver, not yet wired to a screen.
+- `gate1.ts` — *Approve & write…*: the ticked units admitted through the decide route, then one `article-part-draft`
+  run queued per part; the cap checked first. Approved = a Writer part run names the brief.
+- `write-parts.ts` — runs the queued parts one at a time (Run now's request), stopping at the first refusal or failure.
+- `save-article.ts` — creates the article from `GET /api/briefs/draft` with the brief as plan and no source draft
+  (migration `20261030120000`: allowed only when the plan run is an `opportunity-brief`) and links it to the
+  opportunity's task.
+- `redraft.ts` — unit → part (metadata and lead → opening; n-th section → section-n; FAQ and CTA → closing); a fresh
+  part run per `needs-review` part, at most `MAX_REDRAFTS` (2) per part, then `saveArticleVersion` with no source draft.
+- `gate2.ts` — *Approve & publish…*: C5 approval (the owner's attestation tick), C6 proposal, P-L2 request, Publish;
+  steps done are skipped; *Check status* presses Publish again.
+
+Screens: `gate1-panel.tsx`, `gate1-article.tsx`, `gate2-panel.tsx`, `writer-io.ts` on the Evidence tab.
+
 ### Safety boundaries
 
 - **Off by default.** `CRAWL_ENABLED` must be set *and* `CRAWL_ALLOWED_HOSTS`

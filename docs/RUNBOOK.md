@@ -622,6 +622,30 @@ from brief `a8515cfb…`, article `dfc126fc…`. Its order, which every later au
    (passed identical units carry).
 5. Approve, propose and publish as in §7.2.
 
+### 7.2b The one-click article (OC1, since 15 Oct 2026)
+
+`docs/roadmap/OC1-one-click-article.md`. On the **Evidence tab** of an accepted opportunity:
+
+1. **Evidence and brief** (still the M4 / M5 presses — Stage A is not on a screen yet): *Fetch Google results…*, add up
+   to **ten** source pages (the owner's own site excluded), fetch them, *Queue extraction…*, then *Queue a brief*.
+2. **Gate 1 — *Approve & write…*** beneath the brief: the claims the database would admit are ticked (untick any that
+   do not belong, e.g. from an unrelated page); one confirmation admits them, queues every part and runs them one by one
+   while the page is open (*Stop after this part*; *Continue writing* resumes).
+3. **Article** (beneath Gate 1): when every part is drafted the article is saved by itself as version 1 — the brief is
+   its plan, no source draft (migration `20261030120000`) — and linked to the opportunity's task. Press ***Check all
+   units…***.
+4. **Re-draft** (only when a unit needs review): *Re-draft N parts…* runs each failing part again and saves the next
+   version, at most **twice** per part; press *Check all* again (unchanged units carry). Past the limit, edit the part on
+   the project screen or admit more evidence.
+5. **Gate 2 — *Approve & publish…*** (only when every unit passed): read the article first (the link), set the published
+   date, tick the attestation if the version has "Our view" paragraphs, confirm. It approves, proposes, requests and
+   presses Publish, skipping steps already done and stopping at the first refusal.
+6. **Dry-run:** merge the nexra-ai pull request on GitHub, then press ***Check status*** until it reads Live. Then open
+   the Search Console link it shows and press *Request indexing*. Then §7.2's step for the live-slug record.
+
+Nothing in OC1 changes a cap, a mode or a confirmation: every model run is confirmed and counted as before; Gate 2 runs
+no model.
+
 ### 7.3 When something goes wrong
 
 Every step is recorded before the next starts, and a press always continues from the last recorded step: a second
