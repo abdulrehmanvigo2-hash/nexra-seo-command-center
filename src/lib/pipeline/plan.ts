@@ -8,7 +8,7 @@ import type { AgentRunStatus } from "@/types/agent-run";
  * never spends by itself and holds no state: the driver (`driver.ts`) re-reads the snapshot before every step and
  * asks again, so a repeat press resumes from what is recorded, exactly as *Check all units* does (decision D1).
  *
- * Order (the note's flow): SERP → sources → extraction → brief → Gate 1 → parts → import → check all → re-draft
+ * Order (the note's flow): SERP → sources → extraction (and recording its units) → brief → Gate 1 → parts → import → check all → re-draft
  * (at most MAX_REDRAFTS per part, decision D4) → Gate 2 → publish. Nothing here is wired to a route or a screen yet.
  */
 
@@ -28,6 +28,8 @@ export type SourceState = {
   readonly fetch: "pending" | "fetched" | "refused";
   /** The newest `evidence-extract` run for this source; only meaningful once fetched. */
   readonly extraction: RunState;
+  /** Whether that run's units were recorded (`POST /api/evidence/units`); only meaningful once it completed. */
+  readonly unitsRecorded: boolean;
 };
 
 export type PipelineSnapshot = {
@@ -66,6 +68,7 @@ export type PipelineAction =
   | { readonly kind: "pick-sources" }
   | { readonly kind: "fetch-source"; readonly index: number }
   | { readonly kind: "extract"; readonly index: number }
+  | { readonly kind: "record-units"; readonly index: number; readonly runId: string }
   | { readonly kind: "draft-brief" }
   | { readonly kind: "draft-part"; readonly index: number }
   | { readonly kind: "redraft-part"; readonly index: number; readonly attempt: number }
@@ -113,6 +116,7 @@ export function planPipeline(s: PipelineSnapshot): PipelinePlan {
     const run = source.extraction;
     if (run.state === "none") return act({ kind: "extract", index });
     if (isPending(run.status)) return awaitRun("extraction", run.runId, run.status);
+    if (run.status === "completed" && !source.unitsRecorded) return act({ kind: "record-units", index, runId: run.runId });
     // A failed or cancelled extraction leaves that source without units; the brief still runs (EVIDENCE NEEDED says so).
   }
 

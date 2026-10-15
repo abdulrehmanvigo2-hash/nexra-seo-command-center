@@ -19,7 +19,9 @@ const EMPTY: PipelineSnapshot = {
 };
 
 const done = (runId: string): RunState => ({ state: "run", runId, status: "completed" });
-const fetched = (url: string, extraction: RunState = done(`x-${url}`)) => ({ url, fetch: "fetched" as const, extraction });
+const fetched = (url: string, extraction: RunState = done(`x-${url}`), unitsRecorded = true) => ({ url, fetch: "fetched" as const, extraction, unitsRecorded });
+const pendingSource = (url: string) => ({ url, fetch: "pending" as const, extraction: { state: "none" as const }, unitsRecorded: false });
+const refusedSource = (url: string) => ({ url, fetch: "refused" as const, extraction: { state: "none" as const }, unitsRecorded: false });
 
 /** A snapshot with Stage A finished and the brief done. */
 const BRIEFED: PipelineSnapshot = {
@@ -48,7 +50,7 @@ describe("planPipeline — Stage A", () => {
       ...EMPTY,
       serp: "completed",
       sourcesPicked: true,
-      sources: [fetched("a"), { url: "b", fetch: "pending", extraction: { state: "none" } }, { url: "c", fetch: "pending", extraction: { state: "none" } }],
+      sources: [fetched("a"), pendingSource("b"), pendingSource("c")],
     };
     assert.deepEqual(planPipeline(picked), { next: "act", action: { kind: "fetch-source", index: 1 } });
   });
@@ -56,9 +58,9 @@ describe("planPipeline — Stage A", () => {
   test("no fetched source blocks; a refused source is skipped", () => {
     const none: PipelineSnapshot = { ...EMPTY, serp: "completed", sourcesPicked: true, sources: [] };
     assert.deepEqual(planPipeline(none), { next: "blocked", block: { reason: "no-source" } });
-    const refused: PipelineSnapshot = { ...none, sources: [{ url: "a", fetch: "refused", extraction: { state: "none" } }] };
+    const refused: PipelineSnapshot = { ...none, sources: [refusedSource("a")] };
     assert.deepEqual(planPipeline(refused), { next: "blocked", block: { reason: "no-source" } });
-    const mixed: PipelineSnapshot = { ...none, sources: [{ url: "a", fetch: "refused", extraction: { state: "none" } }, fetched("b", { state: "none" })] };
+    const mixed: PipelineSnapshot = { ...none, sources: [refusedSource("a"), fetched("b", { state: "none" }, false)] };
     assert.deepEqual(planPipeline(mixed), { next: "act", action: { kind: "extract", index: 1 } });
   });
 
@@ -67,6 +69,11 @@ describe("planPipeline — Stage A", () => {
     assert.deepEqual(planPipeline(pending), { next: "await-run", stage: "extraction", runId: "x1", status: "queued" });
     const failed: PipelineSnapshot = { ...pending, sources: [fetched("a", { state: "run", runId: "x1", status: "failed" })] };
     assert.deepEqual(planPipeline(failed), { next: "act", action: { kind: "draft-brief" } });
+  });
+
+  test("a completed extraction's units are recorded before the next source", () => {
+    const s: PipelineSnapshot = { ...BRIEFED, brief: { state: "none" }, sources: [fetched("a", done("x1"), false), fetched("b", { state: "none" }, false)] };
+    assert.deepEqual(planPipeline(s), { next: "act", action: { kind: "record-units", index: 0, runId: "x1" } });
   });
 
   test("the brief: awaited, blocked when failed or cancelled, then Gate 1", () => {
@@ -180,7 +187,7 @@ function world(options: { failChecksFor?: Record<number, number>; failRun?: (act
           s = { ...s, serp: "completed" };
           return { ok: true };
         case "pick-sources":
-          s = { ...s, sourcesPicked: true, sources: ["a", "b", "c"].map((url) => ({ url, fetch: "pending" as const, extraction: { state: "none" as const } })) };
+          s = { ...s, sourcesPicked: true, sources: ["a", "b", "c"].map(pendingSource) };
           return { ok: true };
         case "fetch-source":
           s = { ...s, sources: s.sources.map((src, i) => (i === action.index ? { ...src, fetch: i === 2 ? "refused" : "fetched" } : src)) };
@@ -192,6 +199,9 @@ function world(options: { failChecksFor?: Record<number, number>; failRun?: (act
               s = { ...s, sources: s.sources.map((src, i) => (i === action.index ? { ...src, extraction: { state: "run", runId, status } } : src)) };
             }),
           };
+        case "record-units":
+          s = { ...s, sources: s.sources.map((src, i) => (i === action.index ? { ...src, unitsRecorded: true } : src)) };
+          return { ok: true };
         case "draft-brief":
           return {
             ok: true,
@@ -261,7 +271,7 @@ describe("runPipeline", () => {
     const w = world();
     const first = await runPipeline(w.io, { pollMs: 0 });
     assert.equal(first.ended, "gate-1");
-    assert.deepEqual(kinds(first.performed), ["fetch-serp", "pick-sources", "fetch-source", "fetch-source", "fetch-source", "extract", "extract", "draft-brief"]);
+    assert.deepEqual(kinds(first.performed), ["fetch-serp", "pick-sources", "fetch-source", "fetch-source", "fetch-source", "extract", "record-units", "extract", "record-units", "draft-brief"]);
     assert.equal(w.snapshot.parts.length, 2);
 
     // Pressing again before the gate does nothing.
@@ -306,7 +316,7 @@ describe("runPipeline", () => {
     const out = await runPipeline(w.io, { pollMs: 0 });
     assert.equal(out.ended, "halted");
     assert.deepEqual(out.halt, { kind: "refused", action: "draft-brief", message: "Today's run cap is reached." });
-    assert.equal(out.performed.at(-1)?.kind, "extract");
+    assert.equal(out.performed.at(-1)?.kind, "record-units");
   });
 
   test("a refused execute (the daily cap) halts with the run left queued", async () => {
