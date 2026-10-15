@@ -146,6 +146,7 @@ const STAGES: Record<PipelineAction["kind"], PipelineStage> = {
   "pick-sources": "sources",
   "fetch-source": "sources",
   extract: "extraction",
+  "record-units": "extraction",
   "draft-brief": "brief",
   "draft-part": "parts",
   "redraft-part": "redraft",

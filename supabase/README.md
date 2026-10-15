@@ -1167,3 +1167,7 @@ not reused.
     `opportunity-brief` run of the project as well as a `content-plan-review` run; one article per plan run; no table,
     trigger or grant change — **applied to production and recorded on 4 Oct 2026** (SHA-256 `52f2c91a…50ea41`; 51
     history rows; after manual backup run `37215728597`)
+51. `20261029120000_evidence_ten_sources.sql` — OC1 (owner, 15 Oct 2026): `nexra_evidence_source_record` replaced with
+    the same signature, its body 20261025120000's except the daily count — ten sources a UTC day per opportunity, not
+    five — and its comment; no table, trigger, grant or owner change. Harness suite `evidence-ten`; the `evidence` suite
+    is pinned to the schema before it — **not applied** (SHA-256 `b5570d4c…3976c1`)
