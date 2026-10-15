@@ -143,3 +143,20 @@ describe("Start research on the Evidence tab", async () => {
     assert.doesNotMatch(panel, /decision: "admitted"|article-part-draft|approveArticle|\/api\/publications/);
   });
 });
+
+describe("reading claims only when needed", async () => {
+  const { sourcesToRead } = await import("@/lib/pipeline/research");
+  const src = (id: string, fetchState = "fetched") => ({ id, fetchState }) as EvidenceSource;
+  const ext = (id: string, sourceId: string, status: string, createdAt: string) => ({ id, taskType: "evidence-extract", input: { sourceId }, status, createdAt }) as unknown as AgentRun;
+  test("only fetched sources whose newest extraction completed and whose claims for it are not read yet", () => {
+    const sources = [src("s1"), src("s2"), src("s3"), src("s4", "robots-disallowed")];
+    const runs = [ext("r1", "s1", "completed", "1"), ext("r2", "s2", "queued", "2"), ext("r3", "s3", "completed", "3"), ext("r4", "s3", "completed", "4")];
+    assert.deepEqual(sourcesToRead(sources, runs, new Map()), ["s1", "s3"]);
+    assert.deepEqual(sourcesToRead(sources, runs, new Map([["s1", new Set(["r1"])], ["s3", new Set(["r3"])]])), ["s3"]);
+    assert.deepEqual(sourcesToRead(sources, runs, new Map([["s1", new Set(["r1"])], ["s3", new Set(["r4"])]])), []);
+  });
+  test("an unreadable snapshot says to press again later, nothing lost", () => {
+    const note = researchNote({ ended: "halted", halt: { kind: "unreadable", message: "The article in progress could not be read." }, performed: [], snapshot: null });
+    assert.match(note.text, /press Start research again in a few minutes/);
+  });
+});
