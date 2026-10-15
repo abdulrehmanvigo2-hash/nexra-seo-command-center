@@ -113,6 +113,26 @@ export function researchRequest(action: PipelineAction, snapshot: ResearchSnapsh
   }
 }
 
+/**
+ * The fetched sources whose claims must be read again for the next snapshot: only those whose newest extraction
+ * completed and whose claims are not already known to hold that run. Every other source's claims are not needed (no
+ * completed run) or already read (`known`: source id → the run ids its read claims carry). Keeps each step's reads
+ * small — the Evidence routes allow 120 reads per ten minutes, and ten sources read on every step used them up.
+ */
+export function sourcesToRead(sources: readonly EvidenceSource[], researchRuns: readonly AgentRun[], known: ReadonlyMap<string, ReadonlySet<string>>): readonly string[] {
+  const ids: string[] = [];
+  for (const source of sources) {
+    if (source.fetchState !== "fetched") continue;
+    const newest = researchRuns
+      .filter((run) => run.taskType === "evidence-extract" && run.input.sourceId === source.id)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))[0];
+    if (newest === undefined || newest.status !== "completed") continue;
+    if (known.get(source.id)?.has(newest.id)) continue;
+    ids.push(source.id);
+  }
+  return ids;
+}
+
 /** A refusal to record an extraction's claims that a repeat cannot change: skip that page and go on. */
 export function isFinalRecordRefusal(status: number, body: unknown): boolean {
   const error = (body as { error?: unknown } | null)?.error;
@@ -195,7 +215,10 @@ function haltText(halt: PipelineHalt): string {
     case "run-failed":
       return `Run ${halt.runId.slice(0, 8)} failed: ${halt.message}`;
     case "unreadable":
-      return halt.message;
+      // The driver's own words name "the article"; here it is the research's records, and usually a read limit.
+      return halt.message === "The article in progress could not be read."
+        ? "What is recorded for this opportunity could not be read just now (the reads may be over their limit for a few minutes). Nothing is lost: press Start research again in a few minutes and it goes on from here."
+        : halt.message;
     case "timed-out":
       return halt.runId === null ? "Google's results did not arrive in time; press Start research again." : `Run ${halt.runId.slice(0, 8)} did not finish in time; it may still complete. Press Start research again.`;
     case "blocked":

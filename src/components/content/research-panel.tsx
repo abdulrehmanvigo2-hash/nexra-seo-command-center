@@ -24,6 +24,7 @@ import {
   researchSnapshot,
   researchStepText,
   researchWork,
+  sourcesToRead,
   type ResearchSnapshot,
 } from "@/lib/pipeline/research";
 import { serpUrl, type SerpView } from "@/lib/serp/contract";
@@ -36,12 +37,25 @@ import type { AgentRun } from "@/types/agent-run";
  * every step and keep their own buttons.
  */
 
-async function readJson(url: string): Promise<{ ok: boolean; body: Record<string, unknown> | null }> {
-  const response = await fetch(url, { cache: "no-store" });
-  return { ok: response.ok, body: (await response.json().catch(() => null)) as Record<string, unknown> | null };
+type Read = { ok: boolean; status: number; body: Record<string, unknown> | null };
+
+/** One GET; a 429 waits for its Retry-After (at most a minute) and tries again, at most twice. */
+async function readJson(url: string, sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))): Promise<Read> {
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(url, { cache: "no-store" });
+    if (response.status === 429 && attempt < 2) {
+      const after = Number(response.headers.get("retry-after"));
+      await sleep(Math.min(60, Number.isFinite(after) && after > 0 ? after : 20) * 1000);
+      continue;
+    }
+    return { ok: response.ok, status: response.status, body: (await response.json().catch(() => null)) as Record<string, unknown> | null };
+  }
 }
 
-async function readResearch(projectId: string, projectDomain: string, opportunityId: string, settledRuns?: ReadonlySet<string>): Promise<ResearchSnapshot | null> {
+/** Claims read so far in this press, by source, with the extraction run they were read for. */
+type UnitCache = Map<string, { readonly readFor: string; readonly units: readonly EvidenceUnit[] }>;
+
+async function readResearch(projectId: string, projectDomain: string, opportunityId: string, settledRuns?: ReadonlySet<string>, cache: UnitCache = new Map()): Promise<ResearchSnapshot | null> {
   try {
     const [serp, sources, research, strategist] = await Promise.all([
       readJson(serpUrl(projectId, opportunityId)),
@@ -55,16 +69,17 @@ async function readResearch(projectId: string, projectDomain: string, opportunit
     const strategistRuns = Array.isArray(strategist.body?.runs) ? (strategist.body.runs as AgentRun[]) : null;
     const view = (serp.body?.view as SerpView | undefined) ?? null;
     if (sourceList === null || researchRunsList === null || strategistRuns === null) return null;
-    const unitLists = await Promise.all(
-      sourceList
-        .filter((source) => source.fetchState === "fetched")
-        .map(async (source) => {
-          const read = await readJson(evidenceUnitsUrl(projectId, source.id));
-          if (!read.ok || !Array.isArray(read.body?.units)) throw new Error("units unreadable");
-          return read.body.units as EvidenceUnit[];
-        }),
-    );
-    return researchSnapshot({ projectDomain, opportunityId, serp: view, sources: sourceList, researchRuns: researchRunsList, strategistRuns, units: unitLists.flat(), settledRuns });
+    const known = new Map([...cache].map(([id, entry]) => [id, new Set([entry.readFor, ...entry.units.map((unit) => unit.runId)])] as const));
+    // One at a time, only the sources that need it: each read counts against the Evidence routes' limit.
+    for (const id of sourcesToRead(sourceList, researchRunsList, known)) {
+      const read = await readJson(evidenceUnitsUrl(projectId, id));
+      if (!read.ok || !Array.isArray(read.body?.units)) return null;
+      const newest = researchRunsList
+        .filter((run) => run.taskType === "evidence-extract" && run.input.sourceId === id)
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+      cache.set(id, { readFor: newest?.id ?? "", units: read.body.units as EvidenceUnit[] });
+    }
+    return researchSnapshot({ projectDomain, opportunityId, serp: view, sources: sourceList, researchRuns: researchRunsList, strategistRuns, units: [...cache.values()].flatMap((entry) => entry.units), settledRuns });
   } catch {
     return null;
   }
@@ -105,9 +120,10 @@ export function ResearchPanel({ projectId, projectDomain, opportunity, serp, onC
     setRunning("Starting…");
     let latest: ResearchSnapshot | null = snapshot;
     const settled = new Set<string>();
+    const cache: UnitCache = new Map();
     const io: PipelineIo = {
       readSnapshot: async () => {
-        latest = await readResearch(projectId, projectDomain, opportunity.id, settled);
+        latest = await readResearch(projectId, projectDomain, opportunity.id, settled, cache);
         return latest;
       },
       perform: async (action) => {
@@ -117,6 +133,11 @@ export function ResearchPanel({ projectId, projectDomain, opportunity, serp, onC
         try {
           const response = await fetch(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request.body), cache: "no-store" });
           const body = (await response.json().catch(() => null)) as { run?: AgentRun } | null;
+          // Claims just recorded: read that source again on the next step.
+          if (action.kind === "record-units" && response.ok) {
+            const sourceId = latest?.stageA[action.index]?.sourceId;
+            if (sourceId) cache.delete(sourceId);
+          }
           if (action.kind === "record-units" && isFinalRecordRefusal(response.status, body)) {
             settled.add(action.runId);
             return { ok: true };
