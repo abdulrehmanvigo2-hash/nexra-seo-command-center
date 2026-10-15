@@ -10,12 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
 import type { ParsedBrief } from "@/lib/briefs/brief";
 import { draftParts, partLabel, partsToQueue } from "@/lib/briefs/draft-presenter";
-import { executeOutcome } from "@/lib/crawl/review-request";
 import { evidenceUnitsUrl, type EvidenceSource, type EvidenceUnit } from "@/lib/evidence/contract";
 import { GATE1_LABEL, gate1Confirmation, gate1Requests, gate1State, partsEstimate, runGate1, writingConfirmation, type Gate1Outcome } from "@/lib/pipeline/gate1";
-import { runWriting, writingCounts, writingNote, type WritingIo, type WritingProgress } from "@/lib/pipeline/write-parts";
+import { runWriting, writingCounts, writingNote, type WritingProgress } from "@/lib/pipeline/write-parts";
+import { writingIo } from "@/components/content/writer-io";
 import { confirmTicks, gate1Evidence } from "@/lib/pipeline/stage-a";
-import { runHistoryListUrl } from "@/lib/agent-runs/run-history-view";
 import type { AgentRun } from "@/types/agent-run";
 
 /**
@@ -49,43 +48,6 @@ function useUnits(projectId: string, sources: readonly EvidenceSource[], version
     return () => controller.abort();
   }, [projectId, key, version]);
   return state;
-}
-
-function writingIo(projectId: string, stop: { current: boolean }, onProgress: (event: WritingProgress) => void): WritingIo {
-  const readRun = async (runId: string): Promise<AgentRun | null> => {
-    try {
-      const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
-      if (!response.ok) return null;
-      return ((await response.json()) as { run?: AgentRun }).run ?? null;
-    } catch {
-      return null;
-    }
-  };
-  return {
-    readRuns: async () => {
-      try {
-        const response = await fetch(runHistoryListUrl({ projectId, agentId: "writer", limit: 50, offset: 0 }), { cache: "no-store" });
-        if (!response.ok) return null;
-        const body = (await response.json().catch(() => null)) as { runs?: unknown } | null;
-        return Array.isArray(body?.runs) ? (body.runs as AgentRun[]) : null;
-      } catch {
-        return null;
-      }
-    },
-    execute: async (runId) => {
-      try {
-        const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "execute" }), cache: "no-store" });
-        return executeOutcome(response.status, await response.json().catch(() => null));
-      } catch {
-        // The attempt may or may not have started; the read-back decides, as Run now's does.
-        return executeOutcome(0, null);
-      }
-    },
-    readRun,
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    stopRequested: () => stop.current,
-    onProgress,
-  };
 }
 
 export function Gate1Panel({
@@ -224,7 +186,7 @@ export function Gate1Panel({
               <p className={writing.note.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-muted"} role="status">{writing.note.text}</p>
             )}
             {!writing.running && counts.total > 0 && counts.drafted === counts.total && (
-              <Gate1ArticleStep projectId={projectId} briefRunId={briefRun.id} autoSave={justWrote} onSaved={onChanged} />
+              <Gate1ArticleStep projectId={projectId} briefRunId={briefRun.id} brief={brief} writerRuns={writerRuns} autoSave={justWrote} onSaved={onChanged} />
             )}
           </div>
         ) : (
