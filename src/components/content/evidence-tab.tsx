@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ProviderUsageBlock } from "@/components/keywords/provider-estimates";
 import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { OpportunityBriefPanel } from "@/components/content/opportunity-brief";
+import { Gate1Panel } from "@/components/content/gate1-panel";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
 import { runNowButtonState } from "@/lib/agent-runs/run-now-state";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +43,7 @@ import {
 import { opportunitiesUrl, type AcceptedOpportunity, type OpportunitiesView } from "@/lib/opportunities/contract";
 import { resultsOfType, serpUrl, type SerpView } from "@/lib/serp/contract";
 import type { Confirmation } from "@/lib/agent-runs/spend-confirm";
-import { BRIEF_REQUEST, briefRuns } from "@/lib/briefs/presenter";
+import { BRIEF_REQUEST, briefRuns, latestBrief } from "@/lib/briefs/presenter";
 import type { AgentRun } from "@/types/agent-run";
 
 /**
@@ -151,6 +152,7 @@ function OpportunityEvidence({ projectId, opportunity }: { projectId: string; op
   const serpView = serp.status === "ready" ? serp.value : null;
   const latest = serpView === null ? null : latestCompletedSerp(serpView);
   const mode = serpView?.provider.mode ?? "sandbox";
+  const shownBrief = strategistRuns.status === "ready" ? latestBrief(briefRuns(strategistRuns.value, opportunity.id)) : null;
 
   return (
     <>
@@ -245,6 +247,18 @@ function OpportunityEvidence({ projectId, opportunity }: { projectId: string; op
         onChanged={reload}
         onDraft={() => setDialog({ usage: true, confirmation: queueConfirmation(briefRequest), run: () => void briefPost.send("/api/agent-runs", briefRequest, "Brief queued, not run. Run now below, or the scheduled worker picks it up.") })}
       />
+
+      {shownBrief !== null && shownBrief.state === "brief" && sources.status === "ready" && (
+        <Gate1Panel
+          projectId={projectId}
+          sources={sources.value}
+          briefRun={shownBrief.run}
+          brief={shownBrief.brief}
+          writerRuns={writerRuns.status === "ready" ? writerRuns.value : writerRuns.status === "loading" ? "loading" : "failed"}
+          version={version}
+          onChanged={reload}
+        />
+      )}
 
       {dialog !== null && (
         <SpendConfirmDialog confirmation={dialog.confirmation} projectId={dialog.usage ? projectId : null} busy={post.busy || briefPost.busy} onClose={() => setDialog(null)}
