@@ -1,5 +1,5 @@
 import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
-import { QUEUE_CONSEQUENCE, type Confirmation } from "@/lib/agent-runs/spend-confirm";
+import type { Confirmation } from "@/lib/agent-runs/spend-confirm";
 import type { ArticlePart } from "@/lib/briefs/article-part";
 import type { ParsedBrief } from "@/lib/briefs/brief";
 import { capRoom, partLabel, partRequests, PART_REQUEST } from "@/lib/briefs/draft-presenter";
@@ -57,8 +57,8 @@ export function gate1Confirmation(projectId: string, brief: ParsedBrief, parts: 
       { label: "Parts", value: parts.map((part) => partLabel(part, brief)).join("; ") },
       { label: "Writing estimate", value: `about $${estimate.low.toFixed(2)}–$${estimate.high.toFixed(2)} (one Writer run per part; checks are separate)` },
     ],
-    consequence: `Admits each ticked claim (the database checks each one again), then queues one Writer run per part. ${QUEUE_CONSEQUENCE} Writes a draft for your review, publishes nothing.`,
-    confirmLabel: `Approve & queue ${parts.length}`,
+    consequence: `Admits each ticked claim (the database checks each one again), queues one Writer run per part, then runs them one by one now — each a paid model call. Keep this page open: closing it pauses the writing, and Continue writing resumes it. Stops at the first refusal or failed part. Writes a draft for your review, publishes nothing.`,
+    confirmLabel: `Approve & write ${parts.length}`,
     dismissLabel: "Go back",
     usage: "created",
     tone: "primary",
@@ -115,4 +115,22 @@ export async function runGate1(io: Gate1Io, requests: readonly Gate1Request[]): 
     return { admitted, queued, refusal, tone: "neutral", text: `Plan approved: ${admitted} ${admitted === 1 ? "claim" : "claims"} admitted, ${queued} ${queued === 1 ? "part" : "parts"} queued, not run. Run now below, or the scheduled worker picks them up.` };
   }
   return { admitted, queued, refusal, tone: "warning", text: `${admitted} admitted and ${queued} of ${parts} queued; then refused: ${refusal}` };
+}
+
+/** *Continue writing*: run the parts already queued for this brief, one by one, now. */
+export function writingConfirmation(projectId: string, waiting: number): Confirmation {
+  const estimate = partsEstimate(waiting);
+  return {
+    title: `Run ${waiting} queued article ${waiting === 1 ? "part" : "parts"} now?`,
+    facts: [
+      { label: "Project", value: projectId },
+      { label: "Runs", value: `${waiting} Writer ${waiting === 1 ? "run" : "runs"}, one at a time` },
+      { label: "Estimate", value: `about $${estimate.low.toFixed(2)}–$${estimate.high.toFixed(2)}` },
+    ],
+    consequence: "Each run is a paid model call, started now. Keep this page open: closing it pauses the writing. Stops at the first refusal or failed part; nothing is re-run by itself. Writes a draft for your review, publishes nothing.",
+    confirmLabel: `Run ${waiting}`,
+    dismissLabel: "Go back",
+    usage: "started",
+    tone: "primary",
+  };
 }

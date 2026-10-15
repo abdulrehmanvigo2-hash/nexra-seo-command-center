@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
 import type { ParsedBrief } from "@/lib/briefs/brief";
-import { gate1Confirmation, gate1Requests, gate1State, partsEstimate, runGate1, type Gate1Io } from "@/lib/pipeline/gate1";
+import { gate1Confirmation, gate1Requests, gate1State, partsEstimate, runGate1, writingConfirmation, type Gate1Io } from "@/lib/pipeline/gate1";
 import type { Gate1Evidence } from "@/lib/pipeline/stage-a";
 import type { AgentRun } from "@/types/agent-run";
 
@@ -48,6 +48,11 @@ describe("gate1Requests and confirmation", () => {
     assert.ok(c.facts.some((f) => f.label === "Evidence to admit" && f.value === "1 claim (1 unticked, left pending)"));
     assert.ok(c.facts.some((f) => f.label === "Writing estimate" && f.value.startsWith("about $0.10–$0.20")));
     assert.match(c.consequence, /publishes nothing/);
+    assert.match(c.consequence, /runs them one by one now — each a paid model call/);
+    assert.equal(c.confirmLabel, "Approve & write 2");
+    const w = writingConfirmation("nexra-agency", 3);
+    assert.equal(w.usage, "started");
+    assert.equal(w.confirmLabel, "Run 3");
     assert.equal(c.usage, "created");
   });
 });
@@ -125,11 +130,10 @@ describe("the Gate 1 screen", async () => {
     assert.match(tab, /shownBrief\.state === "brief"/);
     assert.ok(tab.indexOf("<OpportunityBriefPanel") < tab.indexOf("<Gate1Panel"));
   });
-  test("one confirmation, then the shared driver; no fixture; no direct model call", () => {
+  test("one confirmation, then the shared driver; no fixture", () => {
     assert.match(panel, /SpendConfirmDialog confirmation=\{gate1Confirmation\(/);
     assert.match(panel, /runGate1\(/);
     assert.match(panel, /confirmTicks\(offered, ticked\)/);
     assert.doesNotMatch(panel, /@\/lib\/mock/);
-    assert.doesNotMatch(panel, /execute"|action: "execute"/);
   });
 });
