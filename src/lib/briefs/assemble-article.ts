@@ -245,7 +245,13 @@ export function assembleArticle(input: { readonly briefRunId: string; readonly b
   if (cluster === null) notes.push("No cluster was readable: topic and keywords are empty; fill them in before saving.");
   notes.push(`Category set to "${DEFAULT_CATEGORY}"; check it.`);
 
-  const sources = cited.map((label) => citedSourceOf(admitted.get(label)!));
+  // One entry per page: several claims are often admitted from one page, and C1 refuses a repeated URL (15 Oct).
+  const seenUrls = new Set<string>();
+  const sources = cited.map((label) => citedSourceOf(admitted.get(label)!)).filter((source) => {
+    if (seenUrls.has(source.url)) return false;
+    seenUrls.add(source.url);
+    return true;
+  });
   const citations: ArticleCitedSource[] = sources.map((source) => ({ url: source.url, title: source.title, publisher: source.publisher, retrievedAt: source.retrievedAt }));
   if (sources.some((source) => source.fromAddress)) notes.push("A cited source whose page recorded no title is titled by its address; give it the page's real title.");
   if (sources.some((source) => !source.fromAddress)) notes.push("Cited sources are titled from each page's recorded title, the publisher from its site name; check them.");

@@ -112,3 +112,19 @@ describe("assembleArticle", () => {
     assert.deepEqual(["Café & AI!", "Café & AI!", "???"].map((h) => sectionId(h, taken)), ["cafe-ai", "cafe-ai-2", "section"]);
   });
 });
+
+describe("cited sources from one page", () => {
+  test("two admitted claims from the same page give one cited source, so C1 accepts it (15 Oct)", () => {
+    const twoFromOnePage = {
+      ...records,
+      admitted: [
+        { label: "E1", claim: "They reply fast.", quote: "reply within one minute", url: "https://alpha.example/guide", retrievedAt: "2026-10-03T12:05:00Z" },
+        { label: "E2", claim: "They book meetings.", quote: "book meetings", url: "https://alpha.example/guide", retrievedAt: "2026-10-03T12:05:00Z" },
+      ],
+    } as unknown as OpportunityBriefInput;
+    const runs = allRuns().map((r) => (r.input.part === "section-1" ? ({ ...r, resultSummary: ["P: An AI SDR replies within a minute. [evidence E1]", "P: It also books meetings. [evidence E2]", "LIMITS: None."].join("\n") } as AgentRun) : r));
+    const draft = assembleArticle({ briefRunId: BRIEF_RUN, brief, records: twoFromOnePage, runs });
+    assert.equal(draft.content!.citations.length, 1);
+    assert.deepEqual(draft.issues, []);
+  });
+});
