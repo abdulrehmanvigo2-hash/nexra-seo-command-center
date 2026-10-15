@@ -52,7 +52,8 @@ default to the project's (US / English). A keyword with no opportunity creates o
 
 **Stage A — research (automatic):**
 1. SERP for the keyword (M4; counts against the DataForSEO daily cap).
-2. Sources: the top 5 organic URLs, excluding the project's own domain, fetched through the existing safe
+2. Sources: the top organic URLs of Google's top ten — at most 10 (owner, 15 Oct; migration `20261029120000` raises M4's daily
+   source limit from 5 to 10), one per domain, excluding the project's own domain — fetched through the existing safe
    `fetchSource` path (robots, size, off-site and unsafe-URL rules unchanged).
 3. `evidence-extract` per fetched source.
 4. Units that are `supported` **and** whose quote was found on the page are **pre-ticked** for admission — never
@@ -88,8 +89,8 @@ says the PR must be merged on GitHub. Then it shows the Search Console URL-inspe
 
 ## Cost (estimates from the M4/M5/M6 design notes, not measured)
 
-SERP ~$0.0024 · extraction 5 × $0.06–0.15 · brief ~$0.10–0.20 · parts 8 × $0.05–0.10 · checks ~$0.06 a unit ·
-re-drafts only on failure. **About $1.50–2.50 an article.** Gate 1 shows the real spend so far and the estimate.
+SERP ~$0.0024 · extraction up to 10 × $0.06–0.15 · brief ~$0.10–0.20 · parts 8 × $0.05–0.10 · checks ~$0.06 a unit ·
+re-drafts only on failure. **About $1.80–3.30 an article** (with ten sources). Gate 1 shows the real spend so far and the estimate.
 
 ## Safety unchanged
 

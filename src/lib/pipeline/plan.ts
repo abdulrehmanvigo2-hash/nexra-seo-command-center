@@ -14,8 +14,8 @@ import type { AgentRunStatus } from "@/types/agent-run";
 
 /** Decision D4: automatic re-drafts per failing part before the pipeline stops for the owner. */
 export const MAX_REDRAFTS = 2;
-/** Stage A takes the top organic results, the project's own domain excluded (the note's step 2). */
-export const MAX_SOURCES = 5;
+/** Stage A takes the top organic results (Google's top ten, SERP_DEPTH), the project's own domain excluded (the note's step 2; owner, 15 Oct: ten). */
+export const MAX_SOURCES = 10;
 
 /** One agent run as the snapshot records it: none yet, or the newest run for that step. */
 export type RunState =

@@ -35,7 +35,7 @@ export type EvidenceStore = {
   readonly storesEvidence: boolean;
   /** The URL of an organic SERP result of this opportunity, or null. */
   serpResultUrl(projectId: string, opportunityId: string, serpResultId: string): Promise<string | null>;
-  /** Today's sources for the opportunity (the database refuses a sixth; read first so nothing is fetched in vain). */
+  /** Today's sources for the opportunity (the database refuses an eleventh; read first so nothing is fetched in vain). */
   sourcesToday(opportunityId: string, at: Date): Promise<number>;
   recordSource(input: { readonly projectId: string; readonly opportunityId: string; readonly serpResultId: string | null; readonly fetched: FetchedSource; readonly operatorId: string }): Promise<RecordSourceOutcome>;
   listSources(projectId: string, opportunityId: string, limit: number): Promise<readonly EvidenceSource[]>;

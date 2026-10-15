@@ -8,7 +8,7 @@ import type { SourceFetchState } from "@/lib/evidence/fetch";
  */
 
 export const PREVIEW_CHARS = 300;
-export const SOURCES_PER_OPPORTUNITY_PER_DAY = 5;
+export const SOURCES_PER_OPPORTUNITY_PER_DAY = 10;
 export const SOURCE_READ_LIMIT = 50;
 
 export type EvidenceSource = {

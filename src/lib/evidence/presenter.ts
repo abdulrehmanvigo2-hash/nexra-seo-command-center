@@ -75,7 +75,7 @@ export function sourceConfirmation(projectId: string, url: string): Confirmation
       { label: "Project", value: projectId },
     ],
     consequence:
-      "This reads the site's robots.txt and, if it allows, fetches the page once with this product's crawler and keeps its visible text (at most 20,000 characters) internally. No model is called and nothing is charged. At most five pages a day per opportunity.",
+      "This reads the site's robots.txt and, if it allows, fetches the page once with this product's crawler and keeps its visible text (at most 20,000 characters) internally. No model is called and nothing is charged. At most ten pages a day per opportunity.",
     confirmLabel: "Fetch page",
     dismissLabel: "Go back",
     usage: null,

@@ -42,8 +42,9 @@ export function isOwnHost(host: string, projectDomain: string): boolean {
 }
 
 /**
- * Step 2: the top organic results, in rank order, the project's own site left out and at most one per domain (five
- * pages from one site say one site's view), at most MAX_SOURCES — which is also M4's daily limit per opportunity.
+ * Step 2: the top organic results, in rank order, the project's own site left out and at most one per domain (several
+ * pages from one site say one site's view), at most MAX_SOURCES (ten) — which is also M4's daily limit per opportunity
+ * since migration 20261029120000.
  */
 export function pickSources(results: readonly SerpResult[], projectDomain: string, max: number = MAX_SOURCES): readonly PickedSource[] {
   const picked: PickedSource[] = [];

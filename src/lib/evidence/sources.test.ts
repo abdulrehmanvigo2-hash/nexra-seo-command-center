@@ -140,7 +140,7 @@ describe("the sources service", () => {
     const urls: string[] = [];
     const fetch = async (url: string) => { urls.push(url); return fetched; };
     assert.equal((await createEvidenceService(store().store, { fetch }).fetchSource("p1", OPP, { serpResultId: OPP }, "op")).status, "serp-result-not-found");
-    assert.equal((await createEvidenceService(store({ async sourcesToday() { return 5; } }).store, { fetch }).fetchSource("p1", OPP, { url: "https://b.example" }, "op")).status, "source-limit");
+    assert.equal((await createEvidenceService(store({ async sourcesToday() { return 10; } }).store, { fetch }).fetchSource("p1", OPP, { url: "https://b.example" }, "op")).status, "source-limit");
     assert.equal((await createEvidenceService({ ...store().store, storesEvidence: false }, { fetch }).fetchSource("p1", OPP, { url: "https://b.example" }, "op")).status, "not-set-up");
     assert.deepEqual(urls, []);
   });

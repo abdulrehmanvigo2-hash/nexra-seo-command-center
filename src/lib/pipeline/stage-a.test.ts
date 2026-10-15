@@ -77,7 +77,7 @@ describe("normalHost / isOwnHost", () => {
 });
 
 describe("pickSources", () => {
-  test("top organic results in rank order, own site left out, one per domain, at most five", () => {
+  test("top organic results in rank order, own site left out, one per domain, at most ten", () => {
     const results = [
       paa(1),
       organic(3, "https://b.com/1"),
@@ -101,8 +101,18 @@ describe("pickSources", () => {
         [5, "c.com"],
         [8, "d.com"],
         [9, "e.com"],
+        [10, "f.com"],
+        [11, "g.com"],
       ],
     );
+    assert.equal(pickSources(results, "nexraagency.com", 3).length, 3);
+  });
+
+  test("ten distinct sites: all ten are picked, an eleventh is not", () => {
+    const results = Array.from({ length: 11 }, (_, i) => organic(i + 1, `https://site${i + 1}.com/page`));
+    const picks = pickSources(results, "nexraagency.com");
+    assert.equal(picks.length, 10);
+    assert.equal(picks.at(-1)?.domain, "site10.com");
   });
   test("a URL with credentials is never picked", () => {
     assert.deepEqual(pickSources([organic(1, "https://user:pw@a.com/1", "a.com")], "nexraagency.com"), []);
