@@ -176,7 +176,7 @@ export function ContentStudio({ projects }: { projects: readonly ProjectOption[]
         <>
           <TabList tabs={TABS} value={tab} onChange={setTab} label="Content sections" idPrefix="content" />
           <div role="tabpanel" id={tabPanelDomId("content", tab)} aria-labelledby={tabDomId("content", tab)} tabIndex={0} className="space-y-4 focus-visible:outline-none">
-            <StudioTab key={projectId} projectId={projectId} tab={tab} />
+            <StudioTab key={projectId} projectId={projectId} projectDomain={projects.find((p) => p.id === projectId)?.domain ?? ""} tab={tab} />
           </div>
         </>
       )}
@@ -184,11 +184,11 @@ export function ContentStudio({ projects }: { projects: readonly ProjectOption[]
   );
 }
 
-function StudioTab({ projectId, tab }: { projectId: string; tab: ContentTabId }) {
+function StudioTab({ projectId, projectDomain, tab }: { projectId: string; projectDomain: string; tab: ContentTabId }) {
   // The calendar reads its own route, so the stored content's reads never hide it.
   if (tab === "calendar") return <ContentCalendar projectId={projectId} />;
   // M4: the evidence tab reads its own routes too.
-  if (tab === "evidence") return <EvidenceTab projectId={projectId} />;
+  if (tab === "evidence") return <EvidenceTab projectId={projectId} projectDomain={projectDomain} />;
   return <StudioRecordsTab projectId={projectId} tab={tab} />;
 }
 

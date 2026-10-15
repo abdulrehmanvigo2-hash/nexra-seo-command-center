@@ -87,7 +87,8 @@ describe("the component", () => {
   const studio = readFileSync(new URL("src/components/content/observed-content.tsx", root), "utf8");
 
   test("mounted as the Evidence tab on its own reads", () => {
-    assert.match(studio, /if \(tab === "evidence"\) return <EvidenceTab projectId=\{projectId\} \/>;/);
+    // OC1 PR 8: the project's domain, so the research leaves the own site out.
+    assert.match(studio, /if \(tab === "evidence"\) return <EvidenceTab projectId=\{projectId\} projectDomain=\{projectDomain\} \/>;/);
     for (const read of ["opportunitiesUrl(projectId)", "serpUrl(projectId, opportunity.id)", "evidenceSourcesUrl(projectId, opportunity.id)", "evidenceUnitsUrl(projectId, source.id)"]) assert.ok(component.includes(read), read);
     assert.match(component, /NOT_SET_UP_TITLE/);
   });
