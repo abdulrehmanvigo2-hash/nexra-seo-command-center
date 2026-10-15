@@ -8,17 +8,21 @@ import { Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/pane
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
 import type { ParsedBrief } from "@/lib/briefs/brief";
-import { draftParts, partsToQueue } from "@/lib/briefs/draft-presenter";
+import { draftParts, partLabel, partsToQueue } from "@/lib/briefs/draft-presenter";
+import { executeOutcome } from "@/lib/crawl/review-request";
 import { evidenceUnitsUrl, type EvidenceSource, type EvidenceUnit } from "@/lib/evidence/contract";
-import { GATE1_LABEL, gate1Confirmation, gate1Requests, gate1State, partsEstimate, runGate1, type Gate1Outcome } from "@/lib/pipeline/gate1";
+import { GATE1_LABEL, gate1Confirmation, gate1Requests, gate1State, partsEstimate, runGate1, writingConfirmation, type Gate1Outcome } from "@/lib/pipeline/gate1";
+import { runWriting, writingCounts, writingNote, type WritingIo, type WritingProgress } from "@/lib/pipeline/write-parts";
 import { confirmTicks, gate1Evidence } from "@/lib/pipeline/stage-a";
+import { runHistoryListUrl } from "@/lib/agent-runs/run-history-view";
 import type { AgentRun } from "@/types/agent-run";
 
 /**
  * Gate 1 — *Approve the plan* (OC1, PR 4; docs/roadmap/OC1-one-click-article.md). Beneath the brief on the Evidence tab:
  * the claims the database would admit, ticked; the others counted, never ticked; the parts the Writer will draft and an
- * estimate. One button opens one confirmation, then admits the ticked claims and queues every part. Nothing here runs a
- * model or writes an article. Once a part run names the brief, the panel shows the plan as approved.
+ * estimate. One button opens one confirmation, then admits the ticked claims, queues every part and (PR 5) runs them one
+ * by one through `runWriting` while the page is open. Once a part run names the brief, the panel shows the plan as
+ * approved with the parts drafted, and *Continue writing* resumes any still queued. Nothing here writes an article.
  */
 
 type UnitsRead = { readonly status: "loading" } | { readonly status: "failed" } | { readonly status: "ready"; readonly units: readonly EvidenceUnit[] };
@@ -46,6 +50,43 @@ function useUnits(projectId: string, sources: readonly EvidenceSource[], version
   return state;
 }
 
+function writingIo(projectId: string, stop: { current: boolean }, onProgress: (event: WritingProgress) => void): WritingIo {
+  const readRun = async (runId: string): Promise<AgentRun | null> => {
+    try {
+      const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
+      if (!response.ok) return null;
+      return ((await response.json()) as { run?: AgentRun }).run ?? null;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    readRuns: async () => {
+      try {
+        const response = await fetch(runHistoryListUrl({ projectId, agentId: "writer", limit: 50, offset: 0 }), { cache: "no-store" });
+        if (!response.ok) return null;
+        const body = (await response.json().catch(() => null)) as { runs?: unknown } | null;
+        return Array.isArray(body?.runs) ? (body.runs as AgentRun[]) : null;
+      } catch {
+        return null;
+      }
+    },
+    execute: async (runId) => {
+      try {
+        const response = await fetch(`/api/agent-runs/${encodeURIComponent(runId)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "execute" }), cache: "no-store" });
+        return executeOutcome(response.status, await response.json().catch(() => null));
+      } catch {
+        // The attempt may or may not have started; the read-back decides, as Run now's does.
+        return executeOutcome(0, null);
+      }
+    },
+    readRun,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    stopRequested: () => stop.current,
+    onProgress,
+  };
+}
+
 export function Gate1Panel({
   projectId,
   sources,
@@ -70,6 +111,20 @@ export function Gate1Panel({
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Gate1Outcome | null>(null);
   const inFlight = useRef(false);
+  const stopRef = useRef(false);
+  const [writing, setWriting] = useState<{ readonly running: boolean; readonly progress: WritingProgress | null; readonly note: { readonly text: string; readonly tone: "neutral" | "warning" } | null }>({ running: false, progress: null, note: null });
+  const [confirmWriting, setConfirmWriting] = useState(false);
+
+  const write = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    stopRef.current = false;
+    setWriting({ running: true, progress: null, note: null });
+    const result = await runWriting(writingIo(projectId, stopRef, (event) => setWriting((current) => ({ ...current, progress: event }))), brief, briefRun.id);
+    setWriting({ running: false, progress: null, note: writingNote(result, (part) => partLabel(part, brief)) });
+    inFlight.current = false;
+    onChanged();
+  };
 
   if (writerRuns === "loading" || units.status === "loading") {
     return (
@@ -94,6 +149,7 @@ export function Gate1Panel({
   const byId = new Map(units.units.map((unit) => [unit.id, unit]));
   const titleOf = new Map(sources.map((source) => [source.id, source.title ?? source.finalUrl ?? source.requestedUrl]));
   const estimate = partsEstimate(parts.length);
+  const counts = writingCounts(draftParts(brief, writerRuns, briefRun.id));
 
   const approve = async () => {
     const check = confirmTicks(offered, ticked);
@@ -118,6 +174,7 @@ export function Gate1Panel({
     inFlight.current = false;
     setBusy(false);
     onChanged();
+    if (result.refusal === null && result.queued > 0) await write();
   };
 
   return (
@@ -138,11 +195,30 @@ export function Gate1Panel({
           <p className={outcome.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-muted"} role="status">{outcome.text}</p>
         )}
         {state.approved ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="positive">Plan approved</Badge>
-            <span className="text-xs text-fg-subtle">
-              {state.at.slice(0, 16).replace("T", " ")} UTC · {state.runs} Writer part {state.runs === 1 ? "run" : "runs"} for brief {briefRun.id.slice(0, 8)} — follow them in the article draft above.
-            </span>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="positive">Plan approved</Badge>
+              <span className="text-xs text-fg-subtle">
+                {state.at.slice(0, 16).replace("T", " ")} UTC · {counts.drafted} of {counts.total} parts drafted{counts.waiting > 0 ? ` · ${counts.waiting} queued` : ""}
+              </span>
+            </div>
+            {writing.running ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-fg-muted" role="status" aria-live="polite">
+                  {writing.progress === null ? "Starting the writing…" : `${writing.progress.type === "running" ? "Writing" : "Drafted"} ${partLabel(writing.progress.part, brief)} · ${writing.progress.done} of ${writing.progress.total} done`}
+                </span>
+                <Button size="sm" variant="ghost" icon="close" onClick={() => { stopRef.current = true; }}>Stop after this part</Button>
+              </div>
+            ) : (
+              counts.waiting > 0 && (
+                <Button size="sm" variant="primary" icon="edit" onClick={() => setConfirmWriting(true)}>
+                  {`Continue writing (${counts.waiting} queued)…`}
+                </Button>
+              )
+            )}
+            {writing.note !== null && (
+              <p className={writing.note.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-muted"} role="status">{writing.note.text}</p>
+            )}
           </div>
         ) : (
           <>
@@ -193,6 +269,13 @@ export function Gate1Panel({
       <PanelFooter>
         <span>Approving admits the ticked claims and queues the Writer&apos;s runs. Nothing is published; the article still needs its check and Gate 2.</span>
       </PanelFooter>
+      {confirmWriting && (
+        <SpendConfirmDialog confirmation={writingConfirmation(projectId, counts.waiting)} projectId={projectId} busy={writing.running} onClose={() => setConfirmWriting(false)}
+          onConfirm={() => {
+            setConfirmWriting(false);
+            void write();
+          }} />
+      )}
       {confirming && (
         <SpendConfirmDialog confirmation={gate1Confirmation(projectId, brief, parts, ticked.length, offered)} projectId={projectId} busy={busy} onClose={() => setConfirming(false)}
           onConfirm={() => {
