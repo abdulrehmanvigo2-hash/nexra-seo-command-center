@@ -1170,4 +1170,7 @@ not reused.
 51. `20261029120000_evidence_ten_sources.sql` — OC1 (owner, 15 Oct 2026): `nexra_evidence_source_record` replaced with
     the same signature, its body 20261025120000's except the daily count — ten sources a UTC day per opportunity, not
     five — and its comment; no table, trigger, grant or owner change. Harness suite `evidence-ten`; the `evidence` suite
-    is pinned to the schema before it — **not applied** (SHA-256 `b5570d4c…3976c1`)
+    is pinned to the schema before it — **applied to production and recorded on 15 Oct 2026** (SHA-256 `b5570d4c…3976c1`;
+    52 history rows; after manual backup run `38672170043`; tested first on a disposable cluster with a tampered hash failing
+    closed; verified read-only: counts to ten, `security definer`, empty `search_path`, owner `postgres`, EXECUTE for
+    `service_role` only, sources 8 and units 12 unchanged)
