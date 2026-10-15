@@ -2,13 +2,20 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createArticle } from "@/app/(app)/projects/article-actions";
+import { createArticle, saveArticleVersion } from "@/app/(app)/projects/article-actions";
 import { CheckAllControl } from "@/components/content/check-all-control";
+import { executeRun, readRun } from "@/components/content/writer-io";
+import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { draftTaskId, draftUrl } from "@/lib/briefs/handoff";
 import type { AssembledDraft } from "@/lib/briefs/assemble-article";
+import type { ParsedBrief } from "@/lib/briefs/brief";
+import { partLabel } from "@/lib/briefs/draft-presenter";
+import type { DailyUsage } from "@/lib/agent-runs/daily-usage";
+import { redraftConfirmation, redraftNote, redraftPlan, runRedraft, type RedraftOutcome } from "@/lib/pipeline/redraft";
+import type { AgentRun } from "@/types/agent-run";
 import { articleForBrief, createRefusalText, saveArticle, type SaveArticleOutcome } from "@/lib/pipeline/save-article";
 import type { ArticleVersionChecks } from "@/types/content-article-check";
 import type { ArticleHistory, ArticleWorkspace } from "@/types/content-article-record";
@@ -17,13 +24,28 @@ import type { ArticleHistory, ArticleWorkspace } from "@/types/content-article-r
  * OC1, PR 6b: the article step beneath Gate 1, once every part is drafted. With no article for the brief yet, the
  * assembled draft is saved as one — automatically right after the writing finishes in this tab, or with *Save the
  * article* — and linked to the opportunity's task (`saveArticle`). With the article saved, its current version's check
- * table is read and the existing *Check all units…* control runs it (its own confirmation). Nothing is approved or
- * published here.
+ * table is read and the existing *Check all units…* control runs it (its own confirmation). When the check has finished
+ * and a part did not pass, *Re-draft…* (PR 6c) runs that part again — at most twice per part — and saves the next
+ * version; the owner then presses Check all again. Nothing is approved or published here.
  */
 
 type Load<T> = { readonly status: "loading" } | { readonly status: "failed" } | { readonly status: "ready"; readonly value: T };
 
-export function Gate1ArticleStep({ projectId, briefRunId, autoSave, onSaved }: { projectId: string; briefRunId: string; autoSave: boolean; onSaved: () => void }) {
+export function Gate1ArticleStep({
+  projectId,
+  briefRunId,
+  brief,
+  writerRuns,
+  autoSave,
+  onSaved,
+}: {
+  projectId: string;
+  briefRunId: string;
+  brief: ParsedBrief;
+  writerRuns: readonly AgentRun[];
+  autoSave: boolean;
+  onSaved: () => void;
+}) {
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
   const [articles, setArticles] = useState<Load<readonly ArticleHistory[]>>({ status: "loading" });
@@ -99,15 +121,33 @@ export function Gate1ArticleStep({ projectId, briefRunId, autoSave, onSaved }: {
           </Button>
         </div>
       ) : (
-        <ArticleChecks projectId={projectId} history={existing} onChanged={reload} />
+        <ArticleChecks projectId={projectId} history={existing} briefRunId={briefRunId} brief={brief} writerRuns={writerRuns} onChanged={() => { reload(); onSaved(); }} />
       )}
     </div>
   );
 }
 
-function ArticleChecks({ projectId, history, onChanged }: { projectId: string; history: ArticleHistory; onChanged: () => void }) {
+function ArticleChecks({
+  projectId,
+  history,
+  briefRunId,
+  brief,
+  writerRuns,
+  onChanged,
+}: {
+  projectId: string;
+  history: ArticleHistory;
+  briefRunId: string;
+  brief: ParsedBrief;
+  writerRuns: readonly AgentRun[];
+  onChanged: () => void;
+}) {
   const { article } = history;
   const [checks, setChecks] = useState<Load<ArticleVersionChecks>>({ status: "loading" });
+  const [confirming, setConfirming] = useState(false);
+  const [redrafting, setRedrafting] = useState<{ part: string; done: number; total: number } | null>(null);
+  const [redraftOutcome, setRedraftOutcome] = useState<RedraftOutcome | null>(null);
+  const stopRef = useRef(false);
   useEffect(() => {
     const controller = new AbortController();
     const url = `/api/content-article-checks?project=${encodeURIComponent(projectId)}&article=${encodeURIComponent(article.id)}&version=${article.currentVersion}`;
@@ -121,6 +161,47 @@ function ArticleChecks({ projectId, history, onChanged }: { projectId: string; h
       });
     return () => controller.abort();
   }, [projectId, article.id, article.currentVersion]);
+
+  const redraft = async (current: ArticleVersionChecks) => {
+    const plan = redraftPlan(current, writerRuns, briefRunId);
+    if (plan.state !== "ready" || redrafting !== null) return;
+    stopRef.current = false;
+    setRedraftOutcome(null);
+    const parts = plan.parts.map((entry) => entry.part);
+    setRedrafting({ part: partLabel(parts[0]!, brief), done: 0, total: parts.length });
+    const result = await runRedraft(
+      {
+        usage: async () => {
+          const response = await fetch(`/api/agent-runs/daily-usage?project=${encodeURIComponent(projectId)}`, { cache: "no-store" });
+          return response.ok ? ((await response.json().catch(() => null)) as { usage?: DailyUsage } | null)?.usage ?? null : null;
+        },
+        queue: async (body) => {
+          const response = await fetch("/api/agent-runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
+          return { status: response.status, body: await response.json().catch(() => null) };
+        },
+        execute: executeRun,
+        readRun,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        stopRequested: () => stopRef.current,
+        onProgress: (part, done, total) => setRedrafting({ part: partLabel(part, brief), done, total }),
+        readDraft: async () => {
+          const response = await fetch(draftUrl(projectId, briefRunId), { cache: "no-store" });
+          const body = (await response.json().catch(() => null)) as { draft?: AssembledDraft } | null;
+          return response.ok ? (body?.draft ?? null) : null;
+        },
+        saveVersion: async (content) => {
+          const answer = await saveArticleVersion(projectId, article.id, article.currentVersion, content, []);
+          return answer.ok ? { ok: true, version: answer.history.article.currentVersion } : { ok: false, reason: answer.reason };
+        },
+      },
+      projectId,
+      briefRunId,
+      parts,
+    );
+    setRedraftOutcome(result);
+    setRedrafting(null);
+    onChanged();
+  };
 
   return (
     <div className="space-y-2">
@@ -139,6 +220,31 @@ function ArticleChecks({ projectId, history, onChanged }: { projectId: string; h
             Check units: {checks.value.counts.passed} passed · {checks.value.counts.needsReview} need review · {checks.value.counts.unchecked} unchecked of {checks.value.counts.total}
           </p>
           {checks.value.refusal === null && article.status !== "archived" && article.status !== "approved" && (
+            <RedraftStep
+              projectId={projectId}
+              plan={redraftPlan(checks.value, writerRuns, briefRunId)}
+              brief={brief}
+              busy={redrafting}
+              outcome={redraftOutcome}
+              onStart={() => setConfirming(true)}
+              onStop={() => {
+                stopRef.current = true;
+              }}
+            />
+          )}
+          {confirming && (
+            <SpendConfirmDialog
+              projectId={projectId}
+              confirmation={redraftConfirmation(projectId, brief, redraftPlan(checks.value, writerRuns, briefRunId))}
+              busy={redrafting !== null}
+              onClose={() => setConfirming(false)}
+              onConfirm={() => {
+                setConfirming(false);
+                void redraft(checks.value);
+              }}
+            />
+          )}
+          {checks.value.refusal === null && article.status !== "archived" && article.status !== "approved" && redrafting === null && (
             <CheckAllControl
               projectId={projectId}
               article={{ id: article.id, status: article.status, currentVersion: article.currentVersion }}
@@ -148,6 +254,51 @@ function ArticleChecks({ projectId, history, onChanged }: { projectId: string; h
             />
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+function RedraftStep({
+  projectId,
+  plan,
+  brief,
+  busy,
+  outcome,
+  onStart,
+  onStop,
+}: {
+  projectId: string;
+  plan: ReturnType<typeof redraftPlan>;
+  brief: ParsedBrief;
+  busy: { part: string; done: number; total: number } | null;
+  outcome: RedraftOutcome | null;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  const note = redraftNote(plan, brief);
+  if (busy === null && outcome === null && note === null) return null;
+  return (
+    <div className="space-y-1.5 rounded-md border border-border p-2.5" data-project={projectId}>
+      {outcome !== null && (
+        <p className={outcome.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-muted"} role="status">{outcome.text}</p>
+      )}
+      {busy !== null ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+          <span role="status">Re-drafting {busy.done + 1} of {busy.total}: {busy.part}. Keep this page open.</span>
+          <Button size="sm" variant="secondary" onClick={onStop}>Stop after this part</Button>
+        </div>
+      ) : (
+        note !== null && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className={plan.state === "limit" ? "text-warning" : "text-fg-muted"}>{note}</span>
+            {plan.state === "ready" && (
+              <Button size="sm" variant="primary" icon="refresh" onClick={onStart}>
+                {`Re-draft ${plan.parts.length} ${plan.parts.length === 1 ? "part" : "parts"}…`}
+              </Button>
+            )}
+          </div>
+        )
       )}
     </div>
   );

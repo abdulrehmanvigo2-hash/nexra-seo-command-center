@@ -88,7 +88,7 @@ describe("the article step on the Gate 1 panel", async () => {
   const step = readFileSync("src/components/content/gate1-article.tsx", "utf8");
   const panel = readFileSync("src/components/content/gate1-panel.tsx", "utf8");
   test("shown once every part is drafted; saved without a press only right after the writing finished here", () => {
-    assert.match(panel, /counts\.drafted === counts\.total && \(\s*<Gate1ArticleStep projectId=\{projectId\} briefRunId=\{briefRun\.id\} autoSave=\{justWrote\}/);
+    assert.match(panel, /counts\.drafted === counts\.total && \(\s*<Gate1ArticleStep projectId=\{projectId\} briefRunId=\{briefRun\.id\} brief=\{brief\} writerRuns=\{writerRuns\} autoSave=\{justWrote\}/);
     assert.match(panel, /if \(result\.ended === "done"\) setJustWrote\(true\);/);
     assert.match(step, /if \(!autoSave \|\| autoTried\.current/);
   });

@@ -139,7 +139,9 @@ describe("the writing on the Gate 1 panel", async () => {
     assert.match(panel, /runWriting\(writingIo\(/);
   });
   test("the execute request is Run now's own, and Stop is offered while writing", () => {
-    assert.match(panel, /JSON\.stringify\(\{ action: "execute" \}\)/);
+    // Moved to the shared Writer calls in PR 6c, which the re-draft uses too.
+    assert.match(panel, /import \{ writingIo \} from "@\/components\/content\/writer-io";/);
+    assert.match(readFileSync("src/components/content/writer-io.ts", "utf8"), /JSON\.stringify\(\{ action: "execute" \}\)/);
     assert.match(panel, /Stop after this part/);
   });
 });
