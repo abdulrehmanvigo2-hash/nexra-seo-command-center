@@ -711,7 +711,9 @@ function ArticleEditor({
       setMessage("Choose the plan run (a content plan or an opportunity brief) this article is assembled for.");
       return;
     }
-    if (sources.length === 0) {
+    // OC1: an article planned by an opportunity brief may name no source draft (the database checks the same rule).
+    const briefPlanned = mode.kind === "create" ? workspace.planCandidates.some((c) => c.runId === planRunId && c.kind === "brief") : initialSources(mode).length === 0;
+    if (sources.length === 0 && !briefPlanned) {
       setMessage("Choose at least one source draft version.");
       return;
     }

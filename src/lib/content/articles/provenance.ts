@@ -56,13 +56,14 @@ function reference(value: unknown, path: string, issues: ArticleIssue[]): Articl
 }
 
 /**
- * Validates a list of source references: at least one, at most 20, each
- * well formed, no version named twice (by row id, or by draft and number).
+ * Validates a list of source references: at least one (none only when `allowEmpty` — an article planned by an
+ * opportunity brief, OC1; migration 20261030120000), at most 20, each well formed, no version named twice (by row id,
+ * or by draft and number).
  */
-export function validateSourceReferences(input: unknown): SourceReferenceResult {
+export function validateSourceReferences(input: unknown, options: { readonly allowEmpty?: boolean } = {}): SourceReferenceResult {
   const issues: ArticleIssue[] = [];
   if (!Array.isArray(input)) return { ok: false, issues: [{ path: "sources", code: input === undefined || input === null ? "required" : "type" }] };
-  if (input.length === 0) issues.push({ path: "sources", code: "required" });
+  if (input.length === 0 && options.allowEmpty !== true) issues.push({ path: "sources", code: "required" });
   if (input.length > MAX_SOURCE_REFERENCES) issues.push({ path: "sources", code: "too-many" });
   const references = input.map((entry, index) => reference(entry, `sources[${index}]`, issues));
   const rowIds = new Set<string>();

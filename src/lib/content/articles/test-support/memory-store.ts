@@ -151,8 +151,10 @@ export function memoryArticleStore(options: { readonly projects?: readonly strin
     return utf8Sha256(canonical) === hash ? null : { status: "content-mismatch" };
   }
 
-  function checkSources(projectId: string, sources: readonly ArticleSourceReference[]): ArticleWriteRefusal | null {
-    if (sources.length < 1 || sources.length > 20) return { status: "source-invalid", index: null, reason: "count" };
+  /** Migration 20261030120000: none only for an article planned by an opportunity brief. */
+  function checkSources(projectId: string, sources: readonly ArticleSourceReference[], planRunId: string): ArticleWriteRefusal | null {
+    if (sources.length > 20) return { status: "source-invalid", index: null, reason: "count" };
+    if (sources.length === 0 && runs.find((run) => run.id === planRunId)?.taskType !== "opportunity-brief") return { status: "source-invalid", index: null, reason: "count" };
     const rows = new Set<string>();
     const numbers = new Set<string>();
     for (const [index, ref] of sources.entries()) {
@@ -220,7 +222,7 @@ export function memoryArticleStore(options: { readonly projects?: readonly strin
       }
       const existing = articles.find((a) => a.sourcePlanRunId === input.sourcePlanRunId);
       if (existing !== undefined) return { status: "exists", article: existing };
-      const refusal = checkContent(input.canonicalContent, input.contentSha256) ?? checkSources(input.projectId, input.sources);
+      const refusal = checkContent(input.canonicalContent, input.contentSha256) ?? checkSources(input.projectId, input.sources, input.sourcePlanRunId);
       if (refusal !== null) return refusal;
       const article: Article = {
         id: nextId(),
@@ -247,7 +249,7 @@ export function memoryArticleStore(options: { readonly projects?: readonly strin
       const article = articles[index];
       if (article.status === "archived") return { status: "archived" };
       if (article.currentVersion !== input.expectedVersion) return { status: "stale", currentVersion: article.currentVersion };
-      const refusal = checkContent(input.canonicalContent, input.contentSha256) ?? checkSources(input.projectId, input.sources);
+      const refusal = checkContent(input.canonicalContent, input.contentSha256) ?? checkSources(input.projectId, input.sources, article.sourcePlanRunId);
       if (refusal !== null) return refusal;
       const next = article.currentVersion + 1;
       const version = insertVersion(article.id, next, input);
