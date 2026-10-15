@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Gate1ArticleStep } from "@/components/content/gate1-article";
 import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,6 +115,8 @@ export function Gate1Panel({
   const stopRef = useRef(false);
   const [writing, setWriting] = useState<{ readonly running: boolean; readonly progress: WritingProgress | null; readonly note: { readonly text: string; readonly tone: "neutral" | "warning" } | null }>({ running: false, progress: null, note: null });
   const [confirmWriting, setConfirmWriting] = useState(false);
+  /** The writing finished in this tab: the article is saved without a further press (PR 6b). */
+  const [justWrote, setJustWrote] = useState(false);
 
   const write = async () => {
     if (inFlight.current) return;
@@ -122,6 +125,7 @@ export function Gate1Panel({
     setWriting({ running: true, progress: null, note: null });
     const result = await runWriting(writingIo(projectId, stopRef, (event) => setWriting((current) => ({ ...current, progress: event }))), brief, briefRun.id);
     setWriting({ running: false, progress: null, note: writingNote(result, (part) => partLabel(part, brief)) });
+    if (result.ended === "done") setJustWrote(true);
     inFlight.current = false;
     onChanged();
   };
@@ -218,6 +222,9 @@ export function Gate1Panel({
             )}
             {writing.note !== null && (
               <p className={writing.note.tone === "warning" ? "text-xs text-warning" : "text-xs text-fg-muted"} role="status">{writing.note.text}</p>
+            )}
+            {!writing.running && counts.total > 0 && counts.drafted === counts.total && (
+              <Gate1ArticleStep projectId={projectId} briefRunId={briefRun.id} autoSave={justWrote} onSaved={onChanged} />
             )}
           </div>
         ) : (
