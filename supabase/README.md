@@ -1174,3 +1174,9 @@ not reused.
     52 history rows; after manual backup run `38672170043`; tested first on a disposable cluster with a tampered hash failing
     closed; verified read-only: counts to ten, `security definer`, empty `search_path`, owner `postgres`, EXECUTE for
     `service_role` only, sources 8 and units 12 unchanged)
+52. `20261030120000_brief_articles_without_draft_sources.sql` — OC1 (owner option A, 15 Oct 2026): an article planned by
+    an opportunity brief may be created and saved with no source draft (its provenance is the brief run and the Writer's
+    part runs); every other article still names at least one. `nexra_article_check_sources` (count 0–20),
+    `nexra_article_create` and `nexra_article_save_version` replaced with the same signatures, their bodies the earlier
+    ones plus the brief rule (drift-tested); no table, trigger or grant change. Harness suite `brief-sources` —
+    **not applied** (SHA-256 `4edf3aa5…6a6bd8`)

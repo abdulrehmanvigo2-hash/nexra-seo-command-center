@@ -177,13 +177,14 @@ export function createArticleService(dependencies: { readonly store: ArticleStor
     projectId: string,
     rawContent: unknown,
     rawSources: unknown,
+    allowEmptySources = false,
   ): Promise<
     | { readonly ok: true; readonly canonical: string; readonly hash: string; readonly sources: readonly ArticleSourceReference[] }
     | ArticleRefusal
   > {
     const content = validateArticleContent(rawContent);
     if (!content.ok) return { ok: false, reason: "invalid-content", issues: content.issues };
-    const sources = validateSourceReferences(rawSources);
+    const sources = validateSourceReferences(rawSources, { allowEmpty: allowEmptySources });
     if (!sources.ok) return { ok: false, reason: "invalid-sources", issues: sources.issues };
 
     const canonical = canonicalArticleJson(content.article);
@@ -234,7 +235,8 @@ export function createArticleService(dependencies: { readonly store: ArticleStor
       const run = await runs.getById(planRunId);
       if (run === null || !isCompletedPlan(run, projectId)) return { ok: false, reason: "plan-run-invalid" };
 
-      const prepared = await prepare(projectId, request.content, request.sources);
+      // OC1: an article planned by an opportunity brief may name no source draft (the brief and its part runs are its provenance).
+      const prepared = await prepare(projectId, request.content, request.sources, planKind(run) === "brief");
       if (!prepared.ok) return prepared;
 
       const outcome = await store.create({
@@ -282,7 +284,8 @@ export function createArticleService(dependencies: { readonly store: ArticleStor
       if (article.status === "archived") return { ok: false, reason: "archived" };
       if (article.currentVersion !== request.expectedVersion) return { ok: false, reason: "stale", currentVersion: article.currentVersion };
 
-      const prepared = await prepare(projectId, request.content, request.sources);
+      const planRun = await runs.getById(article.sourcePlanRunId);
+      const prepared = await prepare(projectId, request.content, request.sources, planRun !== null && planKind(planRun) === "brief");
       if (!prepared.ok) return prepared;
 
       const current = (await store.listVersions(articleId, ARTICLE_VERSION_LIMIT)).find((v) => v.version === article.currentVersion);
