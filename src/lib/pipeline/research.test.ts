@@ -160,3 +160,17 @@ describe("reading claims only when needed", async () => {
     assert.match(note.text, /press Start research again in a few minutes/);
   });
 });
+
+describe("a brief older than the claims is not reused", () => {
+  const src = { id: "src-1", serpResultId: "res-2", fetchState: "fetched", finalUrl: null, requestedUrl: "https://a.com/page", fetchedAt: "2026-10-15T01:00:00Z" } as EvidenceSource;
+  const brief = (createdAt: string) => ({ id: "b1", taskType: "opportunity-brief", input: { opportunityId: OPP }, status: "completed", executor: "ai", createdAt }) as unknown as AgentRun;
+  const ext = { id: "e1", taskType: "evidence-extract", input: { sourceId: "src-1" }, status: "completed", executor: "ai", createdAt: "2026-10-15T06:44:35Z" } as unknown as AgentRun;
+  test("a 10 Oct brief before today's extraction: a fresh brief is drafted", () => {
+    const s = researchSnapshot(input({ sources: [src], researchRuns: [ext], strategistRuns: [brief("2026-10-10T10:58:11Z")] }));
+    assert.deepEqual(s.brief, { state: "none" });
+  });
+  test("a brief after the last extraction is kept, so a repeat press stops at Gate 1", () => {
+    const s = researchSnapshot(input({ sources: [src], researchRuns: [ext], strategistRuns: [brief("2026-10-15T07:00:00Z")] }));
+    assert.deepEqual(s.brief, { state: "run", runId: "b1", status: "completed" });
+  });
+});
