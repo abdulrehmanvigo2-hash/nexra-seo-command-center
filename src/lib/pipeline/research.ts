@@ -65,7 +65,7 @@ export function researchSnapshot(input: ResearchInput): ResearchSnapshot {
     sourcesPicked: stage.sourcesPicked,
     sources,
     stageA: sources,
-    brief: newestBrief(input.strategistRuns, input.opportunityId),
+    brief: newestBrief(input.strategistRuns, input.opportunityId, newestExtraction(input.researchRuns, input.sources)),
     gate1Approved: false,
     parts: [],
     redrafts: {},
@@ -76,12 +76,29 @@ export function researchSnapshot(input: ResearchInput): ResearchSnapshot {
   };
 }
 
-function newestBrief(runs: readonly AgentRun[], opportunityId: string): RunState {
+/**
+ * The newest brief of the opportunity — unless an extraction of one of its sources was started after it: such a brief
+ * never saw those claims (an older brief from an earlier press, 15 Oct), so the research drafts a fresh one.
+ */
+function newestBrief(runs: readonly AgentRun[], opportunityId: string, latestExtraction: string | null): RunState {
   const id = opportunityId.toLowerCase();
   const run = runs
     .filter((r) => r.taskType === BRIEF_REQUEST.taskType && String(r.input.opportunityId ?? "").toLowerCase() === id)
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))[0];
-  return run === undefined ? { state: "none" } : { state: "run", runId: run.id, status: run.status };
+  if (run === undefined) return { state: "none" };
+  if (latestExtraction !== null && latestExtraction > run.createdAt) return { state: "none" };
+  return { state: "run", runId: run.id, status: run.status };
+}
+
+/** When the newest extraction of any of the opportunity's sources was created, or null. */
+function newestExtraction(runs: readonly AgentRun[], sources: readonly EvidenceSource[]): string | null {
+  const ids = new Set(sources.map((source) => source.id));
+  let newest: string | null = null;
+  for (const run of runs) {
+    if (run.taskType !== "evidence-extract" || !ids.has(String(run.input.sourceId ?? ""))) continue;
+    if (newest === null || run.createdAt > newest) newest = run.createdAt;
+  }
+  return newest;
 }
 
 export type ResearchRequest = { readonly url: string; readonly body: Readonly<Record<string, unknown>> };
