@@ -5,6 +5,7 @@ import { ProviderUsageBlock } from "@/components/keywords/provider-estimates";
 import { SpendConfirmDialog } from "@/components/spend/spend-confirm";
 import { OpportunityBriefPanel } from "@/components/content/opportunity-brief";
 import { Gate1Panel } from "@/components/content/gate1-panel";
+import { ResearchPanel } from "@/components/content/research-panel";
 import { RunNowButton, RunNowNote, useRunNow } from "@/components/agent-runs/run-now";
 import { runNowButtonState } from "@/lib/agent-runs/run-now-state";
 import { Badge } from "@/components/ui/badge";
@@ -111,7 +112,7 @@ function ReadFallback({ state, what }: { state: ReadState<unknown>; what: string
   return <p className="text-sm text-warning">{what} could not be read. Nothing is shown in their place.</p>;
 }
 
-export function EvidenceTab({ projectId }: { projectId: string }) {
+export function EvidenceTab({ projectId, projectDomain }: { projectId: string; projectDomain: string }) {
   const opportunities = useRead<OpportunitiesView>(opportunitiesUrl(projectId), (body) => (body.view as OpportunitiesView | undefined) ?? null, 0);
   const [chosen, setChosen] = useState<string | null>(null);
 
@@ -127,12 +128,12 @@ export function EvidenceTab({ projectId }: { projectId: string }) {
         Accepted opportunity
         <Select value={opportunity.id} onChange={(event) => setChosen(event.target.value)} options={accepted.map((entry) => ({ value: entry.id, label: opportunityLabel(entry) }))} />
       </label>
-      <OpportunityEvidence key={opportunity.id} projectId={projectId} opportunity={opportunity} />
+      <OpportunityEvidence key={opportunity.id} projectId={projectId} projectDomain={projectDomain} opportunity={opportunity} />
     </div>
   );
 }
 
-function OpportunityEvidence({ projectId, opportunity }: { projectId: string; opportunity: AcceptedOpportunity }) {
+function OpportunityEvidence({ projectId, projectDomain, opportunity }: { projectId: string; projectDomain: string; opportunity: AcceptedOpportunity }) {
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
   const serp = useRead<SerpView>(serpUrl(projectId, opportunity.id), (body) => (body.view as SerpView | undefined) ?? null, version);
@@ -156,6 +157,8 @@ function OpportunityEvidence({ projectId, opportunity }: { projectId: string; op
 
   return (
     <>
+      <ResearchPanel projectId={projectId} projectDomain={projectDomain} opportunity={opportunity} serp={serpView} onChanged={reload} />
+
       <Panel>
         <PanelHeader
           title="Google results"
