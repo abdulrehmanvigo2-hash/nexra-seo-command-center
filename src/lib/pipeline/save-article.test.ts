@@ -95,6 +95,7 @@ describe("the article step on the Gate 1 panel", async () => {
   test("created with the brief as plan and no source draft, through the editor's own Server Action; then the existing Check all", () => {
     assert.match(step, /createArticle\(projectId, briefRunId, content, \[\]\)/);
     assert.match(step, /<CheckAllControl/);
+    // Gate 2's writes live in gate2-panel.tsx (PR 7), behind its own confirmation.
     assert.doesNotMatch(step, /approveArticle|recordArticleProposal|requestPublication|\/publish/);
   });
 });
